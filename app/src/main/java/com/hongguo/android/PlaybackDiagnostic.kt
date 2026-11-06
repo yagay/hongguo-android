@@ -1,0 +1,113 @@
+package com.hongguo.android
+
+import com.hongguo.api.service.AppSource
+import com.hongguo.api.service.PlaybackDevice
+import java.io.IOException
+import java.net.SocketTimeoutException
+import java.net.UnknownHostException
+import java.util.Locale
+import javax.net.ssl.SSLException
+
+/**
+ * Only fixed, reviewable diagnostic fields reach the screen or clipboard.
+ * Never include a raw Throwable, signed URL, response body, Cookie, device ID or media key.
+ */
+data class PlaybackDiagnostic(
+    val code: String,
+    val stage: String,
+    val stageLabel: String,
+    val message: String,
+    val attempts: Int? = null,
+    val httpStatus: Int? = null,
+    val responseBytes: Int? = null,
+) {
+    /** A privacy-safe support report. No episode, account, signature or provider data. */
+    fun safeReport(): String = buildString {
+        append("Hongguo Android playback diagnostic\n")
+        append("code=").append(code).append('\n')
+        append("stage=").append(stage).append('\n')
+        attempts?.takeIf { it > 0 }?.let { append("attempts=").append(it).append('\n') }
+        httpStatus?.takeIf { it in 100..599 }?.let { append("http_status=").append(it).append('\n') }
+        responseBytes?.takeIf { it >= 0 }?.let { append("response_bytes=").append(it).append('\n') }
+    }
+
+    companion object {
+        fun fromPreparationFailure(error: Throwable): PlaybackDiagnostic {
+            val causes = generateSequence(error) { it.cause }.take(8).toList()
+            val registration = causes.filterIsInstance<PlaybackDevice.RegistrationException>().firstOrNull()
+            val http = causes.filterIsInstance<AppSource.PlaybackHttpException>().firstOrNull()
+            val empty = causes.filterIsInstance<AppSource.EmptyPlaybackResponseException>().firstOrNull()
+            val unavailable = causes.filterIsInstance<AppSource.PlaybackModelUnavailableException>().firstOrNull()
+            val hint = causes.joinToString(" ") { it.message.orEmpty() }.lowercase(Locale.ROOT)
+            fun issue(code: String, stage: String, label: String, message: String, attempts: Int? = null,
+                      httpStatus: Int? = null, responseBytes: Int? = null) =
+                PlaybackDiagnostic(code, stage, label, message, attempts, httpStatus, responseBytes)
+
+            return when {
+                registration != null || hint.contains("匿名播放设备注册失败") ->
+                    issue("DEVICE_REGISTER_FAILED", "device_register", "设备注册",
+                        "播放设备初始化失败，无法继续获取片源。请检查服务连接，稍后重试。")
+                // Unsupported codecs must not be represented as a network error.
+                hint.contains("bytevc2") || hint.contains("本集暂未提供兼容的") ->
+                    issue("CODEC_UNSUPPORTED", "codec_select", "视频编码",
+                        "这一集没有客户端支持的视频编码。可尝试其他剧集或官方播放器。")
+                empty != null ->
+                    issue("VIDEO_MODEL_EMPTY", "multi_video_model", "播放接口",
+                        "播放接口返回了空数据。稍后重试，若持续发生请复制诊断信息。",
+                        empty.attempts.takeIf { it > 0 }, responseBytes = 0)
+                http != null ->
+                    issue("VIDEO_MODEL_HTTP", "multi_video_model", "播放接口",
+                        "播放接口暂时拒绝或无法完成请求（HTTP ${http.status}）。稍后重试。",
+                        http.attempts.takeIf { it > 0 }, httpStatus = http.status)
+                unavailable != null ->
+                    issue("VIDEO_MODEL_INVALID", "multi_video_model", "播放接口",
+                        "播放接口没有返回可用的剧集信息，请尝试其他剧集。",
+                        unavailable.attempts.takeIf { it > 0 })
+                hint.contains("视频模型") || hint.contains("video_model") ||
+                    hint.contains("播放信息格式无效") || hint.contains("app 接口未返回") ||
+                    hint.contains("app 接口暂未提供") ->
+                    issue("VIDEO_MODEL_INVALID", "multi_video_model", "播放接口",
+                        "播放接口返回的剧集信息无法解析，请稍后重试。")
+                hint.contains("no space") || hint.contains("enospc") ->
+                    issue("MEDIA_STORAGE_FULL", "media_cache", "视频缓存",
+                        "本机存储空间不足，请清理空间后重试。")
+                hint.contains("密钥") || hint.contains("解密") || hint.contains("cenc") ||
+                    hint.contains("媒体校验") || hint.contains("媒体样本") || hint.contains("媒体索引") ||
+                    hint.contains("封装") ->
+                    issue("MEDIA_FORMAT_UNSUPPORTED", "media_prepare", "媒体准备",
+                        "媒体格式或解密数据不兼容，换一集重试。")
+                hint.contains("片源") || hint.contains("不受支持的服务地址") ||
+                    hint.contains("无直链") ->
+                    issue("MEDIA_SOURCE_INVALID", "media_source", "片源解析",
+                        "当前剧集的片源不可用，请重试或选择其他剧集。")
+                causes.any { it is UnknownHostException } ->
+                    issue("PLAYBACK_DNS_FAILED", "network", "网络连接",
+                        "无法连接到内容服务，请检查网络和 DNS 设置。")
+                causes.any { it is SocketTimeoutException } ->
+                    issue("PLAYBACK_TIMEOUT", "network", "网络连接",
+                        "获取播放信息超时，请稍后重试。")
+                causes.any { it is SSLException } ->
+                    issue("PLAYBACK_TLS_FAILED", "network", "安全连接",
+                        "安全连接失败，请检查网络和设备时间。")
+                hint.contains("网络请求失败") || hint.contains("网络请求地址无效") ->
+                    issue("PLAYBACK_NETWORK_FAILED", "network", "网络连接",
+                        "播放请求未完成，请检查网络后重试。")
+                causes.any { it is IOException } ->
+                    issue("MEDIA_PREPARE_IO_FAILED", "media_prepare", "媒体准备",
+                        "视频读取或准备失败，请稍后重试。")
+                else ->
+                    issue("PLAYBACK_PREPARE_FAILED", "playback_prepare", "播放准备",
+                        "视频准备失败，请复制诊断信息并重试。")
+            }
+        }
+
+        fun playerFailure(unsupportedCodec: Boolean): PlaybackDiagnostic =
+            if (unsupportedCodec) PlaybackDiagnostic(
+                "PLAYER_DECODER_UNSUPPORTED", "media_decoder", "视频解码",
+                "当前设备无法解码这集视频，可重试或选择其他集。"
+            ) else PlaybackDiagnostic(
+                "PLAYER_PLAYBACK_FAILED", "media_player", "视频播放器",
+                "播放器无法完成视频加载，可重试或选择其他集。"
+            )
+    }
+}
