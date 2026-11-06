@@ -1,5 +1,6 @@
 package com.hongguo.android
 
+import java.io.IOException
 import com.hongguo.account.protocol.RankBoard
 import com.hongguo.account.protocol.RankPage
 import com.hongguo.account.protocol.RelatedWork
