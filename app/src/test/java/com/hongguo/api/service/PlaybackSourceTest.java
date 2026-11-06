@@ -407,6 +407,26 @@ public class PlaybackSourceTest {
         }
     }
 
+    @Test public void malformedFirstRouteContinuesToPostInsteadOfFailingImmediately() throws Exception {
+        PlaybackDevice.resetForTest((url, headers, body) -> okReply());
+        AppSource.setPlaybackTabForTest((vid, identity) -> {
+            // Server returned an incomplete envelope rather than a playable model.
+            return Json.parseObject("{\\\"code\\\":0,\\\"data\\\":{}}");
+        });
+        java.util.concurrent.atomic.AtomicInteger posts = new java.util.concurrent.atomic.AtomicInteger();
+        AppSource.setPlaybackPostForTest((body, identity, host) -> {
+            posts.incrementAndGet();
+            throw new IllegalStateException("post route reached");
+        });
+        try {
+            AppSource.fetch("7000000000000000001", "auto");
+            fail("Expected test POST to be reached");
+        } catch (IllegalStateException expected) {
+            assertEquals("post route reached", expected.getMessage());
+        }
+        assertEquals(1, posts.get());
+    }
+
     @Test public void nonEmptyButUnavailableModelsHaveDistinctFailure() throws Exception {
         PlaybackDevice.resetForTest((url, headers, body) -> okReply());
         AppSource.setPlaybackTabForTest((vid, identity) -> null);
