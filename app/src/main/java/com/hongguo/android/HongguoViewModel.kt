@@ -405,7 +405,7 @@ class HongguoViewModel(application: Application) : AndroidViewModel(application)
         mutableState.update { it.copy(tab = AppTab.SEARCH, query = query, searchedQuery = query,
             results = emptyList(), searching = true, loadingMore = false, hasMore = false, nextOffset = 0,
             searchError = null, selectedCard = null, detail = null, video = null, preparing = false,
-            playbackError = null, firstFrameRendered = false, playerOpen = false) }
+            playbackError = null, playbackDiagnostic = null, firstFrameRendered = false, playerOpen = false) }
         searchJob = viewModelScope.launch {
             try {
                 val page = repository.search(query, 0)
@@ -477,7 +477,7 @@ class HongguoViewModel(application: Application) : AndroidViewModel(application)
         val version = ++detailVersion
         mutableState.update {
             it.copy(selectedCard = card, detail = null, loadingDetail = true, detailError = null, related = emptyList(),
-                video = null, preparing = false, preparationStage = "", playbackError = null,
+                video = null, preparing = false, preparationStage = "", playbackError = null, playbackDiagnostic = null,
                 episodePosition = -1, playbackStatus = "", firstFrameRendered = false, resumePositionMs = 0, playerOpen = false)
         }
         relatedJob?.cancel()
@@ -534,7 +534,7 @@ class HongguoViewModel(application: Application) : AndroidViewModel(application)
         mutableState.update {
             it.copy(episodePosition = position, preparing = true, video = null,
                 preparationStage = "正在获取片源", preparationDone = 0, preparationTotal = 0,
-                playbackError = null, playbackStatus = "", firstFrameRendered = false, resumePositionMs = savedPosition, playerOpen = true)
+                playbackError = null, playbackDiagnostic = null, playbackStatus = "", firstFrameRendered = false, resumePositionMs = savedPosition, playerOpen = true)
         }
         releaseVideo(current.video)
         mediaJob = viewModelScope.launch {
@@ -552,8 +552,12 @@ class HongguoViewModel(application: Application) : AndroidViewModel(application)
             } catch (error: CancellationException) {
                 throw error
             } catch (error: Exception) {
-                if (version == mediaVersion) mutableState.update {
-                    it.copy(preparing = false, playbackError = readableFailure(error, "准备播放"), playbackStatus = "")
+                if (version == mediaVersion) {
+                    val diagnostic = PlaybackDiagnostic.fromPreparationFailure(error)
+                    mutableState.update {
+                        it.copy(preparing = false, playbackError = diagnostic.message,
+                            playbackDiagnostic = diagnostic, playbackStatus = "")
+                    }
                 }
             }
         }
@@ -586,7 +590,7 @@ class HongguoViewModel(application: Application) : AndroidViewModel(application)
         takePrefetch(null)
         resumePreparationOnForeground = false
         mutableState.update { it.copy(playerOpen = false, video = null, preparing = false,
-            preparationStage = "", playbackError = null, playbackStatus = "", firstFrameRendered = false) }
+            preparationStage = "", playbackError = null, playbackDiagnostic = null, playbackStatus = "", firstFrameRendered = false) }
         releaseVideo(previous)
     }
 
@@ -692,8 +696,10 @@ class HongguoViewModel(application: Application) : AndroidViewModel(application)
     }
 
     fun onPlaybackError(episodeId: String, requestId: Long, unsupported: Boolean) {
-        if (isCurrentVideo(episodeId, requestId)) mutableState.update {
-            it.copy(playbackError = if (unsupported) "当前设备无法解码这集视频，可重试或选择其他集。" else "视频播放失败，可重试或选择其他集。",
+        if (!isCurrentVideo(episodeId, requestId)) return
+        val diagnostic = PlaybackDiagnostic.playerFailure(unsupported)
+        mutableState.update {
+            it.copy(playbackError = diagnostic.message, playbackDiagnostic = diagnostic,
                 playbackStatus = "播放失败")
         }
     }
@@ -751,7 +757,7 @@ class HongguoViewModel(application: Application) : AndroidViewModel(application)
         pendingAutoPlay = false
         cancelDetailAndMedia()
         mutableState.update { it.copy(selectedCard = null, detail = null, loadingDetail = false, detailError = null,
-            preparing = false, video = null, playbackError = null, episodePosition = -1, playbackStatus = "", firstFrameRendered = false, playerOpen = false) }
+            preparing = false, video = null, playbackError = null, playbackDiagnostic = null, episodePosition = -1, playbackStatus = "", firstFrameRendered = false, playerOpen = false) }
     }
 
     private fun cancelDetailAndMedia() {
