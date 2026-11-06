@@ -60,6 +60,7 @@ data class HongguoUiState(
     val preparationTotal: Long = 0,
     val video: PreparedVideo? = null,
     val playbackError: String? = null,
+    val playbackDiagnostic: PlaybackDiagnostic? = null,
     val playbackStatus: String = "",
     val firstFrameRendered: Boolean = false,
     val resumePositionMs: Long = 0,
