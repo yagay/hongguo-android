@@ -14,7 +14,12 @@
 
 | Code | Stage | 含义 |
 | --- | --- | --- |
-| `DEVICE_REGISTER_FAILED` | `device_register` | 播放设备初始化失败，尚未发起片源请求 |
+| `DEVICE_REGISTER_FAILED` | `device_register` | 未分类的设备初始化失败 |
+| `DEVICE_REGISTER_DNS_FAILED` / `DEVICE_REGISTER_TIMEOUT` / `DEVICE_REGISTER_TLS_FAILED` | `device_register` | 分别表示 DNS、超时和 TLS 安全连接失败 |
+| `DEVICE_REGISTER_HTTP` | `device_register` | 注册接口返回非 200 HTTP 状态，诊断附带状态码 |
+| `DEVICE_REGISTER_EMPTY` / `DEVICE_REGISTER_INVALID_JSON` | `device_register` | 返回空正文或非 JSON |
+| `DEVICE_REGISTER_INVALID_IDS` / `DEVICE_REGISTER_REJECTED` | `device_register` | 服务器未返回有效注册编号或拒绝请求 |
+| `DEVICE_REGISTER_NETWORK_FAILED` / `DEVICE_REGISTER_RESPONSE_TOO_LARGE` | `device_register` | 网络读取未完成或响应超出安全大小限制 |
 | `VIDEO_MODEL_EMPTY` | `multi_video_model` | 片源接口返回 HTTP 200 但正文为空 |
 | `VIDEO_MODEL_HTTP` | `multi_video_model` | 片源接口返回非 200 HTTP 状态 |
 | `VIDEO_MODEL_INVALID` | `multi_video_model` | 接口有响应，但本集模型缺失、格式不符合预期 |
@@ -51,3 +56,13 @@
 若真机仍然无法播放，应基于复制出的错误码定位对应环节。对于 `DEVICE_REGISTER_FAILED` 和 `VIDEO_MODEL_EMPTY`，先验证请求及网络情况；对于 `CODEC_UNSUPPORTED`，需要根据实际源视频编码能力处理，**不应该通过延长超时解决**。
 
 本轮没有更改签名生成或模拟设备参数；在缺少实机证据时，直接换协议配置可能让当前已经能取址的环境出现回归。
+
+## 设备注册失败专项分析
+
+设备注册失败表示**还没有进入视频片源接口**，不应归咎于 ByteVC2 或 ExoPlayer。旧版只有 `DEVICE_REGISTER_FAILED`，无法区分 HTTP、DNS 或 JSON 类型。
+
+当前源码将原有泛用异常拆为安全、可复制的具体错误码，保留原有 10 秒失败冷却；考虑跨地区网络时延，注册请求单次超时由 8 秒调整为 12 秒，**不引入无上限重试或身份绕过**。针对 Android 上可能出现的 gzip 正文，只有检测到 gzip 文件头时才执行有大小上限的解压；若网络栈已经解压，则直接按文本解析。
+
+如果更新后仍失败，按新错误码判断：DNS/TLS/timeout 可以比较 Wi-Fi 与蜂窝网络；HTTP 或服务业务拒绝请记录状态码和大致时间（不发送账号和 Cookie），它不是本机视频解码问题；INVALID_IDS/INVALID_JSON 提示上游响应与当前注册协议不匹配，不能通过盲目延长播放器缓冲解决。
+
+这些改动**不能保证**上游注册服务接受第三方请求。切换网络或等待可能帮助排查，但修复最终依赖真实错误码，必要时使用服务提供的官方客户端或正式支持的接口。
