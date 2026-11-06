@@ -44,9 +44,11 @@ data class PlaybackDiagnostic(
                 PlaybackDiagnostic(code, stage, label, message, attempts, httpStatus, responseBytes)
 
             return when {
-                registration != null || hint.contains("匿名播放设备注册失败") ->
+                registration != null ->
+                    fromRegistrationFailure(registration)
+                hint.contains("匿名播放设备注册失败") ->
                     issue("DEVICE_REGISTER_FAILED", "device_register", "设备注册",
-                        "播放设备初始化失败，无法继续获取片源。请检查服务连接，稍后重试。")
+                        "播放设备初始化失败，但未取得更具体的原因，请稍后重试。")
                 // Unsupported codecs must not be represented as a network error.
                 hint.contains("bytevc2") || hint.contains("本集暂未提供兼容的") ->
                     issue("CODEC_UNSUPPORTED", "codec_select", "视频编码",
@@ -99,6 +101,32 @@ data class PlaybackDiagnostic(
                     issue("PLAYBACK_PREPARE_FAILED", "playback_prepare", "播放准备",
                         "视频准备失败，请复制诊断信息并重试。")
             }
+        }
+
+        private fun fromRegistrationFailure(error: PlaybackDevice.RegistrationException): PlaybackDiagnostic {
+            val status = error.httpStatus.takeIf { it in 100..599 }
+            val bytes = error.responseBytes.takeIf { it >= 0 }
+            val message = when (error.code) {
+                "DEVICE_REGISTER_DNS_FAILED" -> "无法解析注册服务域名，请检查当前网络或 DNS 设置。"
+                "DEVICE_REGISTER_TIMEOUT" -> "注册服务响应超时，请切换网络或稍后重试。"
+                "DEVICE_REGISTER_TLS_FAILED" -> "注册服务安全连接失败，请检查网络和设备时间。"
+                "DEVICE_REGISTER_HTTP" -> "注册服务返回 HTTP ${status ?: "错误"}，请稍后重试。"
+                "DEVICE_REGISTER_EMPTY" -> "注册服务返回空响应，暂时无法取得播放身份。"
+                "DEVICE_REGISTER_INVALID_JSON" -> "注册服务响应格式无效，暂时无法初始化播放。"
+                "DEVICE_REGISTER_INVALID_IDS" -> "注册服务未提供有效设备编号，无法获取播放信息。"
+                "DEVICE_REGISTER_REJECTED" -> "注册服务未接受本次请求，暂时无法初始化播放。"
+                "DEVICE_REGISTER_RESPONSE_TOO_LARGE" -> "注册服务响应不符合客户端处理限制。"
+                "DEVICE_REGISTER_NETWORK_FAILED" -> "无法完成注册请求，请检查网络后重试。"
+                else -> "播放设备初始化失败，请稍后重试。"
+            }
+            return PlaybackDiagnostic(
+                code = error.code,
+                stage = "device_register",
+                stageLabel = "设备注册",
+                message = message,
+                httpStatus = status,
+                responseBytes = bytes
+            )
         }
 
         fun playerFailure(unsupportedCodec: Boolean): PlaybackDiagnostic =
