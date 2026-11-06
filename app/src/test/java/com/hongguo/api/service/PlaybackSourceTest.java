@@ -286,6 +286,18 @@ public class PlaybackSourceTest {
         assertEquals("DEVICE_REGISTER_TLS_FAILED", registrationCode());
     }
 
+    @Test public void registrationDetailsReachAndroidDiagnosticWithoutLeakingSecrets() {
+        PlaybackDevice.RegistrationException error =
+                new PlaybackDevice.RegistrationException("DEVICE_REGISTER_HTTP", 429, -1);
+        com.hongguo.android.PlaybackDiagnostic mapped =
+                com.hongguo.android.PlaybackDiagnostic.Companion.fromPreparationFailure(error);
+        assertEquals("DEVICE_REGISTER_HTTP", mapped.getCode());
+        assertEquals("device_register", mapped.getStage());
+        assertEquals(Integer.valueOf(429), mapped.getHttpStatus());
+        assertTrue(mapped.safeReport().contains("http_status=429"));
+        assertFalse(mapped.safeReport().contains("private.example"));
+    }
+
     @Test public void registrationDecodesCompressedOrAlreadyDecodedResponses() throws Exception {
         String json = "{\"code\":0,\"device_id_str\":\"" + DEVICE_ID
                 + "\",\"install_id_str\":\"" + INSTALL_ID + "\"}";
