@@ -411,7 +411,7 @@ public class PlaybackSourceTest {
         PlaybackDevice.resetForTest((url, headers, body) -> okReply());
         AppSource.setPlaybackTabForTest((vid, identity) -> {
             // Server returned an incomplete envelope rather than a playable model.
-            return Json.parseObject("{\\\"code\\\":0,\\\"data\\\":{}}");
+            return new java.util.LinkedHashMap<String, Object>();
         });
         java.util.concurrent.atomic.AtomicInteger posts = new java.util.concurrent.atomic.AtomicInteger();
         AppSource.setPlaybackPostForTest((body, identity, host) -> {
