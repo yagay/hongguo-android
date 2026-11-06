@@ -288,7 +288,7 @@ public class PlaybackSourceTest {
 
     @Test public void registrationDecodesCompressedOrAlreadyDecodedResponses() throws Exception {
         String json = "{\"code\":0,\"device_id_str\":\"" + DEVICE_ID
-                + "\\",\"install_id_str\":\"" + INSTALL_ID + "\\"}";
+                + "\",\"install_id_str\":\"" + INSTALL_ID + "\"}";
         byte[] original = json.getBytes(StandardCharsets.UTF_8);
         assertEquals(json, PlaybackDevice.decodeRegistrationResponse(original, "gzip"));
         ByteArrayOutputStream buffer = new ByteArrayOutputStream();
