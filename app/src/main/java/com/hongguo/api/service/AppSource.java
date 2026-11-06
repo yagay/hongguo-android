@@ -147,8 +147,22 @@ public final class AppSource {
                 if (Thread.currentThread().isInterrupted()) throw e;
                 failure = e;
                 continue;
+            } catch (IllegalStateException e) {
+                // A malformed/partial response may be transient on this route.
+                // Never retry a decoder, key, URL-security or other semantic rejection here.
+                if (!isRetryableModelError(e)) throw e;
+                unavailableModels++;
+                continue;
             }
-            if (j != null) return parseModel(vid, j, quality);
+            if (j != null) {
+                try {
+                    return parseModel(vid, j, quality);
+                } catch (IllegalStateException e) {
+                    if (!isRetryableModelError(e)) throw e;
+                    unavailableModels++;
+                    continue;
+                }
+            }
             unavailableModels++;
         }
         if (failure != null) {
@@ -164,6 +178,20 @@ public final class AppSource {
         empty.attempts = attempts;
         if (renewal != null) empty.addSuppressed(renewal);
         throw empty;
+    }
+
+    /**
+     * Only missing/partial model envelopes merit another signed route.
+     * Codec incompatibility, decryption/security checks and unexpected programming errors remain terminal.
+     */
+    private static boolean isRetryableModelError(IllegalStateException error) {
+        String reason = error.getMessage();
+        return "播放信息格式无效".equals(reason)
+                || "App 接口未返回播放数据".equals(reason)
+                || "App 接口暂未提供本集播放信息".equals(reason)
+                || "App 接口未返回所选分集".equals(reason)
+                || "App 接口未返回 video_model".equals(reason)
+                || "本集未返回可用片源列表".equals(reason);
     }
 
     /** 一条候选路径：GET 或 POST、主机、是否先换新身份。 */
