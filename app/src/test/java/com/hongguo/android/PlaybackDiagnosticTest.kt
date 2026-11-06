@@ -43,7 +43,7 @@ class PlaybackDiagnosticTest {
 
     @Test fun supportReportIsStrictlyAllowlisted() {
         val failure = PlaybackDiagnostic.fromPreparationFailure(
-            IOException("Bearer secret-cookie signed_url=https://provider.test/video?token=private"))
+            IllegalStateException("Bearer secret-cookie signed_url=https://provider.test/video?token=private"))
         val report = failure.safeReport()
         assertEquals("PLAYBACK_PREPARE_FAILED", failure.code)
         assertTrue(report.contains("code=PLAYBACK_PREPARE_FAILED"))
