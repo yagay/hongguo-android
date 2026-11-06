@@ -247,11 +247,11 @@ public class PlaybackSourceTest {
         assertEquals("DEVICE_REGISTER_INVALID_JSON", registrationCode());
 
         PlaybackDevice.resetForTest((url, headers, body) ->
-                new PlaybackDevice.Reply(200, "{\\\"code\\\":0,\\\"device_id\\\":0,\\\"install_id\\\":0}"));
+                new PlaybackDevice.Reply(200, "{\"code\":0,\"device_id\":0,\"install_id\":0}"));
         assertEquals("DEVICE_REGISTER_INVALID_IDS", registrationCode());
 
         PlaybackDevice.resetForTest((url, headers, body) ->
-                new PlaybackDevice.Reply(200, "{\\\"code\\\":101,\\\"device_id\\\":0}"));
+                new PlaybackDevice.Reply(200, "{\"code\":101,\"device_id\":0}"));
         assertEquals("DEVICE_REGISTER_REJECTED", registrationCode());
     }
 
@@ -287,8 +287,8 @@ public class PlaybackSourceTest {
     }
 
     @Test public void registrationDecodesCompressedOrAlreadyDecodedResponses() throws Exception {
-        String json = "{\\\"code\\\":0,\\\"device_id_str\\\":\\\"" + DEVICE_ID
-                + "\\",\\\"install_id_str\\\":\\\"" + INSTALL_ID + "\\"}";
+        String json = "{\"code\":0,\"device_id_str\":\"" + DEVICE_ID
+                + "\\",\"install_id_str\":\"" + INSTALL_ID + "\\"}";
         byte[] original = json.getBytes(StandardCharsets.UTF_8);
         assertEquals(json, PlaybackDevice.decodeRegistrationResponse(original, "gzip"));
         ByteArrayOutputStream buffer = new ByteArrayOutputStream();
