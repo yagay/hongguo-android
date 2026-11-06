@@ -81,6 +81,7 @@ import androidx.compose.ui.draw.clip
 import androidx.compose.ui.graphics.Brush
 import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.platform.LocalConfiguration
+import androidx.compose.ui.platform.LocalContext
 import androidx.compose.ui.platform.LocalView
 import androidx.compose.ui.platform.testTag
 import androidx.compose.ui.semantics.contentDescription
@@ -243,6 +244,7 @@ private fun EpisodePager(state: HongguoUiState, model: HongguoViewModel, detail:
     LaunchedEffect(sheetOpen, activity, view, fullScreen, active) {
         if (active && !sheetOpen) activity?.window?.let { applyPlayerSystemBars(WindowCompat.getInsetsController(it, view), fullScreen) }
     }
+    val clipboardContext = LocalContext.current
     val visibleIndex = pager.currentPage.coerceIn(detail.episodes.indices)
     val visibleEpisode = detail.episodes[visibleIndex]
     val favorite = state.favorites.any { it.card.id == detail.id }
@@ -289,6 +291,19 @@ private fun EpisodePager(state: HongguoUiState, model: HongguoViewModel, detail:
                         verticalArrangement = Arrangement.spacedBy(14.dp)) {
                         Text(state.playbackError, color = Color.White, fontSize = 14.sp, lineHeight = 23.sp,
                             modifier = Modifier.testTag("media_status"))
+                        state.playbackDiagnostic?.let { diagnostic ->
+                            Text("阶段：${diagnostic.stageLabel} · 错误码：${diagnostic.code}",
+                                color = Color.White.copy(alpha = .75f), fontSize = 11.sp,
+                                modifier = Modifier.testTag("playback_diagnostic_code"))
+                            TextButton(onClick = {
+                                val clipboard = clipboardContext.getSystemService(android.content.Context.CLIPBOARD_SERVICE)
+                                    as? android.content.ClipboardManager
+                                clipboard?.setPrimaryClip(android.content.ClipData.newPlainText(
+                                    "Hongguo playback diagnostic", diagnostic.safeReport()))
+                            }, modifier = Modifier.testTag("copy_playback_diagnostic")) {
+                                Text("复制诊断", color = Color.White.copy(alpha = .86f))
+                            }
+                        }
                         Button(onClick = model::retryPlayback, modifier = Modifier.testTag("retry_playback"), shape = RoundedCornerShape(13.dp)) { Text("重新播放") }
                     }
                     state.preparing || (activeVideo != null && playback.player == null) || (playback.isBuffering && playback.playWhenReady) -> {
