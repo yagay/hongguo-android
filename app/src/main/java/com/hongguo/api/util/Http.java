@@ -131,6 +131,10 @@ public final class Http {
             return new Resp(status, data, conn.getHeaderFields());
         } catch (SocketTimeoutException ignored) {
             throw new SocketTimeoutException("网络请求超时");
+        } catch (java.net.UnknownHostException ignored) {
+            throw new java.net.UnknownHostException("网络域名无法解析");
+        } catch (javax.net.ssl.SSLException ignored) {
+            throw new javax.net.ssl.SSLException("安全连接失败");
         } catch (InterruptedIOException ignored) {
             throw new InterruptedIOException("请求已取消或超时");
         } catch (IOException ignored) {
