@@ -28,4 +28,24 @@ class LoadAheadTest {
         assertFalse(shouldLoadAhead(ready.copy(items = emptyList()), 0))
         assertFalse("a failed page waits for the retry button", shouldLoadAhead(ready.copy(error = "失败"), 0))
     }
+    @Test fun recentCoverRequestsAreDeduplicatedAndBounded() {
+        val tracker = RecentCoverRequests(limit = 3)
+        assertEquals(listOf("a", "b"), tracker.select(listOf("a", "", "b", "a")))
+        assertEquals(listOf("c", "d"), tracker.select(listOf("b", "c", "d")))
+        assertEquals(3, tracker.size)
+        assertEquals(emptyList<String>(), tracker.select(listOf("b", "c", "d")))
+        // The oldest URL may be requested again; the image loader can reuse its disk cache.
+        assertEquals(listOf("a"), tracker.select(listOf("a")))
+        assertEquals(3, tracker.size)
+    }
+
+    @Test fun recentCoverRequestsRejectInvalidLimit() {
+        try {
+            RecentCoverRequests(limit = 0)
+            org.junit.Assert.fail("A non-positive tracking bound must be rejected")
+        } catch (_: IllegalArgumentException) {
+            // The limit is an invariant, not a memory growth hint.
+        }
+    }
+
 }
