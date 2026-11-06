@@ -390,6 +390,36 @@ public class PlaybackSourceTest {
 
     // ==================== video_tab 播放模型 ====================
 
+    @Test public void exhaustedEmptyPlaybackRequestsExposeSafeAttemptCount() throws Exception {
+        PlaybackDevice.resetForTest((url, headers, body) -> okReply());
+        AppSource.setPlaybackTabForTest((vid, identity) -> {
+            throw new AppSource.EmptyPlaybackResponseException();
+        });
+        AppSource.setPlaybackPostForTest((body, identity, host) -> {
+            throw new AppSource.EmptyPlaybackResponseException();
+        });
+        try {
+            AppSource.fetch("7000000000000000001", "auto");
+            fail("Expected an empty model response");
+        } catch (AppSource.EmptyPlaybackResponseException expected) {
+            assertEquals(AppSource.PLAYBACK_ROUTES.length, expected.getAttempts());
+            assertFalse(expected.getMessage().contains(DEVICE_ID));
+        }
+    }
+
+    @Test public void nonEmptyButUnavailableModelsHaveDistinctFailure() throws Exception {
+        PlaybackDevice.resetForTest((url, headers, body) -> okReply());
+        AppSource.setPlaybackTabForTest((vid, identity) -> null);
+        AppSource.setPlaybackPostForTest((body, identity, host) -> null);
+        try {
+            AppSource.fetch("7000000000000000001", "auto");
+            fail("Expected a missing model failure");
+        } catch (AppSource.PlaybackModelUnavailableException expected) {
+            assertEquals(AppSource.PLAYBACK_ROUTES.length, expected.getAttempts());
+            assertFalse(expected.getMessage().contains(DEVICE_ID));
+        }
+    }
+
     @Test public void tabRequestCarriesEveryVideoModelField() throws Exception {
         PlaybackDevice.resetForTest((url, headers, body) -> okReply());
         PlaybackDevice.Identity id = PlaybackDevice.fresh();
