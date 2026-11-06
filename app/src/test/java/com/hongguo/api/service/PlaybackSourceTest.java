@@ -225,6 +225,94 @@ public class PlaybackSourceTest {
         expectRegistrationFailure();
     }
 
+    // ==================== 故障阶段诊断（不能泄露服务器内容或标识） ====================
+
+    @Test public void registrationFailuresExposeSafeCodesWithoutResponseBody() throws Exception {
+        PlaybackDevice.resetForTest((url, headers, body) -> new PlaybackDevice.Reply(403, "Bearer secret-token"));
+        try {
+            PlaybackDevice.fresh();
+            fail("403 must fail");
+        } catch (PlaybackDevice.RegistrationException failure) {
+            assertEquals("DEVICE_REGISTER_HTTP", failure.getCode());
+            assertEquals(403, failure.getHttpStatus());
+            assertFalse(failure.getMessage().contains("secret-token"));
+            assertFalse(failure.getMessage().contains(REGISTER_SECRET_FOR_TEST));
+        }
+
+        PlaybackDevice.resetForTest((url, headers, body) -> new PlaybackDevice.Reply(200, ""));
+        assertEquals("DEVICE_REGISTER_EMPTY", registrationCode());
+
+        PlaybackDevice.resetForTest((url, headers, body) ->
+                new PlaybackDevice.Reply(200, "not-json?token=secret-token"));
+        assertEquals("DEVICE_REGISTER_INVALID_JSON", registrationCode());
+
+        PlaybackDevice.resetForTest((url, headers, body) ->
+                new PlaybackDevice.Reply(200, "{\\\"code\\\":0,\\\"device_id\\\":0,\\\"install_id\\\":0}"));
+        assertEquals("DEVICE_REGISTER_INVALID_IDS", registrationCode());
+
+        PlaybackDevice.resetForTest((url, headers, body) ->
+                new PlaybackDevice.Reply(200, "{\\\"code\\\":101,\\\"device_id\\\":0}"));
+        assertEquals("DEVICE_REGISTER_REJECTED", registrationCode());
+    }
+
+    private static final String REGISTER_SECRET_FOR_TEST = "https://private.example.invalid/path?cookie=xyz";
+
+    private static String registrationCode() throws IOException {
+        try {
+            PlaybackDevice.fresh();
+            fail("Expected typed registration failure");
+            return "";
+        } catch (PlaybackDevice.RegistrationException failure) {
+            assertFalse(failure.getMessage().contains("token="));
+            assertFalse(failure.getMessage().contains("cookie="));
+            return failure.getCode();
+        }
+    }
+
+    @Test public void registrationTransportFailuresRemainClassified() throws Exception {
+        PlaybackDevice.resetForTest((url, headers, body) -> {
+            throw new java.net.UnknownHostException("token.private.invalid");
+        });
+        assertEquals("DEVICE_REGISTER_DNS_FAILED", registrationCode());
+
+        PlaybackDevice.resetForTest((url, headers, body) -> {
+            throw new java.net.SocketTimeoutException("private.example");
+        });
+        assertEquals("DEVICE_REGISTER_TIMEOUT", registrationCode());
+
+        PlaybackDevice.resetForTest((url, headers, body) -> {
+            throw new javax.net.ssl.SSLException("certificate https://private.example");
+        });
+        assertEquals("DEVICE_REGISTER_TLS_FAILED", registrationCode());
+    }
+
+    @Test public void registrationDecodesCompressedOrAlreadyDecodedResponses() throws Exception {
+        String json = "{\\\"code\\\":0,\\\"device_id_str\\\":\\\"" + DEVICE_ID
+                + "\\",\\\"install_id_str\\\":\\\"" + INSTALL_ID + "\\"}";
+        byte[] original = json.getBytes(StandardCharsets.UTF_8);
+        assertEquals(json, PlaybackDevice.decodeRegistrationResponse(original, "gzip"));
+        ByteArrayOutputStream buffer = new ByteArrayOutputStream();
+        try (java.util.zip.GZIPOutputStream gzip = new java.util.zip.GZIPOutputStream(buffer)) {
+            gzip.write(original);
+        }
+        assertEquals(json, PlaybackDevice.decodeRegistrationResponse(buffer.toByteArray(), "gzip"));
+    }
+
+    @Test public void registrationRejectsOversizedDecompressedResponses() throws Exception {
+        byte[] oversized = new byte[129 * 1024];
+        Arrays.fill(oversized, (byte) 'x');
+        ByteArrayOutputStream buffer = new ByteArrayOutputStream();
+        try (java.util.zip.GZIPOutputStream gzip = new java.util.zip.GZIPOutputStream(buffer)) {
+            gzip.write(oversized);
+        }
+        try {
+            PlaybackDevice.decodeRegistrationResponse(buffer.toByteArray(), "gzip");
+            fail("Decompression must be bounded");
+        } catch (PlaybackDevice.RegistrationException expected) {
+            assertEquals("DEVICE_REGISTER_RESPONSE_TOO_LARGE", expected.getCode());
+        }
+    }
+
     // ==================== 签名播放请求 ====================
 
     @Test public void playbackRequestIsSignedWithTheRegisteredIdentityAndCookie() throws Exception {
