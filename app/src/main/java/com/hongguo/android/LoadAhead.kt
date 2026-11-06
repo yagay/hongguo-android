@@ -34,6 +34,25 @@ internal fun shouldLoadAhead(feed: FeedState, remaining: Int): Boolean =
 internal fun upcomingCovers(items: List<DramaCard>, remaining: Int): List<String> =
     items.drop((items.size - remaining).coerceAtLeast(0)).take(PreloadCovers).map { it.cover }.filter { it.isNotBlank() }
 
+/** Bounds transient cover bookkeeping: Coil owns the actual memory/disk image caches. */
+internal class RecentCoverRequests(private val limit: Int = 128) {
+    init { require(limit > 0) }
+
+    private val recent = LinkedHashSet<String>()
+    val size: Int get() = recent.size
+
+    /** Retain only recent URLs; previously evicted URLs can be served again from Coil's disk cache. */
+    fun select(covers: List<String>): List<String> {
+        val newRequests = ArrayList<String>(covers.size)
+        for (cover in covers) {
+            if (cover.isBlank() || !recent.add(cover)) continue
+            newRequests.add(cover)
+            if (recent.size > limit) recent.remove(recent.first())
+        }
+        return newRequests
+    }
+}
+
 /**
  * Requests the next page as the visible position nears the end, so it is already in the list when the user gets
  * there. Re-evaluated after each page, which also keeps loading while a short page still leaves the end in reach.
@@ -49,18 +68,19 @@ internal fun LoadAheadEffect(
         snapshotFlow { currentEnabled && shouldLoadAhead(currentFeed, totalItems() - 1 - lastVisibleIndex()) }
             .collect { if (it) currentLoad() }
     }
-    CoverPreloadEffect(feed.items, lastVisibleIndex, totalItems)
+    CoverPreloadEffect(feed.items, lastVisibleIndex, totalItems, enabled)
 }
 
 /** Fills Coil's disk cache for the covers about to scroll in, so they appear without waiting for the network. */
 @Composable
-internal fun CoverPreloadEffect(items: List<DramaCard>, lastVisibleIndex: () -> Int, totalItems: () -> Int) {
+internal fun CoverPreloadEffect(items: List<DramaCard>, lastVisibleIndex: () -> Int, totalItems: () -> Int, enabled: Boolean = true) {
     val context = LocalContext.current
     val currentItems by rememberUpdatedState(items)
+    val currentEnabled by rememberUpdatedState(enabled)
     LaunchedEffect(Unit) {
-        val requested = HashSet<String>()
-        snapshotFlow { upcomingCovers(currentItems, totalItems() - 1 - lastVisibleIndex()) }.collect { covers ->
-            covers.filter(requested::add).forEach { cover ->
+        val requested = RecentCoverRequests()
+        snapshotFlow { if (currentEnabled) upcomingCovers(currentItems, totalItems() - 1 - lastVisibleIndex()) else emptyList() }.collect { covers ->
+            requested.select(covers).forEach { cover ->
                 context.imageLoader.enqueue(ImageRequest.Builder(context).data(cover).size(240)
                     .memoryCachePolicy(CachePolicy.DISABLED).build())
             }
