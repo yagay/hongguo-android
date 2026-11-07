@@ -74,9 +74,9 @@ internal fun NativePlayer(state: AppState, model: DramaViewModel) {
             val url = state.playbackUrl
             if (url != null) {
                 Media3Player(url, speed,
-                    onFirstFrame = model::firstFrame,
-                    onFinished = model::nextEpisode,
-                    onError = model::mediaError)
+                    onFirstFrame = { model.firstFrame(selectedEpisode?.vid.orEmpty()) },
+                    onFinished = { model.nextEpisode(selectedEpisode?.vid.orEmpty()) },
+                    onError = { message -> model.mediaError(selectedEpisode?.vid.orEmpty(), message) })
             } else if (state.playbackError == null) {
                 CircularProgressIndicator()
             }
