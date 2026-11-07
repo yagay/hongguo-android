@@ -351,3 +351,11 @@ Kotlin/Compose/Media3 工程及 Debug-only CI。
 - rewrite 的安装包 ID 为 `com.hongguo.rewrite`，与 main 的 `com.hongguo.android` 不同。main 的发布 APK 不能被当成 rewrite 的自动更新包；rewrite 专用的校验、发布及安装链路仍缺失。
 - 本机多用户隔离与局域网传输未接入，不能在现有单用户 SharedPreferences 上叠加假用户切换。
 - Debug Gradle 构建有现有 push 工作流，但尚未取得本轮可独立确认的成功结果；所有新功能需要编译、Android 版本兼容测试与真机验收。
+
+## 补充：原生预热与离线使用的边界（2026-11-07）
+
+- 下一集原生媒体预热已接入 `DramaViewModel.firstFrame`：首帧出现后启动受控预取，最多保留一个 `RemoteVideo` 句柄（包含准备过的首 64 KiB）；真正切集时匹配 VID 和画质才接管，否则清理并回退普通打开。关闭预加载、切剧、退出或换画质都会释放预取资源。它不能等同于 Media3 完整磁盘缓存。
+- 单集与批量（最多从当前集起 5 集）使用 SAF 创建 MP4 文件，最多两项并发传输；只有完整写入成功的任务才加入「我的 → 本机离线」。离线条目采用授予的文档 URI 在 Media3 直接播放，文件不可访问时不冒充可播放；列表移除仅删除索引，不擅自删除用户文件。此方案尚非跨进程持久下载队列。
+- 设置中的默认倍速、默认画质、弹幕、三套主题浅/深色及两种底栏样式均连接真实偏好；用户明确要求排除的官方账号社交互动和 NAS/Emby/Jellyfin 模块不增加任何入口。
+- 隐藏推荐在刷剧入口、滑动逻辑和前后预览中均生效。
+- 当前工作的 Debug CI 为 `.github/workflows/debug.yml`，只运行 `:app:assembleDebug :app:testDebugUnitTest`。仅凭源码静态括号检查和推送成功，不能证明构建通过、功能能安装或全部行为在手机上正确。
