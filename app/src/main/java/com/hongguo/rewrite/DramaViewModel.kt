@@ -547,14 +547,17 @@ class DramaViewModel(application: Application) : AndroidViewModel(application) {
         }
     }
 
+    private var accountReturnModal = Modal.NONE
     fun show(modal: Modal) {
+        if (modal == Modal.ACCOUNT && state.value.modal != Modal.ACCOUNT)
+            accountReturnModal = state.value.modal
         mutable.update { it.copy(modal = modal) }
         if (modal == Modal.SETTINGS) refreshDiagnostics()
     }
     fun closeModal() = show(Modal.NONE)
     fun closeAccount() {
         account.closeScreen()
-        show(Modal.NONE)
+        show(if (accountReturnModal == Modal.SETTINGS) Modal.SETTINGS else Modal.NONE)
         if (state.value.detail == null && !state.value.preparingDetail &&
             state.value.section == Section.RECOMMEND) refresh()
     }
