@@ -102,8 +102,13 @@ internal class AccountManager(app: Application, private val scope: CoroutineScop
         mutable.update { it.copy(qrImage = null, qrRemainingSeconds = 0, waitingQr = false, busy = false) }
     }
 
+    fun cancelActiveLogin() {
+        resetLogin()
+        mutable.update { it.copy(smsSent = false, maskedPhone = "", message = "请选择登录方式") }
+    }
+
     fun cancelQr() {
-        if (state.value.waitingQr) resetLogin()
+        if (state.value.waitingQr || state.value.qrImage != null || state.value.busy) resetLogin()
     }
 
     fun cancelSms() {
