@@ -117,3 +117,34 @@ CI 只执行 Debug 构建，不生成 Release/Magisk 包。
 - 点击评论只展示正在加载或已缓存的结果，不取消重发；仍保留手动刷新和分页。
 - 切集或退出时取消过时评论请求并清空旧数字，确保不会混用其他分集的统计。
 - 收藏、喜欢、分享目前没有可靠的公开数量接口，不用本机操作记录冒充官方统计。
+
+
+## 自动公开互动统计（真人短剧播放器）
+
+现在打开剧集后会并行读取两路只读数据，完全独立于 Media3
+播放地址、评论列表和弹幕请求：
+
+1. 红果官网播放器页面 \`seriesSocialInfo\`：
+   \`series_favorite_count\` 为全剧收藏数，
+   \`series_like_count\` 为全剧点赞数。
+   该格式可参考 zfdang/hongguo-open-player 的
+   \`src/server/native/hongguo.js\`（仅参考协议字段；未复制其 AGPL 代码）。
+2. 红果匿名原生 \`POST /novel/player/video_detail/v1/\`：
+   \`followed_cnt\` 为全剧追剧/关注数，
+   \`digg_cnt\` 为全剧点赞数，
+   \`series_play_cnt\` 为全剧播放量；
+   各集 \`video_list[].comment_count\` / \`digged_count\` 分别为分集评论数和点赞数。
+   接口与字段参考 Apache-2.0 的
+   [beilunyang/openhongguo](https://github.com/beilunyang/openhongguo)。
+
+所有数字必须校验短剧 ID 和分集视频 ID。**缺失或异常字段显示为未知，
+不写成 0；客户端点击收藏或本地喜欢不修改公开数字。** 收藏和追剧不是同一
+指标：如果只能拿到 \`followed_cnt\`，界面会额外标记「追剧」；
+爱心优先显示分集点赞数，只有全剧点赞数时会额外标记「全剧」。
+分享总数尚无可核实的数据字段，不显示虚构数值。
+
+两路读取有独立失败日志 \`SOCIAL WEB_FAIL\` / \`SOCIAL APP_FAIL\`；
+成功时为 \`SOCIAL WEB_READY\` / \`SOCIAL APP_READY\`。缓存最近打开剧集
+的结果约两分钟，但每次进入仍会刷新；切集不重复请求全剧数据，
+直接按当前分集 ID 取对应指标。实际数据能否返回取决于上游服务，
+不能以 Debug CI 通过代替真机网络验证。
