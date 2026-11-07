@@ -68,6 +68,7 @@ internal fun ReelScreenshotOverlay(
     episode: Episode?,
     onPlaybackSettings: () -> Unit,
     onBack: () -> Unit,
+    onDramaDetails: () -> Unit,
     onFavorite: () -> Unit,
     onLike: () -> Unit,
     onComments: () -> Unit,
@@ -191,7 +192,8 @@ internal fun ReelScreenshotOverlay(
             }
             Row(
                 Modifier.fillMaxWidth()
-                    .clickable { synopsisExpanded = !synopsisExpanded },
+                    .clickable(onClick = onDramaDetails)
+                    .testTag("open_drama_details_from_title"),
                 verticalAlignment = Alignment.CenterVertically,
             ) {
                 Text(detail.drama.title, color = white,
@@ -200,7 +202,7 @@ internal fun ReelScreenshotOverlay(
                     maxLines = if (synopsisExpanded) 4 else 2,
                     overflow = TextOverflow.Ellipsis,
                     modifier = Modifier.weight(1f).testTag("reel_drama_title"))
-                Icon(Icons.Outlined.KeyboardArrowRight, "展开简介",
+                Icon(Icons.Outlined.KeyboardArrowRight, "查看剧集详情",
                     tint = white, modifier = Modifier.size(20.dp))
             }
             val actorAndGenreTags = detail.drama.actors.take(2)
