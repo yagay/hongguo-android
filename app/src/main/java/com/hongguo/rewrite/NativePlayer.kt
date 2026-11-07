@@ -62,6 +62,7 @@ import androidx.compose.runtime.Composable
 import androidx.compose.runtime.DisposableEffect
 import androidx.compose.runtime.LaunchedEffect
 import androidx.compose.runtime.getValue
+import androidx.compose.runtime.key
 import androidx.compose.runtime.mutableFloatStateOf
 import androidx.compose.runtime.mutableLongStateOf
 import androidx.compose.runtime.mutableStateOf
@@ -83,6 +84,9 @@ import androidx.compose.ui.platform.LocalContext
 import androidx.compose.ui.platform.LocalDensity
 import androidx.compose.ui.platform.testTag
 import androidx.compose.ui.text.font.FontWeight
+import androidx.compose.ui.text.AnnotatedString
+import androidx.compose.ui.text.TextStyle
+import androidx.compose.ui.text.rememberTextMeasurer
 import androidx.compose.ui.text.style.TextOverflow
 import androidx.compose.ui.graphics.Shadow
 import androidx.compose.ui.unit.IntOffset
@@ -136,7 +140,7 @@ internal fun NativePlayer(state: AppState, model: DramaViewModel) {
     var speed by remember { mutableFloatStateOf(1f) }
     // Full-bleed video as in the reference screenshot; users can switch to
     // fit mode when letterbox/crop considerations or subtitles require it.
-    var fillVideo by rememberSaveable { mutableStateOf(true) }
+    var fillVideo by rememberSaveable { mutableStateOf(false) }
     var showComments by remember { mutableStateOf(false) }
     var showEpisodes by remember { mutableStateOf(false) }
     var showHeart by remember { mutableStateOf(false) }
@@ -186,7 +190,8 @@ internal fun NativePlayer(state: AppState, model: DramaViewModel) {
         }
     }
 
-    Box(Modifier.fillMaxSize().background(Color.Black).testTag("reels_player")) {
+    Column(Modifier.fillMaxSize().background(Color.Black).testTag("reels_player")) {
+        Box(Modifier.fillMaxWidth().weight(1f).testTag("reel_video_viewport")) {
         VerticalPager(
             state = pagerState,
             beyondViewportPageCount = 1,
@@ -290,14 +295,13 @@ internal fun NativePlayer(state: AppState, model: DramaViewModel) {
         if (state.danmakuEnabled && selected != null && !showComments && !showEpisodes) {
             TimedDanmakuOverlay(state.danmakuItems,
                 playback.positionMs,
-                Modifier.fillMaxWidth().align(Alignment.TopCenter).padding(top = 86.dp))
+                Modifier.fillMaxWidth().align(Alignment.TopCenter).padding(top = 58.dp))
         }
 
         ReelScreenshotOverlay(
             state = state,
             detail = detail,
             episode = selected,
-            playback = playback,
             speed = speed,
             fillVideo = fillVideo,
             onToggleFillVideo = { fillVideo = !fillVideo },
@@ -306,7 +310,6 @@ internal fun NativePlayer(state: AppState, model: DramaViewModel) {
             onLike = model::toggleLocalLike,
             onComments = { showComments = true },
             onDanmaku = { model.setDanmaku(!state.danmakuEnabled) },
-            onEpisodes = { showEpisodes = true },
             onSpeed = { speed = it },
             onShare = {
                 val vid = selected?.vid.orEmpty()
@@ -330,6 +333,13 @@ internal fun NativePlayer(state: AppState, model: DramaViewModel) {
                     }
                 }
             },
+        )
+        }
+        ReelBottomDock(
+            detail = detail,
+            episode = selected,
+            playback = playback,
+            onEpisodes = { showEpisodes = true },
         )
     }
 
@@ -485,34 +495,63 @@ private fun TimedDanmakuOverlay(
     currentMs: Long,
     modifier: Modifier = Modifier,
 ) {
-    val visible = remember(items, currentMs / 250L) {
-        items.asSequence().filter {
-            currentMs >= it.timeMs && currentMs < it.timeMs + 5_000L
-        }.take(14).toList()
+    // Stable lane allocations prevent comments jumping to a different row
+    // when one of their neighbors disappears.
+    val placed = remember(items) { DanmakuLayout.arrange(items) }
+    val visible = remember(placed, currentMs / 250L) {
+        placed.filter { line ->
+            currentMs >= line.startMs &&
+                currentMs < line.startMs + DanmakuLayout.FLIGHT_MS
+        }.take(DanmakuLayout.LANES)
     }
     if (visible.isEmpty()) return
-    BoxWithConstraints(modifier.height(128.dp).clipToBounds()) {
-        val widthPx = with(LocalDensity.current) { maxWidth.toPx() }
-        val lanePx = with(LocalDensity.current) { 36.dp.toPx() }
+
+    val textMeasurer = rememberTextMeasurer()
+    val style = TextStyle(
+        color = Color.White,
+        fontSize = 14.sp,
+        fontWeight = FontWeight.Medium,
+        shadow = Shadow(Color.Black, Offset(1f, 2f), 4f),
+    )
+    BoxWithConstraints(modifier.height(148.dp).clipToBounds()
+        .testTag("timed_danmaku_overlay")) {
+        val density = LocalDensity.current
+        val widthPx = with(density) { maxWidth.toPx() }
+        val laneHeightPx = with(density) { 34.dp.toPx() }
+        val paddingPx = with(density) { 12.dp.toPx() }
         visible.forEach { line ->
-            val age = (currentMs - line.timeMs).coerceIn(0L, 5_000L)
-            val target = 1.0f - age.toFloat() / 5_000f * 1.85f
-            val horizontal by animateFloatAsState(target,
-                animationSpec = tween(260, easing = LinearEasing), label = "danmaku")
-            val lane = (line.id.hashCode() and Int.MAX_VALUE) % 3
-            Text(
-                line.content,
-                color = Color.White,
-                fontSize = 15.sp,
-                maxLines = 1,
-                modifier = Modifier.offset {
-                    IntOffset((horizontal * widthPx).roundToInt(),
-                        (lane * lanePx).roundToInt())
-                },
-                style = androidx.compose.ui.text.TextStyle(
-                    shadow = Shadow(Color.Black, Offset(1f, 2f), 4f)
-                ),
-            )
+            key(line.id) {
+                // Use the actual composed text width, not a fraction of the
+                // screen width. Each line fully enters AND leaves the frame.
+                val content = line.text.take(44)
+                val measuredWidth = textMeasurer.measure(
+                    text = AnnotatedString(content), style = style,
+                    maxLines = 1, softWrap = false,
+                ).size.width.toFloat() + paddingPx
+                val progress = DanmakuLayout.progress(currentMs, line.startMs)
+                val targetPx = DanmakuLayout.xPosition(
+                    widthPx, measuredWidth, progress
+                )
+                val xPx by animateFloatAsState(
+                    targetValue = targetPx,
+                    animationSpec = tween(205, easing = LinearEasing),
+                    label = "danmaku_" + line.id.take(8),
+                )
+                Text(
+                    text = content,
+                    style = style,
+                    maxLines = 1,
+                    softWrap = false,
+                    modifier = Modifier
+                        .offset {
+                            IntOffset(xPx.roundToInt(),
+                                (line.lane * laneHeightPx).roundToInt())
+                        }
+                        .background(Color.Black.copy(alpha = 0.23f),
+                            RoundedCornerShape(5.dp))
+                        .padding(horizontal = 5.dp, vertical = 2.dp),
+                )
+            }
         }
     }
 }
