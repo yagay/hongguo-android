@@ -145,8 +145,8 @@ internal fun SettingsScreen(state: AppState, model: DramaViewModel) {
                         listOf(0, 10, 20, 30, 60).forEach { sec ->
                             OutlinedButton(onClick = { model.setSkipIntroSeconds(sec) },
                                 modifier = Modifier.testTag("intro_skip_$sec")) {
-                                Text(if (sec == 0) "关闭" else "${sec}秒" +
-                                    if (state.skipIntroSeconds == sec) " ✓" else "")
+                                Text((if (sec == 0) "关闭" else "${sec}秒") +
+                                    (if (state.skipIntroSeconds == sec) " ✓" else ""))
                             }
                         }
                     }
@@ -155,8 +155,8 @@ internal fun SettingsScreen(state: AppState, model: DramaViewModel) {
                         listOf(0, 5, 10, 15, 30).forEach { sec ->
                             OutlinedButton(onClick = { model.setSkipOutroSeconds(sec) },
                                 modifier = Modifier.testTag("outro_skip_$sec")) {
-                                Text(if (sec == 0) "关闭" else "${sec}秒" +
-                                    if (state.skipOutroSeconds == sec) " ✓" else "")
+                                Text((if (sec == 0) "关闭" else "${sec}秒") +
+                                    (if (state.skipOutroSeconds == sec) " ✓" else ""))
                             }
                         }
                     }
