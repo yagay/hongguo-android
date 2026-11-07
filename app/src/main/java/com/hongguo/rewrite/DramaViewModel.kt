@@ -211,23 +211,26 @@ class DramaViewModel(application: Application) : AndroidViewModel(application) {
 
     fun retryPlayback() = play(state.value.episodeIndex)
 
-    fun mediaError(message: String) {
+    fun mediaError(expectedVid: String, message: String) {
+        if (state.value.detail?.episodes?.getOrNull(state.value.episodeIndex)?.vid != expectedVid) return
         mutable.update { it.copy(playbackError = "MEDIA_ERROR: " + message, playing = false) }
     }
 
     /** A history entry is created only after Media3 reports an actual rendered video frame. */
-    fun firstFrame() {
+    fun firstFrame(expectedVid: String) {
         val s = state.value
         val ep = s.detail?.episodes?.getOrNull(s.episodeIndex) ?: return
-        if (firstFrameFor == ep.vid) return
+        if (ep.vid != expectedVid || firstFrameFor == ep.vid) return
         firstFrameFor = ep.vid
         library.record(s.detail.drama, ep.index)
         updateLibrary()
     }
 
-    fun nextEpisode() {
-        val index = state.value.episodeIndex + 1
-        if (index < (state.value.detail?.episodes?.size ?: 0)) play(index)
+    fun nextEpisode(expectedVid: String? = null) {
+        val s = state.value
+        if (expectedVid != null && s.detail?.episodes?.getOrNull(s.episodeIndex)?.vid != expectedVid) return
+        val index = s.episodeIndex + 1
+        if (index < (s.detail?.episodes?.size ?: 0)) play(index)
     }
 
     fun closePlayer() {
