@@ -494,7 +494,8 @@ class DramaViewModel(application: Application) : AndroidViewModel(application) {
         mutable.update { it.copy(feedLoading = true, feedError = null) }
         officialFeedJob = viewModelScope.launch {
             try {
-                val result = nativeSource.officialReelsPage(restart, excluded)
+                val result = nativeSource.officialReelsPage(restart, excluded,
+                    realOnly = snapshot.reelsMode == "real")
                 if (generation != officialFeedGeneration || !state.value.feedMode) return@launch
                 mutable.update { current ->
                     val merged = OfficialReelsPolicy.append(
@@ -534,6 +535,19 @@ class DramaViewModel(application: Application) : AndroidViewModel(application) {
                 }
             }
         }
+    }
+
+    /**
+     * A feed-mode switch creates a fresh official cursor and resets the current
+     * queue and playback; it does not touch the home recommendation catalog.
+     */
+    fun setReelsMode(mode: String) {
+        if (mode !in setOf("all", "real") || mode == state.value.reelsMode) return
+        prefs.edit().putString("reels_mode", mode).apply()
+        val wasInFeed = state.value.feedMode
+        if (wasInFeed) closePlayer()
+        mutable.update { it.copy(reelsMode = mode) }
+        if (wasInFeed) startFeed()
     }
 
     /** Explicit retry after a temporary upstream failure; never silently change to a fixed list. */
@@ -585,6 +599,8 @@ class DramaViewModel(application: Application) : AndroidViewModel(application) {
             themeStyle = prefs.getString("theme_style", "warm")?.takeIf { it in setOf("warm", "immersive", "cards") } ?: "warm",
             themeMode = prefs.getString("theme_mode", "light")?.takeIf { it in setOf("system", "light", "dark") } ?: "light",
             navigationStyle = prefs.getString("navigation_style", "classic")?.takeIf { it in setOf("classic", "glass") } ?: "classic",
+            reelsMode = prefs.getString("reels_mode", "all")
+                ?.takeIf { it == "all" || it == "real" } ?: "all",
             autoPlayNext = prefs.getBoolean("auto_play_next", true),
             preloadNext = prefs.getBoolean("preload_next_episode", true),
             episodeUpdateNotificationsEnabled = prefs.getBoolean("episode_update_notifications", false),
