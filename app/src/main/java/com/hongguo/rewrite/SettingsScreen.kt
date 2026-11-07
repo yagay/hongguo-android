@@ -170,13 +170,32 @@ internal fun SettingsScreen(state: AppState, model: DramaViewModel) {
                     Text("片尾跳过仅在已知有效总时长时生效，不影响睡眠定时。",
                         color = HongguoColors.muted, fontSize = 12.sp)
                     HorizontalDivider(color = HongguoColors.divider)
-                    SettingsNavRow(
-                        icon = Icons.Outlined.PlayCircleOutline,
-                        title = "播放器设置",
-                        subtitle = "画质、倍速、弹幕、定时停止等在播放页右上角调整",
-                        tag = "settings_player_preferences",
-                        onClick = model::closeModal,
-                    )
+                    SettingToggle("显示弹幕", "开启后在播放器内显示可读取的弹幕",
+                        state.danmakuEnabled, model::setDanmaku, "settings_danmaku")
+                    HorizontalDivider(color = HongguoColors.divider)
+                    Text("默认播放倍速", color = HongguoColors.ink,
+                        fontWeight = FontWeight.SemiBold)
+                    FlowRow(horizontalArrangement = Arrangement.spacedBy(6.dp)) {
+                        listOf(0.75f, 1f, 1.25f, 1.5f, 2f, 3f).forEach { speed ->
+                            OutlinedButton(onClick = { model.setDefaultPlaybackSpeed(speed) },
+                                modifier = Modifier.testTag("speed_" + speed)) {
+                                Text("${speed}×" + if (state.defaultPlaybackSpeed == speed) " ✓" else "")
+                            }
+                        }
+                    }
+                    Text("默认画质", color = HongguoColors.ink,
+                        fontWeight = FontWeight.SemiBold)
+                    FlowRow(horizontalArrangement = Arrangement.spacedBy(6.dp)) {
+                        listOf(0, 360, 480, 720, 1080).forEach { quality ->
+                            OutlinedButton(onClick = { model.setQualityLimit(quality, 0L, 0L) },
+                                modifier = Modifier.testTag("quality_" + quality)) {
+                                Text((if (quality == 0) "自动" else "${quality}P") +
+                                    if (state.qualityLimit == quality) " ✓" else "")
+                            }
+                        }
+                    }
+                    Text("实时画面比例、定时停止和单集下载仍在播放器内调整。",
+                        color = HongguoColors.muted, fontSize = 12.sp)
                 }
             }
             item {
