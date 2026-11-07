@@ -115,6 +115,7 @@ data class AppState(
     val downloadTasks: List<DownloadTask> = emptyList(),
     val offlineEpisodes: List<OfflineEpisode> = emptyList(),
     val offlinePlaybackUri: String? = null,
+    val offlineLibraryMessage: String? = null,
     val backend: String = "",
     val settingsMessage: String? = null,
     val logEnabled: Boolean = true,
