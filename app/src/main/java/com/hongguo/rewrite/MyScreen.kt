@@ -29,6 +29,8 @@ import androidx.compose.material3.HorizontalDivider
 import androidx.compose.material3.Icon
 import androidx.compose.material3.Surface
 import androidx.compose.material3.Text
+import androidx.compose.material3.TextButton
+import androidx.compose.material3.CircularProgressIndicator
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.getValue
 import androidx.compose.runtime.setValue
@@ -91,6 +93,40 @@ internal fun MyScreen(state: AppState, model: DramaViewModel, onBack: () -> Unit
                     }
                     Icon(Icons.Outlined.ChevronRight, contentDescription = null,
                         modifier = Modifier.size(20.dp), tint = HongguoColors.muted)
+                }
+            }
+        }
+        item {
+            Surface(shape = RoundedCornerShape(16.dp), color = HongguoColors.surface) {
+                Column(Modifier.fillMaxWidth().padding(16.dp),
+                    verticalArrangement = Arrangement.spacedBy(8.dp)) {
+                    Row(Modifier.fillMaxWidth(), verticalAlignment = Alignment.CenterVertically) {
+                        Text("追剧更新", color = HongguoColors.ink, fontSize = 17.sp,
+                            fontWeight = FontWeight.SemiBold, modifier = Modifier.weight(1f))
+                        if (state.trackingUpdates) CircularProgressIndicator(Modifier.size(18.dp))
+                        else TextButton(onClick = model::checkTrackedUpdates,
+                            modifier = Modifier.testTag("check_tracked_updates")) {
+                            Text("检查更新")
+                        }
+                    }
+                    Text("检查本机收藏和稍后看的新增集数。首次检查仅建立基准，不依赖账号。",
+                        color = HongguoColors.muted, fontSize = 12.sp)
+                    state.trackingUpdateMessage?.let {
+                        Text(it, color = HongguoColors.muted, fontSize = 12.sp)
+                    }
+                    val followed = (state.favorites.map { it.drama } + state.watchLater)
+                        .distinctBy { it.id }
+                    followed.filter { (state.trackedEpisodeUpdates[it.id] ?: 0) > 0 }
+                        .take(12).forEach { drama ->
+                            Row(Modifier.fillMaxWidth(), verticalAlignment = Alignment.CenterVertically) {
+                                Text(drama.title, modifier = Modifier.weight(1f),
+                                    color = HongguoColors.ink, maxLines = 1,
+                                    overflow = TextOverflow.Ellipsis)
+                                Text("+${state.trackedEpisodeUpdates[drama.id] ?: 0} 集",
+                                    color = HongguoColors.accent,
+                                    modifier = Modifier.clickable { model.open(drama) }.padding(8.dp))
+                            }
+                        }
                 }
             }
         }
