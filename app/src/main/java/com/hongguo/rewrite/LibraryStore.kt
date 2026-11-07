@@ -94,7 +94,7 @@ class LibraryStore(context: Context) {
     }
 
     /** Validate all imported rows before touching either current list. */
-    @Synchronized fun importLists(data: JSONObject) {
+    @Synchronized fun importLists(data: JSONObject, favoriteGroups: Map<String, String> = emptyMap()) {
         fun decode(key: String): List<Watched> {
             val array = data.getJSONArray(key)
             require(array.length() <= 200) { "片单条目超过 200 部" }
@@ -114,6 +114,12 @@ class LibraryStore(context: Context) {
         }
         val history = decode("history")
         val favorites = decode("favorites")
+        require(favoriteGroups.size <= 200 && favoriteGroups.all { (id, name) ->
+            id.matches(Regex("[0-9]{1,30}")) &&
+                name.length in 1..24 && name.none { it.isISOControl() }
+        })
+        val groupsJson = JSONObject()
+        favoriteGroups.forEach { (id, name) -> groupsJson.put(id, name) }
         fun encode(rows: List<Watched>) = JSONArray().apply {
             rows.forEach {
                 put(JSONObject().put("id", it.drama.id).put("title", it.drama.title)
@@ -122,7 +128,8 @@ class LibraryStore(context: Context) {
             }
         }.toString()
         prefs.edit().putString("history", encode(history))
-            .putString("favorites", encode(favorites)).commit().also {
+            .putString("favorites", encode(favorites))
+            .putString("favorite_groups", groupsJson.toString()).commit().also {
                 check(it) { "无法保存本机片单" }
             }
     }
