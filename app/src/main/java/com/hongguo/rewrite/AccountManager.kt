@@ -27,6 +27,10 @@ data class AccountUiState(
     val message: String = "读取加密登录状态…",
     val history: List<CloudProgress> = emptyList(),
     val favorites: List<CloudFavorite> = emptyList(),
+    val likes: List<CloudLike> = emptyList(),
+    val likesLoaded: Boolean = false,
+    val likesLoading: Boolean = false,
+    val likesError: String? = null,
     val upcoming: List<CloudReservation> = emptyList(),
     val online: List<CloudReservation> = emptyList(),
     val historyLoaded: Boolean = false,
@@ -52,6 +56,7 @@ internal class AccountManager(app: Application, private val scope: CoroutineScop
     private var phoneLogin: PhoneLogin? = null
     private var authJob: Job? = null
     private var dataJob: Job? = null
+    private var likesJob: Job? = null
     private var uploadJob: Job? = null
     private var queuedUpload: Pair<CloudProgress, Int>? = null
     private var lastUploadTimeMs = 0L
@@ -322,6 +327,36 @@ internal class AccountManager(app: Application, private val scope: CoroutineScop
         }
     }
 
+    /**
+     * Explicit tab request, isolated from history and favorite refresh.
+     * Avoids a slow/failed likes endpoint blocking the rest of the account.
+     */
+    fun loadLikes(force: Boolean = false) {
+        val session = credentials ?: return
+        val token = epoch
+        if (state.value.profile == null) return
+        if (state.value.likesLoading && !force) return
+        if (state.value.likesLoaded && !force) return
+        likesJob?.cancel()
+        mutable.update { it.copy(likesLoading = true, likesError = null) }
+        likesJob = scope.launch {
+            try {
+                val results = withContext(Dispatchers.IO) { cloud.likes(session) }
+                if (token == epoch && credentials === session) mutable.update {
+                    it.copy(likes = results, likesLoaded = true,
+                        likesLoading = false, likesError = null)
+                }
+            } catch (error: CancellationException) {
+                throw error
+            } catch (error: Exception) {
+                if (token == epoch && credentials === session) mutable.update {
+                    it.copy(likesLoading = false,
+                        likesError = "点赞读取失败：" + explain(error))
+                }
+            }
+        }
+    }
+
     fun loadReservations() {
         val session = credentials ?: return
         val token = epoch
@@ -442,6 +477,7 @@ internal class AccountManager(app: Application, private val scope: CoroutineScop
     fun logout() {
         resetLogin()
         dataJob?.cancel()
+        likesJob?.cancel()
         uploadJob?.cancel()
         queuedUpload = null
         credentials = null
