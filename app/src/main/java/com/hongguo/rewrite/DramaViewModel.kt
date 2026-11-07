@@ -128,8 +128,15 @@ class DramaViewModel(application: Application) : AndroidViewModel(application) {
             mutable.update { it.copy(settingsMessage = "请先授予通知权限") }
             return
         }
+        val scheduled = runCatching {
+            TrackingUpdatesWorker.schedule(app, enabled)
+        }.isSuccess
+        if (!scheduled) {
+            diagnostics.record("TRACKING", "SCHEDULER_UNAVAILABLE")
+            mutable.update { it.copy(settingsMessage = "后台检查暂不可用，请稍后再试") }
+            return
+        }
         prefs.edit().putBoolean("episode_update_notifications", enabled).apply()
-        TrackingUpdatesWorker.schedule(app, enabled)
         mutable.update { it.copy(episodeUpdateNotificationsEnabled = enabled,
             settingsMessage = if (enabled) "已启用追剧更新后台检查" else "已关闭追剧更新后台检查") }
     }
@@ -511,7 +518,8 @@ class DramaViewModel(application: Application) : AndroidViewModel(application) {
 
     init {
         if (state.value.episodeUpdateNotificationsEnabled) {
-            TrackingUpdatesWorker.schedule(application, true)
+            runCatching { TrackingUpdatesWorker.schedule(application, true) }
+                .onFailure { diagnostics.record("TRACKING", "STARTUP_SCHEDULER_UNAVAILABLE") }
         }
         diagnostics.record("APP", "START")
         if (state.value.backend.isNotBlank()) {
