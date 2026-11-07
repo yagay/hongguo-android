@@ -80,6 +80,7 @@ data class AppState(
     val playbackUrl: String? = null,
     val resumePositionMs: Long = 0L,
     val qualityLimit: Int = 0,
+    val defaultPlaybackSpeed: Float = 1f,
     val sleepTimerLabel: String = "关闭",
     val playbackError: String? = null,
     val library: List<Watched> = emptyList(),
