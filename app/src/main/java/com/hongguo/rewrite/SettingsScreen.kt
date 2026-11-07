@@ -123,6 +123,10 @@ internal fun SettingsScreen(state: AppState, model: DramaViewModel) {
             }
             item {
                 SettingsGroup("播放偏好") {
+                    SettingToggle("自动连播下一集",
+                        "当前集正常播放结束后自动切换下一集；手动切集不受影响",
+                        state.autoPlayNext, model::setAutoPlayNext, "settings_autoplay")
+                    HorizontalDivider(color = HongguoColors.divider)
                     SettingsNavRow(
                         icon = Icons.Outlined.PlayCircleOutline,
                         title = "播放器设置",
@@ -169,6 +173,19 @@ internal fun SettingsScreen(state: AppState, model: DramaViewModel) {
                         fontSize = 12.sp) }
                     Text("公网 API 请使用 HTTPS；手机不能通过 127.0.0.1 访问电脑上的服务。",
                         color = HongguoColors.muted, fontSize = 11.sp)
+                }
+            }
+            item {
+                SettingsGroup("推荐管理") {
+                    Text("已隐藏 ${state.hiddenRecommendationIds.size} 部剧集",
+                        color = HongguoColors.ink, fontWeight = FontWeight.SemiBold)
+                    Text("在首页推荐封面右上角选择「不再推荐」后，该剧不会再出现在推荐列表中；其他分类不受影响。",
+                        color = HongguoColors.muted, fontSize = 12.sp)
+                    OutlinedButton(
+                        onClick = model::restoreHiddenRecommendations,
+                        enabled = state.hiddenRecommendationIds.isNotEmpty(),
+                        modifier = Modifier.testTag("settings_restore_recommendations"),
+                    ) { Text("恢复全部隐藏推荐") }
                 }
             }
             item {
