@@ -50,6 +50,7 @@ final class RegistrationHttp {
         try {
             return preferred.post(url, headers, body);
         } catch (IOException primary) {
+            if (primary instanceof PlaybackDevice.RegistrationException) throw primary;
             if (Thread.currentThread().isInterrupted()) throw new InterruptedIOException("播放请求已取消");
             try {
                 return secondary.post(url, headers, body);
