@@ -40,6 +40,8 @@ dependencies {
     implementation("androidx.media3:media3-ui:1.8.0")
     implementation("io.coil-kt:coil-compose:2.7.0")
     implementation("com.squareup.okhttp3:okhttp:4.12.0")
+    // Apache-2.0, published Android AAR with Go core; optional read-only source.
+    implementation("io.github.beilunyang:openhongguo:0.2.0")
     implementation("org.bouncycastle:bcprov-jdk18on:1.79")
     implementation("org.jsoup:jsoup:1.23.2")
     testImplementation("junit:junit:4.13.2")
