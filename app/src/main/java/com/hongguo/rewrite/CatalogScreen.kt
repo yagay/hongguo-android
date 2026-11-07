@@ -102,6 +102,52 @@ internal fun CatalogScreen(state: AppState, model: DramaViewModel, onMine: () ->
             horizontalArrangement = Arrangement.spacedBy(10.dp),
             verticalArrangement = Arrangement.spacedBy(15.dp),
         ) {
+            if (state.section == Section.RECOMMEND && state.library.isNotEmpty()) {
+                item(span = { GridItemSpan(maxLineSpan) }) {
+                    Column(verticalArrangement = Arrangement.spacedBy(9.dp)) {
+                        Text("接着看", color = HongguoColors.ink,
+                            fontSize = 18.sp, fontWeight = FontWeight.Bold)
+                        Row(Modifier.fillMaxWidth().horizontalScroll(rememberScrollState()),
+                            horizontalArrangement = Arrangement.spacedBy(12.dp)) {
+                            state.library.take(8).forEach { history ->
+                                Box(Modifier.width(114.dp)) {
+                                    CatalogPoster(history.drama,
+                                        model.cover(history.drama.cover),
+                                        savedLater = state.watchLater.any { it.id == history.drama.id },
+                                        savedFavorite = state.favorites.any { it.drama.id == history.drama.id },
+                                        savedLike = history.drama.id in state.likedDramaIds,
+                                        onLater = { model.toggleWatchLater(history.drama) },
+                                        onFavorite = { model.toggleFavoriteForDrama(history.drama) },
+                                        onLike = { model.toggleLocalLikeForDrama(history.drama.id) },
+                                        onHide = null,
+                                    ) { model.open(history.drama, resumeEp = history.episode) }
+                                }
+                            }
+                        }
+                    }
+                }
+            }
+            if (state.section == Section.RECOMMEND && state.trackedEpisodeUpdates.isNotEmpty()) {
+                item(span = { GridItemSpan(maxLineSpan) }) {
+                    Column(verticalArrangement = Arrangement.spacedBy(8.dp)) {
+                        Text("追剧有更新", color = HongguoColors.ink,
+                            fontSize = 18.sp, fontWeight = FontWeight.Bold)
+                        state.trackedEpisodeUpdates.entries.take(4).forEach { (id, count) ->
+                            val drama = (state.favorites.map { it.drama } + state.watchLater)
+                                .firstOrNull { it.id == id }
+                            if (drama != null) Row(
+                                Modifier.fillMaxWidth().clickable { model.open(drama) }
+                                    .padding(vertical = 6.dp),
+                                verticalAlignment = Alignment.CenterVertically,
+                            ) {
+                                Text(drama.title, Modifier.weight(1f), color = HongguoColors.ink,
+                                    maxLines = 1, overflow = TextOverflow.Ellipsis)
+                                Text("+$count 集", color = HongguoColors.accent)
+                            }
+                        }
+                    }
+                }
+            }
             item(span = { GridItemSpan(maxLineSpan) }) {
                 CatalogSectionTools(state, model, onFilters = { filtersOpen = true })
             }
