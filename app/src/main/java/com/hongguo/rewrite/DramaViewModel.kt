@@ -41,6 +41,45 @@ class DramaViewModel(application: Application) : AndroidViewModel(application) {
         }.distinctBy { it.id }
     }
 
+
+    /** Explicit user-triggered update check, never pretends to be a background notification. */
+    fun checkTrackedUpdates() {
+        if (state.value.trackingUpdates) return
+        val snapshot = state.value
+        val dramas = (snapshot.favorites.map { it.drama } + snapshot.watchLater)
+            .distinctBy { it.id }.take(60)
+        if (dramas.isEmpty()) {
+            mutable.update { it.copy(trackingUpdateMessage = "请先添加本机收藏或稍后看") }
+            return
+        }
+        mutable.update { it.copy(trackingUpdates = true, trackingUpdateMessage = null) }
+        viewModelScope.launch {
+            val deltas = linkedMapOf<String, Int>()
+            var checked = 0
+            var errors = 0
+            for (drama in dramas) {
+                currentCoroutineContext().ensureActive()
+                try {
+                    val detail = if (source == null) nativeSource.detail(drama.id)
+                        else source!!.detail(drama.id)
+                    val episodes = detail.episodes.size
+                    val known = prefs.getInt("track_episode_" + drama.id, -1)
+                    if (known >= 0 && episodes > known) deltas[drama.id] = episodes - known
+                    // Preserve baseline from a prior successful check, and never decrease it
+                    // when an incomplete API result reports fewer episodes.
+                    if (episodes > 0 && episodes > known) {
+                        prefs.edit().putInt("track_episode_" + drama.id, episodes).apply()
+                    }
+                    checked++
+                } catch (e: CancellationException) { throw e }
+                catch (_: Exception) { errors++ }
+            }
+            mutable.update { it.copy(trackedEpisodeUpdates = deltas,
+                trackingUpdates = false,
+                trackingUpdateMessage = "检查完成：${checked} 部成功、${errors} 部失败；${deltas.size} 部发现新增剧集。首次检查仅建立基准。") }
+        }
+    }
+
     fun toggleWatchLater(drama: Drama) {
         if (!drama.id.matches(Regex("[0-9]{1,30}"))) return
         val old = state.value.watchLater
