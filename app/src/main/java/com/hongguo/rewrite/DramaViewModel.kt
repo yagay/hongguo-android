@@ -14,6 +14,7 @@ class DramaViewModel(application: Application) : AndroidViewModel(application) {
     private val library = LibraryStore(application)
     private val prefs = application.getSharedPreferences("web_rewrite_settings", 0)
     private var source: WebContractClient? = null
+    private val publicWebsite = NativeWebsiteSource()
     private var pageJob: Job? = null
     private var detailJob: Job? = null
     private var downloadJob: Job? = null
@@ -76,15 +77,11 @@ class DramaViewModel(application: Application) : AndroidViewModel(application) {
         mutable.update { it.copy(items = emptyList(), loading = true, moreLoading = false,
             error = null, hasMore = false, nextOffset = 0) }
         val api = source
-        if (api == null) {
-            mutable.update { it.copy(loading = false,
-                error = "请先从设置中连接红果网页版 API 服务。当前构建是全新原生前端，尚未移植独立媒体后端。") }
-            return
-        }
         pageJob = viewModelScope.launch {
             try {
-                val result = api.list(s.section, 0, s.genre, s.board, s.search, s.activeFilters,
-                    emptyList())
+                val result = if (api != null)
+                    api.list(s.section, 0, s.genre, s.board, s.search, s.activeFilters, emptyList())
+                else publicWebsite.list(s.section, 0, s.search)
                 if (version != requestId) return@launch
                 mutable.update { it.copy(items = result.items, nextOffset = result.nextOffset,
                     hasMore = result.hasMore, loading = false) }
@@ -96,7 +93,7 @@ class DramaViewModel(application: Application) : AndroidViewModel(application) {
                 }
             }
         }
-        if (s.section == Section.BROWSE && s.filters.isEmpty()) {
+        if (api != null && s.section == Section.BROWSE && s.filters.isEmpty()) {
             viewModelScope.launch {
                 runCatching { api.filters(s.genre) }.onSuccess { rows ->
                     if (version == requestId) mutable.update { it.copy(filters = rows) }
@@ -107,13 +104,14 @@ class DramaViewModel(application: Application) : AndroidViewModel(application) {
 
     fun more() {
         val s = state.value
-        if (s.loading || s.moreLoading || !s.hasMore || source == null) return
+        if (s.loading || s.moreLoading || !s.hasMore) return
         mutable.update { it.copy(moreLoading = true, error = null) }
         val version = requestId
         pageJob = viewModelScope.launch {
             try {
-                val result = source!!.list(s.section, s.nextOffset, s.genre,
+                val result = source?.list(s.section, s.nextOffset, s.genre,
                     s.board, s.search, s.activeFilters, s.items.map { it.id })
+                    ?: publicWebsite.list(s.section, s.nextOffset, s.search)
                 if (version != requestId) return@launch
                 mutable.update {
                     it.copy(items = (it.items + result.items).distinctBy(Drama::id),
@@ -133,6 +131,13 @@ class DramaViewModel(application: Application) : AndroidViewModel(application) {
     fun closeModal() = show(Modal.NONE)
 
     fun saveBackend(value: String) {
+        if (value.isBlank()) {
+            source = null
+            prefs.edit().remove("backend").apply()
+            mutable.update { it.copy(backend = "", modal = Modal.NONE) }
+            refresh()
+            return
+        }
         val candidate = runCatching { WebContractClient(value) }
         if (candidate.isFailure) {
             mutable.update { it.copy(error = "地址格式错误：" +
@@ -145,7 +150,7 @@ class DramaViewModel(application: Application) : AndroidViewModel(application) {
         refresh()
     }
 
-    fun cover(image: String): String = source?.coverUrl(image).orEmpty()
+    fun cover(image: String): String = source?.coverUrl(image) ?: publicWebsite.coverUrl(image)
 
     fun open(drama: Drama, resumeEp: Int? = null) {
         detailJob?.cancel()
@@ -155,13 +160,9 @@ class DramaViewModel(application: Application) : AndroidViewModel(application) {
         mutable.update { it.copy(detail = null, preparingDetail = true,
             playbackError = null, playbackUrl = null, playing = false) }
         val api = source
-        if (api == null) {
-            mutable.update { it.copy(preparingDetail = false, error = "API 尚未连接") }
-            return
-        }
         detailJob = viewModelScope.launch {
             try {
-                val result = api.detail(drama.id)
+                val result = api?.detail(drama.id) ?: publicWebsite.detail(drama.id)
                 if (version != detailId) return@launch
                 val resolved = result.copy(drama = result.drama.copy(
                     title = result.drama.title.ifBlank { drama.title },
@@ -188,12 +189,15 @@ class DramaViewModel(application: Application) : AndroidViewModel(application) {
     fun play(index: Int) {
         val detail = state.value.detail ?: return
         if (index !in detail.episodes.indices) return
-        val api = source ?: return
+        val api = source
         val version = ++detailId
         firstFrameFor = null
         mutable.update { it.copy(episodeIndex = index, playbackUrl = null,
-            playing = false, playbackError = null) }
+            playing = false, playbackError = if (api == null)
+                "PLAYBACK_SOURCE_UNAVAILABLE: 官网只提供分集信息；原生视频取址尚未移植，播放需连接网页版服务"
+                else null) }
         detailJob?.cancel()
+        if (api == null) return
         detailJob = viewModelScope.launch {
             try {
                 val url = api.playableUrl(detail.episodes[index].vid)
@@ -308,5 +312,5 @@ class DramaViewModel(application: Application) : AndroidViewModel(application) {
     }
 
     private fun errorText(stage: String, error: Exception): String =
-        stage + ": " + (error.message ?: error.javaClass.simpleName)
+        PlaybackProblem.describe(stage, error)
 }
