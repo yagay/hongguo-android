@@ -480,6 +480,7 @@ class DramaViewModel(application: Application) : AndroidViewModel(application) {
     private fun loadOfficialReels(restart: Boolean = false) {
         val snapshot = state.value
         if (!snapshot.feedMode || snapshot.feedLoading) return
+        val needsFirstDrama = snapshot.feedItems.isEmpty()
         val generation = if (restart) ++officialFeedGeneration else officialFeedGeneration
         officialFeedJob?.cancel()
         val excluded = snapshot.feedItems.mapTo(linkedSetOf()) { it.id }
@@ -502,6 +503,16 @@ class DramaViewModel(application: Application) : AndroidViewModel(application) {
                             "官方暂未推荐新作品，可上滑重试" else null)
                 }
                 diagnostics.record("REELS", "OFFICIAL_BATCH_READY")
+                if (needsFirstDrama && state.value.feedMode) {
+                    val first = state.value.feedItems.firstOrNull()
+                    if (first != null) {
+                        rememberSwiped(first.id)
+                        open(first, resumeEp = 1, feed = true)
+                    } else {
+                        mutable.update { it.copy(preparingDetail = false,
+                            feedError = "官方暂时没有新推荐，请点击重试") }
+                    }
+                }
                 if (pendingFeedAdvance) {
                     pendingFeedAdvance = false
                     navigateFeed(1)
@@ -512,6 +523,7 @@ class DramaViewModel(application: Application) : AndroidViewModel(application) {
                 if (generation == officialFeedGeneration && state.value.feedMode) {
                     pendingFeedAdvance = false
                     mutable.update { it.copy(feedLoading = false,
+                        preparingDetail = if (needsFirstDrama) false else it.preparingDetail,
                         feedError = errorText("官方刷剧推荐", error)) }
                     diagnostics.record("REELS", "OFFICIAL_BATCH_FAILED")
                 }
@@ -521,7 +533,11 @@ class DramaViewModel(application: Application) : AndroidViewModel(application) {
 
     /** Explicit retry after a temporary upstream failure; never silently change to a fixed list. */
     fun retryOfficialReels() {
-        if (state.value.feedMode && !state.value.feedLoading) loadOfficialReels()
+        if (!state.value.feedMode || state.value.feedLoading) return
+        if (state.value.feedItems.isEmpty()) {
+            mutable.update { it.copy(preparingDetail = true) }
+        }
+        loadOfficialReels()
     }
     private val prefetchedFeedDetails = linkedMapOf<String, DramaDetail>()
 
@@ -1118,17 +1134,14 @@ class DramaViewModel(application: Application) : AndroidViewModel(application) {
         }
     }
 
-    /** Open any visible recommendation as the seed, then follow a separate official App feed. */
+    /**
+     * The "刷短剧" button starts with the official feed's first item.
+     * An explicitly selected card can still be used as a one-time seed.
+     */
     fun startFeed(drama: Drama? = null) {
         val current = state.value
         if (current.section != Section.RECOMMEND) return
-        val recentlyShown = recentlySwiped().toSet()
-        val selected = drama ?: current.items.firstOrNull {
-            it.id !in current.hiddenRecommendationIds && it.id !in recentlyShown
-        } ?: current.items.firstOrNull {
-            it.id !in current.hiddenRecommendationIds
-        } ?: return
-        if (selected.id in current.hiddenRecommendationIds) return
+        if (drama != null && drama.id in current.hiddenRecommendationIds) return
         officialFeedJob?.cancel()
         officialFeedGeneration++
         pendingFeedAdvance = false
@@ -1136,12 +1149,18 @@ class DramaViewModel(application: Application) : AndroidViewModel(application) {
         prefetchedFeedDetails.clear()
         nativeSource.setAccountRecommendations(account.recommendationAccount())
         mutable.update { it.copy(
-            feedMode = true, feedItems = listOf(selected), feedIndex = 0,
-            feedLoading = false, feedHasMore = true, feedError = null,
+            feedMode = true,
+            feedItems = drama?.let(::listOf).orEmpty(),
+            feedIndex = 0,
+            feedLoading = false,
+            feedHasMore = true,
+            feedError = null,
+            preparingDetail = drama == null,
         ) }
-        rememberSwiped(selected.id)
-        open(selected, resumeEp = 1, feed = true)
-        // Homepage's manual three-result paging remains untouched.
+        if (drama != null) {
+            rememberSwiped(drama.id)
+            open(drama, resumeEp = 1, feed = true)
+        }
         loadOfficialReels(restart = true)
     }
 
