@@ -1,6 +1,5 @@
 package com.hongguo.rewrite
 
-import android.content.Intent
 import androidx.activity.compose.BackHandler
 import androidx.activity.compose.rememberLauncherForActivityResult
 import androidx.activity.result.contract.ActivityResultContracts
@@ -384,15 +383,7 @@ internal fun NativePlayer(state: AppState, model: DramaViewModel) {
             onLike = model::toggleLocalLike,
             onComments = { showComments = true },
             onDanmaku = { model.setDanmaku(!state.danmakuEnabled) },
-            onShare = {
-                val vid = selected?.vid.orEmpty()
-                val link = "https://hongguoduanju.com/player/${detail.drama.id}/$vid"
-                val intent = Intent(Intent.ACTION_SEND).apply {
-                    type = "text/plain"
-                    putExtra(Intent.EXTRA_TEXT, detail.drama.title + "\n" + link)
-                }
-                context.startActivity(Intent.createChooser(intent, "分享剧集"))
-            },
+
 
         )
         }

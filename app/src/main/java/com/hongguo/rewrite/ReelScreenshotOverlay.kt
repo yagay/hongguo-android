@@ -2,6 +2,11 @@ package com.hongguo.rewrite
 
 import androidx.compose.foundation.background
 import androidx.compose.foundation.clickable
+import androidx.compose.foundation.Canvas
+import androidx.compose.foundation.gestures.detectTapGestures
+import androidx.compose.foundation.gestures.detectDragGestures
+import androidx.compose.foundation.horizontalScroll
+import androidx.compose.foundation.rememberScrollState
 import androidx.compose.foundation.layout.Arrangement
 import androidx.compose.foundation.layout.Box
 import androidx.compose.foundation.layout.Column
@@ -22,16 +27,12 @@ import androidx.compose.material.icons.outlined.Favorite
 import androidx.compose.material.icons.outlined.FavoriteBorder
 import androidx.compose.material.icons.outlined.KeyboardArrowRight
 import androidx.compose.material.icons.outlined.MoreVert
-import androidx.compose.material.icons.outlined.PlayCircleOutline
-import androidx.compose.material.icons.outlined.Share
 import androidx.compose.material.icons.outlined.Star
 import androidx.compose.material.icons.outlined.StarBorder
 import androidx.compose.material.icons.outlined.Subtitles
 import androidx.compose.material.icons.outlined.Visibility
 import androidx.compose.material3.Icon
 import androidx.compose.material3.IconButton
-import androidx.compose.material3.Slider
-import androidx.compose.material3.SliderDefaults
 import androidx.compose.material3.Text
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.getValue
@@ -43,7 +44,9 @@ import androidx.compose.runtime.setValue
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.graphics.Color
-import androidx.compose.ui.graphics.vector.ImageVector
+import androidx.compose.ui.geometry.Offset
+import androidx.compose.ui.graphics.StrokeCap
+import androidx.compose.ui.input.pointer.pointerInputimport androidx.compose.ui.graphics.vector.ImageVector
 import androidx.compose.ui.platform.testTag
 import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.text.style.TextOverflow
@@ -68,7 +71,6 @@ internal fun ReelScreenshotOverlay(
     onLike: () -> Unit,
     onComments: () -> Unit,
     onDanmaku: () -> Unit,
-    onShare: () -> Unit,
 ) {
     val white = Color.White
     val muted = Color(0xFFD5D5D5)
@@ -114,9 +116,9 @@ internal fun ReelScreenshotOverlay(
         // An unknown value must remain a label, never a fake zero.
         Column(
             Modifier.align(Alignment.BottomEnd)
-                .padding(end = 8.dp, bottom = 21.dp),
+                .padding(end = 7.dp, bottom = 14.dp),
             horizontalAlignment = Alignment.CenterHorizontally,
-            verticalArrangement = Arrangement.spacedBy(9.dp),
+            verticalArrangement = Arrangement.spacedBy(7.dp),
         ) {
             ReferenceAction(
                 if (saved) Icons.Outlined.Star else Icons.Outlined.StarBorder,
@@ -150,7 +152,6 @@ internal fun ReelScreenshotOverlay(
                     ?: if (state.socialStatsLoading) "…" else null,
                 tag = "reel_play_count",
             )
-            ReferenceAction(Icons.Outlined.Share, "分享", "reel_share", onShare)
         }
 
         // Left caption area deliberately does not span beneath the action rail.
@@ -201,6 +202,27 @@ internal fun ReelScreenshotOverlay(
                 Icon(Icons.Outlined.KeyboardArrowRight, "展开简介",
                     tint = white, modifier = Modifier.size(20.dp))
             }
+            val actorAndGenreTags = detail.drama.actors.take(2)
+                .map { "演员 $it" } + detail.drama.categories.take(4)
+            if (actorAndGenreTags.isNotEmpty()) {
+                Row(
+                    Modifier.fillMaxWidth().horizontalScroll(rememberScrollState())
+                        .testTag("reel_actor_genre_tags"),
+                    horizontalArrangement = Arrangement.spacedBy(4.dp),
+                    verticalAlignment = Alignment.CenterVertically,
+                ) {
+                    actorAndGenreTags.forEach { tag ->
+                        Text(
+                            tag, color = Color.White, fontSize = 10.sp,
+                            lineHeight = 13.sp, maxLines = 1,
+                            modifier = Modifier.background(
+                                Color(0xFF343438).copy(alpha = 0.75f),
+                                RoundedCornerShape(4.dp),
+                            ).padding(horizontal = 5.dp, vertical = 2.dp),
+                        )
+                    }
+                }
+            }
             if (detail.drama.synopsis.isNotBlank()) {
                 Text(detail.drama.synopsis, color = muted, fontSize = 12.sp,
                     lineHeight = 17.sp,
@@ -234,40 +256,68 @@ internal fun ReelBottomDock(
         (playback.positionMs.toFloat() / duration.toFloat()).coerceIn(0f, 1f)
     else 0f
 
-    // The small scrub bar and episode label live OUTSIDE the video viewport.
     Column(
         Modifier.fillMaxWidth().background(Color(0xFF232325))
             .testTag("reel_outside_video_dock"),
         verticalArrangement = Arrangement.spacedBy(0.dp),
     ) {
-        Slider(
-            value = seeking ?: fraction,
-            onValueChange = { seeking = it },
-            onValueChangeFinished = {
-                if (duration > 0L) {
-                    seeking?.let { playback.seekTo((it * duration).toLong()) }
+        // A truly thin 2dp progress LINE, not the full Material Slider thumb.
+        // 16dp invisible hit target keeps both taps and drag-to-seek usable.
+        Canvas(
+            Modifier.fillMaxWidth().height(16.dp)
+                .pointerInput(duration, playback) {
+                    detectTapGestures { point ->
+                        if (duration > 0L && size.width > 0) {
+                            val value = (point.x / size.width).coerceIn(0f, 1f)
+                            playback.seekTo((duration * value).toLong())
+                        }
+                    }
                 }
-                seeking = null
-            },
-            enabled = duration > 0L,
-            colors = SliderDefaults.colors(
-                thumbColor = Color.White,
-                activeTrackColor = HongguoColors.accent,
-                inactiveTrackColor = Color(0xFF535357),
-                disabledActiveTrackColor = HongguoColors.accent,
-                disabledInactiveTrackColor = Color(0xFF535357),
-            ),
-            modifier = Modifier.fillMaxWidth()
-                .padding(horizontal = 10.dp)
-                .height(18.dp)
+                .pointerInput(duration, playback) {
+                    detectDragGestures(
+                        onDragStart = { start ->
+                            if (duration > 0L && size.width > 0)
+                                seeking = (start.x / size.width).coerceIn(0f, 1f)
+                        },
+                        onDragEnd = {
+                            seeking?.let { position ->
+                                if (duration > 0L) playback.seekTo((duration * position).toLong())
+                            }
+                            seeking = null
+                        },
+                        onDragCancel = { seeking = null },
+                        onDrag = { change, _ ->
+                            if (duration > 0L && size.width > 0) {
+                                seeking = (change.position.x / size.width).coerceIn(0f, 1f)
+                            }
+                            change.consume()
+                        },
+                    )
+                }
                 .testTag("reel_seek"),
-        )
+        ) {
+            val y = size.height / 2f
+            drawLine(
+                color = Color(0xFF66666B),
+                start = Offset(0f, y), end = Offset(size.width, y),
+                strokeWidth = 2.dp.toPx(),
+                cap = StrokeCap.Round,
+            )
+            drawLine(
+                color = HongguoColors.accent,
+                start = Offset(0f, y),
+                end = Offset(size.width * (seeking ?: fraction), y),
+                strokeWidth = 2.dp.toPx(),
+                cap = StrokeCap.Round,
+            )
+        }
         Row(
-            Modifier.fillMaxWidth().height(36.dp)
+            Modifier.fillMaxWidth().height(34.dp)
                 .clickable(onClick = onEpisodes)
-                .padding(start = 14.dp, end = 12.dp)
+                .padding(start = 10.dp, end = 8.dp)
                 .testTag("watch_full_drama"),
             verticalAlignment = Alignment.CenterVertically,
+            horizontalArrangement = Arrangement.spacedBy(6.dp),
         ) {
             Text(
                 DramaCompletion.episodeLabel(
@@ -276,17 +326,24 @@ internal fun ReelBottomDock(
                     episodeIndex = episode?.index,
                 ),
                 color = Color.White,
-                fontSize = 13.sp,
-                fontWeight = FontWeight.SemiBold,
+                fontSize = 12.sp,
+                fontWeight = FontWeight.Medium,
                 maxLines = 1,
                 overflow = TextOverflow.Ellipsis,
                 modifier = Modifier.weight(1f).testTag("reel_episode_status"),
+            )
+            Text(
+                PlaybackTimeFormatter.label(playback.positionMs, duration),
+                color = Color(0xFFE2E1E5),
+                fontSize = 10.sp,
+                maxLines = 1,
+                modifier = Modifier.testTag("reel_time_label"),
             )
             Icon(
                 Icons.Outlined.KeyboardArrowRight,
                 contentDescription = "打开选集",
                 tint = Color.White,
-                modifier = Modifier.size(20.dp),
+                modifier = Modifier.size(16.dp),
             )
         }
     }
@@ -301,26 +358,28 @@ private fun ReferenceAction(
 ) {
     Column(
         horizontalAlignment = Alignment.CenterHorizontally,
-        verticalArrangement = Arrangement.spacedBy(1.dp),
-        modifier = Modifier.width(63.dp),
+        verticalArrangement = Arrangement.spacedBy(0.dp),
+        modifier = Modifier.width(58.dp),
     ) {
-        IconButton(
-            onClick = onClick,
-            modifier = Modifier.size(47.dp).testTag(tag),
+        Box(
+            modifier = Modifier.size(43.dp).clickable(onClick = onClick).testTag(tag),
+            contentAlignment = Alignment.Center,
         ) {
             Icon(icon, contentDescription = label, tint = tint,
-                modifier = Modifier.size(32.dp))
+                modifier = Modifier.size(29.dp))
         }
-        Text(count ?: label, fontSize = 12.sp, color = Color.White,
-            maxLines = 1, fontWeight = FontWeight.Medium)
+        Text(
+            count ?: label, fontSize = 12.sp, lineHeight = 14.sp,
+            color = Color.White, maxLines = 1, fontWeight = FontWeight.Medium,
+        )
         if (count != null && scope != null) {
-            Text(scope, fontSize = 9.sp, color = Color(0xFFE0E0E0),
-                maxLines = 1)
+            Text(scope, fontSize = 9.sp, lineHeight = 11.sp,
+                color = Color(0xFFE0E0E0), maxLines = 1)
         }
     }
 }
 
-/** Read-only counter beside the other reel icons; no false click target. */
+/** Playback count is a non-interactive, real series-wide metric. */
 @Composable
 private fun ReferenceMetric(
     icon: ImageVector,
@@ -329,27 +388,17 @@ private fun ReferenceMetric(
     tag: String,
 ) {
     Column(
-        modifier = Modifier.width(63.dp).testTag(tag),
+        modifier = Modifier.width(58.dp).testTag(tag),
         horizontalAlignment = Alignment.CenterHorizontally,
-        verticalArrangement = Arrangement.spacedBy(1.dp),
+        verticalArrangement = Arrangement.spacedBy(0.dp),
     ) {
-        Box(
-            Modifier.size(47.dp),
-            contentAlignment = Alignment.Center,
-        ) {
-            Icon(
-                icon,
-                contentDescription = label,
-                tint = Color.White,
-                modifier = Modifier.size(32.dp),
-            )
+        Box(Modifier.size(43.dp), contentAlignment = Alignment.Center) {
+            Icon(icon, contentDescription = label, tint = Color.White,
+                modifier = Modifier.size(29.dp))
         }
         Text(
-            count ?: "播放",
-            fontSize = 12.sp,
-            color = Color.White,
-            fontWeight = FontWeight.Medium,
-            maxLines = 1,
+            count ?: "播放", fontSize = 12.sp, lineHeight = 14.sp,
+            color = Color.White, fontWeight = FontWeight.Medium, maxLines = 1,
         )
     }
 }
