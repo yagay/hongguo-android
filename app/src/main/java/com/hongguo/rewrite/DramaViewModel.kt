@@ -460,17 +460,66 @@ class DramaViewModel(application: Application) : AndroidViewModel(application) {
     private var detailId = 0L
     private var pendingFeedAdvance = false
     private var feedPrefetchJob: Job? = null
+    private var officialFeedJob: Job? = null
+    private var officialFeedGeneration = 0L
+
+    private fun loadOfficialReels(restart: Boolean = false) {
+        val snapshot = state.value
+        if (!snapshot.feedMode || snapshot.feedLoading) return
+        val generation = if (restart) ++officialFeedGeneration else officialFeedGeneration
+        officialFeedJob?.cancel()
+        val excluded = snapshot.feedItems.mapTo(linkedSetOf()) { it.id }
+            .apply { addAll(snapshot.hiddenRecommendationIds) }
+        mutable.update { it.copy(feedLoading = true, feedError = null) }
+        officialFeedJob = viewModelScope.launch {
+            try {
+                val result = nativeSource.officialReelsPage(restart, excluded)
+                if (generation != officialFeedGeneration || !state.value.feedMode) return@launch
+                mutable.update { current ->
+                    val seen = current.feedItems.mapTo(hashSetOf()) { it.id }
+                    val newTitles = result.items.filter { it.id !in seen &&
+                        it.id !in current.hiddenRecommendationIds }
+                    current.copy(feedItems = current.feedItems + newTitles,
+                        feedHasMore = result.hasMore,
+                        feedLoading = false,
+                        feedError = if (newTitles.isEmpty()) "官方暂未推荐新作品，可上滑重试" else null)
+                }
+                diagnostics.record("REELS", "OFFICIAL_BATCH_READY")
+                if (pendingFeedAdvance) {
+                    pendingFeedAdvance = false
+                    navigateFeed(1)
+                } else prefetchFollowingFeedItem(state.value.feedIndex)
+            } catch (cancel: CancellationException) {
+                throw cancel
+            } catch (error: Exception) {
+                if (generation == officialFeedGeneration && state.value.feedMode) {
+                    pendingFeedAdvance = false
+                    mutable.update { it.copy(feedLoading = false,
+                        feedError = errorText("官方刷剧推荐", error)) }
+                    diagnostics.record("REELS", "OFFICIAL_BATCH_FAILED")
+                }
+            }
+        }
+    }
+
+    /** Explicit retry after a temporary upstream failure; never silently change to a fixed list. */
+    fun retryOfficialReels() {
+        if (state.value.feedMode && !state.value.feedLoading) loadOfficialReels()
+    }
     private val prefetchedFeedDetails = linkedMapOf<String, DramaDetail>()
 
     private fun prefetchFollowingFeedItem(index: Int) {
-        val next = state.value.items.getOrNull(index + 1) ?: return
+        val current = state.value
+        val next = current.feedItems.drop(index + 1)
+            .firstOrNull { it.id !in current.hiddenRecommendationIds } ?: return
         if (source != null || prefetchedFeedDetails.containsKey(next.id)) return
         feedPrefetchJob?.cancel()
         feedPrefetchJob = viewModelScope.launch {
             try {
                 val detail = nativeSource.detail(next.id)
-                if (state.value.feedMode && state.value.items.getOrNull(
-                        state.value.feedIndex + 1)?.id == next.id) {
+                if (state.value.feedMode && state.value.feedItems
+                        .drop(state.value.feedIndex + 1)
+                        .firstOrNull { it.id !in state.value.hiddenRecommendationIds }?.id == next.id) {
                     prefetchedFeedDetails[next.id] = detail
                     while (prefetchedFeedDetails.size > 3)
                         prefetchedFeedDetails.remove(prefetchedFeedDetails.keys.first())
@@ -661,12 +710,8 @@ class DramaViewModel(application: Application) : AndroidViewModel(application) {
                 if (!continued && result.hasMore) {
                     diagnostics.record("CATALOG", "PAGINATION_NO_PROGRESS")
                 }
-                if (pendingFeedAdvance) {
-                    pendingFeedAdvance = false
-                    navigateFeed(1)
-                } else if (state.value.feedMode) {
-                    prefetchFollowingFeedItem(state.value.feedIndex)
-                }
+                // Catalog pagination is only for the home grid. Reels have their
+                // own official session and must never advance from this fixed 3-item list.
             } catch (e: CancellationException) {
                 throw e
             } catch (e: Exception) {
@@ -1056,43 +1101,59 @@ class DramaViewModel(application: Application) : AndroidViewModel(application) {
         }
     }
 
-    /** Start a dedicated one-episode-per-drama vertical recommendation feed. */
+    /** Open any visible recommendation as the seed, then follow a separate official App feed. */
     fun startFeed(drama: Drama? = null) {
-        val s = state.value
-        val selected = drama ?: s.items.firstOrNull { it.id !in s.hiddenRecommendationIds } ?: return
-        val index = s.items.indexOfFirst { it.id == selected.id }
-        if (index < 0 || s.section != Section.RECOMMEND) return
+        val current = state.value
+        if (current.section != Section.RECOMMEND) return
+        val selected = drama ?: current.items.firstOrNull {
+            it.id !in current.hiddenRecommendationIds
+        } ?: return
+        if (selected.id in current.hiddenRecommendationIds) return
+        officialFeedJob?.cancel()
+        officialFeedGeneration++
         pendingFeedAdvance = false
-        mutable.update { it.copy(feedIndex = index) }
+        feedPrefetchJob?.cancel()
+        prefetchedFeedDetails.clear()
+        nativeSource.setAccountRecommendations(account.recommendationAccount())
+        mutable.update { it.copy(
+            feedMode = true, feedItems = listOf(selected), feedIndex = 0,
+            feedLoading = false, feedHasMore = true, feedError = null,
+        ) }
         open(selected, resumeEp = 1, feed = true)
-        prefetchFollowingFeedItem(index)
-        if (index + 2 >= s.items.size && s.hasMore) more()
+        // Homepage's manual three-result paging remains untouched.
+        loadOfficialReels(restart = true)
     }
 
+    /** Both manual vertical swipe and natural episode end use the live official queue. */
     fun navigateFeed(direction: Int) {
-        val s = state.value
-        if (!s.feedMode || direction !in setOf(-1, 1)) return
-        val candidates = if (direction > 0) (s.feedIndex + 1 until s.items.size)
-            else (s.feedIndex - 1 downTo 0)
-        val index = candidates.firstOrNull { s.items[it].id !in s.hiddenRecommendationIds }
-            ?: if (direction > 0) s.items.size else -1
-        val target = s.items.getOrNull(index)
-        if (target != null && target.id != s.detail?.drama?.id) {
+        val current = state.value
+        if (!current.feedMode || direction !in setOf(-1, 1)) return
+        val candidates = if (direction > 0)
+            (current.feedIndex + 1 until current.feedItems.size)
+        else (current.feedIndex - 1 downTo 0)
+        val index = candidates.firstOrNull {
+            current.feedItems[it].id !in current.hiddenRecommendationIds
+        }
+        val selected = index?.let(current.feedItems::get)
+        if (selected != null && selected.id != current.detail?.drama?.id) {
             pendingFeedAdvance = false
             mutable.update { it.copy(feedIndex = index) }
-            open(target, resumeEp = 1, feed = true)
+            open(selected, resumeEp = 1, feed = true)
             prefetchFollowingFeedItem(index)
-            if (index + 2 >= s.items.size && s.hasMore) more()
-        } else if (direction > 0 && s.hasMore && !s.moreLoading) {
+            if (direction > 0 &&
+                index >= current.feedItems.lastIndex - 2 && current.feedHasMore &&
+                !current.feedLoading) loadOfficialReels()
+        } else if (direction > 0 && current.feedHasMore) {
             pendingFeedAdvance = true
-            more()
-        } else if (direction > 0 && s.moreLoading) {
-            pendingFeedAdvance = true
+            if (!current.feedLoading) loadOfficialReels()
         }
     }
 
     fun exitFeedToEpisode(index: Int) {
-        mutable.update { it.copy(feedMode = false) }
+        officialFeedJob?.cancel()
+        officialFeedGeneration++
+        pendingFeedAdvance = false
+        mutable.update { it.copy(feedMode = false, feedLoading = false) }
         play(index)
     }
 
@@ -1352,6 +1413,8 @@ class DramaViewModel(application: Application) : AndroidViewModel(application) {
 
     fun closePlayer() {
         pendingFeedAdvance = false
+        officialFeedJob?.cancel()
+        officialFeedGeneration++
         feedPrefetchJob?.cancel()
         prefetchedFeedDetails.clear()
         ++relatedGeneration
@@ -1365,7 +1428,9 @@ class DramaViewModel(application: Application) : AndroidViewModel(application) {
         firstFrameFor = null
         mutable.update { it.copy(detail = null, playbackUrl = null,
             offlinePlaybackUri = null,
-            feedMode = false, relatedSeries = null, relatedWorks = emptyList(),
+            feedMode = false, feedItems = emptyList(), feedLoading = false,
+            feedHasMore = false, feedError = null,
+            relatedSeries = null, relatedWorks = emptyList(),
             relatedLoading = false, relatedError = null,
             resumePositionMs = 0L, playbackError = null,
             preparingDetail = false, playing = false) }
