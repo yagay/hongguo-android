@@ -108,10 +108,17 @@ final class RegistrationHttp {
      */
     static PlaybackDevice.Reply alternateJsonRegister(long now, String cdid, String userAgent)
             throws IOException {
+        return alternateJsonRegisterAt("https://" + ALTERNATE_REGISTER_HOST
+                + "/service/2/device_register/", now, cdid, userAgent);
+    }
+
+    /** Package-visible fixture route for MockWebServer; production uses only the fixed endpoint above. */
+    static PlaybackDevice.Reply alternateJsonRegisterAt(
+            String endpoint, long now, String cdid, String userAgent) throws IOException {
         Map<String, Object> payload = PlaybackDevice.payload(now, cdid);
         byte[] body = Json.stringify(payload).getBytes(StandardCharsets.UTF_8);
         // Keep parameters in lockstep with the app profile. Fresh identity has no IDs yet.
-        String url = "https://" + ALTERNATE_REGISTER_HOST + "/service/2/device_register/"
+        String url = endpoint
                 + "?aid=8662&app_name=novelread&version_code=73932&version_name=7.3.9.32"
                 + "&manifest_version_code=73932&update_version_code=73932&channel=update_64"
                 + "&device_platform=android&os=android&ssmix=a&device_type=25053RT47C"
