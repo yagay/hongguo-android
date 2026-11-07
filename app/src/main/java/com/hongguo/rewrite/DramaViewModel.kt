@@ -1179,6 +1179,14 @@ class DramaViewModel(application: Application) : AndroidViewModel(application) {
             preparingDetail = false, playing = false) }
     }
 
+    fun setDramaCompleted(seriesId: String, completed: Boolean) {
+        if (!seriesId.matches(Regex("[0-9]{1,30}"))) return
+        val updated = if (completed) state.value.completedDramaIds + seriesId
+            else state.value.completedDramaIds - seriesId
+        prefs.edit().putStringSet("completed_drama_ids_v1", updated).apply()
+        mutable.update { it.copy(completedDramaIds = updated) }
+    }
+
     fun toggleFavoriteForDrama(drama: Drama) {
         if (!drama.id.matches(Regex("[0-9]{1,30}"))) return
         val episode = state.value.library.firstOrNull { it.drama.id == drama.id }?.episode ?: 1
