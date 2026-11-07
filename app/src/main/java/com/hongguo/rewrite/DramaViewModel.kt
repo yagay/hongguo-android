@@ -1234,7 +1234,7 @@ class DramaViewModel(application: Application) : AndroidViewModel(application) {
         }
         closeAccount()
         open(Drama(id, progress.series.title, progress.series.cover),
-            resumeEp = progress.episodeIndex + 1)
+            resumeEp = progress.episodeIndex + 1, showDetails = false)
     }
 
     fun openCloudDrama(series: Series) {
@@ -1243,7 +1243,8 @@ class DramaViewModel(application: Application) : AndroidViewModel(application) {
         open(Drama(series.id, series.title, series.cover))
     }
 
-    fun open(drama: Drama, resumeEp: Int? = null, feed: Boolean = false) {
+    fun open(drama: Drama, resumeEp: Int? = null, feed: Boolean = false,
+        showDetails: Boolean = !feed) {
         ++relatedGeneration
         relatedJob?.cancel()
         clearSocial()
@@ -1254,7 +1255,9 @@ class DramaViewModel(application: Application) : AndroidViewModel(application) {
         clearPreloadedNext()
         startEpisodeHint = resumeEp
         mutable.update { it.copy(offlinePlaybackUri = null, detail = null, preparingDetail = true,
-            feedMode = feed, relatedWorks = emptyList(), relatedSeries = null,
+            feedMode = feed, detailPageVisible = showDetails,
+            detailEntryEnabled = showDetails, relatedWorks = emptyList(),
+            relatedSeries = null,
             relatedLoading = false, relatedError = null,
             playbackError = null, playbackUrl = null, playing = false) }
         // Official swipe recommendations must use their matching native detail API.
@@ -1286,7 +1289,7 @@ class DramaViewModel(application: Application) : AndroidViewModel(application) {
                 loadSocialStats(resolved.drama.id)
                 if (api == null) loadLabels(resolved.drama.id)
                 loadRelated(resolved.drama.id)
-                play(index)
+                if (!showDetails) play(index)
             } catch (e: CancellationException) {
                 throw e
             } catch (e: Exception) {
@@ -1302,6 +1305,7 @@ class DramaViewModel(application: Application) : AndroidViewModel(application) {
     fun play(index: Int) {
         val detail = state.value.detail ?: return
         if (index !in detail.episodes.indices) return
+        mutable.update { it.copy(detailPageVisible = false) }
         if (state.value.offlinePlaybackUri != null) {
             mutable.update { it.copy(episodeIndex = index,
                 playbackUrl = it.offlinePlaybackUri, playing = true) }
@@ -1475,6 +1479,22 @@ class DramaViewModel(application: Application) : AndroidViewModel(application) {
         if (index < (s.detail?.episodes?.size ?: 0)) play(index)
     }
 
+    /**
+     * Return to the already loaded detail page without re-fetching episode data.
+     * Release the active stream, cancel in-flight media work, and keep its selection.
+     */
+    fun backFromPlayer() {
+        val s = state.value
+        if (!s.feedMode && s.detailEntryEnabled && s.detail != null && !s.detailPageVisible) {
+            ++detailId
+            detailJob?.cancel()
+            closeNativeVideo()
+            clearPreloadedNext()
+            mutable.update { it.copy(detailPageVisible = true,
+                playbackUrl = null, playing = false, playbackError = null) }
+        } else closePlayer()
+    }
+
     fun closePlayer() {
         homeFeedExcludedIds = emptySet()
         pendingFeedAdvance = false
@@ -1493,7 +1513,9 @@ class DramaViewModel(application: Application) : AndroidViewModel(application) {
         firstFrameFor = null
         mutable.update { it.copy(detail = null, playbackUrl = null,
             offlinePlaybackUri = null,
-            feedMode = false, feedItems = emptyList(), feedLoading = false,
+            feedMode = false, detailPageVisible = false,
+            detailEntryEnabled = false,
+            feedItems = emptyList(), feedLoading = false,
             feedHasMore = false, feedError = null,
             relatedSeries = null, relatedWorks = emptyList(),
             relatedLoading = false, relatedError = null,
