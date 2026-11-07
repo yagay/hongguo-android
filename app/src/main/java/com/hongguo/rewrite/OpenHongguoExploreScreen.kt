@@ -72,6 +72,7 @@ internal fun OpenHongguoExploreScreen(
     var cursor by remember { mutableStateOf("") }
     var rows by remember { mutableStateOf(emptyList<OpenHongguoBrowseItem>()) }
     var more by remember { mutableStateOf(false) }
+    var nextCursor by remember { mutableStateOf("") }
     var loading by remember { mutableStateOf(false) }
     var error by remember { mutableStateOf<String?>(null) }
     var refresh by remember { mutableIntStateOf(0) }
@@ -80,6 +81,7 @@ internal fun OpenHongguoExploreScreen(
     var works by remember { mutableStateOf(emptyList<Work>()) }
     var worksCursor by remember { mutableStateOf("") }
     var worksMore by remember { mutableStateOf(false) }
+    var nextWorksCursor by remember { mutableStateOf("") }
     var worksLoading by remember { mutableStateOf(false) }
 
     BackHandler { if (actorId.isNotBlank()) actorId = "" else onClose() }
@@ -91,6 +93,7 @@ internal fun OpenHongguoExploreScreen(
             val page = source.browse(tab, cursor)
             rows = if (cursor.isEmpty()) page.items else
                 (rows + page.items).distinctBy { it.id.ifBlank { it.title } }
+            nextCursor = page.cursor
             more = page.hasMore && page.cursor.isNotBlank() && page.cursor != cursor
         } catch (e: CancellationException) {
             throw e
@@ -112,6 +115,7 @@ internal fun OpenHongguoExploreScreen(
             val page = source.personWorks(actorId, worksCursor)
             works = if (worksCursor.isEmpty()) page.items else
                 (works + page.items).distinctBy(Work::seriesId)
+            nextWorksCursor = page.cursor
             worksMore = page.hasMore && page.cursor.isNotBlank() &&
                 page.cursor != worksCursor
         } catch (e: CancellationException) {
@@ -155,6 +159,7 @@ internal fun OpenHongguoExploreScreen(
                                 cursor = ""
                                 rows = emptyList()
                                 more = false
+                                nextCursor = ""
                                 error = null
                             }
                         },
@@ -201,6 +206,7 @@ internal fun OpenHongguoExploreScreen(
                                 works = emptyList()
                                 worksCursor = ""
                                 worksMore = false
+                                nextWorksCursor = ""
                             } else {
                                 onClose()
                                 model.open(Drama(row.id, row.title, row.cover,
@@ -243,15 +249,19 @@ internal fun OpenHongguoExploreScreen(
                     }) { Text("重试") }
                 }
             } }
-            if (actorId.isBlank() && more && !loading) item {
+            if (actorId.isNotBlank() && worksMore && !worksLoading) item {
                 Box(Modifier.fillMaxWidth().padding(12.dp),
                     contentAlignment = Alignment.Center) {
                     OutlinedButton(onClick = {
-                        // Cursor changes only on explicit user request.
-                        // Read-ahead must never silently exhaust an SDK source.
-                        // Latest server cursor is stored separately below.
-                        refresh++
-                    }) { Text("加载更多") }
+                        if (nextWorksCursor.isNotBlank()) worksCursor = nextWorksCursor
+                    }) { Text("加载更多作品") }
+                }
+            }
+            if (actorId.isBlank() && more && !loading) item {
+                Box(Modifier.fillMaxWidth().padding(12.dp),
+                    contentAlignment = Alignment.Center) {
+                    OutlinedButton(onClick = { if (nextCursor.isNotBlank())
+                        cursor = nextCursor }) { Text("加载更多") }
                 }
             }
         }
