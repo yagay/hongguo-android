@@ -17,7 +17,6 @@ import androidx.compose.foundation.layout.height
 import androidx.compose.foundation.layout.heightIn
 import androidx.compose.foundation.layout.padding
 import androidx.compose.foundation.layout.size
-import androidx.compose.foundation.layout.heightIn
 import androidx.compose.foundation.layout.width
 import androidx.compose.foundation.lazy.grid.GridCells
 import androidx.compose.foundation.lazy.grid.GridItemSpan
@@ -57,6 +56,9 @@ import androidx.compose.runtime.mutableStateOf
 import androidx.compose.runtime.remember
 import androidx.compose.runtime.saveable.rememberSaveable
 import androidx.compose.runtime.setValue
+import androidx.compose.runtime.snapshotFlow
+import kotlinx.coroutines.flow.distinctUntilChanged
+import kotlinx.coroutines.flow.collect
 import androidx.compose.ui.focus.onFocusChanged
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
@@ -83,6 +85,25 @@ internal fun CatalogScreen(state: AppState, model: DramaViewModel) {
     LaunchedEffect(state.section, state.board, state.genre) {
         grid.scrollToItem(0)
         filtersOpen = false
+    }
+    // The video feed can return just 1–3 cards at a time. The grid must not
+    // require repeated "加载更多" taps when the last row is already visible.
+    // On error or while another request is running, stop automatic pagination.
+    LaunchedEffect(
+        grid, state.section, state.items.size, state.loading, state.moreLoading,
+        state.hasMore, state.error, state.backend,
+    ) {
+        snapshotFlow {
+            val layout = grid.layoutInfo
+            RecommendationLoadingPolicy.nearEnd(
+                native = state.backend.isBlank(), section = state.section,
+                loading = state.loading, moreLoading = state.moreLoading,
+                hasMore = state.hasMore, hasError = state.error != null,
+                itemCount = state.items.size,
+                lastVisible = layout.visibleItemsInfo.lastOrNull()?.index ?: -1,
+                layoutItems = layout.totalItemsCount,
+            )
+        }.distinctUntilChanged().collect { if (it) model.more() }
     }
     Scaffold(
         contentWindowInsets = WindowInsets(0, 0, 0, 0),

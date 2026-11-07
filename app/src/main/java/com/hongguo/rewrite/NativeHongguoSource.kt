@@ -31,6 +31,7 @@ class NativeHongguoSource(
     private val websiteCovers = NativeWebsiteSource(diagnostics = diagnostics)
     private var recommendationFeed = RecommendationFeed(repository.http)
     private var usePublicRecommendationFallback = false
+    private var publicRecommendationStartPage = 1
     private val episodeComments by lazy { AppCommentPages() }
     private val publicComments by lazy { PublicComments(repository.http) }
     private val timedComments by lazy { TimedComments() }
@@ -112,18 +113,29 @@ class NativeHongguoSource(
                 if (page == 1) {
                     recommendationFeed = RecommendationFeed(repository.http)
                     usePublicRecommendationFallback = false
+                    publicRecommendationStartPage = 1
                 }
-                if (usePublicRecommendationFallback) repository.home(page)
-                else try {
-                    recommendationFeed.page(page)
+                if (usePublicRecommendationFallback) {
+                    repository.home((page - publicRecommendationStartPage + 1).coerceAtLeast(1))
+                } else try {
+                    recommendationFeed.page(page).also { batch ->
+                        if (batch.items.size <= 3) {
+                            diagnostics?.record("FEED", "SMALL_BATCH")
+                        }
+                    }
+                } catch (cancel: kotlinx.coroutines.CancellationException) {
+                    throw cancel
                 } catch (error: Exception) {
-                    // A failed official anonymous feed must not blank the
-                    // recommendation screen; use the public catalog for this
-                    // session, with consistent pagination origin.
-                    if (page != 1) throw error
+                    // If the anonymous feed stops after an initial 1–3 cards,
+                    // continue with public page 1 rather than trapping the
+                    // grid on those few dramas. Keep the fallback page offset
+                    // consistent on all subsequent "more" calls.
                     usePublicRecommendationFallback = true
-                    diagnostics?.record("FEED", "PUBLIC_FALLBACK")
-                    repository.home(page)
+                    publicRecommendationStartPage = page
+                    diagnostics?.record("FEED",
+                        if (page == 1) "PUBLIC_FALLBACK"
+                        else "PAGINATION_PUBLIC_FALLBACK")
+                    repository.home(1)
                 }
             }
             Section.RANK -> repository.rankPage(boardFor(board), page)
