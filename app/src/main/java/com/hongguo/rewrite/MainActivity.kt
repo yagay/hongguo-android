@@ -82,7 +82,7 @@ private fun HongguoApp(model: DramaViewModel = viewModel()) {
                 }
                 when {
                     state.modal == Modal.SETTINGS -> SettingsScreen(state, model)
-                    state.detail != null -> key(state.detail.drama.id, state.feedMode) {
+                    state.detail != null -> key(state.detail?.drama?.id, state.feedMode) {
                         NativePlayer(state, model)
                     }
                     state.preparingDetail -> {
