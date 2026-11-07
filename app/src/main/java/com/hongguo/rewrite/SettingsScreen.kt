@@ -114,6 +114,20 @@ internal fun SettingsScreen(state: AppState, model: DramaViewModel) {
             }
             item { HorizontalDivider() }
             item {
+                Text("播放交互", style = MaterialTheme.typography.titleMedium)
+                Row(Modifier.fillMaxWidth(), verticalAlignment = Alignment.CenterVertically) {
+                    Column(Modifier.weight(1f)) {
+                        Text("播放画面弹幕")
+                        Text("显示红果匿名只读的分集定时评论；关闭后不请求弹幕",
+                            style = MaterialTheme.typography.bodySmall)
+                    }
+                    Switch(checked = state.danmakuEnabled,
+                        onCheckedChange = model::setDanmaku,
+                        modifier = Modifier.testTag("danmaku_switch"))
+                }
+            }
+            item { HorizontalDivider() }
+            item {
                 Text("诊断日志", style = MaterialTheme.typography.titleMedium)
                 Text("记录目录、剧集、播放和下载的操作阶段、错误代码、响应状态及耗时。不采集账号、搜索关键词、剧名、视频地址或 API 密钥。",
                     style = MaterialTheme.typography.bodySmall)

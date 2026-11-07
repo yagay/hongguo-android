@@ -38,6 +38,10 @@ class DramaViewModel(application: Application) : AndroidViewModel(application) {
     private var pageJob: Job? = null
     private var detailJob: Job? = null
     private var downloadJob: Job? = null
+    private var commentsJob: Job? = null
+    private var danmakuJob: Job? = null
+    private var commentsGeneration = 0L
+    private var danmakuGeneration = 0L
     private val localDownloadJobs = mutableMapOf<String, Job>()
     private var requestId = 0L
     private var detailId = 0L
@@ -47,7 +51,8 @@ class DramaViewModel(application: Application) : AndroidViewModel(application) {
     private val mutable = MutableStateFlow(
         AppState(backend = prefs.getString("backend", "").orEmpty(),
             library = library.list(false), favorites = library.list(true),
-            logEnabled = diagnostics.enabled)
+            logEnabled = diagnostics.enabled,
+            danmakuEnabled = prefs.getBoolean("danmaku_enabled", false))
     )
     val state = mutable.asStateFlow()
 
@@ -161,6 +166,118 @@ class DramaViewModel(application: Application) : AndroidViewModel(application) {
         }
     }
 
+    private fun clearEngagement() {
+        commentsGeneration++
+        danmakuGeneration++
+        commentsJob?.cancel()
+        danmakuJob?.cancel()
+        mutable.update {
+            it.copy(commentsForVid = null, comments = emptyList(),
+                commentsCursor = "", commentsHasMore = false,
+                commentsLoading = false, commentsError = null,
+                commentsLimited = false,
+                danmakuForVid = null, danmakuItems = emptyList(),
+                danmakuLoadedUntilMs = 0L, danmakuLoading = false,
+                danmakuError = null)
+        }
+    }
+
+    fun playIfDifferent(index: Int) {
+        if (index in (state.value.detail?.episodes?.indices ?: IntRange.EMPTY) &&
+            state.value.episodeIndex != index) play(index)
+    }
+
+    fun setDanmaku(enabled: Boolean) {
+        prefs.edit().putBoolean("danmaku_enabled", enabled).apply()
+        diagnostics.record("DANMAKU", if (enabled) "ENABLED" else "DISABLED")
+        mutable.update { it.copy(danmakuEnabled = enabled) }
+        if (!enabled) danmakuJob?.cancel()
+    }
+
+    /** Open episode-specific anonymous comments. Never reuses stale pages. */
+    fun loadComments(reset: Boolean = true) {
+        val detail = state.value.detail ?: return
+        val vid = detail.episodes.getOrNull(state.value.episodeIndex)?.vid ?: return
+        val sid = detail.drama.id
+        val s = state.value
+        if (!reset && (s.commentsLoading || !s.commentsHasMore ||
+            s.commentsCursor.isBlank() || s.commentsForVid != vid)) return
+        val cursor = if (reset) "" else s.commentsCursor
+        val generation = if (reset) ++commentsGeneration else commentsGeneration
+        commentsJob?.cancel()
+        mutable.update {
+            it.copy(commentsForVid = vid, commentsLoading = true,
+                commentsError = null,
+                comments = if (reset) emptyList() else it.comments,
+                commentsCursor = if (reset) "" else it.commentsCursor,
+                commentsHasMore = if (reset) false else it.commentsHasMore)
+        }
+        commentsJob = viewModelScope.launch {
+            diagnostics.record("COMMENTS", if (reset) "FIRST_PAGE" else "NEXT_PAGE")
+            try {
+                val page = nativeSource.comments(sid, vid, cursor)
+                if (generation != commentsGeneration ||
+                    state.value.detail?.episodes?.getOrNull(state.value.episodeIndex)?.vid != vid)
+                    return@launch
+                mutable.update {
+                    it.copy(comments = (it.comments + page.items).distinctBy(CommentEntry::id).take(500),
+                        commentsCursor = page.nextCursor,
+                        commentsHasMore = page.hasMore,
+                        commentsLoading = false, commentsLimited = page.limited)
+                }
+                diagnostics.record("COMMENTS", if (page.limited) "PUBLIC_LIMITED" else "READ_SUCCESS")
+            } catch (e: CancellationException) {
+                throw e
+            } catch (e: Exception) {
+                if (generation == commentsGeneration) {
+                    val problem = PlaybackProblem.describe("读取评论", e)
+                    diagnostics.record("COMMENTS", "READ_FAIL_" + problem.substringBefore(" · "))
+                    mutable.update { it.copy(commentsError = problem, commentsLoading = false) }
+                }
+            }
+        }
+    }
+
+    /** Fetch timed comments ahead of the current player position, only on demand. */
+    fun ensureDanmaku(positionMs: Long, durationMs: Long) {
+        val s = state.value
+        if (!s.danmakuEnabled || s.danmakuLoading || durationMs !in 1000L..86_400_000L) return
+        val detail = s.detail ?: return
+        val vid = detail.episodes.getOrNull(s.episodeIndex)?.vid ?: return
+        val sid = detail.drama.id
+        val same = s.danmakuForVid == vid
+        val start = if (same) s.danmakuLoadedUntilMs else 0L
+        if (start >= durationMs || (same && positionMs + 15_000 < start)) return
+        val generation = danmakuGeneration
+        mutable.update { it.copy(danmakuForVid = vid, danmakuLoading = true,
+            danmakuError = null) }
+        danmakuJob = viewModelScope.launch {
+            diagnostics.record("DANMAKU", "FETCH_START")
+            try {
+                val page = nativeSource.danmaku(sid, vid, start, durationMs)
+                if (generation != danmakuGeneration ||
+                    state.value.detail?.episodes?.getOrNull(state.value.episodeIndex)?.vid != vid)
+                    return@launch
+                mutable.update { it.copy(
+                    danmakuForVid = vid,
+                    danmakuItems = (it.danmakuItems + page.items)
+                        .distinctBy(DanmakuEntry::id).takeLast(600),
+                    danmakuLoadedUntilMs = page.nextMs.coerceAtMost(durationMs),
+                    danmakuLoading = false,
+                ) }
+                diagnostics.record("DANMAKU", "READ_SUCCESS")
+            } catch (e: CancellationException) {
+                throw e
+            } catch (e: Exception) {
+                if (generation == danmakuGeneration) {
+                    val problem = PlaybackProblem.describe("读取弹幕", e)
+                    diagnostics.record("DANMAKU", "READ_FAIL_" + problem.substringBefore(" · "))
+                    mutable.update { it.copy(danmakuError = problem, danmakuLoading = false) }
+                }
+            }
+        }
+    }
+
     fun show(modal: Modal) {
         mutable.update { it.copy(modal = modal) }
         if (modal == Modal.SETTINGS) refreshDiagnostics()
@@ -235,6 +352,7 @@ class DramaViewModel(application: Application) : AndroidViewModel(application) {
     fun cover(image: String): String = source?.coverUrl(image) ?: nativeSource.coverUrl(image)
 
     fun open(drama: Drama, resumeEp: Int? = null) {
+        clearEngagement()
         detailJob?.cancel()
         val version = ++detailId
         firstFrameFor = null
@@ -277,6 +395,7 @@ class DramaViewModel(application: Application) : AndroidViewModel(application) {
     fun play(index: Int) {
         val detail = state.value.detail ?: return
         if (index !in detail.episodes.indices) return
+        clearEngagement()
         val api = source
         val version = ++detailId
         val vid = detail.episodes[index].vid
@@ -342,6 +461,7 @@ class DramaViewModel(application: Application) : AndroidViewModel(application) {
     }
 
     fun closePlayer() {
+        clearEngagement()
         ++detailId
         detailJob?.cancel()
         closeNativeVideo()

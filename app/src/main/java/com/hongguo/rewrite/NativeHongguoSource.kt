@@ -1,5 +1,9 @@
 package com.hongguo.rewrite
 
+import com.hongguotv.core.AppCommentPages
+import com.hongguotv.core.PublicComments
+import com.hongguotv.core.TimedComments
+import org.json.JSONObject
 import com.hongguotv.core.ContentRepository
 import com.hongguotv.core.DramaCategory
 import com.hongguotv.core.DiscoveryCursor
@@ -24,6 +28,9 @@ class NativeHongguoSource(
     private val diagnostics: DiagnosticLog? = null,
 ) {
     private val websiteCovers = NativeWebsiteSource()
+    private val episodeComments by lazy { AppCommentPages() }
+    private val publicComments by lazy { PublicComments(repository.http) }
+    private val timedComments by lazy { TimedComments() }
     private val discoveryTopics = mutableMapOf<String, List<FilterOption>>()
     private val nativeFilterGroups = mutableMapOf<String, List<FilterGroup>>()
     private val filterCursors = mutableMapOf<String, MutableMap<Int, DiscoveryCursor>>()
@@ -234,6 +241,56 @@ class NativeHongguoSource(
         }
         throw last ?: IOException("MEDIA_PREPARATION_FAILED")
     }
+
+    /** First-party read-only comment pages; website public reviews are
+     * an explicit limited fallback if the anonymous app API fails.
+     */
+    suspend fun comments(series: String, vid: String, cursor: String = ""): CommentsPage =
+        withContext(Dispatchers.IO) {
+            val result: JSONObject
+            var limited = false
+            if (cursor.isBlank()) {
+                result = try {
+                    episodeComments.read(series, vid, "")
+                } catch (failure: Exception) {
+                    diagnostics?.record("COMMENTS", "APP_FALLBACK")
+                    limited = true
+                    publicComments.read(series, vid).getJSONObject("comments")
+                }
+            } else {
+                result = episodeComments.read(series, vid, cursor)
+            }
+            val rows = result.optJSONArray("items")
+                ?: throw IOException("COMMENTS_INVALID")
+            val items = (0 until minOf(rows.length(), 100)).mapNotNull { index ->
+                val row = rows.optJSONObject(index) ?: return@mapNotNull null
+                val id = row.optString("id")
+                val text = row.optString("content").trim().take(2000)
+                if (id.isBlank() || text.isBlank()) return@mapNotNull null
+                CommentEntry(id, row.optString("author").ifBlank { "匿名用户" }.take(80),
+                    text, row.optLong("likes", 0).coerceAtLeast(0),
+                    row.optLong("created", 0).coerceAtLeast(0),
+                    row.optString("avatar").take(4096))
+            }.distinctBy { it.id }
+            CommentsPage(items, if (limited) "" else result.optString("nextCursor"),
+                !limited && result.optBoolean("hasMore"), limited)
+        }
+
+    /** Timestamped danmaku for current episode, never fabricated locally. */
+    suspend fun danmaku(series: String, vid: String, startMs: Long, durationMs: Long): DanmakuPage =
+        withContext(Dispatchers.IO) {
+            val result = timedComments.read(series, vid, startMs, durationMs)
+            val rows = result.getJSONArray("items")
+            val items = (0 until minOf(rows.length(), 100)).mapNotNull { index ->
+                val row = rows.optJSONObject(index) ?: return@mapNotNull null
+                val id = row.optString("id")
+                val content = row.optString("text").trim().take(180)
+                val time = row.optLong("timeMS", -1)
+                if (id.isBlank() || content.isBlank() || time < 0) null
+                else DanmakuEntry(id, content, time)
+            }.distinctBy { it.id }
+            DanmakuPage(items, result.getLong("nextMS"))
+        }
 
     fun coverUrl(image: String) = websiteCovers.coverUrl(image)
 

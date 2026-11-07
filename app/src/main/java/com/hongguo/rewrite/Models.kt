@@ -10,6 +10,23 @@ data class Drama(
 data class Episode(val index: Int, val vid: String, val title: String = "")
 data class DramaDetail(val drama: Drama, val episodes: List<Episode>)
 data class CatalogPage(val items: List<Drama>, val hasMore: Boolean, val nextOffset: Int)
+data class CommentEntry(
+    val id: String,
+    val author: String,
+    val content: String,
+    val likes: Long,
+    val created: Long,
+    val avatar: String = "",
+)
+data class CommentsPage(
+    val items: List<CommentEntry>,
+    val nextCursor: String = "",
+    val hasMore: Boolean = false,
+    val limited: Boolean = false,
+)
+data class DanmakuEntry(val id: String, val content: String, val timeMs: Long)
+data class DanmakuPage(val items: List<DanmakuEntry>, val nextMs: Long)
+
 data class FilterOption(val value: String, val label: String)
 data class FilterGroup(val key: String, val name: String, val options: List<FilterOption>)
 data class Watched(val drama: Drama, val episode: Int, val updated: Long)
@@ -53,4 +70,17 @@ data class AppState(
     val logEnabled: Boolean = true,
     val logText: String = "",
     val logNotice: String? = null,
+    val danmakuEnabled: Boolean = false,
+    val commentsForVid: String? = null,
+    val comments: List<CommentEntry> = emptyList(),
+    val commentsCursor: String = "",
+    val commentsHasMore: Boolean = false,
+    val commentsLoading: Boolean = false,
+    val commentsError: String? = null,
+    val commentsLimited: Boolean = false,
+    val danmakuForVid: String? = null,
+    val danmakuItems: List<DanmakuEntry> = emptyList(),
+    val danmakuLoadedUntilMs: Long = 0L,
+    val danmakuLoading: Boolean = false,
+    val danmakuError: String? = null,
 )
