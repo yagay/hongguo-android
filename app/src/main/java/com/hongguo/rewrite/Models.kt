@@ -85,6 +85,10 @@ data class AppState(
     val library: List<Watched> = emptyList(),
     val favorites: List<Watched> = emptyList(),
     val likedDramaIds: Set<String> = emptySet(),
+    /** Private locally saved watch-later entries, separate from cloud favorites. */
+    val watchLater: List<Drama> = emptyList(),
+    val hiddenRecommendationIds: Set<String> = emptySet(),
+    val autoPlayNext: Boolean = true,
     val downloadTasks: List<DownloadTask> = emptyList(),
     val backend: String = "",
     val settingsMessage: String? = null,
