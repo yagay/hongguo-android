@@ -93,14 +93,14 @@ class NativeHongguoSource(
                 it.matches(Regex("[0-9]{1,30}"))
             }
             // The server itself can deduplicate its official feed with the seen IDs.
-            excluded.takeLast(300).forEach(reelsCursor::markSeen)
+            excluded.toList().takeLast(300).forEach(reelsCursor::markSeen)
             if (reelsPageNumber > 100) {
                 reelsCursor = RecommendationCursor()
                 reelsFeed = RecommendationFeed(repository.http,
                     account = synchronized(recommendationLock) { accountFeed },
                     cursor = reelsCursor)
                 reelsPageNumber = 1
-                excluded.takeLast(300).forEach(reelsCursor::markSeen)
+                excluded.toList().takeLast(300).forEach(reelsCursor::markSeen)
             }
             val candidates = mutableListOf<Series>()
             var upstreamMore = true
