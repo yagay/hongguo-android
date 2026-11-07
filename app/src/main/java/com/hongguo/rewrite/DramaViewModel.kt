@@ -5,6 +5,9 @@ import android.net.Uri
 import com.hongguotv.core.RemoteVideo
 import java.io.File
 import java.io.IOException
+import java.io.EOFException
+import kotlinx.coroutines.ensureActive
+import kotlinx.coroutines.currentCoroutineContext
 import kotlinx.coroutines.Dispatchers
 import androidx.lifecycle.AndroidViewModel
 import androidx.lifecycle.viewModelScope
@@ -35,6 +38,7 @@ class DramaViewModel(application: Application) : AndroidViewModel(application) {
     private var pageJob: Job? = null
     private var detailJob: Job? = null
     private var downloadJob: Job? = null
+    private val localDownloadJobs = mutableMapOf<String, Job>()
     private var requestId = 0L
     private var detailId = 0L
     private var firstFrameFor: String? = null
@@ -406,6 +410,85 @@ class DramaViewModel(application: Application) : AndroidViewModel(application) {
                 mutable.update { it.copy(error = errorText("下载", e)) }
             }
         }
+    }
+
+    /** Export a single decrypted MP4 to the user-chosen SAF document.
+     * Foreground-process task: not resumable after process death.
+     */
+    fun downloadNative(vid: String, uri: Uri) {
+        if (!vid.matches(Regex("[0-9]{1,30}"))) return
+        val taskId = "local-" + System.currentTimeMillis() + "-" + vid.takeLast(6)
+        mutable.update { s ->
+            s.copy(downloadTasks = (
+                listOf(DownloadTask(taskId, "等待下载", 0, 1, emptyList())) + s.downloadTasks
+            ).take(40), modal = Modal.DOWNLOAD)
+        }
+        val job = viewModelScope.launch(Dispatchers.IO) {
+            var video: RemoteVideo? = null
+            val started = System.nanoTime()
+            diagnostics.record("DOWNLOAD", "START")
+            try {
+                video = nativeSource.openVideo(vid)
+                val total = video.total
+                if (total <= 0) throw IOException("下载资源长度无效")
+                val output = getApplication<Application>()
+                    .contentResolver.openOutputStream(uri, "w")
+                    ?: throw IOException("无法打开目标文件")
+                output.use { stream ->
+                    var offset = 0L
+                    var shownPercent = -1
+                    val buffer = ByteArray(32 * 1024)
+                    while (offset < total) {
+                        currentCoroutineContext().ensureActive()
+                        val count = minOf(512 * 1024L, total - offset).toInt()
+                        video.openRead(offset, count).use { input ->
+                            var copied = 0
+                            while (copied < count) {
+                                currentCoroutineContext().ensureActive()
+                                val n = input.read(buffer, 0, minOf(buffer.size, count - copied))
+                                if (n <= 0) throw EOFException("下载片段读取中断")
+                                stream.write(buffer, 0, n)
+                                copied += n
+                            }
+                        }
+                        offset += count
+                        val percent = (offset * 100 / total).toInt()
+                        if (percent != shownPercent) {
+                            shownPercent = percent
+                            val label = "下载中 " + percent + "%"
+                            mutable.update { s -> s.copy(downloadTasks = s.downloadTasks.map {
+                                if (it.id == taskId) it.copy(status = label) else it
+                            }) }
+                        }
+                    }
+                    stream.flush()
+                }
+                diagnostics.record("DOWNLOAD", "COMPLETE", elapsed(started))
+                mutable.update { s -> s.copy(downloadTasks = s.downloadTasks.map {
+                    if (it.id == taskId) it.copy(status = "已保存到所选文件", done = 1) else it
+                }) }
+            } catch (e: CancellationException) {
+                diagnostics.record("DOWNLOAD", "CANCELLED")
+                mutable.update { s -> s.copy(downloadTasks = s.downloadTasks.map {
+                    if (it.id == taskId) it.copy(status = "已取消（目标文件可能不完整）") else it
+                }) }
+                throw e
+            } catch (e: Exception) {
+                diagnostics.record("DOWNLOAD", "FAILED", elapsed(started))
+                val label = PlaybackProblem.describe("本机下载", e)
+                mutable.update { s -> s.copy(downloadTasks = s.downloadTasks.map {
+                    if (it.id == taskId) it.copy(status = label, failed = listOf(1)) else it
+                }) }
+            } finally {
+                video?.close()
+                synchronized(localDownloadJobs) { localDownloadJobs.remove(taskId) }
+            }
+        }
+        synchronized(localDownloadJobs) { localDownloadJobs[taskId] = job }
+    }
+
+    fun cancelDownload(taskId: String) {
+        synchronized(localDownloadJobs) { localDownloadJobs[taskId] }?.cancel()
     }
 
     fun updateDownloads() {

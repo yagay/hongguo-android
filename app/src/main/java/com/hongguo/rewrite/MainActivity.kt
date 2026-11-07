@@ -374,13 +374,23 @@ private fun WebDialogs(state: AppState, model: DramaViewModel) {
             title = { Text("下载任务") },
             text = {
                 Column(verticalArrangement = Arrangement.spacedBy(8.dp)) {
-                    Text("任务运行在所连接的网页版服务器，文件不会自动保存到本手机。",
+                    Text(if (state.backend.isBlank())
+                            "本机下载将写入选定的保存位置。需要保持应用进程运行，暂不支持断点续传。"
+                        else "任务运行在所连接的网页版服务器，文件不会自动保存到本手机。",
                         color = Muted, fontSize = 12.sp)
-                    state.downloadTasks.forEach {
-                        Text(it.status + " · " + it.done + "/" + it.total + " 集")
+                    state.downloadTasks.forEach { task ->
+                        Row(Modifier.fillMaxWidth(), verticalAlignment = Alignment.CenterVertically) {
+                            Text(task.status + " · " + task.done + "/" + task.total + " 集",
+                                modifier = Modifier.weight(1f))
+                            if (task.id.startsWith("local-") && task.status.startsWith("下载中")) {
+                                TextButton(onClick = { model.cancelDownload(task.id) }) { Text("取消") }
+                            }
+                        }
                     }
                     if (state.downloadTasks.isEmpty()) Text("暂无任务")
-                    OutlinedButton(onClick = model::updateDownloads) { Text("刷新进度") }
+                    if (state.backend.isNotBlank()) OutlinedButton(onClick = model::updateDownloads) {
+                        Text("刷新进度")
+                    }
                 }
             },
             confirmButton = { TextButton(onClick = model::closeModal) { Text("关闭") } })

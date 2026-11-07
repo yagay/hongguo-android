@@ -1,6 +1,8 @@
 package com.hongguo.rewrite
 
 import androidx.activity.compose.BackHandler
+import androidx.activity.compose.rememberLauncherForActivityResult
+import androidx.activity.result.contract.ActivityResultContracts
 import androidx.compose.foundation.background
 import androidx.compose.foundation.horizontalScroll
 import androidx.compose.foundation.verticalScroll
@@ -40,6 +42,7 @@ import androidx.compose.runtime.getValue
 import androidx.compose.runtime.mutableFloatStateOf
 import androidx.compose.runtime.mutableStateOf
 import androidx.compose.runtime.remember
+import androidx.compose.runtime.saveable.rememberSaveable
 import androidx.compose.runtime.setValue
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
@@ -62,6 +65,14 @@ internal fun NativePlayer(state: AppState, model: DramaViewModel) {
     val detail = state.detail ?: return
     var speed by remember { mutableFloatStateOf(1f) }
     var showEpisodes by remember { mutableStateOf(false) }
+    var pendingDownloadVid by rememberSaveable { mutableStateOf<String?>(null) }
+    val nativeFilePicker = rememberLauncherForActivityResult(
+        ActivityResultContracts.CreateDocument("video/mp4")
+    ) { uri ->
+        val vid = pendingDownloadVid
+        pendingDownloadVid = null
+        if (uri != null && vid != null) model.downloadNative(vid, uri)
+    }
     val selectedEpisode = detail.episodes.getOrNull(state.episodeIndex)
     BackHandler { model.closePlayer() }
     Column(Modifier.fillMaxSize().background(Color(0xFF151315))) {
@@ -115,7 +126,17 @@ internal fun NativePlayer(state: AppState, model: DramaViewModel) {
                 }
                 Spacer(Modifier.weight(1f))
                 TextButton(onClick = {
-                    model.download(selectedEpisode?.index ?: 1, selectedEpisode?.index ?: 1)
+                    selectedEpisode?.let { ep ->
+                        if (state.backend.isBlank()) {
+                            pendingDownloadVid = ep.vid
+                            val safeTitle = detail.drama.title.replace(
+                                Regex("""[^\p{L}\p{N}_-]"""), "_"
+                            ).take(35).ifBlank { "Hongguo" }
+                            nativeFilePicker.launch(safeTitle + "-EP" + ep.index + ".mp4")
+                        } else {
+                            model.download(ep.index, ep.index)
+                        }
+                    }
                 }, enabled = selectedEpisode != null) { Text("下载本集", color = Color.White) }
                 TextButton(onClick = model::nextEpisode) { Text("下一集", color = Color.White) }
             }
