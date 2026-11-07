@@ -131,6 +131,12 @@ class DramaViewModel(application: Application) : AndroidViewModel(application) {
         mutable.update { it.copy(autoPlayNext = enabled) }
     }
 
+    fun setDefaultPlaybackSpeed(value: Float) {
+        if (value !in setOf(0.75f, 1f, 1.25f, 1.5f, 2f, 3f)) return
+        prefs.edit().putFloat("default_playback_speed", value).apply()
+        mutable.update { it.copy(defaultPlaybackSpeed = value) }
+    }
+
     fun setSkipIntroSeconds(seconds: Int) {
         if (seconds !in 0..120) return
         prefs.edit().putInt("skip_intro_seconds", seconds).apply()
@@ -337,6 +343,7 @@ class DramaViewModel(application: Application) : AndroidViewModel(application) {
             skipOutroSeconds = prefs.getInt("skip_outro_seconds", 0).coerceIn(0, 120),
             retryPlaybackAutomatically = prefs.getBoolean("playback_auto_retry", true),
             recentSearches = recentQueries(),
+            defaultPlaybackSpeed = prefs.getFloat("default_playback_speed", 1f).coerceIn(0.75f, 3f),
             qualityLimit = prefs.getInt("quality_limit", 0)
                 .takeIf { it in setOf(0, 360, 480, 720, 1080) } ?: 0,
             logEnabled = diagnostics.enabled,
