@@ -190,7 +190,8 @@ class DramaViewModel(application: Application) : AndroidViewModel(application) {
     fun setDanmaku(enabled: Boolean) {
         prefs.edit().putBoolean("danmaku_enabled", enabled).apply()
         diagnostics.record("DANMAKU", if (enabled) "ENABLED" else "DISABLED")
-        mutable.update { it.copy(danmakuEnabled = enabled) }
+        mutable.update { it.copy(danmakuEnabled = enabled,
+            danmakuError = if (enabled) null else it.danmakuError) }
         if (!enabled) danmakuJob?.cancel()
     }
 
@@ -241,7 +242,10 @@ class DramaViewModel(application: Application) : AndroidViewModel(application) {
     /** Fetch timed comments ahead of the current player position, only on demand. */
     fun ensureDanmaku(positionMs: Long, durationMs: Long) {
         val s = state.value
-        if (!s.danmakuEnabled || s.danmakuLoading || durationMs !in 1000L..86_400_000L) return
+        // Stop retrying a rejected anonymous endpoint every few seconds.
+        // An explicit off/on toggle allows another attempt.
+        if (!s.danmakuEnabled || s.danmakuLoading || s.danmakuError != null ||
+            durationMs !in 1000L..86_400_000L) return
         val detail = s.detail ?: return
         val vid = detail.episodes.getOrNull(s.episodeIndex)?.vid ?: return
         val sid = detail.drama.id
