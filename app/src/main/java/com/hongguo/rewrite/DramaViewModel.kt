@@ -240,6 +240,7 @@ class DramaViewModel(application: Application) : AndroidViewModel(application) {
             library = library.list(false), favorites = library.list(true),
             likedDramaIds = prefs.getStringSet("local_liked_dramas", emptySet())?.toSet().orEmpty(),
             watchLater = readWatchLater(),
+            completedDramaIds = prefs.getStringSet("completed_drama_ids_v1", emptySet())?.toSet().orEmpty(),
             hiddenRecommendationIds = prefs.getStringSet("hidden_recommendations_v1", emptySet())?.toSet().orEmpty(),
             autoPlayNext = prefs.getBoolean("auto_play_next", true),
             recentSearches = recentQueries(),
@@ -1033,6 +1034,11 @@ class DramaViewModel(application: Application) : AndroidViewModel(application) {
         val ep = s.detail?.episodes?.getOrNull(s.episodeIndex) ?: return
         if (ep.vid == expectedVid) {
             library.clearCheckpoint(s.detail.drama.id, expectedVid)
+            if (s.episodeIndex == s.detail.episodes.lastIndex) {
+                val finished = state.value.completedDramaIds + s.detail.drama.id
+                prefs.edit().putStringSet("completed_drama_ids_v1", finished).apply()
+                mutable.update { it.copy(completedDramaIds = finished) }
+            }
             diagnostics.record("MEDIA", "EPISODE_FINISHED")
         }
     }
