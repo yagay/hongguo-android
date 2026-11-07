@@ -296,17 +296,30 @@ class DramaViewModel(application: Application) : AndroidViewModel(application) {
                 // Resolve a multi-season album only when the verified metadata
                 // says it exists. Do not generate season IDs from names.
                 if (meta.albumId != null) {
-                    runCatching { openHongguo.seasons(seriesId) }
-                        .onSuccess { seasons ->
-                            if (generation == sdkDetailGeneration &&
-                                state.value.detail?.drama?.id == seriesId) {
-                                mutable.update { it.copy(
-                                    openHongguoSeasons = seasons.distinctBy(Drama::id)
-                                        .filter { row -> row.id != seriesId }.take(30),
-                                ) }
-                                diagnostics.record("SDK", "SEASONS_READY")
+                    val seasons = try {
+                        openHongguo.seasons(seriesId).ifEmpty {
+                            openHongguo.album(meta.albumId).seasons.map {
+                                Drama(it.seriesId, it.title, it.coverUrl, it.episodeCount)
                             }
                         }
+                    } catch (e: CancellationException) {
+                        throw e
+                    } catch (_: Exception) {
+                        try {
+                            openHongguo.album(meta.albumId).seasons.map {
+                                Drama(it.seriesId, it.title, it.coverUrl, it.episodeCount)
+                            }
+                        } catch (e: CancellationException) { throw e }
+                        catch (_: Exception) { emptyList() }
+                    }
+                    if (generation == sdkDetailGeneration &&
+                        state.value.detail?.drama?.id == seriesId && seasons.isNotEmpty()) {
+                        mutable.update { it.copy(
+                            openHongguoSeasons = seasons.distinctBy(Drama::id)
+                                .filter { row -> row.id != seriesId }.take(30),
+                        ) }
+                        diagnostics.record("SDK", "SEASONS_READY")
+                    }
                 }
                 if (state.value.relatedWorks.isEmpty()) {
                     runCatching { openHongguo.related(seriesId) }
@@ -1390,6 +1403,8 @@ class DramaViewModel(application: Application) : AndroidViewModel(application) {
 
     fun open(drama: Drama, resumeEp: Int? = null, feed: Boolean = false,
         showDetails: Boolean = false) {
+        sdkDetailGeneration++
+        sdkDetailJob?.cancel()
         ++relatedGeneration
         relatedJob?.cancel()
         clearSocial()
@@ -1404,6 +1419,7 @@ class DramaViewModel(application: Application) : AndroidViewModel(application) {
             detailEntryEnabled = false, relatedWorks = emptyList(),
             relatedSeries = null,
             relatedLoading = false, relatedError = null,
+            openHongguoLoading = false, openHongguoSeasons = emptyList(),
             playbackError = null, playbackUrl = null, playing = false) }
         // Official swipe recommendations must use their matching native detail API.
         val api = if (feed) null else source
@@ -1434,7 +1450,8 @@ class DramaViewModel(application: Application) : AndroidViewModel(application) {
                 loadSocialStats(resolved.drama.id)
                 if (api == null) loadLabels(resolved.drama.id)
                 loadRelated(resolved.drama.id)
-                if (!showDetails) play(index)
+                if (showDetails) loadSdkDetails(resolved.drama.id)
+                else play(index)
             } catch (e: CancellationException) {
                 throw e
             } catch (e: Exception) {
