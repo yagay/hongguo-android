@@ -235,26 +235,32 @@ internal fun NativePlayer(state: AppState, model: DramaViewModel) {
     // This mirrors main's settled-page interaction model and avoids duplicate
     // transitions as a 2/3-page reel window recenters between dramas.
     val latestActivePage by rememberUpdatedState(activePage)
+    var recenteringPager by remember(pagerState) { mutableStateOf(false) }
     LaunchedEffect(pagerState, detail.drama.id, state.feedMode) {
         var userScrollArmed = false
-        snapshotFlow { pagerState.isScrollInProgress to pagerState.settledPage }
-            .distinctUntilChanged()
-            .collect { (scrolling, settled) ->
-                if (scrolling) {
-                    userScrollArmed = true
-                } else if (userScrollArmed) {
-                    userScrollArmed = false
-                    if (state.feedMode) {
-                        if (settled != latestActivePage) {
-                            model.navigateFeed(if (settled > latestActivePage) 1 else -1)
-                        }
-                    } else model.playIfDifferent(settled)
-                }
+        snapshotFlow {
+            Triple(pagerState.isScrollInProgress, pagerState.settledPage,
+                recenteringPager)
+        }.distinctUntilChanged().collect { (scrolling, settled, recentering) ->
+            if (scrolling && !recentering) {
+                userScrollArmed = true
+            } else if (!scrolling && !recentering && userScrollArmed) {
+                userScrollArmed = false
+                if (state.feedMode) {
+                    if (settled != latestActivePage)
+                        model.navigateFeed(if (settled > latestActivePage) 1 else -1)
+                } else model.playIfDifferent(settled)
             }
+        }
     }
     LaunchedEffect(state.episodeIndex) {
         if (pagerState.settledPage != activePage && !pagerState.isScrollInProgress) {
-            pagerState.animateScrollToPage(activePage)
+            recenteringPager = true
+            try {
+                pagerState.animateScrollToPage(activePage)
+            } finally {
+                recenteringPager = false
+            }
         }
         showComments = false
         showEpisodes = false
