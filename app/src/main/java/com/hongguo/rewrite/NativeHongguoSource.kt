@@ -218,7 +218,9 @@ class NativeHongguoSource(
      * Prefer an Android-compatible AVC rendition, falling back to HEVC only
      * when available; VVC/bytevc2 is never sent to the decoder.
      */
-    suspend fun openVideo(vid: String, nextVid: String? = null): RemoteVideo =
+    suspend fun openVideo(
+        vid: String, nextVid: String? = null, qualityLimit: Int = 0
+    ): RemoteVideo =
         withContext(Dispatchers.IO) {
         diagnostics?.record("PLAYBACK", "REGISTER_AND_MODEL_START")
         val started = System.nanoTime()
@@ -244,10 +246,9 @@ class NativeHongguoSource(
             throw IOException("CODEC_NOT_SUPPORTED")
         }
         val candidates = eligible.sortedWith(
-            compareByDescending<Rendition> { it.quality <= 1080 }
-                .thenByDescending { it.quality }
+            compareBy<Rendition> { QualityPolicy.rank(it.quality, qualityLimit) }
                 .thenByDescending { codecName(it.codec) == "video/avc" }
-        ).take(3)
+        ).take(4)
         var last: IOException? = null
         for (candidate in candidates) {
             val video = RemoteVideo(repository.http, candidate.toStreamInfo())

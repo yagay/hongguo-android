@@ -66,6 +66,11 @@ internal fun ReelScreenshotOverlay(
     episode: Episode?,
     speed: Float,
     fillVideo: Boolean,
+    qualityLimit: Int,
+    sleepTimerLabel: String,
+    onQuality: (Int) -> Unit,
+    onSleepMinutes: (Int) -> Unit,
+    onSleepEpisodes: (Int) -> Unit,
     onToggleFillVideo: () -> Unit,
     onBack: () -> Unit,
     onFavorite: () -> Unit,
@@ -130,6 +135,30 @@ internal fun ReelScreenshotOverlay(
                         text = { Text("下载本集", color = white) },
                         leadingIcon = { Icon(Icons.Outlined.Download, null, tint = white) },
                         onClick = { moreExpanded = false; onDownload() },
+                    )
+                    if (state.backend.isBlank()) {
+                        listOf(0 to "自动", 360 to "360P", 480 to "480P",
+                            720 to "720P", 1080 to "1080P").forEach { (value, label) ->
+                            DropdownMenuItem(
+                                text = { Text("清晰度上限 " + label +
+                                    if (qualityLimit == value) " ✓" else "",
+                                    color = white) },
+                                onClick = { moreExpanded = false; onQuality(value) }
+                            )
+                        }
+                    }
+                    listOf(0 to "关闭", 15 to "15分钟", 30 to "30分钟",
+                        60 to "60分钟").forEach { (minutes, label) ->
+                        DropdownMenuItem(
+                            text = { Text("定时停止 " + label +
+                                if (sleepTimerLabel != "关闭" && minutes == 0) " · 当前：" + sleepTimerLabel else "",
+                                color = white) },
+                            onClick = { moreExpanded = false; onSleepMinutes(minutes) }
+                        )
+                    }
+                    DropdownMenuItem(
+                        text = { Text("播完本集停止", color = white) },
+                        onClick = { moreExpanded = false; onSleepEpisodes(1) }
                     )
                     listOf(1f, 1.25f, 1.5f, 2f).forEach { value ->
                         DropdownMenuItem(

@@ -192,6 +192,14 @@ internal fun NativePlayer(state: AppState, model: DramaViewModel) {
             }
         }
     }
+    LaunchedEffect(detail.drama.id) {
+        while (isActive) {
+            delay(1_000)
+            if (model.shouldPauseForTimer()) {
+                playback.player?.pause()
+            }
+        }
+    }
     LaunchedEffect(state.danmakuEnabled, state.episodeIndex, playback.durationMs) {
         if (state.danmakuEnabled) {
             while (isActive) {
@@ -319,6 +327,11 @@ internal fun NativePlayer(state: AppState, model: DramaViewModel) {
             episode = selected,
             speed = speed,
             fillVideo = fillVideo,
+            qualityLimit = state.qualityLimit,
+            sleepTimerLabel = state.sleepTimerLabel,
+            onQuality = { model.setQualityLimit(it, playback.positionMs, playback.durationMs) },
+            onSleepMinutes = model::sleepAfterMinutes,
+            onSleepEpisodes = model::sleepAfterEpisodes,
             onToggleFillVideo = { fillVideo = !fillVideo },
             onBack = model::closePlayer,
             onFavorite = model::favorite,

@@ -67,6 +67,8 @@ data class AppState(
     val playing: Boolean = false,
     val playbackUrl: String? = null,
     val resumePositionMs: Long = 0L,
+    val qualityLimit: Int = 0,
+    val sleepTimerLabel: String = "关闭",
     val playbackError: String? = null,
     val library: List<Watched> = emptyList(),
     val favorites: List<Watched> = emptyList(),

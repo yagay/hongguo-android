@@ -3,6 +3,7 @@ package com.hongguo.rewrite
 import android.app.Application
 import android.net.Uri
 import com.hongguotv.core.RemoteVideo
+import com.hongguotv.core.SleepTimer
 import java.io.File
 import java.io.IOException
 import java.io.EOFException
@@ -29,6 +30,7 @@ class DramaViewModel(application: Application) : AndroidViewModel(application) {
         prefs.getBoolean("diagnostic_enabled", true))
     private val publicWebsite = NativeWebsiteSource(diagnostics = diagnostics)
     private val nativeSource = NativeHongguoSource(diagnostics = diagnostics)
+    private val sleepTimer = SleepTimer { android.os.SystemClock.elapsedRealtime() }
     @Volatile private var activeNativeVideo: RemoteVideo? = null
     @Volatile private var activeNativeVid: String? = null
     fun nativeVideoFor(vid: String): RemoteVideo? =
@@ -81,6 +83,8 @@ class DramaViewModel(application: Application) : AndroidViewModel(application) {
             library = library.list(false), favorites = library.list(true),
             likedDramaIds = prefs.getStringSet("local_liked_dramas", emptySet())?.toSet().orEmpty(),
             recentSearches = recentQueries(),
+            qualityLimit = prefs.getInt("quality_limit", 0)
+                .takeIf { it in setOf(0, 360, 480, 720, 1080) } ?: 0,
             logEnabled = diagnostics.enabled,
             danmakuEnabled = prefs.getBoolean("danmaku_enabled", false))
     )
@@ -581,7 +585,7 @@ class DramaViewModel(application: Application) : AndroidViewModel(application) {
                     mutable.update { it.copy(playbackUrl = url, playing = true) }
                 } else {
                     val ahead = detail.episodes.getOrNull(index + 1)?.vid
-                    val video = nativeSource.openVideo(vid, ahead)
+                    val video = nativeSource.openVideo(vid, ahead, state.value.qualityLimit)
                     if (version != detailId) {
                         video.close()
                         return@launch
@@ -600,6 +604,42 @@ class DramaViewModel(application: Application) : AndroidViewModel(application) {
                 }
             }
         }
+    }
+
+    /** Session-only timer. The media player pauses when time expires. */
+    fun sleepAfterMinutes(minutes: Int) {
+        if (minutes == 0) sleepTimer.cancel() else sleepTimer.afterMinutes(minutes)
+        mutable.update { it.copy(sleepTimerLabel = sleepTimer.label()) }
+        diagnostics.record("TIMER", if (minutes == 0) "DISABLED" else "MINUTES_SET")
+    }
+
+    fun sleepAfterEpisodes(count: Int) {
+        if (count == 0) sleepTimer.cancel() else sleepTimer.afterEpisodes(count)
+        mutable.update { it.copy(sleepTimerLabel = sleepTimer.label()) }
+        diagnostics.record("TIMER", "EPISODES_SET")
+    }
+
+    /** Returns true exactly once when the timer fires. */
+    fun shouldPauseForTimer(): Boolean {
+        val expired = sleepTimer.poll()
+        if (expired) {
+            mutable.update { it.copy(sleepTimerLabel = "关闭") }
+            diagnostics.record("TIMER", "EXPIRED")
+        }
+        return expired
+    }
+
+    fun setQualityLimit(value: Int, positionMs: Long, durationMs: Long) {
+        if (value !in setOf(0, 360, 480, 720, 1080)) return
+        prefs.edit().putInt("quality_limit", value).apply()
+        val s = state.value
+        val ep = s.detail?.episodes?.getOrNull(s.episodeIndex)
+        if (ep != null && s.backend.isBlank() && s.qualityLimit != value) {
+            savePlaybackPosition(ep.vid, positionMs, durationMs)
+            mutable.update { it.copy(qualityLimit = value) }
+            play(s.episodeIndex)
+        } else mutable.update { it.copy(qualityLimit = value) }
+        diagnostics.record("PLAYBACK", "QUALITY_PREFERENCE_SET")
     }
 
     fun retryPlayback() = play(state.value.episodeIndex)
@@ -645,6 +685,12 @@ class DramaViewModel(application: Application) : AndroidViewModel(application) {
     fun nextEpisode(expectedVid: String? = null) {
         val s = state.value
         if (expectedVid != null && s.detail?.episodes?.getOrNull(s.episodeIndex)?.vid != expectedVid) return
+        if (sleepTimer.episodeEnded()) {
+            diagnostics.record("TIMER", "EPISODES_EXPIRED")
+            mutable.update { it.copy(sleepTimerLabel = "关闭", playing = false) }
+            return
+        }
+        mutable.update { it.copy(sleepTimerLabel = sleepTimer.label()) }
         val index = s.episodeIndex + 1
         if (index < (s.detail?.episodes?.size ?: 0)) play(index)
     }
