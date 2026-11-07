@@ -23,6 +23,7 @@ import kotlinx.coroutines.flow.asStateFlow
 import kotlinx.coroutines.flow.update
 import kotlinx.coroutines.launch
 import kotlinx.coroutines.coroutineScope
+import kotlinx.coroutines.sync.Semaphore
 
 class DramaViewModel(application: Application) : AndroidViewModel(application) {
     private val library = LibraryStore(application)
@@ -272,6 +273,8 @@ class DramaViewModel(application: Application) : AndroidViewModel(application) {
     private var commentsGeneration = 0L
     private var danmakuGeneration = 0L
     private val localDownloadJobs = mutableMapOf<String, Job>()
+    /** Avoid overloading upstream decryption/network when batch saving episodes. */
+    private val localDownloadSlots = Semaphore(2)
     private var requestId = 0L
     private var detailId = 0L
     private var pendingFeedAdvance = false
@@ -1257,10 +1260,13 @@ class DramaViewModel(application: Application) : AndroidViewModel(application) {
             ).take(40), modal = Modal.DOWNLOAD)
         }
         val job = viewModelScope.launch(Dispatchers.IO) {
+            var acquired = false
             var video: RemoteVideo? = null
             val started = System.nanoTime()
             diagnostics.record("DOWNLOAD", "START")
             try {
+                localDownloadSlots.acquire()
+                acquired = true
                 video = nativeSource.openVideo(vid)
                 val total = video.total
                 if (total <= 0) throw IOException("下载资源长度无效")
@@ -1314,6 +1320,7 @@ class DramaViewModel(application: Application) : AndroidViewModel(application) {
                 }) }
             } finally {
                 video?.close()
+                if (acquired) localDownloadSlots.release()
                 synchronized(localDownloadJobs) { localDownloadJobs.remove(taskId) }
             }
         }
