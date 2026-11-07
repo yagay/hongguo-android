@@ -8,6 +8,13 @@ internal object OfficialReelsPolicy {
             .distinctBy { it.id }
     }
 
+    /** Read ahead when fewer than three visible titles remain after the current. */
+    fun needsMore(
+        items: List<Drama>, position: Int, hidden: Set<String>,
+        hasMore: Boolean, loading: Boolean,
+    ): Boolean = hasMore && !loading &&
+        items.drop(position + 1).count { it.id !in hidden } < 3
+
     fun nextIndex(items: List<Drama>, current: Int, direction: Int, hidden: Set<String>): Int? {
         if (direction !in setOf(-1, 1)) return null
         val range = if (direction > 0) (current + 1 until items.size)
