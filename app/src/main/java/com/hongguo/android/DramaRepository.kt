@@ -42,17 +42,19 @@ class DramaRepository {
         }
 
     suspend fun filters(genre: String): List<FilterGroup> = runInterruptible(Dispatchers.IO) {
-        DiscoveryMapper.filterGroups(Client.filters(genre))
+        if (genre == REAL_LIBRARY_GENRE)
+            DiscoveryMapper.realLibraryTopics(websiteClient.realCategory())
+        else DiscoveryMapper.filterGroups(Client.filters(genre))
     }
 
     suspend fun browse(selection: BrowseSelection, offset: Int, seenIds: List<String>): DramaPage =
         runInterruptible(Dispatchers.IO) {
             val start = offset.coerceAtLeast(0)
             val seen = DiscoveryMapper.seenTail(seenIds)
-            if (selection.genre == REAL_RANK_GENRE) {
-                // The public website already exposes a dedicated real-person drama board.
-                // Unlike short_play, its cursor is the completed page number (0 -> page 1).
-                DiscoveryMapper.realRankPage(websiteClient.rank(RankBoard.REAL, start + 1))
+            if (selection.genre == REAL_LIBRARY_GENRE) {
+                // True website catalogue with server-confirmed topic path and pagination.
+                val topic = selection.options["theme"].orEmpty()
+                DiscoveryMapper.realLibraryPage(websiteClient.realCategory(topic, start + 1))
             } else {
                 val page = Client.browsePage(selection.genre, DiscoveryMapper.options(selection), seen, start)
                 DiscoveryMapper.page(page.items, page.hasMore, page.nextSkip, start, seen)

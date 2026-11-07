@@ -245,9 +245,21 @@ internal fun CardsDiscover(state: HongguoUiState, model: HongguoViewModel) {
             }
         }
         item {
-            if (state.browseDraft.genre == REAL_RANK_GENRE) {
-                Text("真人热榜 · 红果官网排行（按名次排列）", color = Muted, fontSize = 13.sp,
-                    modifier = Modifier.padding(horizontal = 8.dp).testTag("cards_real_rank_source"))
+            if (state.browseDraft.genre == REAL_LIBRARY_GENRE) {
+                val group = state.filterGroups.firstOrNull { it.key == "theme" }
+                Row(Modifier.fillMaxWidth().horizontalScroll(rememberScrollState()),
+                    horizontalArrangement = Arrangement.spacedBy(8.dp), verticalAlignment = Alignment.CenterVertically) {
+                    val selected = state.browseApplied.options["theme"].orEmpty()
+                    DarkChip(if (selected.isEmpty()) "真人题材" else "题材 · " +
+                        (group?.options?.firstOrNull { it.id == selected }?.label ?: "已选"),
+                        selected.isNotEmpty(), "cards_filters", Icons.Outlined.Tune) { showFilters = true }
+                    group?.options?.filter { it.id.isNotBlank() }?.take(12)?.forEach { option ->
+                        DarkChip(option.label, selected == option.id, "cards_quick_theme_" + option.id) {
+                            model.selectFilter("theme", option.id)
+                            model.applyBrowse()
+                        }
+                    }
+                }
             } else {
                 // The first filter group stays visible as one-tap chips; the rest live in the sheet.
                 val group = state.filterGroups.firstOrNull { it.key == "theme" } ?: state.filterGroups.firstOrNull()

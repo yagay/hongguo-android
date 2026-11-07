@@ -221,10 +221,6 @@ internal fun CategoryScreen(state: HongguoUiState, model: HongguoViewModel) {
                 }
             }
             item(key = "category_filters", span = { GridItemSpan(maxLineSpan) }) {
-                if (state.browseDraft.genre == REAL_RANK_GENRE) {
-                    Text("真人热榜 · 红果官网排行（按名次排列）", color = Muted, fontSize = 13.sp,
-                        modifier = Modifier.padding(vertical = 8.dp).testTag("category_real_rank_source"))
-                } else {
                 Surface(color = CardSurface, shape = RoundedCornerShape(16.dp), modifier = Modifier.fillMaxWidth()) {
                     Column(Modifier.padding(16.dp), verticalArrangement = Arrangement.spacedBy(10.dp)) {
                         Row(Modifier.fillMaxWidth(), verticalAlignment = Alignment.CenterVertically) {
@@ -235,6 +231,8 @@ internal fun CategoryScreen(state: HongguoUiState, model: HongguoViewModel) {
                                     fontWeight = FontWeight.Medium, color = if (dirty) AccentInk else Ink)
                                 val selectedCount = state.browseDraft.options.values.count { it.isNotBlank() }
                                 Text(if (state.filtersLoading) "正在读取可选条件…"
+                                    else if (state.browseDraft.genre == REAL_LIBRARY_GENRE)
+                                        if (selectedCount > 0) "已选真人剧题材" else "官网真人剧库 · 按题材筛选"
                                     else if (selectedCount > 0) "已选 $selectedCount 项条件" else "按题材、排序等条件查找",
                                     fontSize = 12.sp, lineHeight = 18.sp, color = Muted)
                             }
@@ -282,7 +280,6 @@ internal fun CategoryScreen(state: HongguoUiState, model: HongguoViewModel) {
                             }
                         }
                     }
-                }
                 }
             }
         },

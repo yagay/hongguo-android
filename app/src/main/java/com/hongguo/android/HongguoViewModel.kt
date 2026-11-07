@@ -244,7 +244,7 @@ class HongguoViewModel(application: Application) : AndroidViewModel(application)
     }
 
     fun selectFilter(key: String, value: String) {
-        if (state.value.browseDraft.genre == REAL_RANK_GENRE) return
+        if (state.value.browseDraft.genre == REAL_LIBRARY_GENRE && key != "theme") return
         if (key !in setOf("theme", "setting", "background", "sort", "gender", "status", "days")) return
         mutableState.update {
             val options = it.browseDraft.options.toMutableMap()
@@ -257,11 +257,6 @@ class HongguoViewModel(application: Application) : AndroidViewModel(application)
         val genre = state.value.browseDraft.genre
         val version = ++filtersVersion
         filtersJob?.cancel()
-        if (genre == REAL_RANK_GENRE) {
-            // The website's fixed ranking does not expose category selector filters.
-            mutableState.update { it.copy(filterGroups = emptyList(), filtersLoading = false, filtersError = null) }
-            return
-        }
         mutableState.update { it.copy(filtersLoading = true, filtersError = null) }
         filtersJob = viewModelScope.launch {
             try {
