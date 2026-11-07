@@ -377,6 +377,63 @@ public class PlaybackSourceTest {
         }
     }
 
+    @Test public void alternateOfficialRegistrationUsesJsonAndNoAccountCredentials() throws Exception {
+        okhttp3.mockwebserver.MockWebServer server = new okhttp3.mockwebserver.MockWebServer();
+        try {
+            server.enqueue(new okhttp3.mockwebserver.MockResponse()
+                    .setResponseCode(200)
+                    .addHeader("Set-Cookie", "install_id=abc; Path=/")
+                    .setBody(okReply().text));
+            server.start();
+            long now = 1_793_000_000_123L;
+            String cdid = "synthetic-cdid";
+            PlaybackDevice.Reply reply = RegistrationHttp.alternateJsonRegisterAt(
+                    server.url("/service/2/device_register/").toString(), now, cdid, "test/1");
+            assertEquals(200, reply.status);
+            assertTrue(reply.text.contains(DEVICE_ID));
+            assertEquals(1, reply.setCookies.size());
+            okhttp3.mockwebserver.RecordedRequest request = server.takeRequest(3, TimeUnit.SECONDS);
+            assertNotNull(request);
+            assertEquals("POST", request.getMethod());
+            assertEquals("application/json; charset=utf-8", request.getHeader("Content-Type"));
+            assertEquals("test/1", request.getHeader("User-Agent"));
+            assertNull(request.getHeader("Cookie"));
+            assertNull(request.getHeader("x-ss-stub"));
+            assertNull(request.getHeader("Authorization"));
+            assertEquals("8662", request.getRequestUrl().queryParameter("aid"));
+            assertEquals("73932", request.getRequestUrl().queryParameter("version_code"));
+            assertEquals(String.valueOf(now), request.getRequestUrl().queryParameter("_rticket"));
+            assertNull(request.getRequestUrl().queryParameter("iid"));
+            assertNull(request.getRequestUrl().queryParameter("device_id"));
+            Map<String, Object> payload = Json.parseObject(request.getBody().readUtf8());
+            assertEquals(now, Json.optLong(payload.get("_gen_time"), 0L));
+            Map<String, Object> header = Json.optObj(payload.get("header"));
+            assertEquals(cdid, header.get("cdid"));
+            assertEquals("com.phoenix.read", header.get("package"));
+            assertFalse(header.containsKey("account_cookie"));
+            assertFalse(header.containsKey("device_id"));
+        } finally {
+            server.shutdown();
+        }
+    }
+
+    @Test public void alternateRegistrationReportsSafeHttpErrorWithoutLeakingBody() throws Exception {
+        okhttp3.mockwebserver.MockWebServer server = new okhttp3.mockwebserver.MockWebServer();
+        try {
+            server.enqueue(new okhttp3.mockwebserver.MockResponse()
+                    .setResponseCode(429)
+                    .setBody("private_server_response?token=secret"));
+            server.start();
+            PlaybackDevice.Reply reply = RegistrationHttp.alternateJsonRegisterAt(
+                    server.url("/service/2/device_register/").toString(),
+                    1_793_000_000_123L, "synthetic-cdid", "test/1");
+            assertEquals(429, reply.status);
+            assertEquals("", reply.text);
+        } finally {
+            server.shutdown();
+        }
+    }
+
     @Test public void registrationPreferredTransportSuccessDoesNotRetry() throws Exception {
         AtomicInteger primary = new AtomicInteger(), fallback = new AtomicInteger();
         PlaybackDevice.Reply reply = RegistrationHttp.postWithFallback(
