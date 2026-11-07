@@ -12,6 +12,7 @@ import okhttp3.OkHttpClient
 /** Account data is separate from local favorites/history and diagnostics. */
 data class AccountUiState(
     val checking: Boolean = true,
+    val savedSessionPresent: Boolean = false,
     val busy: Boolean = false,
     val profile: CloudProfile? = null,
     val syncEnabled: Boolean = false,
@@ -75,7 +76,7 @@ internal class AccountManager(app: Application, private val scope: CoroutineScop
                 mutable.update { it.copy(checking = false, message = "会话解密失败，请重新登录") }
             } else {
                 credentials = saved.getOrNull()
-                mutable.update { it.copy(checking = false,
+                mutable.update { it.copy(checking = false, savedSessionPresent = credentials != null,
                     message = if (credentials == null) "尚未登录" else "正在校验账号…") }
                 if (credentials != null) refresh()
             }
@@ -232,10 +233,37 @@ internal class AccountManager(app: Application, private val scope: CoroutineScop
         phoneLogin = null
         mutable.update { it.copy(
             busy = false, waitingQr = false, qrImage = null,
-            smsSent = false, profile = pair.second,
+            smsSent = false, profile = pair.second, savedSessionPresent = true,
             message = "登录成功，读取云端记录…",
         ) }
         refresh()
+    }
+
+    /** Advanced import: never trust a cookie until the cloud business identity is verified.
+     * Raw secrets are never stored in diagnostics or plain SharedPreferences.
+     */
+    fun importLoginCookie(rawCookie: String) {
+        if (state.value.busy || state.value.checking) return
+        val cookie = rawCookie.trim()
+        if (cookie.length !in 10..8192 ||
+            cookie.contains('\n') || cookie.contains('\r') ||
+            !Regex("(?i)(?:^|;\\s*)sessionid(?:_ss)?=").containsMatchIn(cookie)) {
+            mutable.update { it.copy(message = "请输入你本人账号的有效登录 Cookie") }
+            return
+        }
+        resetLogin()
+        val token = epoch
+        mutable.update { it.copy(busy = true, message = "正在验证导入的账号身份…") }
+        authJob = scope.launch {
+            try {
+                accept(AccountCredentials(cookie), token)
+            } catch (error: CancellationException) { throw error }
+            catch (error: Exception) {
+                if (token == epoch) mutable.update {
+                    it.copy(busy = false, message = explain(error))
+                }
+            }
+        }
     }
 
     fun refresh() {
