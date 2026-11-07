@@ -163,11 +163,7 @@ internal fun AccountScreen(model: DramaViewModel) {
                             listOf("手机验证码", "官网登录", "扫码登录").forEachIndexed { index, label ->
                                 FilterChip(selected = loginMethod == index, onClick = {
                                     if (loginMethod != index) {
-                                        if (index == 0) model.account.cancelQr()
-                                        else {
-                                            model.account.cancelSms()
-                                            model.account.cancelQr()
-                                        }
+                                        model.account.cancelActiveLogin()
                                         loginMethod = index
                                     }
                                 }, label = { Text(label) },
