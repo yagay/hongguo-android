@@ -958,6 +958,12 @@ class DramaViewModel(application: Application) : AndroidViewModel(application) {
      */
     fun toggleLocalLike() {
         val id = state.value.detail?.drama?.id ?: return
+        toggleLocalLikeForDrama(id)
+    }
+
+    /** Local reaction from a cloud gallery card; never uploads a server like. */
+    fun toggleLocalLikeForDrama(id: String) {
+        if (!id.matches(Regex("[0-9]{1,30}"))) return
         val saved = state.value.likedDramaIds.toMutableSet()
         if (!saved.add(id)) saved.remove(id)
         prefs.edit().putStringSet("local_liked_dramas", saved).apply()
