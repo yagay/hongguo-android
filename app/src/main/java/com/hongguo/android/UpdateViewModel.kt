@@ -113,6 +113,8 @@ class UpdateViewModel internal constructor(
         checkWasRequestedManually = manual
         mutableState.update { it.copy(visible = manual, checking = true, update = null,
             downloadedFile = null, error = null, status = "正在检查更新…", installPermissionRequired = false, activeSource = null) }
+        val startedAt = android.os.SystemClock.elapsedRealtime()
+        AppDiagnostics.record("UPDATE", "CHECK_START", stage = source.name)
         checkingJob = viewModelScope.launch {
             try {
                 val update = checkManifest(source) { active ->
@@ -122,6 +124,9 @@ class UpdateViewModel internal constructor(
                 if (version != checkVersion) return@launch
                 val newer = update.isNewerThan(installedVersionCode)
                 val supported = update.minSdk <= deviceSdk
+                AppDiagnostics.record("UPDATE", "CHECK_OK", stage = source.name,
+                    elapsedMs = android.os.SystemClock.elapsedRealtime() - startedAt,
+                    count = if (newer && supported) 1 else 0)
                 mutableState.update { it.copy(visible = checkWasRequestedManually || (newer && supported), checking = false,
                     update = update.takeIf { newer && supported },
                     status = when {
@@ -131,8 +136,12 @@ class UpdateViewModel internal constructor(
                     }, error = if (newer && !supported) "新版本需要更新的 Android 系统。" else null) }
             } catch (error: CancellationException) { throw error }
             catch (error: Exception) {
-                if (version == checkVersion) mutableState.update { it.copy(visible = checkWasRequestedManually, checking = false,
-                    status = "暂时无法检查更新", error = updateFailure(error)) }
+                if (version == checkVersion) {
+                    AppDiagnostics.failure("UPDATE", error = error,
+                        elapsedMs = android.os.SystemClock.elapsedRealtime() - startedAt)
+                    mutableState.update { it.copy(visible = checkWasRequestedManually, checking = false,
+                        status = "暂时无法检查更新", error = updateFailure(error)) }
+                }
             }
         }
     }
@@ -153,6 +162,8 @@ class UpdateViewModel internal constructor(
         downloadJob?.cancel()
         mutableState.update { it.copy(downloading = true, downloadProgress = 0f, downloadedFile = null,
             error = null, status = "正在下载更新…", installPermissionRequired = false) }
+        val downloadStartedAt = android.os.SystemClock.elapsedRealtime()
+        AppDiagnostics.record("UPDATE", "DOWNLOAD_START", stage = source.name)
         downloadJob = viewModelScope.launch {
             try {
                 val file = installer.download(update, source, onSource = { active ->
@@ -163,12 +174,18 @@ class UpdateViewModel internal constructor(
                         if (total > 0) (done.toFloat() / total).coerceIn(0f, 1f) else null) }
                 }
                 if (version != downloadVersion) return@launch
+                AppDiagnostics.record("UPDATE", "DOWNLOAD_OK",
+                    elapsedMs = android.os.SystemClock.elapsedRealtime() - downloadStartedAt)
                 mutableState.update { it.copy(downloading = false, downloadProgress = 1f, downloadedFile = file,
                     status = "更新包已校验，点击安装", installPermissionRequired = !installer.hasInstallPermission()) }
             } catch (error: CancellationException) { throw error }
             catch (error: Exception) {
-                if (version == downloadVersion) mutableState.update { it.copy(downloading = false,
-                    downloadProgress = null, status = "更新包下载失败", error = updateFailure(error)) }
+                if (version == downloadVersion) {
+                    AppDiagnostics.failure("UPDATE", action = "DOWNLOAD_ERROR", error = error,
+                        elapsedMs = android.os.SystemClock.elapsedRealtime() - downloadStartedAt)
+                    mutableState.update { it.copy(downloading = false,
+                        downloadProgress = null, status = "更新包下载失败", error = updateFailure(error)) }
+                }
             }
         }
     }
