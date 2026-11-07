@@ -1045,7 +1045,7 @@ class DramaViewModel(application: Application) : AndroidViewModel(application) {
     /** Start a dedicated one-episode-per-drama vertical recommendation feed. */
     fun startFeed(drama: Drama? = null) {
         val s = state.value
-        val selected = drama ?: s.items.firstOrNull() ?: return
+        val selected = drama ?: s.items.firstOrNull { it.id !in s.hiddenRecommendationIds } ?: return
         val index = s.items.indexOfFirst { it.id == selected.id }
         if (index < 0 || s.section != Section.RECOMMEND) return
         pendingFeedAdvance = false
@@ -1058,7 +1058,10 @@ class DramaViewModel(application: Application) : AndroidViewModel(application) {
     fun navigateFeed(direction: Int) {
         val s = state.value
         if (!s.feedMode || direction !in setOf(-1, 1)) return
-        val index = s.feedIndex + direction
+        val candidates = if (direction > 0) (s.feedIndex + 1 until s.items.size)
+            else (s.feedIndex - 1 downTo 0)
+        val index = candidates.firstOrNull { s.items[it].id !in s.hiddenRecommendationIds }
+            ?: if (direction > 0) s.items.size else -1
         val target = s.items.getOrNull(index)
         if (target != null && target.id != s.detail?.drama?.id) {
             pendingFeedAdvance = false
