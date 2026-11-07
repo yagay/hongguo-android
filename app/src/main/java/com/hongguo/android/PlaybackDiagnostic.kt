@@ -34,9 +34,9 @@ data class PlaybackDiagnostic(
         fun fromPreparationFailure(error: Throwable): PlaybackDiagnostic {
             val causes = generateSequence(error) { it.cause }.take(8).toList()
             val hint = causes.joinToString(" ") { it.message.orEmpty() }.lowercase()
-            val trace = chain.asSequence().flatMap { it.suppressed.asSequence() }
+            val trace = causes.asSequence().flatMap { it.suppressed.asSequence() }
                 .filterIsInstance<AppSource.AttemptTrace>().firstOrNull()
-            val registrationStatus = chain.filterIsInstance<PlaybackDevice.RegistrationHttpException>()
+            val registrationStatus = causes.filterIsInstance<PlaybackDevice.RegistrationHttpException>()
                 .firstOrNull()?.status ?: 0
             fun issue(code: String, stage: String, message: String) = PlaybackDiagnostic(
                 code, stage, message, trace?.attempts ?: 0, trace?.lastRoute, trace?.lastReason,
