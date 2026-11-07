@@ -101,8 +101,8 @@ internal class AccountManager(app: Application, private val scope: CoroutineScop
         if (state.value.busy) return
         resetLogin()
         val token = epoch
-        val session = PhoneLogin(http)
-        phoneLogin = session
+        val session = WebLogin(http)
+        webLogin = session
         mutable.update { it.copy(busy = true, smsSent = false,
             message = "正在获取红果官方二维码…") }
         authJob = scope.launch {
@@ -147,8 +147,8 @@ internal class AccountManager(app: Application, private val scope: CoroutineScop
         }
         resetLogin()
         val token = epoch
-        val session = WebLogin(http)
-        webLogin = session
+        val session = PhoneLogin(http)
+        phoneLogin = session
         mutable.update { it.copy(busy = true, smsSent = false,
             message = "正在申请验证码…") }
         authJob = scope.launch {
