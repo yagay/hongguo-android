@@ -316,10 +316,18 @@ private fun DownloadRows(state: AppState, model: DramaViewModel) {
                     Text(task.done.toString() + " / " + task.total + " 集",
                         color = HongguoColors.muted, fontSize = 11.sp)
                 }
-                if (task.id.startsWith("local-") &&
-                    task.status.startsWith("下载中")) {
-                    TextButton(onClick = { model.cancelDownload(task.id) }) {
-                        Text("取消")
+                if (task.id.startsWith("local-")) {
+                    if (task.status.startsWith("下载中") ||
+                        task.status == "等待下载") {
+                        TextButton(onClick = { model.cancelDownload(task.id) }) {
+                            Text("取消")
+                        }
+                    } else if (task.failed.isNotEmpty() ||
+                        task.status.startsWith("已取消")) {
+                        TextButton(onClick = { model.retryLocalDownload(task.id) },
+                            modifier = Modifier.testTag("retry_download_" + task.id)) {
+                            Text("重试")
+                        }
                     }
                 }
             }
