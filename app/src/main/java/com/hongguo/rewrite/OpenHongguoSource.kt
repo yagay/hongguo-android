@@ -89,10 +89,17 @@ internal class OpenHongguoSource(context: Context) {
             "hot" -> {
                 val p = hotSearch()
                 val hits = p.guesses + p.boards.flatMap { it.items }
-                OpenHongguoBrowsePage(hits.distinctBy { it.seriesId }.map {
+                val dramas = hits.distinctBy { it.seriesId }.map {
                     OpenHongguoBrowseItem(it.seriesId, it.title, it.coverUrl,
-                        it.heat, it.episodeCount)
-                }.filter { it.id.isNotBlank() }, "", false)
+                        it.heat.ifBlank { it.searchScore }, it.episodeCount)
+                }.filter { it.id.isNotBlank() }
+                val topics = p.boards.flatMap { it.topics }.distinctBy { it.query }
+                    .map { topic ->
+                        OpenHongguoBrowseItem(id = "topic:${topic.id}",
+                            title = topic.title, subtitle = topic.heat,
+                            playable = false, searchQuery = topic.query)
+                    }.filter { it.searchQuery.isNotBlank() }
+                OpenHongguoBrowsePage(dramas + topics, "", false)
             }
             "filter", "filterComic", "filterAI" -> {
                 val genre = when (tab) {
@@ -208,6 +215,22 @@ internal class OpenHongguoSource(context: Context) {
                         playable = it.online)
                 }, page.cursor, page.hasMore)
             }
+            "activity" -> {
+                val ranking = ranking("", "")
+                OpenHongguoBrowsePage(ranking.items.map { it2 ->
+                    OpenHongguoBrowseItem(
+                        id = it2.seriesId.ifBlank { "activity:${it2.rank}" },
+                        title = it2.title.ifBlank { it2.actor },
+                        cover = it2.coverUrl,
+                        subtitle = listOfNotNull(
+                            it2.score.takeIf(String::isNotBlank),
+                            it2.votes.takeIf { it > 0 }?.let { "${it} 票" }
+                        ).joinToString(" · "),
+                        episodes = it2.episodeCount,
+                        playable = it2.seriesId.matches(Regex("[1-9][0-9]{0,29}"))
+                    )
+                }.filter { it.title.isNotBlank() }, "", false)
+            }
             "rankGroups" -> {
                 OpenHongguoBrowsePage(rankGroups().map {
                     OpenHongguoBrowseItem(it.id, it.name,
@@ -280,6 +303,7 @@ data class OpenHongguoBrowseItem(
     val episodes: Int = 0,
     val playable: Boolean = true,
     val actorUserId: String = "",
+    val searchQuery: String = "",
 )
 
 data class OpenHongguoBrowsePage(
