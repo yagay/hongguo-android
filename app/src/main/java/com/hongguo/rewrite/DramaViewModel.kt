@@ -2,6 +2,10 @@ package com.hongguo.rewrite
 
 import android.app.Application
 import android.net.Uri
+import android.os.Build
+import android.Manifest
+import android.content.pm.PackageManager
+import androidx.core.content.ContextCompat
 import com.hongguotv.core.RemoteVideo
 import com.hongguotv.core.CloudProgress
 import com.hongguotv.core.Series
@@ -44,6 +48,21 @@ class DramaViewModel(application: Application) : AndroidViewModel(application) {
 
 
     /** Explicit user-triggered update check, never pretends to be a background notification. */
+    fun setEpisodeUpdateNotifications(enabled: Boolean) {
+        val app = getApplication<Application>()
+        val allowed = !enabled || Build.VERSION.SDK_INT < 33 ||
+            ContextCompat.checkSelfPermission(app,
+                Manifest.permission.POST_NOTIFICATIONS) == PackageManager.PERMISSION_GRANTED
+        if (!allowed) {
+            mutable.update { it.copy(settingsMessage = "请先授予通知权限") }
+            return
+        }
+        prefs.edit().putBoolean("episode_update_notifications", enabled).apply()
+        TrackingUpdatesWorker.schedule(app, enabled)
+        mutable.update { it.copy(episodeUpdateNotificationsEnabled = enabled,
+            settingsMessage = if (enabled) "已启用追剧更新后台检查" else "已关闭追剧更新后台检查") }
+    }
+
     fun checkTrackedUpdates() {
         if (state.value.trackingUpdates) return
         val snapshot = state.value
@@ -313,6 +332,7 @@ class DramaViewModel(application: Application) : AndroidViewModel(application) {
             completedDramaIds = prefs.getStringSet("completed_drama_ids_v1", emptySet())?.toSet().orEmpty(),
             hiddenRecommendationIds = prefs.getStringSet("hidden_recommendations_v1", emptySet())?.toSet().orEmpty(),
             autoPlayNext = prefs.getBoolean("auto_play_next", true),
+            episodeUpdateNotificationsEnabled = prefs.getBoolean("episode_update_notifications", false),
             skipIntroSeconds = prefs.getInt("skip_intro_seconds", 0).coerceIn(0, 120),
             skipOutroSeconds = prefs.getInt("skip_outro_seconds", 0).coerceIn(0, 120),
             retryPlaybackAutomatically = prefs.getBoolean("playback_auto_retry", true),
@@ -328,6 +348,9 @@ class DramaViewModel(application: Application) : AndroidViewModel(application) {
     val state = mutable.asStateFlow()
 
     init {
+        if (state.value.episodeUpdateNotificationsEnabled) {
+            TrackingUpdatesWorker.schedule(application, true)
+        }
         diagnostics.record("APP", "START")
         if (state.value.backend.isNotBlank()) {
             source = runCatching { WebContractClient(state.value.backend,
