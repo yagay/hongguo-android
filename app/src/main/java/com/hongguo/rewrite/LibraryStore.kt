@@ -22,6 +22,28 @@ class LibraryStore(context: Context) {
         }.distinctBy { it.drama.id }.take(200)
     }
 
+    @Synchronized fun favoriteGroups(): Map<String, String> {
+        val root = runCatching {
+            JSONObject(prefs.getString("favorite_groups", "{}") ?: "{}")
+        }.getOrElse { JSONObject() }
+        return root.keys().asSequence().mapNotNull { id ->
+            val group = root.optString(id)
+            if (id.matches(Regex("[0-9]{1,30}")) && group.length in 1..24)
+                id to group else null
+        }.toMap()
+    }
+
+    @Synchronized fun setFavoriteGroup(seriesId: String, group: String) {
+        require(seriesId.matches(Regex("[0-9]{1,30}")))
+        require(group.length <= 24 && group.none { it.isISOControl() })
+        val groups = favoriteGroups().toMutableMap()
+        if (group.isBlank() || group == "默认") groups.remove(seriesId)
+        else groups[seriesId] = group.trim()
+        val root = JSONObject()
+        groups.forEach { (key, value) -> root.put(key, value) }
+        prefs.edit().putString("favorite_groups", root.toString()).apply()
+    }
+
     @Synchronized fun record(drama: Drama, episode: Int) {
         val now = System.currentTimeMillis()
         val old = list(false).filterNot { it.drama.id == drama.id }
