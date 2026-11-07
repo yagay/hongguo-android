@@ -7,6 +7,7 @@ import androidx.core.content.edit
 import androidx.lifecycle.AndroidViewModel
 import androidx.lifecycle.viewModelScope
 import kotlinx.coroutines.CancellationException
+import kotlinx.coroutines.CompletableDeferred
   import kotlinx.coroutines.Job
 import kotlinx.coroutines.delay
  import kotlinx.coroutines.currentCoroutineContext
@@ -46,9 +47,12 @@ class HongguoViewModel(application: Application) : AndroidViewModel(application)
     private var startupPendingDetail = false
     private var prefetchJob: Job? = null
     private class WarmSlot(val episodeId: String) {
-        var video: PreparedVideo? = null
+        @Volatile var video: PreparedVideo? = null
         @Volatile var taken = false
+        @Volatile var abandoned = false
         @Volatile var reader: ProgressiveMedia.Reader? = null
+        var producer: Job? = null
+        val prepared = CompletableDeferred<PreparedVideo?>()
     }
     @Volatile private var warmSlot: WarmSlot? = null
     private var playerForeground = false
@@ -509,7 +513,13 @@ class HongguoViewModel(application: Application) : AndroidViewModel(application)
                     val target = detail.episodes[selected]
                     val position = if (target.id == resume.episodeId || target.index == resume.episodeIndex) resume.positionMs else 0
                     playEpisode(selected, resumeOverrideMs = position)
-                } else if (autoPlay && detail.episodes.isNotEmpty()) playEpisode(selected)
+                } else if (autoPlay && detail.episodes.isNotEmpty()) {
+                    playEpisode(selected)
+                } else if (state.value.preloadNext) {
+                    // Preparing the selected first/resume episode while the user reads details
+                    // moves device registration and index checks off the click-to-play path.
+                    detail.episodes.getOrNull(selected)?.let(::startWarm)
+                }
             } catch (error: CancellationException) {
                 throw error
             } catch (error: Exception) {
@@ -526,7 +536,7 @@ class HongguoViewModel(application: Application) : AndroidViewModel(application)
         val current = state.value
         val detail = current.detail ?: return
         val episode = detail.episodes.getOrNull(position) ?: return
-        val warmed = takePrefetch(episode.id)
+        val warmClaim = takePrefetch(episode.id)
         if (!startupPendingDetail || startupTrace == null) startupTrace = PlaybackStartupTrace()
         startupPendingDetail = false
         startupTrace?.mark("episode_selected")
@@ -548,7 +558,12 @@ class HongguoViewModel(application: Application) : AndroidViewModel(application)
         }
         releaseVideo(current.video)
         mediaJob = viewModelScope.launch {
+            var transferredWarm = false
             try {
+                // If the preload is still resolving the video address, join that same request
+                // instead of canceling it and registering another anonymous device.
+                val warmed = warmClaim?.prepared?.await()
+                transferredWarm = warmed != null
                 val prepared = warmed ?: repository.prepare(episode) { stage, done, total ->
                     if (version == mediaVersion) {
                         startupTrace?.mark(stage)
@@ -564,8 +579,10 @@ class HongguoViewModel(application: Application) : AndroidViewModel(application)
                 }
                 mutableState.update { it.copy(video = prepared.copy(requestId = version.toLong()), preparing = false, playbackStatus = "正在载入播放器") }
             } catch (error: CancellationException) {
+                if (!transferredWarm) abandonClaim(warmClaim)
                 throw error
             } catch (error: Exception) {
+                if (!transferredWarm) abandonClaim(warmClaim)
                 if (version == mediaVersion) {
                     startupTrace?.mark("failed")
                     val diagnostic = PlaybackDiagnostic.fromPreparationFailure(error)
@@ -630,48 +647,82 @@ class HongguoViewModel(application: Application) : AndroidViewModel(application)
 
     private fun prefetchNext() {
         val current = state.value
-        if (!playerForeground || !bufferReadyForPrefetch || !current.playerOpen || !current.preloadNext || !current.firstFrameRendered || current.playbackError != null) return
+        if (!playerForeground || !bufferReadyForPrefetch || !current.playerOpen || !current.preloadNext ||
+            !current.firstFrameRendered || current.playbackError != null) return
         val requestId = current.video?.requestId ?: return
         val episode = current.detail?.episodes?.getOrNull(current.episodePosition + 1) ?: return
-        if (warmSlot?.episodeId == episode.id) return
-        if (prefetchAttemptedFor == requestId) return
+        if (warmSlot?.episodeId == episode.id || prefetchAttemptedFor == requestId) return
         prefetchAttemptedFor = requestId
+        startWarm(episode)
+    }
+
+    /** One producer may be claimed while it is still opening. Never start a second registration. */
+    private fun startWarm(episode: Episode) {
+        if (warmSlot?.episodeId == episode.id) return
         takePrefetch(null)
         val slot = WarmSlot(episode.id)
         warmSlot = slot
-        prefetchJob = viewModelScope.launch {
+        val job = viewModelScope.launch {
             var ready = false
             try {
                 val prepared = repository.prepare(episode, allowFallback = false) { _, _, _ -> }
                 slot.video = prepared
-                if (warmSlot !== slot || !playerForeground) return@launch
+                if (slot.abandoned) return@launch
+                slot.prepared.complete(prepared)
+                if (slot.taken || warmSlot !== slot) return@launch
                 repository.warmNext(prepared) { reader ->
                     slot.reader = reader
                     if (reader != null && (slot.taken || warmSlot !== slot)) reader.close()
                 }
                 ready = true
             } catch (cancelled: CancellationException) { throw cancelled }
-            catch (_: Exception) { /* Speculative work must never interrupt the current episode. */ }
+            catch (_: Exception) { /* Speculation must not break the selected episode. */ }
             finally {
-                if (!slot.taken && (!ready || warmSlot !== slot)) {
-                    releaseVideo(slot.video)
+                if (!slot.prepared.isCompleted) slot.prepared.complete(null)
+                if (slot.abandoned || (!slot.taken && (!ready || warmSlot !== slot))) {
+                    val unused = slot.video
+                    slot.video = null
+                    releaseVideo(unused)
                     if (warmSlot === slot) warmSlot = null
                 }
             }
         }
+        slot.producer = job
+        prefetchJob = job
     }
 
-    private fun takePrefetch(episodeId: String?): PreparedVideo? {
+    /** Take ownership of an in-flight or completed request, leaving its producer running. */
+    private fun takePrefetch(episodeId: String?): WarmSlot? {
         val slot = warmSlot
         warmSlot = null
-        if (slot != null) slot.taken = episodeId != null && slot.episodeId == episodeId && slot.video != null
-        slot?.reader?.close()
-        slot?.reader = null
-        prefetchJob?.cancel()
         prefetchJob = null
-        if (slot?.taken == true) return slot.video
-        releaseVideo(slot?.video)
+        if (slot != null && episodeId != null && slot.episodeId == episodeId) {
+            slot.taken = true
+            slot.reader?.close()
+            slot.reader = null
+            return slot
+        }
+        if (slot != null) {
+            slot.abandoned = true
+            slot.producer?.cancel()
+            slot.reader?.close()
+            slot.reader = null
+            val unused = slot.video
+            slot.video = null
+            releaseVideo(unused)
+        }
         return null
+    }
+
+    /** If the waiting player is canceled, ensure a producer cannot leave its session orphaned. */
+    private fun abandonClaim(slot: WarmSlot?) {
+        if (slot == null) return
+        slot.abandoned = true
+        slot.producer?.cancel()
+        slot.reader?.close()
+        val unused = slot.video
+        slot.video = null
+        releaseVideo(unused)
     }
 
     private fun releaseVideo(video: PreparedVideo?) = PlaybackSessionCoordinator.release(video)
