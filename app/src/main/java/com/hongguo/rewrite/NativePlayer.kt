@@ -72,6 +72,10 @@ import androidx.compose.runtime.snapshotFlow
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.draw.clipToBounds
+import androidx.compose.ui.draw.clip
+import androidx.compose.ui.graphics.Brush
+import androidx.compose.ui.layout.ContentScale
+import coil.compose.AsyncImage
 import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.geometry.Offset
 import androidx.compose.ui.platform.LocalContext
@@ -266,6 +270,19 @@ internal fun NativePlayer(state: AppState, model: DramaViewModel) {
             }
         }
 
+        // Passive gradient for legible labels on bright and dark video frames.
+        // No pointer input here: paging and player gestures are unaffected.
+        Box(
+            Modifier.fillMaxSize().background(
+                Brush.verticalGradient(
+                    0.00f to Color.Black.copy(alpha = 0.52f),
+                    0.20f to Color.Transparent,
+                    0.57f to Color.Transparent,
+                    1.00f to Color.Black.copy(alpha = 0.84f),
+                )
+            )
+        )
+
         if (state.danmakuEnabled && selected != null && !showComments && !showEpisodes) {
             TimedDanmakuOverlay(state.danmakuItems,
                 playback.positionMs,
@@ -275,7 +292,8 @@ internal fun NativePlayer(state: AppState, model: DramaViewModel) {
         // These controls intentionally live above the pager, not inside its
         // scrolling page, so the active episode cannot move the action rail.
         Row(
-            Modifier.fillMaxWidth().align(Alignment.TopCenter).padding(6.dp),
+            Modifier.fillMaxWidth().align(Alignment.TopCenter)
+                .padding(start = 9.dp, end = 10.dp, top = 7.dp),
             verticalAlignment = Alignment.CenterVertically,
         ) {
             IconButton(onClick = model::closePlayer) {
@@ -290,9 +308,10 @@ internal fun NativePlayer(state: AppState, model: DramaViewModel) {
         }
 
         Column(
-            Modifier.align(Alignment.CenterEnd).padding(end = 4.dp, bottom = 14.dp),
+            Modifier.align(Alignment.BottomEnd)
+                .padding(end = 7.dp, bottom = 86.dp),
             horizontalAlignment = Alignment.CenterHorizontally,
-            verticalArrangement = Arrangement.spacedBy(8.dp),
+            verticalArrangement = Arrangement.spacedBy(2.dp),
         ) {
             val saved = state.favorites.any { it.drama.id == detail.drama.id }
             ReelAction(
@@ -333,10 +352,17 @@ internal fun NativePlayer(state: AppState, model: DramaViewModel) {
 
         Column(
             Modifier.fillMaxWidth().align(Alignment.BottomCenter)
-                .background(Color.Black.copy(alpha = 0.55f))
-                .padding(start = 12.dp, end = 68.dp, top = 8.dp, bottom = 5.dp),
-            verticalArrangement = Arrangement.spacedBy(2.dp),
+                .padding(start = 14.dp, end = 73.dp, top = 8.dp, bottom = 8.dp),
+            verticalArrangement = Arrangement.spacedBy(3.dp),
         ) {
+            Text(detail.drama.title, color = Color.White,
+                fontSize = 17.sp, fontWeight = FontWeight.Bold,
+                maxLines = 2, overflow = TextOverflow.Ellipsis)
+            if (detail.drama.synopsis.isNotBlank()) {
+                Text(detail.drama.synopsis, color = Color.White.copy(alpha = 0.80f),
+                    fontSize = 11.sp, lineHeight = 15.sp,
+                    maxLines = 2, overflow = TextOverflow.Ellipsis)
+            }
             Row(verticalAlignment = Alignment.CenterVertically) {
                 Text("第 ${selected?.index ?: 1} 集", color = Color.White,
                     fontWeight = FontWeight.SemiBold, modifier = Modifier.weight(1f))
@@ -379,7 +405,7 @@ internal fun NativePlayer(state: AppState, model: DramaViewModel) {
 
     if (showComments) ModalBottomSheet(
         onDismissRequest = { showComments = false },
-        containerColor = Color(0xFF222022),
+        containerColor = HongguoColors.playerSheet,
         contentColor = Color.White,
         modifier = Modifier.testTag("reel_comments_sheet"),
     ) {
@@ -388,7 +414,7 @@ internal fun NativePlayer(state: AppState, model: DramaViewModel) {
 
     if (showEpisodes) ModalBottomSheet(
         onDismissRequest = { showEpisodes = false },
-        containerColor = Color(0xFF222022),
+        containerColor = HongguoColors.playerSheet,
         contentColor = Color.White,
         modifier = Modifier.testTag("reel_episodes_sheet"),
     ) {
@@ -403,12 +429,18 @@ internal fun NativePlayer(state: AppState, model: DramaViewModel) {
             ) {
                 itemsIndexed(detail.episodes) { index, episode ->
                     val active = index == state.episodeIndex
-                    OutlinedButton(
-                        onClick = { model.play(index); showEpisodes = false },
-                        modifier = Modifier.testTag("episode_$index"),
+                    Box(
+                        Modifier.fillMaxWidth().height(44.dp)
+                            .clip(RoundedCornerShape(10.dp))
+                            .background(if (active) HongguoColors.accent
+                                        else Color(0xFF36363B))
+                            .clickable { model.play(index); showEpisodes = false }
+                            .testTag("episode_" + index),
+                        contentAlignment = Alignment.Center,
                     ) {
-                        Text(episode.index.toString(),
-                            color = if (active) Color(0xFFFF8B60) else Color.White)
+                        Text(episode.index.toString(), fontSize = 13.sp,
+                            color = Color.White,
+                            fontWeight = if (active) FontWeight.Bold else FontWeight.Medium)
                     }
                 }
             }
@@ -428,14 +460,14 @@ private fun ReelAction(
         verticalArrangement = Arrangement.spacedBy(0.dp)) {
         IconButton(
             onClick = onClick,
-            modifier = Modifier.size(50.dp)
-                .background(Color.Black.copy(alpha = 0.24f), CircleShape)
+            modifier = Modifier.size(44.dp)
+                .background(Color.Black.copy(alpha = 0.18f), CircleShape)
                 .testTag(test),
         ) {
             Icon(icon, contentDescription = title, tint = Color.White,
-                modifier = Modifier.size(28.dp))
+                modifier = Modifier.size(25.dp))
         }
-        Text(title, color = Color.White, fontSize = 11.sp)
+        Text(title, color = Color.White, fontSize = 10.sp)
     }
 }
 
@@ -445,7 +477,10 @@ private fun CommentsSheet(state: AppState, model: DramaViewModel) {
         verticalArrangement = Arrangement.spacedBy(10.dp)) {
         Row(Modifier.fillMaxWidth(), verticalAlignment = Alignment.CenterVertically) {
             Text("评论", style = MaterialTheme.typography.titleLarge,
-                modifier = Modifier.weight(1f), color = Color.White)
+                color = Color.White, fontWeight = FontWeight.Bold)
+            Text(" · 已加载 " + state.comments.size + " 条",
+                color = Color.LightGray, fontSize = 12.sp,
+                modifier = Modifier.weight(1f))
             TextButton(onClick = { model.loadComments() }) {
                 Text("刷新", color = Color(0xFFFF9C75))
             }
@@ -459,29 +494,56 @@ private fun CommentsSheet(state: AppState, model: DramaViewModel) {
         LazyColumn(Modifier.fillMaxWidth().heightIn(max = 400.dp),
             verticalArrangement = Arrangement.spacedBy(10.dp)) {
             items(state.comments, key = { it.id }) { comment ->
-                Column(Modifier.fillMaxWidth(),
-                    verticalArrangement = Arrangement.spacedBy(4.dp)) {
-                    Row(Modifier.fillMaxWidth(),
-                        horizontalArrangement = Arrangement.spacedBy(8.dp)) {
-                        Text(comment.author, fontWeight = FontWeight.SemiBold,
-                            color = Color(0xFFFFD5C5), fontSize = 13.sp,
-                            modifier = Modifier.weight(1f))
-                        if (comment.likes > 0) Text("♥ ${comment.likes}",
-                            color = Color.LightGray, fontSize = 12.sp)
-                    }
-                    Text(comment.content, color = Color.White, fontSize = 14.sp)
-                    if (comment.created > 0) {
-                        val date = remember(comment.created) {
-                            runCatching {
-                                val seconds = if (comment.created > 10_000_000_000L)
-                                    comment.created / 1000 else comment.created
-                                Instant.ofEpochSecond(seconds).atZone(ZoneId.systemDefault())
-                                    .format(DateTimeFormatter.ofPattern("yyyy-MM-dd HH:mm"))
-                            }.getOrDefault("")
+                Row(
+                    Modifier.fillMaxWidth().padding(vertical = 4.dp),
+                    verticalAlignment = Alignment.Top,
+                    horizontalArrangement = Arrangement.spacedBy(10.dp),
+                ) {
+                    if (comment.avatar.startsWith("https://")) {
+                        AsyncImage(
+                            model = comment.avatar, contentDescription = null,
+                            modifier = Modifier.size(36.dp).clip(CircleShape),
+                            contentScale = ContentScale.Crop,
+                        )
+                    } else {
+                        Box(Modifier.size(36.dp)
+                            .background(Color(0xFF404045), CircleShape),
+                            contentAlignment = Alignment.Center) {
+                            Text(comment.author.take(1), color = Color.White,
+                                fontSize = 12.sp)
                         }
-                        if (date.isNotBlank()) Text(date, fontSize = 11.sp, color = Color.LightGray)
                     }
-                    HorizontalDivider(color = Color(0xFF414043))
+                    Column(Modifier.weight(1f),
+                        verticalArrangement = Arrangement.spacedBy(5.dp)) {
+                        Row(Modifier.fillMaxWidth(),
+                            verticalAlignment = Alignment.CenterVertically) {
+                            Text(comment.author, color = Color(0xFFFFD5C5),
+                                fontWeight = FontWeight.SemiBold, fontSize = 13.sp,
+                                modifier = Modifier.weight(1f))
+                            if (comment.likes > 0) {
+                                Text("♥ " + comment.likes,
+                                    color = Color.LightGray, fontSize = 12.sp)
+                            }
+                        }
+                        Text(comment.content, color = Color.White,
+                            fontSize = 14.sp, lineHeight = 20.sp)
+                        if (comment.created > 0) {
+                            val date = remember(comment.created) {
+                                runCatching {
+                                    val seconds = if (comment.created > 10_000_000_000L)
+                                        comment.created / 1000 else comment.created
+                                    Instant.ofEpochSecond(seconds)
+                                        .atZone(ZoneId.systemDefault())
+                                        .format(DateTimeFormatter.ofPattern("yyyy-MM-dd HH:mm"))
+                                }.getOrDefault("")
+                            }
+                            if (date.isNotBlank()) {
+                                Text(date, fontSize = 11.sp,
+                                    color = Color.LightGray)
+                            }
+                        }
+                        HorizontalDivider(color = Color(0xFF414043))
+                    }
                 }
             }
             if (state.commentsLoading) item {
