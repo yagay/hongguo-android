@@ -14,6 +14,7 @@ data class AccountUiState(
     val checking: Boolean = true,
     val busy: Boolean = false,
     val profile: CloudProfile? = null,
+    val syncEnabled: Boolean = false,
     val qrImage: ByteArray? = null,
     val qrExpires: Int = 0,
     val waitingQr: Boolean = false,
@@ -36,12 +37,18 @@ internal class AccountManager(app: Application, private val scope: CoroutineScop
         .callTimeout(25, TimeUnit.SECONDS).build()
     private val cloud = CloudAccountClient(http)
     private val store = SecureAccountStore(app)
-    private val mutable = MutableStateFlow(AccountUiState())
+    private val prefs = app.getSharedPreferences("web_rewrite_settings", 0)
+    private val mutable = MutableStateFlow(AccountUiState(
+        syncEnabled = prefs.getBoolean("cloud_progress_opt_in", false)
+    ))
     val state = mutable.asStateFlow()
     private var credentials: AccountCredentials? = null
     private var webLogin: WebLogin? = null
     private var authJob: Job? = null
     private var dataJob: Job? = null
+    private var uploadJob: Job? = null
+    private var queuedUpload: Pair<CloudProgress, Int>? = null
+    private var lastUploadTimeMs = 0L
     private var epoch = 0L
 
     init {
@@ -284,10 +291,66 @@ internal class AccountManager(app: Application, private val scope: CoroutineScop
         }
     }
 
+    /** Cloud progress is strictly opt-in. Never merge uploaded records into
+     * the local library. Network writes are serialized and bounded to ~30s.
+     */
+    fun setProgressSync(enabled: Boolean) {
+        if (state.value.profile == null) return
+        prefs.edit().putBoolean("cloud_progress_opt_in", enabled).apply()
+        mutable.update { it.copy(syncEnabled = enabled) }
+        if (!enabled) {
+            queuedUpload = null
+            uploadJob?.cancel()
+        }
+    }
+
+    fun uploadProgress(
+        series: Series, vid: String, index: Int, position: Long,
+        duration: Long, episodeCount: Int, force: Boolean = false,
+    ) {
+        val session = credentials ?: return
+        if (state.value.profile == null || !state.value.syncEnabled) return
+        if (!series.id.matches(Regex("[0-9]{1,30}")) ||
+            !vid.matches(Regex("[0-9]{1,30}")) ||
+            !ResumePolicy.persistable(position, duration)) return
+        val now = SystemClock.elapsedRealtime()
+        if (!force && now - lastUploadTimeMs < 30_000L) return
+        lastUploadTimeMs = now
+        queuedUpload = CloudProgress(
+            series, vid, index.coerceAtLeast(0), position, duration,
+            System.currentTimeMillis(), episodeCount,
+        ) to episodeCount
+        if (uploadJob?.isActive == true) return
+        val token = epoch
+        uploadJob = scope.launch {
+            while (isActive && token == epoch) {
+                val entry = queuedUpload ?: break
+                queuedUpload = null
+                try {
+                    withContext(Dispatchers.IO) {
+                        cloud.upload(session, entry.first, entry.second)
+                    }
+                    if (token == epoch) mutable.update {
+                        it.copy(message = "已提交云端播放进度，请在官方 App 核对")
+                    }
+                } catch (e: CancellationException) {
+                    throw e
+                } catch (e: Exception) {
+                    if (token == epoch) mutable.update {
+                        it.copy(message = "云端进度同步失败：" + explain(e))
+                    }
+                }
+            }
+        }
+    }
+
     fun logout() {
         resetLogin()
         dataJob?.cancel()
+        uploadJob?.cancel()
+        queuedUpload = null
         credentials = null
+        prefs.edit().putBoolean("cloud_progress_opt_in", false).apply()
         mutable.value = AccountUiState(checking = false, message = "已退出红果账号")
         scope.launch {
             val r = runCatching { withContext(Dispatchers.IO) { store.clear() } }
@@ -298,6 +361,6 @@ internal class AccountManager(app: Application, private val scope: CoroutineScop
     }
 
     fun closeScreen() {
-        if (state.value.waitingQr) resetLogin()
+        if (state.value.waitingQr || state.value.qrImage != null) resetLogin()
     }
 }

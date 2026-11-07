@@ -21,6 +21,7 @@ import androidx.compose.material3.SwitchDefaults
 import androidx.compose.material3.Text
 import androidx.compose.material3.TextButton
 import androidx.compose.runtime.Composable
+import androidx.lifecycle.compose.collectAsStateWithLifecycle
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.graphics.Color
@@ -43,6 +44,7 @@ internal fun PlaybackExperienceSheet(
     onQuality: (Int) -> Unit,
     onDownload: () -> Unit,
 ) {
+    val account by model.account.state.collectAsStateWithLifecycle()
     val white = Color.White
     val secondary = Color(0xFFC5C3C9)
     ModalBottomSheet(
@@ -137,6 +139,19 @@ internal fun PlaybackExperienceSheet(
                 modifier = Modifier.fillMaxWidth().testTag("sleep_after_episode"),
             ) { Text("播完本集后停止", color = white) }
 
+            if (account.profile != null && state.detail != null) {
+                HorizontalDivider(color = Color(0xFF4B4A50))
+                val currentId = state.detail.drama.id
+                val inCloud = account.favorites.any { it.series.id == currentId }
+                OutlinedButton(
+                    enabled = !account.busy,
+                    onClick = { model.account.cloudFavorite(currentId, !inCloud) },
+                    modifier = Modifier.fillMaxWidth().testTag("player_cloud_favorite"),
+                ) {
+                    Text(if (inCloud) "从云收藏移除" else "加入云收藏", color = white)
+                }
+                Text(account.message, fontSize = 11.sp, color = secondary)
+            }
             HorizontalDivider(color = Color(0xFF4B4A50))
             OutlinedButton(
                 onClick = { onDismiss(); onDownload() },

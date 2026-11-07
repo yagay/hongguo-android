@@ -161,6 +161,25 @@ internal fun AccountScreen(model: DramaViewModel) {
                 }
             } else {
                 item {
+                    Surface(color = HongguoColors.surface,
+                        shape = RoundedCornerShape(10.dp)) {
+                        Row(Modifier.fillMaxWidth().padding(12.dp),
+                            verticalAlignment = Alignment.CenterVertically) {
+                            Column(Modifier.weight(1f)) {
+                                Text("自动同步播放进度", fontWeight = FontWeight.SemiBold,
+                                    color = HongguoColors.ink)
+                                Text("默认关闭。开启后观看时约每 30 秒上传一次，不覆盖本机记录。",
+                                    fontSize = 11.sp, color = HongguoColors.muted)
+                            }
+                            Switch(
+                                checked = account.syncEnabled,
+                                onCheckedChange = model.account::setProgressSync,
+                                modifier = Modifier.testTag("cloud_progress_sync"),
+                            )
+                        }
+                    }
+                }
+                item {
                     Row(horizontalArrangement = Arrangement.spacedBy(8.dp)) {
                         listOf("云端历史", "云端收藏", "我的预约").forEachIndexed { index, title ->
                             FilterChip(

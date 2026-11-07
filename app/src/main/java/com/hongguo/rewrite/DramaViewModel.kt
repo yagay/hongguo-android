@@ -887,6 +887,11 @@ class DramaViewModel(application: Application) : AndroidViewModel(application) {
         if (episode.vid != expectedVid || firstFrameFor != expectedVid) return
         library.saveCheckpoint(s.detail.drama.id, expectedVid, episode.index,
             positionMs, durationMs)
+        if (source == null) account.uploadProgress(
+            Series(s.detail.drama.id, s.detail.drama.title, s.detail.drama.cover),
+            expectedVid, s.episodeIndex, positionMs, durationMs,
+            s.detail.episodes.size,
+        )
     }
 
     fun finishEpisode(expectedVid: String) {
