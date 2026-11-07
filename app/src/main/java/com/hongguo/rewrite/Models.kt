@@ -36,6 +36,15 @@ data class DanmakuPage(val items: List<DanmakuEntry>, val nextMs: Long)
 
 data class FilterOption(val value: String, val label: String)
 data class FilterGroup(val key: String, val name: String, val options: List<FilterOption>)
+data class OfflineEpisode(
+    val seriesId: String,
+    val title: String,
+    val cover: String,
+    val episode: Int,
+    val vid: String,
+    val documentUri: String,
+    val savedAt: Long,
+)
 data class Watched(val drama: Drama, val episode: Int, val updated: Long)
 
 enum class Section(val title: String) {
@@ -104,6 +113,8 @@ data class AppState(
     val skipOutroSeconds: Int = 0,
     val retryPlaybackAutomatically: Boolean = true,
     val downloadTasks: List<DownloadTask> = emptyList(),
+    val offlineEpisodes: List<OfflineEpisode> = emptyList(),
+    val offlinePlaybackUri: String? = null,
     val backend: String = "",
     val settingsMessage: String? = null,
     val logEnabled: Boolean = true,
