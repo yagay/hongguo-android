@@ -862,7 +862,7 @@ class DramaViewModel(application: Application) : AndroidViewModel(application) {
         socialJob?.cancel()
         mutable.update {
             it.copy(socialForSeries = null, socialStats = null,
-                socialStatsLoading = false)
+                openHongguoMetadata = null, socialStatsLoading = false)
         }
     }
 
@@ -923,7 +923,27 @@ class DramaViewModel(application: Application) : AndroidViewModel(application) {
                     }
                     launch {
                         try {
-                            applyStats(nativeSource.appSocial(seriesId), "APP")
+                            val (stats, metadata) = nativeSource.appEnrichment(seriesId)
+                            applyStats(stats, "APP")
+                            if (metadata != null && generation == socialGeneration &&
+                                state.value.detail?.drama?.id == seriesId) {
+                                mutable.update { current ->
+                                    val d = current.detail
+                                    if (d?.drama?.id != seriesId) current
+                                    else current.copy(
+                                        openHongguoMetadata = metadata,
+                                        detail = d.copy(drama = d.drama.copy(
+                                            categories = (d.drama.categories + metadata.tags)
+                                                .distinct().take(16),
+                                            actors = (d.drama.actors + metadata.actors)
+                                                .distinct().take(20),
+                                            completionStatus = d.drama.completionStatus
+                                                ?: metadata.statusText,
+                                        )),
+                                    )
+                                }
+                                diagnostics.record("METADATA", "OPENHONGGUO_DETAIL_READY")
+                            }
                         } catch (e: CancellationException) {
                             throw e
                         } catch (e: Exception) {
