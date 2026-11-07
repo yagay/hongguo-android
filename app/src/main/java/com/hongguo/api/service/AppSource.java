@@ -709,7 +709,7 @@ public final class AppSource {
         for (Map.Entry<String, String> e : signed.headers.entrySet()) req.header(e.getKey(), e.getValue());
         Http.Resp res = Http.send(req);
         if (res.status != 200) throw new PlaybackHttpException(res.status);
-        if (res.bytes.length == 0) throw new EmptyPlaybackResponseException();
+        if (res.body.length == 0) throw new EmptyPlaybackResponseException();
         Map<String, Object> parsed = parseTabResponse(vid, res.text());
         if (parsed == null) throw new PlaybackModelUnavailableException("App video_tab 模型不完整");
         return parsed;
