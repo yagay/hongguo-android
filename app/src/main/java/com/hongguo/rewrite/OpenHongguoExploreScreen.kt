@@ -48,6 +48,7 @@ import androidx.compose.ui.unit.sp
 import coil.compose.AsyncImage
 import dev.openhongguo.Person
 import dev.openhongguo.Work
+import dev.openhongguo.FilterRow
 import kotlinx.coroutines.CancellationException
 
 /**
@@ -68,6 +69,8 @@ internal fun OpenHongguoExploreScreen(
         "ai" to "AI榜",
         "hot" to "热搜",
         "filter" to "真人筛选",
+        "filterComic" to "漫剧筛选",
+        "filterAI" to "AI筛选",
         "discover" to "书城频道",
         "search" to "SDK搜索",
         "rankGroups" to "书城榜单",
@@ -79,6 +82,8 @@ internal fun OpenHongguoExploreScreen(
     var query by remember { mutableStateOf("") }
     var activeQuery by remember { mutableStateOf("") }
     var rankCell by remember { mutableStateOf("") }
+    var filterRows by remember { mutableStateOf(emptyList<FilterRow>()) }
+    var selectedFilters by remember { mutableStateOf(emptyMap<String, List<String>>()) }
     var rows by remember { mutableStateOf(emptyList<OpenHongguoBrowseItem>()) }
     var more by remember { mutableStateOf(false) }
     var nextCursor by remember { mutableStateOf("") }
@@ -102,7 +107,22 @@ internal fun OpenHongguoExploreScreen(
         }
     }
 
-    LaunchedEffect(tab, cursor, refresh, activeQuery, rankCell) {
+    LaunchedEffect(tab) {
+        filterRows = emptyList()
+        if (tab in setOf("filter", "filterComic", "filterAI")) {
+            try {
+                val genre = when (tab) {
+                    "filterComic" -> "comic_series"
+                    "filterAI" -> "ai_series"
+                    else -> "short_play"
+                }
+                filterRows = source.filterPanel(genre).filter { it.key != "genre" }
+            } catch (e: CancellationException) { throw e }
+            catch (_: Exception) { /* Filter defaults stay usable. */ }
+        }
+    }
+
+    LaunchedEffect(tab, cursor, refresh, activeQuery, rankCell, selectedFilters) {
         if (tab in setOf("search", "calendar", "category") && activeQuery.isBlank()) {
             rows = emptyList()
             error = null
@@ -117,7 +137,7 @@ internal fun OpenHongguoExploreScreen(
                     if (rankCell.isNotBlank()) "rankRows" else tab,
                     if (rankCell.isNotBlank()) rankCell else activeQuery,
                     cursor)
-            } else source.browse(tab, cursor)
+            } else source.browse(tab, cursor, selectedFilters)
             rows = if (cursor.isEmpty()) page.items else
                 (rows + page.items).distinctBy { it.id.ifBlank { it.title } }
             nextCursor = page.cursor
@@ -197,9 +217,41 @@ internal fun OpenHongguoExploreScreen(
                                 more = false
                                 nextCursor = ""
                                 error = null
+                                selectedFilters = emptyMap()
                             }
                         },
                         label = { Text(name) })
+                }
+            }
+        }
+        if (actorId.isBlank() && tab in setOf("filter", "filterComic", "filterAI") &&
+            filterRows.isNotEmpty()) {
+            Column(Modifier.fillMaxWidth().padding(horizontal = 12.dp),
+                verticalArrangement = Arrangement.spacedBy(2.dp)) {
+                filterRows.take(8).forEach { row ->
+                    Row(Modifier.fillMaxWidth().horizontalScroll(rememberScrollState()),
+                        horizontalArrangement = Arrangement.spacedBy(6.dp),
+                        verticalAlignment = Alignment.CenterVertically) {
+                        Text(row.name, fontSize = 12.sp, color = HongguoColors.muted)
+                        FilterChip(selected = selectedFilters[row.key].isNullOrEmpty(),
+                            onClick = {
+                                selectedFilters = selectedFilters - row.key
+                                cursor = ""; rows = emptyList(); nextCursor = ""
+                            }, label = { Text("全部") })
+                        row.options.take(12).forEach { option ->
+                            FilterChip(
+                                selected = selectedFilters[row.key]?.contains(option.value) == true,
+                                onClick = {
+                                    val old = selectedFilters[row.key].orEmpty()
+                                    selectedFilters = if (option.value in old)
+                                        selectedFilters - row.key
+                                    else selectedFilters + (row.key to listOf(option.value))
+                                    cursor = ""; rows = emptyList(); nextCursor = ""
+                                },
+                                label = { Text(option.name) },
+                            )
+                        }
+                    }
                 }
             }
         }
