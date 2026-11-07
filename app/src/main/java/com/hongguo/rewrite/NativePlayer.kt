@@ -134,8 +134,10 @@ internal fun NativePlayer(state: AppState, model: DramaViewModel) {
     }
     val context = LocalContext.current
     val selected = detail.episodes.getOrNull(state.episodeIndex)
-    val previousFeedDrama = if (state.feedMode) state.items.getOrNull(state.feedIndex - 1) else null
-    val nextFeedDrama = if (state.feedMode) state.items.getOrNull(state.feedIndex + 1) else null
+    val previousFeedDrama = if (state.feedMode) state.items.take(state.feedIndex)
+        .lastOrNull { it.id !in state.hiddenRecommendationIds } else null
+    val nextFeedDrama = if (state.feedMode) state.items.drop(state.feedIndex + 1)
+        .firstOrNull { it.id !in state.hiddenRecommendationIds } else null
     val activeFeedPage = if (previousFeedDrama != null) 1 else 0
     val nextFeedPage = state.feedMode &&
         (nextFeedDrama != null || state.hasMore || state.moreLoading)
