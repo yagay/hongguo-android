@@ -138,7 +138,8 @@ private fun ColumnScope.PhoneLoginForm(state: AccountState, model: AccountViewMo
     val codeStep = state.phoneStep == PhoneStep.CODE_SENT || (state.busy && (resending || submitted))
     val canSend = !state.busy && valid && state.phoneRemainingSeconds <= 0
     val verify = {
-        if (!state.busy && code.length >= 4) { submitted = true; model.verifySms(code); code = "" }
+        // Keep the entered OTP until login succeeds or the user changes it. Failed verification must remain editable.
+        if (!state.busy && code.length in 4..8) { submitted = true; model.verifySms(code) }
     }
     // The platform asked for a slider: the user passes it personally on the official login page.
     var verificationDismissed by remember(state.suggestWebsiteLogin) { mutableStateOf(false) }
