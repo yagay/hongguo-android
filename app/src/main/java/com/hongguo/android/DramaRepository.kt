@@ -110,6 +110,12 @@ class DramaRepository {
 
     suspend fun prepare(episode: Episode, allowFallback: Boolean = true,
                         progress: (String, Long, Long) -> Unit): PreparedVideo {
+        // Reuse a recent verified progressive session before re-registering the anonymous
+        // playback identity or probing the MP4 again. Every new Media3 player gets a new Reader.
+        PlaybackSessionCoordinator.take(episode.id)?.let {
+            progress("reused", 0, 0)
+            return it
+        }
         val context = currentCoroutineContext()
         var allocated: ProgressiveMedia.Session? = null
         var handedOff = false
