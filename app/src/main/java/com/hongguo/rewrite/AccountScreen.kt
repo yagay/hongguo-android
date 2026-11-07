@@ -9,6 +9,10 @@ import androidx.compose.foundation.lazy.items
 import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.material.icons.Icons
 import androidx.compose.material.icons.automirrored.outlined.ArrowBack
+import androidx.compose.material.icons.outlined.PersonOutline
+import androidx.compose.material.icons.outlined.MoreVert
+import androidx.compose.foundation.shape.CircleShape
+import androidx.compose.ui.draw.clip
 import androidx.compose.material3.*
 import androidx.compose.runtime.*
 import androidx.compose.runtime.saveable.rememberSaveable
@@ -43,6 +47,8 @@ internal fun AccountScreen(model: DramaViewModel) {
     }
     var tab by rememberSaveable { mutableIntStateOf(0) }
     var confirmLogout by remember { mutableStateOf(false) }
+    var loginMethod by rememberSaveable { mutableIntStateOf(0) }
+    var accountMenu by remember { mutableStateOf(false) }
     BackHandler { model.closeAccount() }
     Scaffold(
         containerColor = HongguoColors.background,
@@ -57,7 +63,7 @@ internal fun AccountScreen(model: DramaViewModel) {
                 IconButton(onClick = model::closeAccount) {
                     Icon(Icons.AutoMirrored.Outlined.ArrowBack, "返回")
                 }
-                Text("红果账号", fontSize = 19.sp, fontWeight = FontWeight.Bold,
+                Text("我的账号", fontSize = 24.sp, fontWeight = FontWeight.Bold,
                     modifier = Modifier.weight(1f))
                 if (account.profile != null)
                     TextButton(onClick = { model.account.refresh() },
@@ -67,7 +73,7 @@ internal fun AccountScreen(model: DramaViewModel) {
     ) { padding ->
         LazyColumn(
             Modifier.fillMaxSize().padding(padding).testTag("account_screen"),
-            contentPadding = PaddingValues(horizontal = 16.dp, vertical = 14.dp),
+            contentPadding = PaddingValues(horizontal = 20.dp, vertical = 12.dp),
             verticalArrangement = Arrangement.spacedBy(12.dp),
         ) {
             item {
@@ -88,6 +94,36 @@ internal fun AccountScreen(model: DramaViewModel) {
             }
             if (account.profile == null) {
                 item {
+                    Column(Modifier.fillMaxWidth().padding(vertical = 8.dp),
+                        horizontalAlignment = Alignment.CenterHorizontally,
+                        verticalArrangement = Arrangement.spacedBy(8.dp)) {
+                        Icon(Icons.Outlined.PersonOutline, null, Modifier.size(54.dp),
+                            tint = HongguoColors.accent)
+                        Text("登录红果账号", fontSize = 22.sp, fontWeight = FontWeight.Bold,
+                            color = HongguoColors.ink)
+                        Text("查看账号收藏、历史与预约，本机记录单独保留",
+                            color = HongguoColors.muted, fontSize = 13.sp)
+                    }
+                }
+                item {
+                    Surface(color = HongguoColors.surface, shape = RoundedCornerShape(20.dp)) {
+                        Row(Modifier.fillMaxWidth().padding(6.dp),
+                            horizontalArrangement = Arrangement.spacedBy(8.dp)) {
+                            listOf("手机验证码", "扫码登录").forEachIndexed { index, label ->
+                                FilterChip(selected = loginMethod == index, onClick = {
+                                    if (loginMethod != index) {
+                                        if (index == 0) model.account.cancelQr()
+                                        else model.account.cancelSms()
+                                        loginMethod = index
+                                    }
+                                }, label = { Text(label) },
+                                    modifier = Modifier.weight(1f).testTag(
+                                        if (index == 0) "account_method_sms" else "account_method_qr"))
+                            }
+                        }
+                    }
+                }
+                if (loginMethod == 1) item {
                     Text("官方扫码登录", fontWeight = FontWeight.Bold,
                         color = HongguoColors.ink)
                     Text("请用手机红果 App 的扫一扫扫描，并在手机上确认。扫码失败可尝试手机号验证码。",
@@ -127,8 +163,7 @@ internal fun AccountScreen(model: DramaViewModel) {
                         ) { Text("取消扫码") }
                     }
                 }
-                item {
-                    HorizontalDivider()
+                if (loginMethod == 0) item {
                     Text("手机号验证码登录", fontWeight = FontWeight.Bold,
                         color = HongguoColors.ink)
                     OutlinedTextField(
@@ -184,6 +219,46 @@ internal fun AccountScreen(model: DramaViewModel) {
                         fontSize = 11.sp, color = HongguoColors.muted)
                 }
             } else {
+                item {
+                    Row(Modifier.fillMaxWidth(), verticalAlignment = Alignment.CenterVertically,
+                        horizontalArrangement = Arrangement.spacedBy(12.dp)) {
+                        Box(Modifier.size(56.dp).clip(CircleShape).background(HongguoColors.accentSoft),
+                            contentAlignment = Alignment.Center) {
+                            Icon(Icons.Outlined.PersonOutline, null, Modifier.size(30.dp),
+                                tint = HongguoColors.accent)
+                        }
+                        Column(Modifier.weight(1f)) {
+                            Text(account.profile?.nickname.orEmpty().ifBlank { "红果用户" },
+                                color = HongguoColors.ink, fontSize = 20.sp,
+                                fontWeight = FontWeight.SemiBold,
+                                modifier = Modifier.testTag("account_profile"))
+                            Text("红果号 ${account.profile?.id.orEmpty()}",
+                                color = HongguoColors.muted, fontSize = 12.sp)
+                        }
+                        Box {
+                            IconButton(onClick = { accountMenu = true },
+                                modifier = Modifier.testTag("account_menu")) {
+                                Icon(Icons.Outlined.MoreVert, "账号操作", tint = HongguoColors.ink)
+                            }
+                            DropdownMenu(expanded = accountMenu, onDismissRequest = { accountMenu = false }) {
+                                DropdownMenuItem(text = { Text("同步此后观看进度") },
+                                    trailingIcon = { Checkbox(checked = account.syncEnabled, onCheckedChange = null) },
+                                    onClick = {
+                                        accountMenu = false
+                                        model.account.setProgressSync(!account.syncEnabled)
+                                    }, modifier = Modifier.testTag("account_sync_switch"))
+                                DropdownMenuItem(text = { Text("刷新账号资料") }, onClick = {
+                                    accountMenu = false
+                                    model.account.refresh()
+                                })
+                                DropdownMenuItem(text = { Text("退出账号") }, onClick = {
+                                    accountMenu = false
+                                    confirmLogout = true
+                                }, modifier = Modifier.testTag("account_logout_menu"))
+                            }
+                        }
+                    }
+                }
                 item {
                     Surface(color = HongguoColors.surface,
                         shape = RoundedCornerShape(10.dp)) {
