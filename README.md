@@ -108,3 +108,12 @@ CI 只执行 Debug 构建，不生成 Release/Magisk 包。
   successful request with no visible comments can be diagnosed separately.
 - Independent unit tests cover lane contention, non-overlap, seek progress,
   width-aware animation boundaries, and stable ordering.
+
+
+## 自动加载右侧评论数
+
+- 进入分集后立刻独立请求首批评论及服务端 `total`，无需先点击右侧评论图标；不阻塞视频取址和首帧。
+- 右侧评论按钮显示公开服务端评论总数（包含 0）；正在加载时显示省略号，失败时保留「评论」文字，不假装 0。
+- 点击评论只展示正在加载或已缓存的结果，不取消重发；仍保留手动刷新和分页。
+- 切集或退出时取消过时评论请求并清空旧数字，确保不会混用其他分集的统计。
+- 收藏、喜欢、分享目前没有可靠的公开数量接口，不用本机操作记录冒充官方统计。

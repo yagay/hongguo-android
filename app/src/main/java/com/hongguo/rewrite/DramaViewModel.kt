@@ -174,6 +174,7 @@ class DramaViewModel(application: Application) : AndroidViewModel(application) {
         danmakuJob?.cancel()
         mutable.update {
             it.copy(commentsForVid = null, comments = emptyList(),
+                commentsTotal = null,
                 commentsCursor = "", commentsHasMore = false,
                 commentsLoading = false, commentsError = null,
                 commentsLimited = false,
@@ -197,6 +198,20 @@ class DramaViewModel(application: Application) : AndroidViewModel(application) {
     }
 
     /** Open episode-specific anonymous comments. Never reuses stale pages. */
+    /**
+     * Called when opening the comments drawer. A background first-page request
+     * started on episode selection remains in flight; do not cancel/restart it.
+     * A manual refresh still uses loadComments(reset = true).
+     */
+    fun ensureCommentsLoaded() {
+        val s = state.value
+        val vid = s.detail?.episodes?.getOrNull(s.episodeIndex)?.vid ?: return
+        if (s.commentsForVid == vid &&
+            (s.commentsLoading || s.commentsTotal != null ||
+                (s.commentsError == null && s.comments.isNotEmpty()))) return
+        loadComments(reset = true)
+    }
+
     fun loadComments(reset: Boolean = true) {
         val detail = state.value.detail ?: return
         val vid = detail.episodes.getOrNull(state.value.episodeIndex)?.vid ?: return
@@ -209,6 +224,7 @@ class DramaViewModel(application: Application) : AndroidViewModel(application) {
         commentsJob?.cancel()
         mutable.update {
             it.copy(commentsForVid = vid, commentsLoading = true,
+                commentsTotal = if (reset) null else it.commentsTotal,
                 commentsError = null,
                 comments = if (reset) emptyList() else it.comments,
                 commentsCursor = if (reset) "" else it.commentsCursor,
@@ -225,9 +241,13 @@ class DramaViewModel(application: Application) : AndroidViewModel(application) {
                     it.copy(comments = (it.comments + page.items).distinctBy(CommentEntry::id).take(500),
                         commentsCursor = page.nextCursor,
                         commentsHasMore = page.hasMore,
+                        commentsTotal = page.total ?: it.commentsTotal,
                         commentsLoading = false, commentsLimited = page.limited)
                 }
-                diagnostics.record("COMMENTS", if (page.limited) "PUBLIC_LIMITED" else "READ_SUCCESS")
+                diagnostics.record("COMMENTS",
+                    if (page.limited) "PUBLIC_LIMITED" else "READ_SUCCESS")
+                diagnostics.record("COMMENTS",
+                    if (page.total == null) "TOTAL_UNKNOWN" else "TOTAL_READY")
             } catch (e: CancellationException) {
                 throw e
             } catch (e: Exception) {
@@ -410,6 +430,9 @@ class DramaViewModel(application: Application) : AndroidViewModel(application) {
         firstFrameFor = null
         mutable.update { it.copy(episodeIndex = index, playbackUrl = null,
             playing = false, playbackError = null) }
+        // Independent IO request: comment totals are available before tapping
+        // the comment action, without delaying playback address preparation.
+        loadComments(reset = true)
         diagnostics.record("PLAYBACK", "START")
         detailJob = viewModelScope.launch {
             val started = System.nanoTime()

@@ -279,8 +279,9 @@ class NativeHongguoSource(
                     row.optLong("created", 0).coerceAtLeast(0),
                     row.optString("avatar").take(4096))
             }.distinctBy { it.id }
+            val total = result.optLong("total", -1L).takeIf { it >= 0L }
             CommentsPage(items, if (limited) "" else result.optString("nextCursor"),
-                !limited && result.optBoolean("hasMore"), limited)
+                !limited && result.optBoolean("hasMore"), limited, total)
         }
 
     /** Timestamped danmaku for current episode, never fabricated locally. */

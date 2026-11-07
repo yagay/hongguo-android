@@ -135,8 +135,8 @@ internal fun ReelScreenshotOverlay(
             }
         }
 
-        // Reference screenshot action rail: bookmark, comment, heart, share.
-        // Labels are truthful because public counts are not in DramaDetail.
+        // Only the episode comment total is provided by the anonymous API.
+        // Do not present local favorite/heart actions as public counts.
         Column(
             Modifier.align(Alignment.BottomEnd)
                 .padding(end = 8.dp, bottom = 21.dp),
@@ -150,7 +150,9 @@ internal fun ReelScreenshotOverlay(
                 if (saved) Color(0xFFFFD27C) else white,
             )
             ReferenceAction(Icons.Outlined.ChatBubbleOutline, "评论",
-                "reel_comments", onComments)
+                "reel_comments", onComments,
+                count = state.commentsTotal?.let(SocialCountFormatter::format)
+                    ?: if (state.commentsLoading) "…" else null)
             ReferenceAction(
                 if (liked) Icons.Outlined.Favorite else Icons.Outlined.FavoriteBorder,
                 if (liked) "已喜欢" else "喜欢",
@@ -301,6 +303,7 @@ internal fun ReelBottomDock(
 private fun ReferenceAction(
     icon: ImageVector, label: String, tag: String,
     onClick: () -> Unit, tint: Color = Color.White,
+    count: String? = null,
 ) {
     Column(
         horizontalAlignment = Alignment.CenterHorizontally,
@@ -314,7 +317,7 @@ private fun ReferenceAction(
             Icon(icon, contentDescription = label, tint = tint,
                 modifier = Modifier.size(32.dp))
         }
-        Text(label, fontSize = 12.sp, color = Color.White,
+        Text(count ?: label, fontSize = 12.sp, color = Color.White,
             maxLines = 1, fontWeight = FontWeight.Medium)
     }
 }

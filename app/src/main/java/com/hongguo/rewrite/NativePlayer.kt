@@ -173,7 +173,7 @@ internal fun NativePlayer(state: AppState, model: DramaViewModel) {
         showEpisodes = false
     }
     LaunchedEffect(showComments, state.episodeIndex) {
-        if (showComments) model.loadComments()
+        if (showComments) model.ensureCommentsLoaded()
     }
     LaunchedEffect(showHeart) {
         if (showHeart) {
@@ -396,9 +396,13 @@ private fun CommentsSheet(state: AppState, model: DramaViewModel) {
         Row(Modifier.fillMaxWidth(), verticalAlignment = Alignment.CenterVertically) {
             Text("评论", style = MaterialTheme.typography.titleLarge,
                 color = Color.White, fontWeight = FontWeight.Bold)
-            Text(" · 已加载 " + state.comments.size + " 条",
+            Text(
+                state.commentsTotal?.let { total ->
+                    " · 共 " + SocialCountFormatter.format(total) + " 条"
+                } ?: " · 已加载 " + state.comments.size + " 条",
                 color = Color.LightGray, fontSize = 12.sp,
-                modifier = Modifier.weight(1f))
+                modifier = Modifier.weight(1f),
+            )
             TextButton(onClick = { model.loadComments() }) {
                 Text("刷新", color = Color(0xFFFF9C75))
             }

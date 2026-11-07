@@ -23,6 +23,8 @@ data class CommentsPage(
     val nextCursor: String = "",
     val hasMore: Boolean = false,
     val limited: Boolean = false,
+    /** Server-provided total for this episode, null when unavailable. */
+    val total: Long? = null,
 )
 data class DanmakuEntry(val id: String, val content: String, val timeMs: Long)
 data class DanmakuPage(val items: List<DanmakuEntry>, val nextMs: Long)
@@ -74,6 +76,7 @@ data class AppState(
     val danmakuEnabled: Boolean = false,
     val commentsForVid: String? = null,
     val comments: List<CommentEntry> = emptyList(),
+    val commentsTotal: Long? = null,
     val commentsCursor: String = "",
     val commentsHasMore: Boolean = false,
     val commentsLoading: Boolean = false,
