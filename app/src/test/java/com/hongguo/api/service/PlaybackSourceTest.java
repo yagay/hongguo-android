@@ -325,6 +325,58 @@ public class PlaybackSourceTest {
         }
     }
 
+    @Test public void registrationOkHttpActuallySendsBinaryBodyAndHeaders() throws Exception {
+        okhttp3.mockwebserver.MockWebServer server = new okhttp3.mockwebserver.MockWebServer();
+        try {
+            server.enqueue(new okhttp3.mockwebserver.MockResponse()
+                    .setResponseCode(200)
+                    .addHeader("Set-Cookie", "install_id=test123; Path=/")
+                    .setBody(okReply().text));
+            server.start();
+            byte[] payload = new byte[]{0x74, 0x63, 0x05, 0x10, 0x00, 0x00, (byte) 0xff, 0x01};
+            Map<String, String> headers = new java.util.LinkedHashMap<>();
+            headers.put("Content-Type", "application/octet-stream;tt-data=a");
+            headers.put("x-ss-stub", "ABCD1234");
+            PlaybackDevice.Reply response =
+                    RegistrationHttp.okHttpPost(server.url("/service/2/device_register/").toString(), headers, payload);
+            assertEquals(200, response.status);
+            assertTrue(response.text.contains(DEVICE_ID));
+            assertEquals(1, response.setCookies.size());
+            okhttp3.mockwebserver.RecordedRequest request =
+                    server.takeRequest(3, TimeUnit.SECONDS);
+            assertNotNull(request);
+            assertEquals("POST", request.getMethod());
+            assertEquals("application/octet-stream;tt-data=a", request.getHeader("Content-Type"));
+            assertEquals("ABCD1234", request.getHeader("x-ss-stub"));
+            assertArrayEquals(payload, request.getBody().readByteArray());
+        } finally {
+            server.shutdown();
+        }
+    }
+
+    @Test public void registrationHttpResponseNeverTriggersSecondTransport() throws Exception {
+        okhttp3.mockwebserver.MockWebServer server = new okhttp3.mockwebserver.MockWebServer();
+        try {
+            server.enqueue(new okhttp3.mockwebserver.MockResponse()
+                    .setResponseCode(403).setBody("Do not export server errors: Bearer secret"));
+            server.start();
+            AtomicInteger fallbackCalls = new AtomicInteger();
+            PlaybackDevice.Reply response = RegistrationHttp.postWithFallback(
+                    RegistrationHttp::okHttpPost,
+                    (url, headers, body) -> {
+                        fallbackCalls.incrementAndGet();
+                        throw new AssertionError("HTTP error is not a transport failure");
+                    },
+                    server.url("/service/2/device_register/").toString(),
+                    java.util.Collections.emptyMap(), new byte[]{3});
+            assertEquals(403, response.status);
+            assertEquals("", response.text);
+            assertEquals(0, fallbackCalls.get());
+        } finally {
+            server.shutdown();
+        }
+    }
+
     @Test public void registrationPreferredTransportSuccessDoesNotRetry() throws Exception {
         AtomicInteger primary = new AtomicInteger(), fallback = new AtomicInteger();
         PlaybackDevice.Reply reply = RegistrationHttp.postWithFallback(
