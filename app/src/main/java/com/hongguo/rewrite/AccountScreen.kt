@@ -166,6 +166,25 @@ internal fun AccountScreen(model: DramaViewModel) {
                         Row(Modifier.fillMaxWidth().padding(12.dp),
                             verticalAlignment = Alignment.CenterVertically) {
                             Column(Modifier.weight(1f)) {
+                                Text("启用账号推荐", fontWeight = FontWeight.SemiBold,
+                                    color = HongguoColors.ink)
+                                Text("默认关闭。启用后将账号会话用于官方推荐接口；不保证与官方 App 的个性化结果完全一致。",
+                                    fontSize = 11.sp, color = HongguoColors.muted)
+                            }
+                            Switch(
+                                checked = account.accountRecommendations,
+                                onCheckedChange = model.account::setAccountRecommendations,
+                                modifier = Modifier.testTag("account_recommendations"),
+                            )
+                        }
+                    }
+                }
+                item {
+                    Surface(color = HongguoColors.surface,
+                        shape = RoundedCornerShape(10.dp)) {
+                        Row(Modifier.fillMaxWidth().padding(12.dp),
+                            verticalAlignment = Alignment.CenterVertically) {
+                            Column(Modifier.weight(1f)) {
                                 Text("自动同步播放进度", fontWeight = FontWeight.SemiBold,
                                     color = HongguoColors.ink)
                                 Text("默认关闭。开启后观看时约每 30 秒上传一次，不覆盖本机记录。",

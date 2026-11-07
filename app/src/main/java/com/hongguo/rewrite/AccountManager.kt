@@ -15,6 +15,7 @@ data class AccountUiState(
     val busy: Boolean = false,
     val profile: CloudProfile? = null,
     val syncEnabled: Boolean = false,
+    val accountRecommendations: Boolean = false,
     val qrImage: ByteArray? = null,
     val qrExpires: Int = 0,
     val waitingQr: Boolean = false,
@@ -39,7 +40,8 @@ internal class AccountManager(app: Application, private val scope: CoroutineScop
     private val store = SecureAccountStore(app)
     private val prefs = app.getSharedPreferences("web_rewrite_settings", 0)
     private val mutable = MutableStateFlow(AccountUiState(
-        syncEnabled = prefs.getBoolean("cloud_progress_opt_in", false)
+        syncEnabled = prefs.getBoolean("cloud_progress_opt_in", false),
+        accountRecommendations = prefs.getBoolean("account_recommend_opt_in", false),
     ))
     val state = mutable.asStateFlow()
     private var credentials: AccountCredentials? = null
@@ -291,6 +293,19 @@ internal class AccountManager(app: Application, private val scope: CoroutineScop
         }
     }
 
+    /** Cookie is only passed to the official recommendation API if enabled. */
+    internal fun recommendationAccount(): FeedAccount? {
+        if (state.value.profile == null || !state.value.accountRecommendations) return null
+        return credentials?.takeIf { it.cookie.isNotBlank() }
+            ?.let { FeedAccount(it.cookie, it.device) }
+    }
+
+    fun setAccountRecommendations(enabled: Boolean) {
+        if (state.value.profile == null) return
+        prefs.edit().putBoolean("account_recommend_opt_in", enabled).apply()
+        mutable.update { it.copy(accountRecommendations = enabled) }
+    }
+
     /** Cloud progress is strictly opt-in. Never merge uploaded records into
      * the local library. Network writes are serialized and bounded to ~30s.
      */
@@ -350,7 +365,8 @@ internal class AccountManager(app: Application, private val scope: CoroutineScop
         uploadJob?.cancel()
         queuedUpload = null
         credentials = null
-        prefs.edit().putBoolean("cloud_progress_opt_in", false).apply()
+        prefs.edit().putBoolean("cloud_progress_opt_in", false)
+            .putBoolean("account_recommend_opt_in", false).apply()
         mutable.value = AccountUiState(checking = false, message = "已退出红果账号")
         scope.launch {
             val r = runCatching { withContext(Dispatchers.IO) { store.clear() } }

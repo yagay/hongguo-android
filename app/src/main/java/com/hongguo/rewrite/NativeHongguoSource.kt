@@ -7,6 +7,7 @@ import org.json.JSONObject
 import com.hongguotv.core.ContentRepository
 import com.hongguotv.core.RecommendationFeed
 import com.hongguotv.core.Series
+import com.hongguotv.core.FeedAccount
 import com.hongguotv.core.DramaCategory
 import com.hongguotv.core.DiscoveryCursor
 import com.hongguotv.core.DiscoverySelection
@@ -32,6 +33,12 @@ class NativeHongguoSource(
     private val websiteCovers = NativeWebsiteSource(diagnostics = diagnostics)
     private val recommendationLock = Any()
     private var recommendationFeed = RecommendationFeed(repository.http)
+    private var accountFeed: FeedAccount? = null
+
+    /** Called only for a new catalog session; QR cookies never enter logs. */
+    fun setAccountRecommendations(session: FeedAccount?) {
+        synchronized(recommendationLock) { accountFeed = session }
+    }
     private var recommendationBuffer = RecommendationAccumulator<Series> { it.id }
     private var recommendationOffset = 0
     private var recommendationFeedPage = 1
@@ -101,7 +108,8 @@ class NativeHongguoSource(
         synchronized(recommendationLock) {
             require(offset >= 0)
             if (offset == 0) {
-                recommendationFeed = RecommendationFeed(repository.http)
+                recommendationFeed = RecommendationFeed(repository.http,
+                    account = accountFeed)
                 recommendationBuffer = RecommendationAccumulator { it.id }
                 recommendationOffset = 0
                 recommendationFeedPage = 1

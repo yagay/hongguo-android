@@ -203,6 +203,7 @@ class DramaViewModel(application: Application) : AndroidViewModel(application) {
     }
 
     fun refresh() {
+        nativeSource.setAccountRecommendations(account.recommendationAccount())
         pageJob?.cancel()
         val version = ++requestId
         val s = state.value
@@ -554,6 +555,8 @@ class DramaViewModel(application: Application) : AndroidViewModel(application) {
     fun closeAccount() {
         account.closeScreen()
         show(Modal.NONE)
+        if (state.value.detail == null && !state.value.preparingDetail &&
+            state.value.section == Section.RECOMMEND) refresh()
     }
 
     fun refreshDiagnostics() {
