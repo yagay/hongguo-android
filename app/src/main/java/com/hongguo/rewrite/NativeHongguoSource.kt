@@ -203,11 +203,18 @@ class NativeHongguoSource(
      * Prefer an Android-compatible AVC rendition, falling back to HEVC only
      * when available; VVC/bytevc2 is never sent to the decoder.
      */
-    suspend fun openVideo(vid: String): RemoteVideo = withContext(Dispatchers.IO) {
+    suspend fun openVideo(vid: String, nextVid: String? = null): RemoteVideo =
+        withContext(Dispatchers.IO) {
         diagnostics?.record("PLAYBACK", "REGISTER_AND_MODEL_START")
         val started = System.nanoTime()
         val ladder = try {
-            repository.streamLadder(vid)
+            // Retrieve the next episode's metadata within the same bounded
+            // playback request; the upstream core retains it briefly for
+            // handoff without starting a second anonymous registration.
+            val ahead = nextVid?.takeIf {
+                it != vid && it.matches(Regex("[0-9]{1,30}"))
+            }?.let(::listOf).orEmpty()
+            repository.streamLadder(vid, metadataAhead = ahead)
         } catch (error: Exception) {
             val code = PlaybackProblem.describe("播放模型", error).substringBefore(" · ")
             diagnostics?.record("PLAYBACK", "MODEL_FAIL_" + code,

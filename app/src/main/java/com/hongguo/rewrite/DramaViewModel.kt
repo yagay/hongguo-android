@@ -417,7 +417,8 @@ class DramaViewModel(application: Application) : AndroidViewModel(application) {
                     if (version != detailId) return@launch
                     mutable.update { it.copy(playbackUrl = url, playing = true) }
                 } else {
-                    val video = nativeSource.openVideo(vid)
+                    val ahead = detail.episodes.getOrNull(index + 1)?.vid
+                    val video = nativeSource.openVideo(vid, ahead)
                     if (version != detailId) {
                         video.close()
                         return@launch
