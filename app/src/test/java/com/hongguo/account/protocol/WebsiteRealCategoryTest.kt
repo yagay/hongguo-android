@@ -107,7 +107,7 @@ class WebsiteRealCategoryTest {
     }
 
     @Test fun quotedTextAndBracesCannotTruncateTheEmbeddedRouterJson() {
-        val raw = siteHtml().replace("都市 {爱情}", "看到 \\"{测试}\\" 后续")
+        val raw = siteHtml().replace("都市 {爱情}", "看到 {测试} 后续")
         val parsed = WebsiteRealCategory.parse(raw, "", 1)
         assertTrue(parsed.entries.first().series.description.contains("测试"))
     }
