@@ -40,6 +40,23 @@ object OpenHongguoMetadataParser {
     // An InfoScore row is rating evidence; hot_score / rank_score are NOT.
     private val scorePattern = Regex("^(?:10(?:\\.0)?|[0-9](?:\\.[0-9])?)(?:分)?$")
 
+    fun isRating(value: String): Boolean = scorePattern.matches(value.trim())
+
+    fun merge(primary: OpenHongguoMetadata?, supplement: OpenHongguoMetadata):
+        OpenHongguoMetadata {
+        if (primary == null || primary.seriesId != supplement.seriesId) return supplement
+        return primary.copy(
+            tags = (primary.tags + supplement.tags).distinct().take(16),
+            actors = (primary.actors + supplement.actors).distinct().take(20),
+            score = primary.score ?: supplement.score,
+            novel = primary.novel ?: supplement.novel,
+            albumId = primary.albumId ?: supplement.albumId,
+            season = primary.season ?: supplement.season,
+            statusText = primary.statusText ?: supplement.statusText,
+            rows = (primary.rows + supplement.rows).distinct().take(80),
+        )
+    }
+
     fun parse(response: JSONObject, expectedId: String): OpenHongguoMetadata {
         require(idPattern.matches(expectedId))
         if (response.opt("code")?.toString() != "0") throw IOException("METADATA_APP_CODE")
