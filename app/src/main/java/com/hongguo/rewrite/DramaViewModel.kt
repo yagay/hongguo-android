@@ -545,7 +545,7 @@ class DramaViewModel(application: Application) : AndroidViewModel(application) {
         val current = state.value
         val next = current.feedItems.drop(index + 1)
             .firstOrNull { it.id !in current.hiddenRecommendationIds } ?: return
-        if (source != null || prefetchedFeedDetails.containsKey(next.id)) return
+        if (prefetchedFeedDetails.containsKey(next.id)) return
         feedPrefetchJob?.cancel()
         feedPrefetchJob = viewModelScope.launch {
             try {
@@ -1232,7 +1232,8 @@ class DramaViewModel(application: Application) : AndroidViewModel(application) {
             feedMode = feed, relatedWorks = emptyList(), relatedSeries = null,
             relatedLoading = false, relatedError = null,
             playbackError = null, playbackUrl = null, playing = false) }
-        val api = source
+        // Official swipe recommendations must use their matching native detail API.
+        val api = if (feed) null else source
         diagnostics.record("DETAIL", "START")
         detailJob = viewModelScope.launch {
             val started = System.nanoTime()
@@ -1282,7 +1283,7 @@ class DramaViewModel(application: Application) : AndroidViewModel(application) {
             return
         }
         clearEngagement()
-        val api = source
+        val api = if (state.value.feedMode) null else source
         val version = ++detailId
         val vid = detail.episodes[index].vid
         detailJob?.cancel()
