@@ -1468,6 +1468,13 @@ class DramaViewModel(application: Application) : AndroidViewModel(application) {
      */
     fun downloadNative(vid: String, uri: Uri) {
         if (!vid.matches(Regex("[0-9]{1,30}"))) return
+        val currentDetail = state.value.detail
+        val savedDrama = currentDetail?.drama
+        val savedEpisode = currentDetail?.episodes?.firstOrNull { it.vid == vid }
+        runCatching {
+            getApplication<Application>().contentResolver.takePersistableUriPermission(
+                uri, Intent.FLAG_GRANT_READ_URI_PERMISSION)
+        }
         val taskId = "local-" + System.currentTimeMillis() + "-" + vid.takeLast(6)
         mutable.update { s ->
             s.copy(downloadTasks = (
@@ -1518,6 +1525,13 @@ class DramaViewModel(application: Application) : AndroidViewModel(application) {
                     stream.flush()
                 }
                 diagnostics.record("DOWNLOAD", "COMPLETE", elapsed(started))
+                if (savedDrama != null && savedEpisode != null) {
+                    val entry = OfflineEpisode(savedDrama.id, savedDrama.title, savedDrama.cover,
+                        savedEpisode.index, vid, uri.toString(), System.currentTimeMillis())
+                    saveOfflineEpisodes(listOf(entry) + state.value.offlineEpisodes.filterNot {
+                        it.documentUri == uri.toString()
+                    })
+                }
                 mutable.update { s -> s.copy(downloadTasks = s.downloadTasks.map {
                     if (it.id == taskId) it.copy(status = "已保存到所选文件", done = 1) else it
                 }) }
