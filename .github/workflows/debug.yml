@@ -15,7 +15,10 @@ jobs:
           distribution: temurin
           java-version: '17'
           cache: gradle
-      - uses: android-actions/setup-android@v3
+      - name: Prepare Android SDK
+        run: |
+          echo "ANDROID_HOME=$ANDROID_SDK_ROOT" >> "$GITHUB_ENV"
+          sdkmanager --install "platforms;android-36" "build-tools;36.0.0"
       - name: Build Debug APK
         run: bash ./gradlew :app:assembleDebug :app:testDebugUnitTest --build-cache --no-daemon
       - uses: actions/upload-artifact@v4
