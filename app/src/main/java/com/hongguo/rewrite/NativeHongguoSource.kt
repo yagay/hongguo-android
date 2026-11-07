@@ -76,7 +76,7 @@ class NativeHongguoSource(
                     account = synchronized(recommendationLock) { accountFeed },
                     cursor = reelsCursor)
                 reelsPageNumber = 1
-                alreadyShown.takeLast(300).forEach(reelsCursor::markSeen)
+                alreadyShown.toList().takeLast(300).forEach(reelsCursor::markSeen)
             }
             var attempts = 0
             var output: com.hongguotv.core.CatalogPage? = null
