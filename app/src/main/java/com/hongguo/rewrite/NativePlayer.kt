@@ -134,6 +134,9 @@ internal fun NativePlayer(state: AppState, model: DramaViewModel) {
     )
     val playback = remember(state.episodeIndex) { ReelPlaybackControls() }
     var speed by remember { mutableFloatStateOf(1f) }
+    // Full-bleed video as in the reference screenshot; users can switch to
+    // fit mode when letterbox/crop considerations or subtitles require it.
+    var fillVideo by rememberSaveable { mutableStateOf(true) }
     var showComments by remember { mutableStateOf(false) }
     var showEpisodes by remember { mutableStateOf(false) }
     var showHeart by remember { mutableStateOf(false) }
@@ -197,7 +200,7 @@ internal fun NativePlayer(state: AppState, model: DramaViewModel) {
                     val url = state.playbackUrl
                     if (url != null) {
                         Media3Reel(
-                            url = url, speed = speed,
+                            url = url, speed = speed, fillVideo = fillVideo,
                             nativeVideo = model.nativeVideoFor(episode.vid),
                             controls = playback,
                             onFirstFrame = { model.firstFrame(episode.vid) },
@@ -296,6 +299,8 @@ internal fun NativePlayer(state: AppState, model: DramaViewModel) {
             episode = selected,
             playback = playback,
             speed = speed,
+            fillVideo = fillVideo,
+            onToggleFillVideo = { fillVideo = !fillVideo },
             onBack = model::closePlayer,
             onFavorite = model::favorite,
             onLike = model::toggleLocalLike,
@@ -532,6 +537,7 @@ internal class ReelPlaybackControls {
 private fun Media3Reel(
     url: String,
     speed: Float,
+    fillVideo: Boolean,
     nativeVideo: RemoteVideo?,
     controls: ReelPlaybackControls,
     onFirstFrame: () -> Unit,
@@ -613,11 +619,16 @@ private fun Media3Reel(
             PlayerView(it).apply {
                 this.player = player
                 useController = false
-                resizeMode = AspectRatioFrameLayout.RESIZE_MODE_FIT
+                resizeMode = if (fillVideo) AspectRatioFrameLayout.RESIZE_MODE_ZOOM
+                    else AspectRatioFrameLayout.RESIZE_MODE_FIT
                 keepScreenOn = true
             }
         },
         modifier = Modifier.fillMaxSize().testTag("native_player"),
-        update = { it.player = player },
+        update = {
+            it.player = player
+            it.resizeMode = if (fillVideo) AspectRatioFrameLayout.RESIZE_MODE_ZOOM
+                else AspectRatioFrameLayout.RESIZE_MODE_FIT
+        },
     )
 }

@@ -66,6 +66,8 @@ internal fun ReelScreenshotOverlay(
     episode: Episode?,
     playback: ReelPlaybackControls,
     speed: Float,
+    fillVideo: Boolean,
+    onToggleFillVideo: () -> Unit,
     onBack: () -> Unit,
     onFavorite: () -> Unit,
     onLike: () -> Unit,
@@ -114,6 +116,12 @@ internal fun ReelScreenshotOverlay(
                     onDismissRequest = { moreExpanded = false },
                     containerColor = HongguoColors.playerSheet,
                 ) {
+                    DropdownMenuItem(
+                        text = { Text(
+                            if (fillVideo) "画面：铺满（可切换适应）" else "画面：适应（可切换铺满）",
+                            color = white) },
+                        onClick = { moreExpanded = false; onToggleFillVideo() },
+                    )
                     DropdownMenuItem(
                         text = { Text("下载本集", color = white) },
                         leadingIcon = { Icon(Icons.Outlined.Download, null, tint = white) },
