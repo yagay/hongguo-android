@@ -177,6 +177,13 @@ private fun LibraryRows(state: AppState, model: DramaViewModel) {
                         color = HongguoColors.muted, fontSize = 12.sp)
                     Text("点击继续观看", color = HongguoColors.accent, fontSize = 11.sp)
                 }
+                if (!selecting && !isFavorites) TextButton(onClick = {
+                    model.setDramaCompleted(entry.drama.id,
+                        entry.drama.id !in state.completedDramaIds)
+                }) {
+                    Text(if (entry.drama.id in state.completedDramaIds) "恢复未看完" else "标记看完",
+                        color = HongguoColors.accent, fontSize = 11.sp)
+                }
                 if (!selecting) TextButton(onClick = { model.remove(entry.drama.id, isFavorites) }) {
                     Text("移除", color = HongguoColors.muted, fontSize = 12.sp)
                 }
