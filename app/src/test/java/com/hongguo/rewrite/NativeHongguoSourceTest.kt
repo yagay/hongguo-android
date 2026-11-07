@@ -20,6 +20,23 @@ class NativeHongguoSourceTest {
         assertEquals(DramaCategory.AI, NativeHongguoSource.categoryFor("ai_series"))
     }
 
+    @Test fun latestIsExplicitlySortedByOnlineTime() {
+        val latest = NativeHongguoSource.selectionFor("short_play", latest = true)
+        assertEquals("online_time", latest.values["sort"])
+        assertEquals("short_play", latest.values["genre"])
+        val comic = NativeHongguoSource.selectionFor("comic_series", latest = true)
+        assertEquals("days_7", comic.values["online_time"])
+    }
+
+    @Test fun filterKeysTranslateToFirstPartySelectors() {
+        val selected = NativeHongguoSource.selectionFor("ai_series", mapOf(
+            "theme" to "cate_6", "status" to "creation_status_0", "gender" to "1",
+        ))
+        assertEquals("cate_6", selected.values["category_dim_theme"])
+        assertEquals("creation_status_0", selected.values["creation_status"])
+        assertEquals("1", selected.values["gender"])
+    }
+
     @Test fun shareResolverDoesNotAcceptForeignDomains() {
         val source = NativeHongguoSource()
         val result = source.resolveShare("红果 https://hongguoduanju.com/player/123456789/2")

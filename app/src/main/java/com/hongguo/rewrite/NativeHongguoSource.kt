@@ -2,6 +2,9 @@ package com.hongguo.rewrite
 
 import com.hongguotv.core.ContentRepository
 import com.hongguotv.core.DramaCategory
+import com.hongguotv.core.DiscoveryCursor
+import com.hongguotv.core.DiscoverySelection
+import com.hongguotv.core.DiscoveryGroup
 import com.hongguotv.core.RankBoard
 import com.hongguotv.core.RemoteVideo
 import com.hongguotv.core.Rendition
@@ -22,6 +25,8 @@ class NativeHongguoSource(
 ) {
     private val websiteCovers = NativeWebsiteSource()
     private val discoveryTopics = mutableMapOf<String, List<FilterOption>>()
+    private val nativeFilterGroups = mutableMapOf<String, List<FilterGroup>>()
+    private val filterCursors = mutableMapOf<String, MutableMap<Int, DiscoveryCursor>>()
 
     companion object {
         const val PAGE_SIZE = 24
@@ -38,6 +43,32 @@ class NativeHongguoSource(
             "ai_series" -> DramaCategory.AI
             else -> DramaCategory.REAL
         }
+
+        private val filterKeys = mapOf(
+            "theme" to "category_dim_theme",
+            "setting" to "category_dim_role",
+            "background" to "category_dim_epoch",
+            "days" to "online_time",
+            "status" to "creation_status",
+        )
+
+        /** Match the website's first-party landpage selector values. */
+        fun selectionFor(
+            genre: String, active: Map<String, String> = emptyMap(),
+            latest: Boolean = false,
+        ): DiscoverySelection {
+            val values = linkedMapOf(
+                "genre" to genre,
+                "sort" to "online_time",
+            )
+            if (latest && genre != "short_play") values["online_time"] = "days_7"
+            for ((key, value) in active) {
+                if (value.isBlank()) continue
+                val upstream = filterKeys[key] ?: key
+                if (upstream in DiscoverySelection.labels) values[upstream] = value
+            }
+            return DiscoverySelection(values)
+        }
     }
 
     suspend fun list(
@@ -45,14 +76,28 @@ class NativeHongguoSource(
         query: String, filters: Map<String, String>,
     ): CatalogPage = withContext(Dispatchers.IO) {
         val page = (offset / PAGE_SIZE + 1).coerceIn(1, 100)
+        // Unlike a generic /category route, the landpage selector explicitly
+        // sorts by online_time, so the "最新" tab does not silently show random
+        // category items. Its continuation cursor is bound to the selection.
+        if (section == Section.LATEST) {
+            return@withContext filteredPage(genre, emptyMap(), page, latest = true)
+        }
+        if (section == Section.BROWSE) {
+            try {
+                return@withContext filteredPage(genre, filters, page, latest = false)
+            } catch (problem: IOException) {
+                // Website categories are a fallback only when no advanced
+                // filters were requested. Never pretend to have applied them.
+                if (filters.keys.any { it != "topic" }) throw problem
+                diagnostics?.record("BROWSE", "WEBSITE_FALLBACK")
+            }
+        }
         val origin = when (section) {
             Section.RECOMMEND -> repository.home(page)
             Section.RANK -> repository.rankPage(boardFor(board), page)
-            Section.LATEST, Section.BROWSE -> {
-                val category = categoryFor(genre)
-                val topic = if (section == Section.BROWSE) filters["topic"].orEmpty() else ""
-                repository.discover(category, topic, page)
-            }
+            Section.BROWSE -> repository.discover(
+                categoryFor(genre), filters["topic"].orEmpty(), page)
+            Section.LATEST -> error("handled above")
             Section.SEARCH -> {
                 if (query.isBlank()) return@withContext CatalogPage(emptyList(), false, 0)
                 // The public cross-category endpoint does not need a registered device.
@@ -73,13 +118,69 @@ class NativeHongguoSource(
         )
     }
 
+    /** Keep cursor state for a single native category/selection.
+     * A refresh starts a new session, never reuses an old offset token.
+     */
+    private fun filteredPage(
+        genre: String, active: Map<String, String>, page: Int, latest: Boolean,
+    ): CatalogPage {
+        val selection = selectionFor(genre, active, latest)
+        val key = (if (latest) "LATEST:" else "BROWSE:") +
+            genre + ":" + selection.values.toSortedMap().toString()
+        val cursor = if (page <= 1) null else synchronized(filterCursors) {
+            filterCursors[key]?.get(page)
+        } ?: if (page > 1) throw IOException("FILTER_CURSOR_EXPIRED") else null
+        val result = repository.filteredDiscovery(selection, cursor)
+        if (page == 1) {
+            synchronized(filterCursors) {
+                filterCursors[key] = mutableMapOf()
+                while (filterCursors.size > 20) filterCursors.remove(filterCursors.keys.first())
+            }
+            if (!latest) synchronized(nativeFilterGroups) {
+                nativeFilterGroups[genre] = mapGroups(result.groups)
+            }
+        }
+        result.next?.let { next ->
+            synchronized(filterCursors) { filterCursors[key]?.set(page + 1, next) }
+        }
+        return CatalogPage(result.items.map { it.toDrama() },
+            result.next != null, page * PAGE_SIZE)
+    }
+
     suspend fun filters(genre: String): List<FilterGroup> = withContext(Dispatchers.IO) {
+        synchronized(nativeFilterGroups) { nativeFilterGroups[genre] }?.let {
+            return@withContext it
+        }
+        // The native response provides all official categories, not merely
+        // the single "topic" option exposed by the SSR website.
+        val fromApi = runCatching {
+            repository.filteredDiscovery(selectionFor(genre)).groups
+        }.getOrNull()
+        if (fromApi != null) {
+            val mapped = mapGroups(fromApi)
+            synchronized(nativeFilterGroups) { nativeFilterGroups[genre] = mapped }
+            return@withContext mapped
+        }
         val topics = synchronized(discoveryTopics) { discoveryTopics[genre] }
             ?: repository.discover(categoryFor(genre)).discovery?.topics
                 ?.map { FilterOption(it.id, it.label) }.orEmpty()
         synchronized(discoveryTopics) { discoveryTopics[genre] = topics }
         listOf(FilterGroup("topic", "题材", listOf(FilterOption("", "全部")) + topics))
     }
+
+    private fun mapGroups(groups: List<DiscoveryGroup>): List<FilterGroup> =
+        groups.filter { it.type != "genre" }.map { group ->
+            val key = when (group.type) {
+                "category_dim_theme" -> "theme"
+                "category_dim_role" -> "setting"
+                "category_dim_epoch" -> "background"
+                "online_time" -> "days"
+                "creation_status" -> "status"
+                else -> group.type
+            }
+            FilterGroup(key, group.label, listOf(FilterOption("", "全部")) +
+                group.options.map { FilterOption(it.id, it.label) })
+        }
 
     suspend fun detail(id: String): DramaDetail = withContext(Dispatchers.IO) {
         val detail = repository.detail(id)
