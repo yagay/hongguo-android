@@ -186,10 +186,16 @@ internal fun NativePlayer(state: AppState, model: DramaViewModel) {
             val safeTitle = detail.drama.title.replace(
                 Regex("""[^\p{L}\p{N}_-]"""), "_"
             ).take(35).ifBlank { "Hongguo" }
+            val parent = runCatching {
+                DocumentsContract.buildDocumentUriUsingTree(
+                    folder, DocumentsContract.getTreeDocumentId(folder))
+            }.getOrNull()
             episodesToSave.forEach { ep ->
                 val uri = runCatching {
-                    DocumentsContract.createDocument(context.contentResolver, folder,
-                        "video/mp4", safeTitle + "-EP" + ep.index + ".mp4")
+                    parent?.let {
+                        DocumentsContract.createDocument(context.contentResolver, it,
+                            "video/mp4", safeTitle + "-EP" + ep.index + ".mp4")
+                    }
                 }.getOrNull()
                 if (uri != null) model.downloadNative(ep.vid, uri)
             }
