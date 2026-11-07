@@ -138,6 +138,42 @@ internal fun SettingsScreen(state: AppState, model: DramaViewModel) {
                 }
             }
             item {
+                SettingsGroup("外观") {
+                    Text("主题样式", color = HongguoColors.ink, fontWeight = FontWeight.SemiBold)
+                    FlowRow(horizontalArrangement = Arrangement.spacedBy(8.dp)) {
+                        listOf("warm" to "暖白精修",
+                            "immersive" to "沉浸暗场",
+                            "cards" to "内容卡片").forEach { (key, title) ->
+                            OutlinedButton(onClick = { model.setThemeStyle(key) },
+                                modifier = Modifier.testTag("theme_style_" + key)) {
+                                Text(title + if (state.themeStyle == key) " ✓" else "")
+                            }
+                        }
+                    }
+                    Text("外观模式", color = HongguoColors.ink, fontWeight = FontWeight.SemiBold)
+                    FlowRow(horizontalArrangement = Arrangement.spacedBy(8.dp)) {
+                        listOf("system" to "跟随系统",
+                            "light" to "浅色", "dark" to "深色").forEach { (key, title) ->
+                            OutlinedButton(onClick = { model.setThemeMode(key) },
+                                modifier = Modifier.testTag("theme_mode_" + key)) {
+                                Text(title + if (state.themeMode == key) " ✓" else "")
+                            }
+                        }
+                    }
+                    Text("底栏样式", color = HongguoColors.ink, fontWeight = FontWeight.SemiBold)
+                    FlowRow(horizontalArrangement = Arrangement.spacedBy(8.dp)) {
+                        listOf("classic" to "经典", "glass" to "悬浮玻璃").forEach { (key, title) ->
+                            OutlinedButton(onClick = { model.setNavigationStyle(key) },
+                                modifier = Modifier.testTag("navbar_style_" + key)) {
+                                Text(title + if (state.navigationStyle == key) " ✓" else "")
+                            }
+                        }
+                    }
+                    Text("三套配色均支持浅色和深色；沉浸播放画面始终保持深色。",
+                        color = HongguoColors.muted, fontSize = 12.sp)
+                }
+            }
+            item {
                 SettingsGroup("播放偏好") {
                     SettingToggle("自动连播下一集",
                         "当前集正常播放结束后自动切换下一集；手动切集不受影响",
