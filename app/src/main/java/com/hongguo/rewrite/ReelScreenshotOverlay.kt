@@ -64,7 +64,6 @@ internal fun ReelScreenshotOverlay(
     state: AppState,
     detail: DramaDetail,
     episode: Episode?,
-    playback: ReelPlaybackControls,
     speed: Float,
     fillVideo: Boolean,
     onToggleFillVideo: () -> Unit,
@@ -75,7 +74,6 @@ internal fun ReelScreenshotOverlay(
     onDanmaku: () -> Unit,
     onShare: () -> Unit,
     onDownload: () -> Unit,
-    onEpisodes: () -> Unit,
     onSpeed: (Float) -> Unit,
 ) {
     val white = Color.White
@@ -85,7 +83,6 @@ internal fun ReelScreenshotOverlay(
     val inHistory = state.library.any { it.drama.id == detail.drama.id }
     var moreExpanded by remember { mutableStateOf(false) }
     var synopsisExpanded by rememberSaveable(detail.drama.id) { mutableStateOf(false) }
-    var seeking by remember(episode?.vid) { mutableStateOf<Float?>(null) }
 
     Box(Modifier.fillMaxSize().testTag("reference_video_layout")) {
         // Minimal header: no duplicate full-title row over the video.
@@ -142,7 +139,7 @@ internal fun ReelScreenshotOverlay(
         // Labels are truthful because public counts are not in DramaDetail.
         Column(
             Modifier.align(Alignment.BottomEnd)
-                .padding(end = 8.dp, bottom = 111.dp),
+                .padding(end = 8.dp, bottom = 21.dp),
             horizontalAlignment = Alignment.CenterHorizontally,
             verticalArrangement = Arrangement.spacedBy(9.dp),
         ) {
@@ -167,7 +164,7 @@ internal fun ReelScreenshotOverlay(
         Column(
             Modifier.align(Alignment.BottomStart)
                 .fillMaxWidth()
-                .padding(start = 15.dp, end = 90.dp, bottom = 109.dp),
+                .padding(start = 15.dp, end = 90.dp, bottom = 18.dp),
             verticalArrangement = Arrangement.spacedBy(9.dp),
         ) {
             Row(horizontalArrangement = Arrangement.spacedBy(7.dp),
@@ -227,61 +224,76 @@ internal fun ReelScreenshotOverlay(
             }
         }
 
-        // Bottom dock follows the reference's CTA + orange watch-position line.
-        // The line represents the actual Media3 position, never fake progress.
-        Column(
-            Modifier.fillMaxWidth().align(Alignment.BottomCenter)
-                .background(Color(0xFF232325)),
+
+    }
+}
+
+
+/**
+ * The CTA and seek control are OUTSIDE the video viewport, so they never
+ * obscure burned-in subtitles or crop the final lines of video.
+ */
+@Composable
+internal fun ReelBottomDock(
+    detail: DramaDetail,
+    episode: Episode?,
+    playback: ReelPlaybackControls,
+    onEpisodes: () -> Unit,
+) {
+    var seeking by remember(episode?.vid) { mutableStateOf<Float?>(null) }
+    val duration = playback.durationMs
+    val fraction = if (duration > 0L)
+        (playback.positionMs.toFloat() / duration.toFloat()).coerceIn(0f, 1f)
+    else 0f
+    Column(
+        Modifier.fillMaxWidth().background(Color(0xFF232325))
+            .testTag("reel_outside_video_dock"),
+        verticalArrangement = Arrangement.spacedBy(0.dp),
+    ) {
+        Row(
+            Modifier.fillMaxWidth().height(48.dp)
+                .clickable(onClick = onEpisodes)
+                .padding(start = 16.dp, end = 14.dp)
+                .testTag("watch_full_drama"),
+            verticalAlignment = Alignment.CenterVertically,
+            horizontalArrangement = Arrangement.spacedBy(10.dp),
         ) {
-            Row(
-                Modifier.fillMaxWidth().height(54.dp)
-                    .clickable(onClick = onEpisodes)
-                    .padding(start = 16.dp, end = 14.dp)
-                    .testTag("watch_full_drama"),
-                verticalAlignment = Alignment.CenterVertically,
-                horizontalArrangement = Arrangement.spacedBy(10.dp),
-            ) {
-                Icon(Icons.Outlined.PlayCircleOutline, contentDescription = null,
-                    tint = white, modifier = Modifier.size(23.dp))
-                Text(
-                    "观看完整短剧 · 全 " + detail.episodes.size + " 集",
-                    color = white,
-                    fontSize = 15.sp,
-                    fontWeight = FontWeight.SemiBold,
-                    maxLines = 1,
-                    overflow = TextOverflow.Ellipsis,
-                    modifier = Modifier.weight(1f),
-                )
-                Icon(Icons.Outlined.KeyboardArrowRight, contentDescription = "打开选集",
-                    tint = white, modifier = Modifier.size(24.dp))
-            }
-            val duration = playback.durationMs
-            val fraction = if (duration > 0) {
-                (playback.positionMs.toFloat() / duration.toFloat()).coerceIn(0f, 1f)
-            } else 0f
-            Slider(
-                value = seeking ?: fraction,
-                onValueChange = { seeking = it },
-                onValueChangeFinished = {
-                    if (duration > 0) {
-                        seeking?.let { playback.seekTo((it * duration).toLong()) }
-                    }
-                    seeking = null
-                },
-                enabled = duration > 0,
-                colors = SliderDefaults.colors(
-                    thumbColor = white,
-                    activeTrackColor = HongguoColors.accent,
-                    inactiveTrackColor = Color(0xFF535357),
-                    disabledActiveTrackColor = HongguoColors.accent,
-                    disabledInactiveTrackColor = Color(0xFF535357),
-                ),
-                modifier = Modifier.fillMaxWidth()
-                    .padding(horizontal = 12.dp)
-                    .height(24.dp).testTag("reel_seek"),
+            Icon(Icons.Outlined.PlayCircleOutline, contentDescription = null,
+                tint = Color.White, modifier = Modifier.size(22.dp))
+            Text(
+                "观看完整短剧 · 全 " + detail.episodes.size + " 集",
+                color = Color.White,
+                fontSize = 14.sp,
+                fontWeight = FontWeight.SemiBold,
+                maxLines = 1,
+                overflow = TextOverflow.Ellipsis,
+                modifier = Modifier.weight(1f),
             )
-            Spacer(Modifier.height(2.dp))
+            Icon(Icons.Outlined.KeyboardArrowRight, contentDescription = "打开选集",
+                tint = Color.White, modifier = Modifier.size(22.dp))
         }
+        Slider(
+            value = seeking ?: fraction,
+            onValueChange = { seeking = it },
+            onValueChangeFinished = {
+                if (duration > 0L) {
+                    seeking?.let { playback.seekTo((it * duration).toLong()) }
+                }
+                seeking = null
+            },
+            enabled = duration > 0L,
+            colors = SliderDefaults.colors(
+                thumbColor = Color.White,
+                activeTrackColor = HongguoColors.accent,
+                inactiveTrackColor = Color(0xFF535357),
+                disabledActiveTrackColor = HongguoColors.accent,
+                disabledInactiveTrackColor = Color(0xFF535357),
+            ),
+            modifier = Modifier.fillMaxWidth()
+                .padding(horizontal = 10.dp)
+                .height(18.dp)
+                .testTag("reel_seek"),
+        )
     }
 }
 
