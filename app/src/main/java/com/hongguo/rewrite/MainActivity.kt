@@ -28,6 +28,10 @@ import androidx.compose.material.icons.outlined.PersonOutline
 import androidx.compose.material3.Text
 import androidx.compose.material3.TextButton
 import androidx.compose.material3.lightColorScheme
+import androidx.compose.material3.darkColorScheme
+import androidx.compose.foundation.isSystemInDarkTheme
+import androidx.compose.material3.Surface
+import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.SideEffect
 import androidx.compose.runtime.getValue
@@ -61,22 +65,36 @@ private fun HongguoApp(model: DramaViewModel = viewModel()) {
     val state by model.state.collectAsStateWithLifecycle()
     var mineOpen by rememberSaveable { mutableStateOf(false) }
     val darkPlayer = state.detail != null && state.modal != Modal.SETTINGS
+    val systemDark = isSystemInDarkTheme()
+    val darkTheme = when (state.themeMode) {
+        "dark" -> true
+        "system" -> systemDark
+        else -> false
+    }
     val activity = LocalContext.current as? Activity
     SideEffect {
+        HongguoColors.applyTheme(state.themeStyle, state.themeMode, systemDark)
         activity?.let {
             val bars = WindowCompat.getInsetsController(it.window, it.window.decorView)
-            bars.isAppearanceLightStatusBars = !darkPlayer
-            bars.isAppearanceLightNavigationBars = !darkPlayer
+            bars.isAppearanceLightStatusBars = !darkPlayer && !darkTheme
+            bars.isAppearanceLightNavigationBars = !darkPlayer && !darkTheme
         }
     }
-    val palette = lightColorScheme(
+    val palette = (if (darkTheme) darkColorScheme(
         primary = HongguoColors.accent,
         onPrimary = Color.White,
         background = HongguoColors.background,
         surface = HongguoColors.surface,
         onBackground = HongguoColors.ink,
         onSurface = HongguoColors.ink,
-    )
+    ) else lightColorScheme(
+        primary = HongguoColors.accent,
+        onPrimary = Color.White,
+        background = HongguoColors.background,
+        surface = HongguoColors.surface,
+        onBackground = HongguoColors.ink,
+        onSurface = HongguoColors.ink,
+    ))
     MaterialTheme(colorScheme = palette) {
         Box(
             Modifier.fillMaxSize().background(
@@ -116,13 +134,25 @@ private fun HongguoApp(model: DramaViewModel = viewModel()) {
                         containerColor = HongguoColors.background,
                         contentWindowInsets = WindowInsets(0, 0, 0, 0),
                         bottomBar = {
-                            NavigationBar(containerColor = HongguoColors.surface) {
-                                NavigationBarItem(selected = !mineOpen, onClick = { mineOpen = false },
-                                    icon = { Icon(Icons.Outlined.Home, contentDescription = null) },
-                                    label = { Text("首页") })
-                                NavigationBarItem(selected = mineOpen, onClick = { mineOpen = true },
-                                    icon = { Icon(Icons.Outlined.PersonOutline, contentDescription = null) },
-                                    label = { Text("我的") })
+                            Surface(
+                                modifier = if (state.navigationStyle == "glass")
+                                    Modifier.padding(horizontal = 14.dp, vertical = 7.dp)
+                                else Modifier,
+                                shape = RoundedCornerShape(
+                                    if (state.navigationStyle == "glass") 26.dp else 0.dp),
+                                color = HongguoColors.surface,
+                                shadowElevation = if (state.navigationStyle == "glass") 8.dp else 0.dp,
+                            ) {
+                                NavigationBar(containerColor = Color.Transparent) {
+                                    NavigationBarItem(selected = !mineOpen,
+                                        onClick = { mineOpen = false },
+                                        icon = { Icon(Icons.Outlined.Home, contentDescription = null) },
+                                        label = { Text("首页") })
+                                    NavigationBarItem(selected = mineOpen,
+                                        onClick = { mineOpen = true },
+                                        icon = { Icon(Icons.Outlined.PersonOutline, contentDescription = null) },
+                                        label = { Text("我的") })
+                                }
                             }
                         },
                     ) { insets ->
