@@ -66,7 +66,7 @@ object OpenHongguoMetadataParser {
         val score = rows.firstOrNull { it.kind == 4 }
             ?.text?.trim()?.takeIf { scorePattern.matches(it) }
         val related = data.optJSONObject("video_relate_book")
-        val book = related?.optJSONObject("book")
+        val book = related?.optJSONObject("book_info")
         val novelId = book?.optString("book_id").orEmpty().ifBlank {
             book?.optString("id").orEmpty()
         }
@@ -76,7 +76,7 @@ object OpenHongguoMetadataParser {
                 title = book?.optString("book_name").orEmpty().ifBlank {
                     book?.optString("name").orEmpty()
                 }.take(160),
-                cover = book?.optString("cover").orEmpty(),
+                cover = book?.optString("thumb_url").orEmpty(),
                 status = when (book?.optString("creation_status").orEmpty().ifBlank {
                     book?.optString("status").orEmpty()
                 }) {
