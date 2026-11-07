@@ -315,12 +315,13 @@ internal fun ImmersiveTheater(state: HongguoUiState, model: HongguoViewModel) {
         item(span = { GridItemSpan(maxLineSpan) }) {
             Row(verticalAlignment = Alignment.CenterVertically) {
                 val tabs = rememberTabIndicator()
-                Row(Modifier.weight(1f).slidingIndicator(tabs, state.browseDraft.genre, Orange, width = 14.dp),
-                    horizontalArrangement = Arrangement.spacedBy(18.dp), verticalAlignment = Alignment.Bottom) {
-                    listOf("short_play" to "真人", "comic_series" to "漫剧", "ai_series" to "AI 剧").forEach { (genre, label) ->
+                Row(Modifier.weight(1f).horizontalScroll(rememberScrollState())
+                    .slidingIndicator(tabs, state.browseDraft.genre, Orange, width = 14.dp),
+                    horizontalArrangement = Arrangement.spacedBy(10.dp), verticalAlignment = Alignment.Bottom) {
+                    BrowseGenres.forEach { (genre, label) ->
                         val selected = state.browseDraft.genre == genre
                         val color by animatedTabColor(selected, Ink, Muted)
-                        Text(label, color = color, fontSize = animatedTabSize(selected, 24.sp, 17.sp),
+                        Text(label, color = color, fontSize = animatedTabSize(selected, 21.sp, 15.sp),
                             fontWeight = if (selected) FontWeight.Black else FontWeight.Medium,
                             modifier = Modifier.tabAnchor(tabs, genre).quietSelectable(selected) { model.changeGenre(genre) }
                                 .heightIn(min = 44.dp).padding(top = 8.dp, bottom = 7.dp).wrapContentHeight(Alignment.Bottom)
@@ -334,14 +335,19 @@ internal fun ImmersiveTheater(state: HongguoUiState, model: HongguoViewModel) {
             }
         }
         item(span = { GridItemSpan(maxLineSpan) }) {
-            val selected = state.browseApplied.options.values.count { it.isNotBlank() }
-            Row(Modifier.fillMaxWidth().horizontalScroll(rememberScrollState()), horizontalArrangement = Arrangement.spacedBy(8.dp)) {
-                DarkChip(if (selected > 0) "筛选 · $selected" else "筛选", selected > 0, "theater_filters", Icons.Outlined.Tune) { showFilters = true }
-                state.filterGroups.firstOrNull { it.key == "sort" }?.options?.filter { it.id.isNotBlank() }?.forEach { option ->
-                    val on = state.browseApplied.options["sort"] == option.id
-                    DarkChip(option.label, on, "theater_sort_${option.id}") {
-                        model.selectFilter("sort", option.id)
-                        model.applyBrowse()
+            if (state.browseDraft.genre == REAL_RANK_GENRE) {
+                Text("真人热榜 · 红果官网排行（按名次排列）", color = Muted, fontSize = 13.sp,
+                    modifier = Modifier.testTag("theater_real_rank_source"))
+            } else {
+                val selected = state.browseApplied.options.values.count { it.isNotBlank() }
+                Row(Modifier.fillMaxWidth().horizontalScroll(rememberScrollState()), horizontalArrangement = Arrangement.spacedBy(8.dp)) {
+                    DarkChip(if (selected > 0) "筛选 · $selected" else "筛选", selected > 0, "theater_filters", Icons.Outlined.Tune) { showFilters = true }
+                    state.filterGroups.firstOrNull { it.key == "sort" }?.options?.filter { it.id.isNotBlank() }?.forEach { option ->
+                        val on = state.browseApplied.options["sort"] == option.id
+                        DarkChip(option.label, on, "theater_sort_${option.id}") {
+                            model.selectFilter("sort", option.id)
+                            model.applyBrowse()
+                        }
                     }
                 }
             }
@@ -349,7 +355,7 @@ internal fun ImmersiveTheater(state: HongguoUiState, model: HongguoViewModel) {
         if (ranked.isNotEmpty()) item(span = { GridItemSpan(maxLineSpan) }) {
             Surface(color = CardSurface, shape = RoundedCornerShape(16.dp), modifier = Modifier.testTag("theater_ranking")) {
                 Column(Modifier.fillMaxWidth().padding(horizontal = 14.dp, vertical = 10.dp)) {
-                    Text("热播榜", color = Ink, fontSize = 17.sp, fontWeight = FontWeight.Bold, modifier = Modifier.padding(bottom = 4.dp))
+                    Text(if (state.browseDraft.genre == REAL_RANK_GENRE) "真人热榜" else "热播榜", color = Ink, fontSize = 17.sp, fontWeight = FontWeight.Bold, modifier = Modifier.padding(bottom = 4.dp))
                     ranked.forEachIndexed { index, card ->
                         Row(Modifier.fillMaxWidth().clickable { model.openDrama(card) }.padding(vertical = 8.dp)
                             .testTag("theater_rank_$index"),
@@ -378,7 +384,7 @@ internal fun ImmersiveTheater(state: HongguoUiState, model: HongguoViewModel) {
         if (state.category.loaded && !state.category.loading && items.isEmpty() && state.category.error == null)
             item(span = { GridItemSpan(maxLineSpan) }) { EmptyPrompt("没有符合条件的剧集", "试试减少筛选条件，或切换类型。") }
         if (items.size > 3) item(span = { GridItemSpan(maxLineSpan) }) {
-            Text("全部剧集", color = Ink, fontSize = 17.sp, fontWeight = FontWeight.Bold, modifier = Modifier.padding(top = 4.dp))
+            Text(if (state.browseDraft.genre == REAL_RANK_GENRE) "更多真人剧" else "全部剧集", color = Ink, fontSize = 17.sp, fontWeight = FontWeight.Bold, modifier = Modifier.padding(top = 4.dp))
         }
         itemsIndexed(items.drop(3), key = { _, card -> card.id }) { index, card ->
             Column(Modifier.animateItem().clickable(role = Role.Button) { model.openDrama(card) }.testTag("theater_result_${index + 3}"),

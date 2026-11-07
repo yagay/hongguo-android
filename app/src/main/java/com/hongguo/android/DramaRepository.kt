@@ -49,8 +49,14 @@ class DramaRepository {
         runInterruptible(Dispatchers.IO) {
             val start = offset.coerceAtLeast(0)
             val seen = DiscoveryMapper.seenTail(seenIds)
-            val page = Client.browsePage(selection.genre, DiscoveryMapper.options(selection), seen, start)
-            DiscoveryMapper.page(page.items, page.hasMore, page.nextSkip, start, seen)
+            if (selection.genre == REAL_RANK_GENRE) {
+                // The public website already exposes a dedicated real-person drama board.
+                // Unlike short_play, its cursor is the completed page number (0 -> page 1).
+                DiscoveryMapper.realRankPage(websiteClient.rank(RankBoard.REAL, start + 1))
+            } else {
+                val page = Client.browsePage(selection.genre, DiscoveryMapper.options(selection), seen, start)
+                DiscoveryMapper.page(page.items, page.hasMore, page.nextSkip, start, seen)
+            }
         }
 
     suspend fun search(query: String, offset: Int): DramaPage = runInterruptible(Dispatchers.IO) {

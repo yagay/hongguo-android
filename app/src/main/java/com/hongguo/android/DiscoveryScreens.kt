@@ -215,12 +215,16 @@ internal fun CategoryScreen(state: HongguoUiState, model: HongguoViewModel) {
             }
             item(key = "category_genres", span = { GridItemSpan(maxLineSpan) }) {
                 Row(Modifier.fillMaxWidth().horizontalScroll(rememberScrollState()), horizontalArrangement = Arrangement.spacedBy(10.dp)) {
-                    listOf("short_play" to "真人", "comic_series" to "漫剧", "ai_series" to "AI 剧").forEach { (genre, label) ->
+                    BrowseGenres.forEach { (genre, label) ->
                         SelectorChip(label, state.browseDraft.genre == genre, "genre_$genre") { model.changeGenre(genre) }
                     }
                 }
             }
             item(key = "category_filters", span = { GridItemSpan(maxLineSpan) }) {
+                if (state.browseDraft.genre == REAL_RANK_GENRE) {
+                    Text("真人热榜 · 红果官网排行（按名次排列）", color = Muted, fontSize = 13.sp,
+                        modifier = Modifier.padding(vertical = 8.dp).testTag("category_real_rank_source"))
+                } else {
                 Surface(color = CardSurface, shape = RoundedCornerShape(16.dp), modifier = Modifier.fillMaxWidth()) {
                     Column(Modifier.padding(16.dp), verticalArrangement = Arrangement.spacedBy(10.dp)) {
                         Row(Modifier.fillMaxWidth(), verticalAlignment = Alignment.CenterVertically) {
@@ -278,6 +282,7 @@ internal fun CategoryScreen(state: HongguoUiState, model: HongguoViewModel) {
                             }
                         }
                     }
+                }
                 }
             }
         },

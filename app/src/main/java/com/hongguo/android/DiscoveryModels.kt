@@ -1,6 +1,18 @@
 package com.hongguo.android
 
 import com.hongguo.api.util.Json
+import com.hongguo.account.protocol.RankPage
+
+/** The real-person tab is backed by the official public website's real-drama ranking,
+ * not by the App's general short_play category. Do not pass this local key to App filters. */
+internal const val REAL_RANK_GENRE = "real_rank"
+internal val BrowseGenres = listOf(
+    "short_play" to "短剧",
+    REAL_RANK_GENRE to "真人",
+    "comic_series" to "漫剧",
+    "ai_series" to "AI 剧",
+)
+
 
 enum class HomeFeed { RECOMMEND, GUESS, LATEST, COMIC }
 
@@ -29,6 +41,14 @@ internal object DiscoveryMapper {
         FilterOption("hot_score", "最高热度"), FilterOption("online_time", "最新上架"),
         FilterOption("hot_collect", "最高收藏"),
     )
+
+    /** Ranking pagination uses page numbers rather than category offsets. Keep the two independent. */
+    fun realRankPage(page: RankPage): DramaPage {
+        val cards = page.entries.map { entry ->
+            DramaCard(entry.series.id, entry.series.title, entry.series.cover, entry.episodeCount, entry.series.description)
+        }.distinctBy(DramaCard::id)
+        return DramaPage(cards, page.page < page.totalPages && cards.isNotEmpty(), page.page)
+    }
 
     fun seenTail(ids: List<String>): List<String> = ids.asReversed().asSequence()
         .filter { it.matches(Regex("[0-9]{1,30}")) }.distinct().take(SEEN_LIMIT).toList().asReversed()
