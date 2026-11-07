@@ -267,6 +267,9 @@ internal fun NativePlayer(state: AppState, model: DramaViewModel) {
                             nativeVideo = model.nativeVideoFor(episode.vid),
                             controls = playback,
                             resumeAtMs = state.resumePositionMs,
+                            skipIntroMs = state.skipIntroSeconds * 1000L,
+                            skipOutroMs = state.skipOutroSeconds * 1000L,
+                            autoRetry = state.retryPlaybackAutomatically,
                             onFirstFrame = { model.firstFrame(episode.vid) },
                             onFinished = {
                                 model.finishEpisode(episode.vid)
@@ -743,6 +746,9 @@ private fun Media3Reel(
     nativeVideo: RemoteVideo?,
     controls: ReelPlaybackControls,
     resumeAtMs: Long,
+    skipIntroMs: Long,
+    skipOutroMs: Long,
+    autoRetry: Boolean,
     onFirstFrame: () -> Unit,
     onFinished: () -> Unit,
     onError: (String) -> Unit,
@@ -755,18 +761,34 @@ private fun Media3Reel(
     val player = remember(url, nativeVideo) { ExoPlayer.Builder(context).build() }
     DisposableEffect(player) {
         var seeked = false
+        var retryCount = 0
+        var endReported = false
         val listener = object : Player.Listener {
             override fun onRenderedFirstFrame() = first()
             override fun onPlaybackStateChanged(playbackState: Int) {
                 if (playbackState == Player.STATE_READY && !seeked) {
                     seeked = true
-                    val target = ResumePolicy.resumable(
-                        resumeAtMs, player.duration.takeIf { it > 0L } ?: 0L)
-                    if (target > 0L) player.seekTo(target)
+                    val duration = player.duration.takeIf { it > 0L } ?: 0L
+                    val target = ResumePolicy.resumable(resumeAtMs, duration)
+                    val intro = if (duration > skipIntroMs + 5_000L) skipIntroMs else 0L
+                    val initial = maxOf(target, intro)
+                    if (initial > 0L) player.seekTo(initial)
                 }
-                if (playbackState == Player.STATE_ENDED) end()
+                if (playbackState == Player.STATE_ENDED && !endReported) {
+                    endReported = true
+                    end()
+                }
             }
             override fun onPlayerError(error: PlaybackException) {
+                if (autoRetry && retryCount == 0 &&
+                    error.errorCode in 2000..2999) {
+                    retryCount++
+                    val lastPosition = player.currentPosition.coerceAtLeast(0L)
+                    player.prepare()
+                    player.seekTo(lastPosition)
+                    player.play()
+                    return
+                }
                 fail(PlaybackProblem.media(error.errorCodeName,
                     error.cause?.javaClass?.simpleName))
             }
@@ -812,6 +834,22 @@ private fun Media3Reel(
         }
         lifecycleOwner.lifecycle.addObserver(observer)
         onDispose { lifecycleOwner.lifecycle.removeObserver(observer) }
+    }
+    LaunchedEffect(player, skipOutroMs) {
+        var outroHandled = false
+        while (isActive) {
+            if (skipOutroMs <= 0L) {
+                delay(500)
+                continue
+            }
+            val duration = player.duration
+            if (!outroHandled && duration > 0L && duration > skipOutroMs + 5_000L &&
+                player.isPlaying && player.currentPosition >= duration - skipOutroMs) {
+                outroHandled = true
+                player.seekTo(duration.coerceAtLeast(0L))
+            }
+            delay(250)
+        }
     }
     LaunchedEffect(player, speed) { player.setPlaybackSpeed(speed) }
     LaunchedEffect(player) {
