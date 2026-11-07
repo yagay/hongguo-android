@@ -1568,8 +1568,9 @@ class DramaViewModel(application: Application) : AndroidViewModel(application) {
             } finally {
                 video?.close()
                 if (acquired) localDownloadSlots.release()
+                val finishedJob = currentCoroutineContext()[Job]
                 synchronized(localDownloadJobs) {
-                    if (localDownloadJobs[taskId] === currentCoroutineContext()[Job]) {
+                    if (localDownloadJobs[taskId] === finishedJob) {
                         localDownloadJobs.remove(taskId)
                     }
                 }
