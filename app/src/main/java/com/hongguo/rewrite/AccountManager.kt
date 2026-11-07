@@ -224,6 +224,9 @@ internal class AccountManager(app: Application, private val scope: CoroutineScop
                 web.copy(deviceId = device.deviceId, installId = device.installId)
             }
             val profile = cloud.profile(next)
+            // Cancellation/log-out must not persist credentials from a superseded login.
+            currentCoroutineContext().ensureActive()
+            if (token != epoch) throw CancellationException("Outdated login session")
             store.save(next)
             next to profile
         }
