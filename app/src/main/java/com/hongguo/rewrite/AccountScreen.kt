@@ -16,6 +16,9 @@ import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.graphics.asImageBitmap
+import androidx.compose.ui.focus.FocusRequester
+import androidx.compose.ui.focus.focusRequester
+import androidx.compose.ui.platform.LocalSoftwareKeyboardController
 import androidx.compose.ui.platform.testTag
 import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.text.input.KeyboardType
@@ -27,8 +30,17 @@ import androidx.lifecycle.compose.collectAsStateWithLifecycle
 @Composable
 internal fun AccountScreen(model: DramaViewModel) {
     val account by model.account.state.collectAsStateWithLifecycle()
-    var phone by rememberSaveable { mutableStateOf("+86 ") }
-    var code by rememberSaveable { mutableStateOf("") }
+    // Authentication inputs must not be written to saved instance state.
+    var phone by remember { mutableStateOf("+86 ") }
+    var code by remember { mutableStateOf("") }
+    val otpFocus = remember { FocusRequester() }
+    val keyboard = LocalSoftwareKeyboardController.current
+    LaunchedEffect(account.smsSent) {
+        if (account.smsSent) {
+            otpFocus.requestFocus()
+            keyboard?.show()
+        } else code = ""
+    }
     var tab by rememberSaveable { mutableIntStateOf(0) }
     var confirmLogout by remember { mutableStateOf(false) }
     BackHandler { model.closeAccount() }
@@ -131,7 +143,7 @@ internal fun AccountScreen(model: DramaViewModel) {
                     )
                     OutlinedButton(
                         onClick = { model.account.sendCode(phone) },
-                        enabled = !account.busy && !account.checking,
+                        enabled = !account.busy && !account.checking && !account.smsSent,
                         modifier = Modifier.fillMaxWidth().testTag("account_send_sms"),
                     ) { Text("获取验证码") }
                     if (account.smsSent) {
@@ -143,16 +155,22 @@ internal fun AccountScreen(model: DramaViewModel) {
                             },
                             label = { Text("短信验证码") },
                             singleLine = true, modifier = Modifier.fillMaxWidth()
-                                .testTag("account_sms_code"),
+                                .focusRequester(otpFocus).testTag("account_sms_code"),
                             keyboardOptions = androidx.compose.foundation.text.KeyboardOptions(
-                                keyboardType = KeyboardType.NumberPassword
+                                keyboardType = KeyboardType.Number
                             ),
                         )
                         Button(
-                            onClick = { model.account.verifyCode(code); code = "" },
+                            onClick = { model.account.verifyCode(code) },
                             enabled = !account.busy && code.length in 4..8,
                             modifier = Modifier.fillMaxWidth().testTag("account_verify_sms"),
-                        ) { Text("验证并登录") }
+                        ) { Text(if (account.busy) "正在验证…" else "验证并登录") }
+                        TextButton(onClick = {
+                            code = ""
+                            model.account.cancelSms()
+                        }, enabled = !account.busy, modifier = Modifier.testTag("account_sms_change_phone")) {
+                            Text("更换手机号")
+                        }
                     }
                 }
                 item {
