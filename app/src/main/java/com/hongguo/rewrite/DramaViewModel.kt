@@ -1244,7 +1244,7 @@ class DramaViewModel(application: Application) : AndroidViewModel(application) {
     }
 
     fun open(drama: Drama, resumeEp: Int? = null, feed: Boolean = false,
-        showDetails: Boolean = !feed) {
+        showDetails: Boolean = false) {
         ++relatedGeneration
         relatedJob?.cancel()
         clearSocial()
@@ -1256,7 +1256,7 @@ class DramaViewModel(application: Application) : AndroidViewModel(application) {
         startEpisodeHint = resumeEp
         mutable.update { it.copy(offlinePlaybackUri = null, detail = null, preparingDetail = true,
             feedMode = feed, detailPageVisible = showDetails,
-            detailEntryEnabled = showDetails, relatedWorks = emptyList(),
+            detailEntryEnabled = false, relatedWorks = emptyList(),
             relatedSeries = null,
             relatedLoading = false, relatedError = null,
             playbackError = null, playbackUrl = null, playing = false) }
@@ -1479,21 +1479,29 @@ class DramaViewModel(application: Application) : AndroidViewModel(application) {
         if (index < (s.detail?.episodes?.size ?: 0)) play(index)
     }
 
-    /**
-     * Return to the already loaded detail page without re-fetching episode data.
-     * Release the active stream, cancel in-flight media work, and keep its selection.
-     */
-    fun backFromPlayer() {
+    /** The player title is the only default entry to the full details page. */
+    fun showDramaDetails() {
         val s = state.value
-        if (!s.feedMode && s.detailEntryEnabled && s.detail != null && !s.detailPageVisible) {
-            ++detailId
-            detailJob?.cancel()
-            closeNativeVideo()
-            clearPreloadedNext()
-            mutable.update { it.copy(detailPageVisible = true,
-                playbackUrl = null, playing = false, playbackError = null) }
+        if (s.detail == null || s.detailPageVisible) return
+        ++detailId
+        detailJob?.cancel()
+        closeNativeVideo()
+        clearPreloadedNext()
+        mutable.update { it.copy(detailPageVisible = true, detailEntryEnabled = true,
+            playbackUrl = null, playing = false, playbackError = null) }
+    }
+
+    /** Back from details resumes the same drama and selected episode. */
+    fun backFromDramaDetails() {
+        val s = state.value
+        if (!s.detailPageVisible) return
+        if (s.detailEntryEnabled && s.detail != null) {
+            play(s.episodeIndex)
         } else closePlayer()
     }
+
+    /** Normal player back returns to the catalog, not an automatic detail step. */
+    fun backFromPlayer() = closePlayer()
 
     fun closePlayer() {
         homeFeedExcludedIds = emptySet()
