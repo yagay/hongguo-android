@@ -92,3 +92,42 @@ This integration keeps it **anonymous, read-only and optional**.
 - Device runtime / server availability is independent of compile-time
   verification. Test signed API access and AAR native loading on an arm64
   Android device before claiming first-party parity.
+
+## 2026-11-07: exhaustive Android SDK public method inventory
+
+Cross-checked against upstream `bindings/mobile/android/src/main/kotlin/dev/openhongguo/Client.kt`
+and corresponding Go implementations under `sdk/`. Public source methods are
+grouped below by function, along with the actual call site in our rewrite:
+
+| Upstream SDK methods | Android adapter | User-facing usage |
+|---|---|---|
+| `discover`, `discoverAll` | `discover`, `discoverAll`, `browseExtended("discover")` | More discovery > 书城频道 |
+| `search`, `searchAll` | `search`, `searchAll`, `browseExtended("search")` | More discovery > SDK搜索 |
+| `suggest`, `searchCues`, `hotSearch` | Existing source bridge for all three | 热搜; suggestion/cues wrapped for future search UI |
+| `newReleases` | `newReleases`, `browse("new")`, `browseExtended("calendar")` | 上新 and 指定日期 |
+| `getSeries`, `getSeriesBatch` | `details`, `batchDetails` | Details; batch adapter |
+| `listEpisodes` | `episodes` | Intentionally not replacing existing episode provider |
+| `seasons`, `getAlbum` | `seasons`, `album` | Extra seasons in details |
+| `seriesRecommend` | `related` | Related works fallback |
+| `person`, `personWorks` | `person`, `personWorks` | Actor ranking > profile and works |
+| `shortRank` | `shortRank`, `browse("human"/"comic"/"ai"/"actor")` | Dynamic ranking pages |
+| `shortFilterPanel`, `shortFilter` | `filterPanel`, `filter`, `browse("filter")` | 真人筛选 (default genre; advanced panel still source-only) |
+| `ranking` | `ranking` | Activity board adapter, not yet independently exposed in UI |
+| `rankRows`, `rankGroups` | `rankRows`, `rankGroups`, `browseExtended` | Book ranking list and rows |
+| `categories`, `categoryLanding` | `categories`, `categoryLanding`, `browseExtended("category")` | Book classification read-only |
+| `resolvePlayback` | `playbackModel` | Compatibility read only, not wired into Media3 |
+| `resetDevice` | `resetAnonymousDeviceExplicitly` | Explicit maintenance method only; no automatic user-facing reset |
+
+**Important semantic boundaries:** All results are obtained from anonymous, nonofficial
+protocols and can be incomplete or blocked server-side. For media, maintaining
+a single tested playback stack is safer than placing a second DRM and
+stream-ownership implementation in the UI. `resolvePlayback` returning
+content-key information does not prove legal entitlement to copyrighted
+streams. Never auto-rotate devices to circumvent content restrictions.
+
+**Error and UX audit:** Each discovery category is a direct network fetch.
+A failed request produces an error and retry, not fabricated offline lists.
+Cursor values are owned by their specific tab/filter/query; never reuse
+between different lists. SDK book search and book ranking results must not
+be offered as episodes, and not-yet-online releases are displayed read-only.
+Actor names from metadata remain unlinked without verified actor user IDs.
