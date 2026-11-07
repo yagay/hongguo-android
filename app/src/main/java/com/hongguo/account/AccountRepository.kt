@@ -296,7 +296,8 @@ class AccountRepository internal constructor(
         val pair = synchronized(lock) {
             if (mutableState.value.busy || mutableState.value.phoneStep != PhoneStep.CODE_SENT) return
             val login = activeLogin ?: return
-            mutableState.value = mutableState.value.copy(busy = true, phoneStep = PhoneStep.IDLE, message = null)
+            // Keep the OTP field mounted while verification is running; only abandon it on a terminal failure.
+            mutableState.value = mutableState.value.copy(busy = true, phoneStep = PhoneStep.CODE_SENT, message = null)
             generation to login
         }
         loginJob = scope.launch(io) {
