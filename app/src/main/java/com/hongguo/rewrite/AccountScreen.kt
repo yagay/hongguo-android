@@ -143,9 +143,9 @@ internal fun AccountScreen(model: DramaViewModel) {
                     )
                     OutlinedButton(
                         onClick = { model.account.sendCode(phone) },
-                        enabled = !account.busy && !account.checking && !account.smsSent,
+                        enabled = !account.busy && !account.checking && !account.smsSent && account.smsRetrySeconds == 0,
                         modifier = Modifier.fillMaxWidth().testTag("account_send_sms"),
-                    ) { Text("获取验证码") }
+                    ) { Text(if (account.smsRetrySeconds > 0) "${account.smsRetrySeconds} 秒后可重新获取" else "获取验证码") }
                     if (account.smsSent) {
                         Text("验证码已发送至 " + account.maskedPhone,
                             fontSize = 12.sp, color = HongguoColors.muted)
@@ -165,6 +165,12 @@ internal fun AccountScreen(model: DramaViewModel) {
                             enabled = !account.busy && code.length in 4..8,
                             modifier = Modifier.fillMaxWidth().testTag("account_verify_sms"),
                         ) { Text(if (account.busy) "正在验证…" else "验证并登录") }
+                        TextButton(onClick = { model.account.sendCode(phone) },
+                            enabled = !account.busy && account.smsRetrySeconds == 0,
+                            modifier = Modifier.testTag("account_resend_sms")) {
+                            Text(if (account.smsRetrySeconds > 0)
+                                "${account.smsRetrySeconds} 秒后可重新获取" else "重新获取验证码")
+                        }
                         TextButton(onClick = {
                             code = ""
                             model.account.cancelSms()
