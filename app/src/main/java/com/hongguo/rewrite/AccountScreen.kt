@@ -20,6 +20,7 @@ import androidx.compose.material.icons.Icons
 import androidx.compose.material.icons.automirrored.outlined.ArrowBack
 import androidx.compose.material.icons.outlined.PersonOutline
 import androidx.compose.material.icons.filled.Favorite
+import androidx.compose.material.icons.outlined.ThumbUp
 import androidx.compose.material.icons.outlined.FavoriteBorder
 import androidx.compose.material.icons.outlined.MoreVert
 import androidx.compose.foundation.shape.CircleShape
@@ -46,6 +47,7 @@ import androidx.lifecycle.compose.collectAsStateWithLifecycle
 @Composable
 internal fun AccountScreen(model: DramaViewModel) {
     val account by model.account.state.collectAsStateWithLifecycle()
+    val libraryState by model.state.collectAsStateWithLifecycle()
     val context = LocalContext.current
     var webOpen by remember { mutableStateOf(false) }
     var webError by remember { mutableStateOf<String?>(null) }
@@ -487,6 +489,8 @@ internal fun AccountScreen(model: DramaViewModel) {
                                     onSave = if (account.favoritesLoaded) ({
                                         model.account.cloudFavorite(progress.series.id, !saved)
                                     }) else null,
+                                    liked = progress.series.id in libraryState.likedDramaIds,
+                                    onLike = { model.toggleLocalLikeForDrama(progress.series.id) },
                                     modifier = Modifier.weight(1f),
                                 )
                             }
@@ -509,6 +513,8 @@ internal fun AccountScreen(model: DramaViewModel) {
                                     onOpen = { model.openCloudDrama(favorite.series) },
                                     saved = true,
                                     onSave = { model.account.cloudFavorite(favorite.series.id, false) },
+                                    liked = favorite.series.id in libraryState.likedDramaIds,
+                                    onLike = { model.toggleLocalLikeForDrama(favorite.series.id) },
                                     modifier = Modifier.weight(1f))
                             }
                             if (pair.size == 1) Spacer(Modifier.weight(1f))
@@ -530,7 +536,10 @@ internal fun AccountScreen(model: DramaViewModel) {
                                     subtitle = if (online) "已上线" else reservation.publishText.ifBlank { "待上线" },
                                     action = if (online) "观看" else "待上线",
                                     onOpen = if (online) ({ model.openCloudDrama(reservation.series) }) else null,
-                                    saved = null, onSave = null, modifier = Modifier.weight(1f))
+                                    saved = null, onSave = null,
+                                    liked = reservation.series.id in libraryState.likedDramaIds,
+                                    onLike = { model.toggleLocalLikeForDrama(reservation.series.id) },
+                                    modifier = Modifier.weight(1f))
                             }
                             if (pair.size == 1) Spacer(Modifier.weight(1f))
                         }
@@ -598,6 +607,8 @@ private fun AccountPoster(
     onOpen: (() -> Unit)?,
     saved: Boolean?,
     onSave: (() -> Unit)?,
+    liked: Boolean,
+    onLike: () -> Unit,
     modifier: Modifier = Modifier,
 ) {
     Surface(modifier = modifier, color = HongguoColors.surface,
@@ -626,6 +637,13 @@ private fun AccountPoster(
                 TextButton(onClick = { onOpen?.invoke() }, enabled = onOpen != null,
                     modifier = Modifier.weight(1f)) {
                     Text(action, fontSize = 12.sp, maxLines = 1)
+                }
+                IconButton(onClick = onLike,
+                    modifier = Modifier.size(38.dp).testTag("account_local_like_${series.id}")) {
+                    Icon(Icons.Outlined.ThumbUp,
+                        contentDescription = if (liked) "取消本机点赞" else "本机点赞",
+                        tint = if (liked) HongguoColors.accent else HongguoColors.muted,
+                        modifier = Modifier.size(18.dp))
                 }
                 if (saved != null && onSave != null) {
                     IconButton(onClick = onSave,
