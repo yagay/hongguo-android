@@ -96,6 +96,9 @@ internal fun accountResponse(response: okhttp3.Response): String {
 
 data class CloudFavorite(val series: Series, val collectedAt: Long)
 
+/** Read-only account reactions. Does not provide any social-write capability. */
+data class CloudLike(val series: Series, val likedAt: Long)
+
 data class CloudReservation(
     val series: Series,
     val online: Boolean,
@@ -226,6 +229,42 @@ class CloudAccountClient(private val http: OkHttpClient) {
             }
         return progress.map {
             it.copy(series = series[it.series.id] ?: it.series.copy(title = "剧集 ${it.series.id}"))
+        }
+    }
+
+    /**
+     * Account's actual liked short dramas; protocol and parsing adapted from main's
+     * CloudAccountClient.likes. Never infer this list from local reactions/history.
+     */
+    fun likes(credentials: AccountCredentials): List<CloudLike> {
+        val params = mapOf(
+            "count" to "50", "object_type_list" to "6,15,10",
+            "offset" to "0", "action_type" to "3",
+        )
+        val raw = try {
+            json(credentials, "/reading/ugc/action/mget/v1/", params)
+        } catch (problem: EmptyAccountResponseException) {
+            json(credentials, "/reading/ugc/action/mget/v1/", params)
+        }
+        val likes = parseLikes(raw)
+        if (likes.isEmpty()) return emptyList()
+        // Detail enrichment is optional: a temporary detail API failure must not
+        // hide a valid account liked list. Only read data, never submit a reaction.
+        val details = runCatching {
+            json(credentials, "/reading/bookapi/multi-detail/v1/",
+                mapOf("book_id" to likes.map { it.series.id }.joinToString(","),
+                    "book_type" to "2"))
+                .optJSONArray("data")?.objects().orEmpty()
+                .associateBy { it.str("book_id") }
+        }.getOrDefault(emptyMap())
+        return likes.map { like ->
+            val row = details[like.series.id]
+            if (row == null) like else like.copy(series = like.series.copy(
+                title = row.str("book_name").ifBlank { like.series.title },
+                cover = cleanUrl(row.str("thumb_url")).ifBlank { like.series.cover },
+                description = row.str("abstract").ifBlank { like.series.description },
+                badge = episodeBadge(row).ifBlank { like.series.badge },
+            ))
         }
     }
 
@@ -376,6 +415,42 @@ class CloudAccountClient(private val http: OkHttpClient) {
                     .map { row.optInt(it) }
                     .firstOrNull { it > 0 } ?: 0
             return if (count > 0) "全 $count 集" else ""
+        }
+
+        /** main account protocol's mixed_data_list response, strict enough to flag schema regressions. */
+        fun parseLikes(raw: JSONObject): List<CloudLike> {
+            val data = raw.optJSONObject("data")
+                ?: throw IOException("账号点赞数据格式已变化")
+            if (!data.has("mixed_data_list"))
+                throw IOException("账号点赞列表字段缺失")
+            val rows = if (data.isNull("mixed_data_list")) JSONArray()
+                else data.optJSONArray("mixed_data_list")
+                    ?: throw IOException("账号点赞列表格式已变化")
+            val parsed = rows.objects().mapNotNull { row ->
+                val video = row.optJSONObject("video_data")
+                    ?: row.optJSONObject("book_data") ?: return@mapNotNull null
+                val id = video.str("series_id")
+                    .ifBlank { row.str("series_id") }.ifBlank { row.str("book_id") }
+                val title = row.str("series_title").ifBlank { video.str("title") }
+                    .ifBlank { row.str("book_name") }.ifBlank { "短剧 $id" }
+                if (!id.matches(Regex("[0-9]{1,30}"))) return@mapNotNull null
+                val cover = row.str("series_cover_url").ifBlank { video.str("cover") }
+                    .ifBlank { video.str("cover_url") }.ifBlank { video.str("thumb_url") }
+                val count = video.optInt("episode_cnt").takeIf { it > 0 }
+                    ?: video.optInt("episode_count").takeIf { it > 0 }
+                    ?: row.optInt("episode_cnt").coerceAtLeast(0)
+                val at = video.optLong("user_digg_timestamp_ms").takeIf { it > 0 }
+                    ?: (video.optLong("create_time") * 1000).coerceAtLeast(0)
+                CloudLike(
+                    Series(id, title, cleanUrl(cover),
+                        row.str("series_intro").ifBlank { video.str("video_desc") },
+                        if (count > 0) "全 $count 集" else ""),
+                    at,
+                )
+            }.distinctBy { it.series.id }.sortedByDescending { it.likedAt }
+            if (rows.length() > 0 && parsed.isEmpty())
+                throw IOException("未能识别账号点赞条目")
+            return parsed
         }
 
         fun parseFavorites(raw: JSONObject): List<CloudFavorite> {
