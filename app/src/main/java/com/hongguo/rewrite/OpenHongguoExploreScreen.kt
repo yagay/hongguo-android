@@ -83,6 +83,7 @@ internal fun OpenHongguoExploreScreen(
     var worksMore by remember { mutableStateOf(false) }
     var nextWorksCursor by remember { mutableStateOf("") }
     var worksLoading by remember { mutableStateOf(false) }
+    var worksRefresh by remember { mutableIntStateOf(0) }
 
     BackHandler { if (actorId.isNotBlank()) actorId = "" else onClose() }
 
@@ -105,7 +106,7 @@ internal fun OpenHongguoExploreScreen(
         }
     }
 
-    LaunchedEffect(actorId, worksCursor) {
+    LaunchedEffect(actorId, worksCursor, worksRefresh) {
         if (actorId.isBlank()) return@LaunchedEffect
         worksLoading = true
         try {
@@ -207,6 +208,7 @@ internal fun OpenHongguoExploreScreen(
                                 worksCursor = ""
                                 worksMore = false
                                 nextWorksCursor = ""
+                                error = null
                             } else {
                                 onClose()
                                 model.open(Drama(row.id, row.title, row.cover,
@@ -241,11 +243,7 @@ internal fun OpenHongguoExploreScreen(
                     Text(message, fontSize = 13.sp, color = HongguoColors.muted)
                     OutlinedButton(onClick = {
                         if (actorId.isBlank()) refresh++
-                        else {
-                            val id = actorId
-                            actorId = ""
-                            actorId = id
-                        }
+                        else worksRefresh++
                     }) { Text("重试") }
                 }
             } }
