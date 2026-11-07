@@ -564,7 +564,9 @@ class DramaViewModel(application: Application) : AndroidViewModel(application) {
         detailJob?.cancel()
         closeNativeVideo()
         firstFrameFor = null
+        val checkpoint = library.checkpoint(detail.drama.id, vid)
         mutable.update { it.copy(episodeIndex = index, playbackUrl = null,
+            resumePositionMs = checkpoint,
             playing = false, playbackError = null) }
         // Independent IO request: comment totals are available before tapping
         // the comment action, without delaying playback address preparation.
@@ -619,6 +621,27 @@ class DramaViewModel(application: Application) : AndroidViewModel(application) {
         updateLibrary()
     }
 
+
+    /** Media3-driven actual progress, persisted independently of history.
+     * Do not record before the first decoded frame or for an old episode.
+     */
+    fun savePlaybackPosition(expectedVid: String, positionMs: Long, durationMs: Long) {
+        val s = state.value
+        val episode = s.detail?.episodes?.getOrNull(s.episodeIndex) ?: return
+        if (episode.vid != expectedVid || firstFrameFor != expectedVid) return
+        library.saveCheckpoint(s.detail.drama.id, expectedVid, episode.index,
+            positionMs, durationMs)
+    }
+
+    fun finishEpisode(expectedVid: String) {
+        val s = state.value
+        val ep = s.detail?.episodes?.getOrNull(s.episodeIndex) ?: return
+        if (ep.vid == expectedVid) {
+            library.clearCheckpoint(s.detail.drama.id, expectedVid)
+            diagnostics.record("MEDIA", "EPISODE_FINISHED")
+        }
+    }
+
     fun nextEpisode(expectedVid: String? = null) {
         val s = state.value
         if (expectedVid != null && s.detail?.episodes?.getOrNull(s.episodeIndex)?.vid != expectedVid) return
@@ -634,7 +657,8 @@ class DramaViewModel(application: Application) : AndroidViewModel(application) {
         closeNativeVideo()
         firstFrameFor = null
         mutable.update { it.copy(detail = null, playbackUrl = null,
-            playbackError = null, preparingDetail = false, playing = false) }
+            resumePositionMs = 0L, playbackError = null,
+            preparingDetail = false, playing = false) }
     }
 
     fun favorite() {

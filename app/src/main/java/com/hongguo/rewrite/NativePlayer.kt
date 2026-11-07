@@ -181,6 +181,17 @@ internal fun NativePlayer(state: AppState, model: DramaViewModel) {
             showHeart = false
         }
     }
+    // Periodic exact resume checkpoints, without writing while the media is
+    // still preparing; changes in episode invalidate the old writer.
+    LaunchedEffect(detail.drama.id, selected?.vid, state.playbackUrl) {
+        val vid = selected?.vid
+        if (vid != null && state.playbackUrl != null) {
+            while (isActive) {
+                delay(4_000)
+                model.savePlaybackPosition(vid, playback.positionMs, playback.durationMs)
+            }
+        }
+    }
     LaunchedEffect(state.danmakuEnabled, state.episodeIndex, playback.durationMs) {
         if (state.danmakuEnabled) {
             while (isActive) {
@@ -208,8 +219,12 @@ internal fun NativePlayer(state: AppState, model: DramaViewModel) {
                             url = url, speed = speed, fillVideo = fillVideo,
                             nativeVideo = model.nativeVideoFor(episode.vid),
                             controls = playback,
+                            resumeAtMs = state.resumePositionMs,
                             onFirstFrame = { model.firstFrame(episode.vid) },
-                            onFinished = { model.nextEpisode(episode.vid) },
+                            onFinished = {
+                                model.finishEpisode(episode.vid)
+                                model.nextEpisode(episode.vid)
+                            },
                             onError = { model.mediaError(episode.vid, it) },
                         )
                         Box(
@@ -587,6 +602,7 @@ private fun Media3Reel(
     fillVideo: Boolean,
     nativeVideo: RemoteVideo?,
     controls: ReelPlaybackControls,
+    resumeAtMs: Long,
     onFirstFrame: () -> Unit,
     onFinished: () -> Unit,
     onError: (String) -> Unit,
@@ -598,9 +614,16 @@ private fun Media3Reel(
     val fail by rememberUpdatedState(onError)
     val player = remember(url, nativeVideo) { ExoPlayer.Builder(context).build() }
     DisposableEffect(player) {
+        var seeked = false
         val listener = object : Player.Listener {
             override fun onRenderedFirstFrame() = first()
             override fun onPlaybackStateChanged(playbackState: Int) {
+                if (playbackState == Player.STATE_READY && !seeked) {
+                    seeked = true
+                    val target = ResumePolicy.resumable(
+                        resumeAtMs, player.duration.takeIf { it > 0L } ?: 0L)
+                    if (target > 0L) player.seekTo(target)
+                }
                 if (playbackState == Player.STATE_ENDED) end()
             }
             override fun onPlayerError(error: PlaybackException) {

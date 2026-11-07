@@ -48,6 +48,57 @@ class LibraryStore(context: Context) {
 
     @Synchronized fun clear(favorites: Boolean) = write(favorites, emptyList())
 
+
+    /**
+     * Bounded per-episode checkpoints. Stored separately from the history
+     * list: periodic playback writes must not reshuffle history or favorites.
+     */
+    @Synchronized fun checkpoint(seriesId: String, vid: String): Long {
+        val rows = progressRows()
+        return rows.firstOrNull {
+            it.optString("sid") == seriesId && it.optString("vid") == vid
+        }?.let { ResumePolicy.resumable(
+            it.optLong("position"), it.optLong("duration")
+        ) } ?: 0L
+    }
+
+    @Synchronized fun saveCheckpoint(
+        seriesId: String, vid: String, episode: Int,
+        positionMs: Long, durationMs: Long,
+    ) {
+        if (!seriesId.matches(Regex("[0-9]{1,30}")) ||
+            !vid.matches(Regex("[0-9]{1,30}")) ||
+            !ResumePolicy.persistable(positionMs, durationMs)) return
+        val rows = progressRows().filterNot {
+            it.optString("sid") == seriesId && it.optString("vid") == vid
+        }.take(199)
+        val item = JSONObject()
+            .put("sid", seriesId).put("vid", vid)
+            .put("episode", episode.coerceAtLeast(1))
+            .put("position", positionMs)
+            .put("duration", durationMs)
+            .put("updated", System.currentTimeMillis())
+        prefs.edit().putString("checkpoints",
+            JSONArray().apply { put(item); rows.forEach { put(it) } }.toString()).apply()
+    }
+
+    @Synchronized fun clearCheckpoint(seriesId: String, vid: String) {
+        val kept = progressRows().filterNot {
+            it.optString("sid") == seriesId && it.optString("vid") == vid
+        }
+        prefs.edit().putString("checkpoints",
+            JSONArray().apply { kept.forEach { put(it) } }.toString()).apply()
+    }
+
+    private fun progressRows(): List<JSONObject> {
+        val values = runCatching {
+            JSONArray(prefs.getString("checkpoints", "[]") ?: "[]")
+        }.getOrElse { JSONArray() }
+        return (0 until minOf(values.length(), 200)).mapNotNull {
+            values.optJSONObject(it)
+        }
+    }
+
     private fun write(favorites: Boolean, rows: List<Watched>) {
         val data = JSONArray()
         rows.distinctBy { it.drama.id }.take(200).forEach { row ->
