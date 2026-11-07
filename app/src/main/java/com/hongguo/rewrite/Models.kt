@@ -41,7 +41,7 @@ data class Watched(val drama: Drama, val episode: Int, val updated: Long)
 enum class Section(val title: String) {
     RECOMMEND("推荐"), RANK("榜单"), LATEST("最新"), BROWSE("筛选"), SEARCH("搜索")
 }
-enum class Modal { NONE, HISTORY, FAVORITES, SETTINGS, SHARE, DOWNLOAD }
+enum class Modal { NONE, HISTORY, FAVORITES, SETTINGS, ACCOUNT, SHARE, DOWNLOAD }
 data class DownloadTask(
     val id: String,
     val status: String,

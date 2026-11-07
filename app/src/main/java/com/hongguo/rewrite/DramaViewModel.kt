@@ -3,6 +3,8 @@ package com.hongguo.rewrite
 import android.app.Application
 import android.net.Uri
 import com.hongguotv.core.RemoteVideo
+import com.hongguotv.core.CloudProgress
+import com.hongguotv.core.Series
 import com.hongguotv.core.SleepTimer
 import java.io.File
 import java.io.IOException
@@ -24,6 +26,7 @@ import kotlinx.coroutines.coroutineScope
 
 class DramaViewModel(application: Application) : AndroidViewModel(application) {
     private val library = LibraryStore(application)
+    internal val account = AccountManager(application, viewModelScope)
     private val prefs = application.getSharedPreferences("web_rewrite_settings", 0)
     private var source: WebContractClient? = null
     private val diagnostics = DiagnosticLog(File(application.filesDir, "diagnostics"),
@@ -548,6 +551,10 @@ class DramaViewModel(application: Application) : AndroidViewModel(application) {
         if (modal == Modal.SETTINGS) refreshDiagnostics()
     }
     fun closeModal() = show(Modal.NONE)
+    fun closeAccount() {
+        account.closeScreen()
+        show(Modal.NONE)
+    }
 
     fun refreshDiagnostics() {
         viewModelScope.launch(Dispatchers.IO) {
@@ -683,6 +690,29 @@ class DramaViewModel(application: Application) : AndroidViewModel(application) {
     fun exitFeedToEpisode(index: Int) {
         mutable.update { it.copy(feedMode = false) }
         play(index)
+    }
+
+    /** Cloud rows are opened only by user action; local library remains local.
+     * The selected cloud episode is matched by vid before seek checkpoint use.
+     */
+    fun openCloudProgress(progress: CloudProgress) {
+        val id = progress.series.id
+        if (!id.matches(Regex("[0-9]{1,30}"))) return
+        if (progress.episodeId.matches(Regex("[0-9]{1,30}"))) {
+            library.saveCheckpoint(
+                id, progress.episodeId, progress.episodeIndex + 1,
+                progress.position, progress.duration,
+            )
+        }
+        closeAccount()
+        open(Drama(id, progress.series.title, progress.series.cover),
+            resumeEp = progress.episodeIndex + 1)
+    }
+
+    fun openCloudDrama(series: Series) {
+        if (!series.id.matches(Regex("[0-9]{1,30}"))) return
+        closeAccount()
+        open(Drama(series.id, series.title, series.cover))
     }
 
     fun open(drama: Drama, resumeEp: Int? = null, feed: Boolean = false) {

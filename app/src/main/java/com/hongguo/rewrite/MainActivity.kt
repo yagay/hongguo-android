@@ -77,11 +77,13 @@ private fun HongguoApp(model: DramaViewModel = viewModel()) {
                     enabled = state.detail != null || state.preparingDetail ||
                         state.modal != Modal.NONE,
                 ) {
-                    if (state.modal != Modal.NONE) model.closeModal()
+                    if (state.modal == Modal.ACCOUNT) model.closeAccount()
+                    else if (state.modal != Modal.NONE) model.closeModal()
                     else model.closePlayer()
                 }
                 when {
                     state.modal == Modal.SETTINGS -> SettingsScreen(state, model)
+                    state.modal == Modal.ACCOUNT -> AccountScreen(model)
                     state.detail != null -> key(state.detail?.drama?.id, state.feedMode) {
                         NativePlayer(state, model)
                     }

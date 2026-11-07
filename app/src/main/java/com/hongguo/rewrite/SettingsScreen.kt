@@ -48,6 +48,7 @@ import androidx.compose.runtime.mutableStateOf
 import androidx.compose.runtime.remember
 import androidx.compose.runtime.saveable.rememberSaveable
 import androidx.compose.runtime.setValue
+import androidx.lifecycle.compose.collectAsStateWithLifecycle
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.platform.testTag
@@ -64,6 +65,7 @@ internal fun SettingsScreen(state: AppState, model: DramaViewModel) {
     var address by remember(state.backend) { mutableStateOf(state.backend) }
     var confirmClear by remember { mutableStateOf(false) }
     var showLogPreview by rememberSaveable { mutableStateOf(false) }
+    val account by model.account.state.collectAsStateWithLifecycle()
     val exporter = rememberLauncherForActivityResult(
         ActivityResultContracts.CreateDocument("text/plain")
     ) { uri -> if (uri != null) model.exportDiagnostics(uri) }
@@ -101,6 +103,21 @@ internal fun SettingsScreen(state: AppState, model: DramaViewModel) {
                 end = 14.dp, bottom = 28.dp),
             verticalArrangement = Arrangement.spacedBy(20.dp),
         ) {
+            item {
+                SettingsGroup("红果账号") {
+                    Text(
+                        account.profile?.nickname?.let { "已登录 · " + it }
+                            ?: if (account.checking) "正在检查登录状态" else "未登录",
+                        color = HongguoColors.ink, fontWeight = FontWeight.SemiBold,
+                    )
+                    Text("可使用官方扫码或手机验证码登录，查看云端历史、收藏和预约。匿名播放与本机数据不受影响。",
+                        color = HongguoColors.muted, fontSize = 12.sp)
+                    Button(
+                        onClick = { model.show(Modal.ACCOUNT) },
+                        modifier = Modifier.testTag("open_account"),
+                    ) { Text(if (account.profile != null) "管理红果账号" else "登录红果账号") }
+                }
+            }
             item {
                 SettingsGroup("内容来源") {
                     Text(if (state.backend.isBlank()) "原生内容模式" else "使用自定义 API",
