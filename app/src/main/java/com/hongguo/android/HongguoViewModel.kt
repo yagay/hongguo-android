@@ -7,12 +7,9 @@ import androidx.core.content.edit
 import androidx.lifecycle.AndroidViewModel
 import androidx.lifecycle.viewModelScope
 import kotlinx.coroutines.CancellationException
-import kotlinx.coroutines.CoroutineScope
-import kotlinx.coroutines.Dispatchers
-import kotlinx.coroutines.Job
+  import kotlinx.coroutines.Job
 import kotlinx.coroutines.delay
-import kotlinx.coroutines.SupervisorJob
-import kotlinx.coroutines.currentCoroutineContext
+ import kotlinx.coroutines.currentCoroutineContext
 import kotlinx.coroutines.flow.MutableStateFlow
 import kotlinx.coroutines.flow.asStateFlow
 import kotlinx.coroutines.flow.distinctUntilChanged
@@ -25,8 +22,7 @@ import java.util.concurrent.ConcurrentHashMap
 import com.hongguo.api.service.ProgressiveMedia
 import com.hongguo.account.AccountSessionStatus
 
-private val mediaCleanup = CoroutineScope(SupervisorJob() + Dispatchers.IO)
-
+ 
 class HongguoViewModel(application: Application) : AndroidViewModel(application) {
     private val repository = DramaRepository()
     private val library = LibraryStore(application)
@@ -66,6 +62,7 @@ class HongguoViewModel(application: Application) : AndroidViewModel(application)
     private var pendingAutoPlay = false
     private data class ResumeTarget(val card: DramaCard, val index: Int)
     private val resumeTargets = ConcurrentHashMap<String, ResumeTarget>()
+    private val playbackSavePolicy = PlaybackSavePolicy()
     private data class AccountPlayback(
         val entry: LibraryEntry,
         val owner: String?,
@@ -661,10 +658,7 @@ class HongguoViewModel(application: Application) : AndroidViewModel(application)
         return null
     }
 
-    private fun releaseVideo(video: PreparedVideo?) {
-        val session = video?.session ?: return
-        mediaCleanup.launch { runCatching { session.close() } }
-    }
+    private fun releaseVideo(video: PreparedVideo?) = PlaybackSessionCoordinator.release(video)
 
     fun nextEpisode() {
         val current = state.value
@@ -736,14 +730,18 @@ class HongguoViewModel(application: Application) : AndroidViewModel(application)
         val current = state.value
         if (requestId != null && current.video?.episodeId == episodeId && current.video.requestId != requestId) return
         val target = resumeTargets[episodeId] ?: return
-        val editor = preferences.edit().putLong("${target.card.id}.$episodeId.position", positionMs.coerceAtLeast(0))
-        // The old player's disposal may follow a new selection; it must not replace that selection.
-        val selected = current.detail?.episodes?.getOrNull(current.episodePosition)
-        if (selected?.id == episodeId && current.detail?.id == target.card.id) {
-            editor.putString("${target.card.id}.episode", episodeId).putInt("${target.card.id}.index", target.index)
+        val persist = playbackSavePolicy.shouldWrite(
+            "${target.card.id}:$episodeId", android.os.SystemClock.elapsedRealtime(), force || completed)
+        if (persist) {
+            val editor = preferences.edit().putLong("${target.card.id}.$episodeId.position", positionMs.coerceAtLeast(0))
+            // The old player's disposal may follow a new selection; it must not replace that selection.
+            val selected = current.detail?.episodes?.getOrNull(current.episodePosition)
+            if (selected?.id == episodeId && current.detail?.id == target.card.id) {
+                editor.putString("${target.card.id}.episode", episodeId).putInt("${target.card.id}.index", target.index)
+            }
+            editor.apply()
+            library.updatePosition(target.card, episodeId, target.index, positionMs.coerceAtLeast(0))
         }
-        editor.apply()
-        library.updatePosition(target.card, episodeId, target.index, positionMs.coerceAtLeast(0))
         val playback = requestId?.let { accountPlaybacks[it] }
         if (playback != null && playback.entry.episodeId == episodeId) {
             if (durationMs > 0) playback.durationMs = durationMs

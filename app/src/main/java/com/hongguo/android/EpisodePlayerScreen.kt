@@ -410,7 +410,7 @@ private fun EpisodePager(state: HongguoUiState, model: HongguoViewModel, detail:
                     if (video != null && duration > 0) {
                         val target = ((seekFraction ?: fraction) * duration).toLong().coerceIn(0, duration)
                         playback.player?.seekTo(target)
-                        model.savePosition(video.episodeId, target, video.requestId, duration)
+                        model.savePosition(video.episodeId, target, video.requestId, duration, force = true)
                     }
                     seeking = false; seekFraction = null
                 }, enabled = duration > 0 && activeVideo != null && state.playbackError == null,

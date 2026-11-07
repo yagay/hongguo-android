@@ -18,6 +18,7 @@ import androidx.compose.ui.unit.dp
 import coil.imageLoader
 import coil.request.CachePolicy
 import coil.request.ImageRequest
+import coil.request.Disposable
 
 /** How many grid items may remain below the viewport before the next page is requested. */
 internal const val LoadAheadItems = 12
@@ -77,13 +78,36 @@ internal fun CoverPreloadEffect(items: List<DramaCard>, lastVisibleIndex: () -> 
     val context = LocalContext.current
     val currentItems by rememberUpdatedState(items)
     val currentEnabled by rememberUpdatedState(enabled)
-    LaunchedEffect(Unit) {
-        val requested = RecentCoverRequests()
-        snapshotFlow { if (currentEnabled) upcomingCovers(currentItems, totalItems() - 1 - lastVisibleIndex()) else emptyList() }.collect { covers ->
-            requested.select(covers).forEach { cover ->
-                context.imageLoader.enqueue(ImageRequest.Builder(context).data(cover).size(240)
-                    .memoryCachePolicy(CachePolicy.DISABLED).build())
+    LaunchedEffect(context) {
+        var requested = RecentCoverRequests()
+        val active = LinkedHashMap<String, Disposable>()
+        try {
+            // Include enabled in the snapshot: switching it off must emit even if covers are already empty.
+            snapshotFlow {
+                currentEnabled to (if (currentEnabled)
+                    upcomingCovers(currentItems, totalItems() - 1 - lastVisibleIndex()) else emptyList())
+            }.collect { (allow, covers) ->
+                if (!allow) {
+                    active.values.forEach(Disposable::dispose)
+                    active.clear()
+                    requested = RecentCoverRequests()
+                } else {
+                    requested.select(covers).forEach { cover ->
+                        active[cover] = context.imageLoader.enqueue(ImageRequest.Builder(context).data(cover).size(240)
+                            .memoryCachePolicy(CachePolicy.DISABLED).build())
+                        // Keep only a small bounded window of speculative in-flight requests.
+                        if (active.size > PreloadCovers * 2) {
+                            val oldest = active.entries.first()
+                            oldest.value.dispose()
+                            active.remove(oldest.key)
+                        }
+                    }
+                }
             }
+        } finally {
+            // Screen navigation and composition disposal cancel outstanding downloads.
+            active.values.forEach(Disposable::dispose)
+            active.clear()
         }
     }
 }
