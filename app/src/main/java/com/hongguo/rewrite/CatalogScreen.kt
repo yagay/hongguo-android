@@ -331,7 +331,7 @@ private fun CatalogPoster(drama: Drama, cover: String, onClick: () -> Unit) {
             if (drama.total > 0) {
                 Box(Modifier.fillMaxWidth().align(Alignment.BottomCenter)
                     .background(Brush.verticalGradient(
-                        Color.Transparent, Color.Black.copy(alpha = 0.74f)))
+                        colors = listOf(Color.Transparent, Color.Black.copy(alpha = 0.74f))))
                     .padding(start = 7.dp, top = 18.dp, bottom = 6.dp)) {
                     Text("全 " + drama.total + " 集", color = Color.White,
                         fontWeight = FontWeight.Medium, fontSize = 10.sp)
