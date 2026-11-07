@@ -115,27 +115,33 @@ public final class PlaybackDevice {
         private final int responseBytes;
         private final String primaryTransportFailure;
         private final String fallbackTransportFailure;
+        private final String alternateTransportFailure;
 
         RegistrationException(Throwable cause) {
-            this(registrationTransportCode(cause), -1, -1, null, null, cause);
+            this(registrationTransportCode(cause), -1, -1, null, null, null, cause);
         }
 
         RegistrationException(String code, int httpStatus, int responseBytes) {
-            this(code, httpStatus, responseBytes, null, null, null);
+            this(code, httpStatus, responseBytes, null, null, null, null);
         }
 
         RegistrationException(String code, String primary, String fallback) {
-            this(code, -1, -1, primary, fallback, null);
+            this(code, -1, -1, primary, fallback, null, null);
+        }
+
+        RegistrationException(String code, int httpStatus, String primary, String fallback, String alternate) {
+            this(code, httpStatus, -1, primary, fallback, alternate, null);
         }
 
         private RegistrationException(String code, int httpStatus, int responseBytes,
-                                      String primary, String fallback, Throwable cause) {
+                                      String primary, String fallback, String alternate, Throwable cause) {
             super("匿名播放设备注册失败，请检查连接状态后重试", cause);
             this.code = code;
             this.httpStatus = httpStatus;
             this.responseBytes = responseBytes;
             this.primaryTransportFailure = primary;
             this.fallbackTransportFailure = fallback;
+            this.alternateTransportFailure = alternate;
         }
 
         public String getCode() { return code; }
@@ -143,6 +149,7 @@ public final class PlaybackDevice {
         public int getResponseBytes() { return responseBytes; }
         public String getPrimaryTransportFailure() { return primaryTransportFailure; }
         public String getFallbackTransportFailure() { return fallbackTransportFailure; }
+        public String getAlternateTransportFailure() { return alternateTransportFailure; }
     }
 
     /** Class-only allowlist: never expose the transport exception message or URL. */
@@ -231,9 +238,34 @@ public final class PlaybackDevice {
         byte[] random = new byte[32];
         RND.nextBytes(random);
         byte[] body = buildBody(now, cdid, random);
-        Reply res = transport.post(REGISTER_URL, headers(body, now), body);
-        if (res.status != 200)
+        Reply res;
+        RegistrationException initialTransportFailure = null;
+        try {
+            res = transport.post(REGISTER_URL, headers(body, now), body);
+        } catch (RegistrationException bothFailed) {
+            // Only network transport failures (not HTTP / invalid response) can use the
+            // independently documented JSON registration API on the other service host.
+            if (bothFailed.getPrimaryTransportFailure() == null
+                    || bothFailed.getFallbackTransportFailure() == null) throw bothFailed;
+            initialTransportFailure = bothFailed;
+            try {
+                res = RegistrationHttp.alternateJsonRegister(now, cdid, REGISTER_UA);
+            } catch (IOException alternateFailure) {
+                if (Thread.currentThread().isInterrupted()) throw new InterruptedIOException("播放请求已取消");
+                throw new RegistrationException("DEVICE_REGISTER_ALTERNATE_FAILED", -1,
+                        bothFailed.getPrimaryTransportFailure(),
+                        bothFailed.getFallbackTransportFailure(),
+                        registrationTransportCode(alternateFailure));
+            }
+        }
+        if (res.status != 200) {
+            if (initialTransportFailure != null) {
+                throw new RegistrationException("DEVICE_REGISTER_ALTERNATE_HTTP", res.status,
+                        initialTransportFailure.getPrimaryTransportFailure(),
+                        initialTransportFailure.getFallbackTransportFailure(), "DEVICE_REGISTER_HTTP");
+            }
             throw new RegistrationException("DEVICE_REGISTER_HTTP", res.status, -1);
+        }
         if (res.text == null || res.text.trim().isEmpty())
             throw new RegistrationException("DEVICE_REGISTER_EMPTY", 200, 0);
         Map<String, Object> j;
