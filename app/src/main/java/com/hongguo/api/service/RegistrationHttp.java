@@ -65,7 +65,7 @@ final class RegistrationHttp {
         }
     }
 
-    private static PlaybackDevice.Reply okHttpPost(
+    static PlaybackDevice.Reply okHttpPost(
             String url, Map<String, String> headers, byte[] body) throws IOException {
         RequestBody requestBody = RequestBody.create(
                 MediaType.parse("application/octet-stream;tt-data=a"), body);
