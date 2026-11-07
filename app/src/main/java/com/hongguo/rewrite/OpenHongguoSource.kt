@@ -39,6 +39,72 @@ internal class OpenHongguoSource(context: Context) {
             ClientOptions(retryAttempts = 1, deviceResets = 0))
     }
 
+    /**
+     * Curated read-only discovery surfaces from the same published SDK.
+     * Server cursor and actor identity remain source-defined; no fake ranks.
+     */
+    suspend fun browse(tab: String, cursor: String = ""): OpenHongguoBrowsePage {
+        fun useCursor(value: String) = value.takeIf(String::isNotBlank)
+        return when (tab) {
+            "new" -> {
+                val p = newReleases(NewReleaseQuery(cursor = useCursor(cursor)))
+                OpenHongguoBrowsePage(p.items.map {
+                    OpenHongguoBrowseItem(
+                        id = it.seriesId, title = it.title, cover = it.coverUrl,
+                        subtitle = it.note.ifBlank { it.heat },
+                        episodes = it.episodeCount, playable = it.online,
+                    )
+                }, p.cursor, p.hasMore)
+            }
+            "actor" -> {
+                val p = shortRank(ShortRankQuery(
+                    content = "ranklist_celebrity",
+                    board = "ranklist_series_actor",
+                    cursor = useCursor(cursor)))
+                OpenHongguoBrowsePage(p.items.map {
+                    OpenHongguoBrowseItem(
+                        id = it.userId, title = it.actor, cover = it.avatarUrl,
+                        subtitle = listOf(it.score, it.intro).filter(String::isNotBlank)
+                            .joinToString(" · "),
+                        actorUserId = it.userId,
+                    )
+                }.filter { it.title.isNotBlank() }, p.cursor, p.hasMore)
+            }
+            "human", "comic", "ai" -> {
+                val content = when (tab) {
+                    "human" -> "human"
+                    "comic" -> "comic_series_rank"
+                    else -> "ai_playlet"
+                }
+                val p = shortRank(ShortRankQuery(content = content,
+                    cursor = useCursor(cursor)))
+                OpenHongguoBrowsePage(p.items.map {
+                    OpenHongguoBrowseItem(it.seriesId, it.title, it.coverUrl,
+                        it.score, it.episodeCount)
+                }.filter { it.id.isNotBlank() }, p.cursor, p.hasMore)
+            }
+            "hot" -> {
+                val p = hotSearch()
+                val hits = p.guesses + p.boards.flatMap { it.items }
+                OpenHongguoBrowsePage(hits.distinctBy { it.seriesId }.map {
+                    OpenHongguoBrowseItem(it.seriesId, it.title, it.coverUrl,
+                        it.heat, it.episodeCount)
+                }.filter { it.id.isNotBlank() }, "", false)
+            }
+            "filter" -> {
+                val p = filter(ShortFilterQuery(
+                    selections = if (cursor.isBlank()) mapOf(
+                        "genre" to listOf("short_play")) else null,
+                    cursor = useCursor(cursor)))
+                OpenHongguoBrowsePage(p.items.map {
+                    OpenHongguoBrowseItem(it.id, it.title, it.coverUrl,
+                        it.category, it.episodeCount)
+                }, p.cursor, p.hasMore)
+            }
+            else -> throw IllegalArgumentException("Unknown discovery tab")
+        }
+    }
+
     suspend fun details(id: String): OpenHongguoMetadata =
         mapSeries(client.getSeries(checkedId(id)))
 
@@ -118,3 +184,19 @@ internal class OpenHongguoSource(context: Context) {
         )
     }
 }
+
+data class OpenHongguoBrowseItem(
+    val id: String,
+    val title: String,
+    val cover: String = "",
+    val subtitle: String = "",
+    val episodes: Int = 0,
+    val playable: Boolean = true,
+    val actorUserId: String = "",
+)
+
+data class OpenHongguoBrowsePage(
+    val items: List<OpenHongguoBrowseItem>,
+    val cursor: String,
+    val hasMore: Boolean,
+)
