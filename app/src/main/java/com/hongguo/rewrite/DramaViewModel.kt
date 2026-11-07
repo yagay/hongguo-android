@@ -29,6 +29,49 @@ class DramaViewModel(application: Application) : AndroidViewModel(application) {
     internal val account = AccountManager(application, viewModelScope)
     private val prefs = application.getSharedPreferences("web_rewrite_settings", 0)
     private var source: WebContractClient? = null
+    private fun readWatchLater(): List<Drama> {
+        val rows = runCatching { JSONArray(prefs.getString("watch_later_v1", "[]")) }
+            .getOrElse { JSONArray() }
+        return (0 until minOf(rows.length(), 200)).mapNotNull { i ->
+            val item = rows.optJSONObject(i) ?: return@mapNotNull null
+            val id = item.optString("id")
+            if (!id.matches(Regex("[0-9]{1,30}"))) return@mapNotNull null
+            Drama(id, item.optString("title"), item.optString("cover"),
+                item.optInt("total").coerceAtLeast(0))
+        }.distinctBy { it.id }
+    }
+
+    fun toggleWatchLater(drama: Drama) {
+        if (!drama.id.matches(Regex("[0-9]{1,30}"))) return
+        val old = state.value.watchLater
+        val updated = if (old.any { it.id == drama.id }) old.filterNot { it.id == drama.id }
+            else (listOf(drama) + old).take(200)
+        val data = JSONArray()
+        updated.forEach {
+            data.put(org.json.JSONObject().put("id", it.id).put("title", it.title)
+                .put("cover", it.cover).put("total", it.total))
+        }
+        prefs.edit().putString("watch_later_v1", data.toString()).apply()
+        mutable.update { it.copy(watchLater = updated) }
+    }
+
+    fun hideRecommendation(drama: Drama) {
+        if (!drama.id.matches(Regex("[0-9]{1,30}"))) return
+        val hidden = (state.value.hiddenRecommendationIds + drama.id).take(500).toSet()
+        prefs.edit().putStringSet("hidden_recommendations_v1", hidden).apply()
+        mutable.update { it.copy(hiddenRecommendationIds = hidden) }
+    }
+
+    fun restoreHiddenRecommendations() {
+        prefs.edit().remove("hidden_recommendations_v1").apply()
+        mutable.update { it.copy(hiddenRecommendationIds = emptySet()) }
+    }
+
+    fun setAutoPlayNext(enabled: Boolean) {
+        prefs.edit().putBoolean("auto_play_next", enabled).apply()
+        mutable.update { it.copy(autoPlayNext = enabled) }
+    }
+
     private val diagnostics = DiagnosticLog(File(application.filesDir, "diagnostics"),
         prefs.getBoolean("diagnostic_enabled", true))
     private val publicWebsite = NativeWebsiteSource(diagnostics = diagnostics)
@@ -114,6 +157,9 @@ class DramaViewModel(application: Application) : AndroidViewModel(application) {
         AppState(backend = prefs.getString("backend", "").orEmpty(),
             library = library.list(false), favorites = library.list(true),
             likedDramaIds = prefs.getStringSet("local_liked_dramas", emptySet())?.toSet().orEmpty(),
+            watchLater = readWatchLater(),
+            hiddenRecommendationIds = prefs.getStringSet("hidden_recommendations_v1", emptySet())?.toSet().orEmpty(),
+            autoPlayNext = prefs.getBoolean("auto_play_next", true),
             recentSearches = recentQueries(),
             qualityLimit = prefs.getInt("quality_limit", 0)
                 .takeIf { it in setOf(0, 360, 480, 720, 1080) } ?: 0,
