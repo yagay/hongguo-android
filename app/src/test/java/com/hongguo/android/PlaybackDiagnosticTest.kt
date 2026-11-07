@@ -53,6 +53,49 @@ class PlaybackDiagnosticTest {
         }
     }
 
+    @Test fun registrationReportIncludesOnlySafeConnectionState() {
+        val report = PlaybackDiagnostic(
+            code = "DEVICE_REGISTER_ALTERNATE_FAILED",
+            stage = "device_register",
+            stageLabel = "设备注册",
+            message = "注册连接失败",
+            primaryTransportFailure = "DEVICE_REGISTER_CONNECT_FAILED",
+            fallbackTransportFailure = "DEVICE_REGISTER_CONNECT_FAILED",
+            alternateTransportFailure = "DEVICE_REGISTER_CONNECT_FAILED",
+            networkSnapshot = PlaybackNetworkSnapshot(
+                transport = "wifi", vpn = true, systemProxy = false,
+                privateDns = true, validated = true
+            )
+        ).safeReport()
+        assertTrue(report.contains("network_transport=wifi"))
+        assertTrue(report.contains("vpn_active=yes"))
+        assertTrue(report.contains("system_proxy=no"))
+        assertTrue(report.contains("private_dns=yes"))
+        assertTrue(report.contains("network_validated=yes"))
+        assertFalse(report.contains("proxy_host"))
+        assertFalse(report.contains("gateway"))
+        assertFalse(report.contains("dns_server"))
+    }
+
+    @Test fun networkSnapshotNeverExportsArbitraryFieldsOrLeaksToOtherErrors() {
+        val strange = PlaybackNetworkSnapshot(
+            transport = "wifi;secret_ip=192.0.2.123", vpn = null,
+            systemProxy = null, privateDns = null, validated = null
+        )
+        val registerReport = PlaybackDiagnostic(
+            code = "DEVICE_REGISTER_NETWORK_FAILED", stage = "device_register",
+            stageLabel = "设备注册", message = "test", networkSnapshot = strange
+        ).safeReport()
+        assertFalse(registerReport.contains("192.0.2.123"))
+        val playerReport = PlaybackDiagnostic(
+            code = "PLAYER_PLAYBACK_FAILED", stage = "media_player",
+            stageLabel = "播放器", message = "test",
+            networkSnapshot = strange.copy(transport = "cellular", vpn = true)
+        ).safeReport()
+        assertFalse(playerReport.contains("network_transport="))
+        assertFalse(playerReport.contains("vpn_active="))
+    }
+
     @Test fun playerDecoderFailureHasDedicatedStage() {
         val failure = PlaybackDiagnostic.playerFailure(true)
         assertEquals("PLAYER_DECODER_UNSUPPORTED", failure.code)
