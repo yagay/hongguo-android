@@ -553,7 +553,12 @@ class HongguoViewModel(application: Application) : AndroidViewModel(application)
                 throw error
             } catch (error: Exception) {
                 if (version == mediaVersion) {
-                    val diagnostic = PlaybackDiagnostic.fromPreparationFailure(error)
+                    val diagnostic = PlaybackDiagnostic.fromPreparationFailure(error).let { detail ->
+                        if (detail.stage == "device_register") {
+                            detail.copy(networkSnapshot =
+                                PlaybackNetworkSnapshot.capture(getApplication<Application>()))
+                        } else detail
+                    }
                     mutableState.update {
                         it.copy(preparing = false, playbackError = diagnostic.message,
                             playbackDiagnostic = diagnostic, playbackStatus = "")
