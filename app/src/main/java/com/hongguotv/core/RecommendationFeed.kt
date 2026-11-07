@@ -532,6 +532,13 @@ class RecommendationFeed(
                                     .takeIf { it > 0 }
                                     ?.let { "共 $it 集" }
                                     .orEmpty(),
+                                // Preserve explicit upstream medium codes for optional
+                                // real-person filtering. Do not derive type from a title,
+                                // story genre, or an unspecified numeric book_type.
+                                listOf("genre", "video_type", "series_type", "content_type")
+                                    .map { row.str(it) }
+                                    .filter(String::isNotBlank)
+                                    .joinToString(","),
                             )
                     }
                     .distinctBy { it.id }
