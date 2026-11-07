@@ -501,7 +501,9 @@ class DramaViewModel(application: Application) : AndroidViewModel(application) {
         if (!snapshot.feedMode || snapshot.feedLoading) return
         val needsFirstDrama = snapshot.feedItems.isEmpty()
         val generation = if (restart) ++officialFeedGeneration else officialFeedGeneration
-        officialFeedJob?.cancel()
+        // Non-restart continuation may be queued by the just-completed batch
+        // coroutine itself. Cancelling it here would cancel the caller.
+        if (restart) officialFeedJob?.cancel()
         val excluded = snapshot.feedItems.mapTo(linkedSetOf()) { it.id }
             .apply {
                 addAll(snapshot.hiddenRecommendationIds)
