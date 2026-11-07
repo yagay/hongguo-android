@@ -84,7 +84,12 @@ class NativeWebsiteSource(
                 data.optString("series_name", data.optString("series_title", "未命名短剧")),
                 cleanCover(data.optString("series_cover")),
                 episodes.size,
-                data.optString("series_intro")),
+                data.optString("series_intro"),
+                DramaCompletion.fromOfficialText(
+                    data.optString("creation_status_text")
+                        .ifBlank { data.optString("episode_right_text") }
+                        .ifBlank { data.optString("status_text") }
+                )),
             episodes
         )
     }

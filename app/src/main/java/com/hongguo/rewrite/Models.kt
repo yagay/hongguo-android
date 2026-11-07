@@ -6,6 +6,8 @@ data class Drama(
     val cover: String = "",
     val total: Int = 0,
     val synopsis: String = "",
+    /** Explicitly confirmed status; null must never be rendered as completed. */
+    val completionStatus: String? = null,
 )
 data class Episode(val index: Int, val vid: String, val title: String = "")
 data class DramaDetail(val drama: Drama, val episodes: List<Episode>)

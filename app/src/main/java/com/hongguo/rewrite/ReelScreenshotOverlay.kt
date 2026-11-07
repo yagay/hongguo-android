@@ -230,33 +230,13 @@ internal fun ReelBottomDock(
     val fraction = if (duration > 0L)
         (playback.positionMs.toFloat() / duration.toFloat()).coerceIn(0f, 1f)
     else 0f
+
+    // The small scrub bar and episode label live OUTSIDE the video viewport.
     Column(
         Modifier.fillMaxWidth().background(Color(0xFF232325))
             .testTag("reel_outside_video_dock"),
         verticalArrangement = Arrangement.spacedBy(0.dp),
     ) {
-        Row(
-            Modifier.fillMaxWidth().height(48.dp)
-                .clickable(onClick = onEpisodes)
-                .padding(start = 16.dp, end = 14.dp)
-                .testTag("watch_full_drama"),
-            verticalAlignment = Alignment.CenterVertically,
-            horizontalArrangement = Arrangement.spacedBy(10.dp),
-        ) {
-            Icon(Icons.Outlined.PlayCircleOutline, contentDescription = null,
-                tint = Color.White, modifier = Modifier.size(22.dp))
-            Text(
-                "观看完整短剧 · 全 " + detail.episodes.size + " 集",
-                color = Color.White,
-                fontSize = 14.sp,
-                fontWeight = FontWeight.SemiBold,
-                maxLines = 1,
-                overflow = TextOverflow.Ellipsis,
-                modifier = Modifier.weight(1f),
-            )
-            Icon(Icons.Outlined.KeyboardArrowRight, contentDescription = "打开选集",
-                tint = Color.White, modifier = Modifier.size(22.dp))
-        }
         Slider(
             value = seeking ?: fraction,
             onValueChange = { seeking = it },
@@ -279,6 +259,33 @@ internal fun ReelBottomDock(
                 .height(18.dp)
                 .testTag("reel_seek"),
         )
+        Row(
+            Modifier.fillMaxWidth().height(36.dp)
+                .clickable(onClick = onEpisodes)
+                .padding(start = 14.dp, end = 12.dp)
+                .testTag("watch_full_drama"),
+            verticalAlignment = Alignment.CenterVertically,
+        ) {
+            Text(
+                DramaCompletion.episodeLabel(
+                    total = detail.episodes.size,
+                    status = detail.drama.completionStatus,
+                    episodeIndex = episode?.index,
+                ),
+                color = Color.White,
+                fontSize = 13.sp,
+                fontWeight = FontWeight.SemiBold,
+                maxLines = 1,
+                overflow = TextOverflow.Ellipsis,
+                modifier = Modifier.weight(1f).testTag("reel_episode_status"),
+            )
+            Icon(
+                Icons.Outlined.KeyboardArrowRight,
+                contentDescription = "打开选集",
+                tint = Color.White,
+                modifier = Modifier.size(20.dp),
+            )
+        }
     }
 }
 

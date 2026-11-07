@@ -370,7 +370,8 @@ class NativeHongguoSource(
     private fun com.hongguotv.core.Series.toDrama(): Drama {
         val episodes = Regex("[0-9]+").find(badge)?.value?.toIntOrNull() ?: 0
         return Drama(id = id, title = title, cover = cover,
-            total = episodes, synopsis = description)
+            total = episodes, synopsis = description,
+            completionStatus = DramaCompletion.fromOfficialText(badge))
     }
 
     private fun canDecode(row: Rendition): Boolean {
