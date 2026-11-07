@@ -99,6 +99,7 @@ data class AppState(
     val themeMode: String = "light",
     val navigationStyle: String = "classic",
     val autoPlayNext: Boolean = true,
+    val preloadNext: Boolean = true,
     val skipIntroSeconds: Int = 0,
     val skipOutroSeconds: Int = 0,
     val retryPlaybackAutomatically: Boolean = true,
