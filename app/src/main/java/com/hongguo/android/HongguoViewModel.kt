@@ -124,15 +124,25 @@ class HongguoViewModel(application: Application) : AndroidViewModel(application)
         rankJob?.cancel()
         val version = ++rankVersion
         mutableState.update { it.copy(rankLoading = true, rankError = null) }
+        val rankStartedAt = android.os.SystemClock.elapsedRealtime()
+        AppDiagnostics.record("RANK", "LOAD_START", stage = board.name, count = page)
         rankJob = viewModelScope.launch {
             try {
                 val result = repository.rank(board, page)
-                if (version == rankVersion) mutableState.update { it.copy(rankLoading = false, rankPage = result.page, rankTotalPages = result.totalPages,
-                    rankEntries = (it.rankEntries + result.entries).distinctBy { row -> row.series.id }) }
+                if (version == rankVersion) {
+                    AppDiagnostics.record("RANK", "LOAD_OK", stage = board.name,
+                        elapsedMs = android.os.SystemClock.elapsedRealtime() - rankStartedAt, count = result.entries.size)
+                    mutableState.update { it.copy(rankLoading = false, rankPage = result.page, rankTotalPages = result.totalPages,
+                        rankEntries = (it.rankEntries + result.entries).distinctBy { row -> row.series.id }) }
+                }
             } catch (error: CancellationException) {
                 throw error
             } catch (error: Exception) {
-                if (version == rankVersion) mutableState.update { it.copy(rankLoading = false, rankError = readableFailure(error, "加载榜单")) }
+                if (version == rankVersion) {
+                    AppDiagnostics.failure("RANK", error = error,
+                        elapsedMs = android.os.SystemClock.elapsedRealtime() - rankStartedAt)
+                    mutableState.update { it.copy(rankLoading = false, rankError = readableFailure(error, "加载榜单")) }
+                }
             }
         }
     }
@@ -154,6 +164,7 @@ class HongguoViewModel(application: Application) : AndroidViewModel(application)
 
     /** A signed-in account's records come first, until the user picks a source themself. Signing out resets this. */
     fun onAccountSession(signedIn: Boolean) {
+        AppDiagnostics.record("ACCOUNT", "SESSION_STATUS", stage = if (signedIn) "signed_in" else "signed_out")
         if (!signedIn) librarySourceChosen = false
         if (!librarySourceChosen) mutableState.update { it.copy(libraryCloud = signedIn) }
     }
@@ -188,6 +199,7 @@ class HongguoViewModel(application: Application) : AndroidViewModel(application)
         if (rememberOrigin && tab in setOf(AppTab.HISTORY, AppTab.FAVORITES) && state.value.tab !in setOf(AppTab.HISTORY, AppTab.FAVORITES, AppTab.ACCOUNT)) libraryOrigin = state.value.tab
         if (state.value.selectedCard != null) backToSearch()
         mutableState.update { it.copy(tab = tab) }
+        AppDiagnostics.record("NAV", "OPEN", stage = tab.name)
         when (tab) {
             AppTab.HOME -> if (!state.value.home.loaded && !state.value.home.loading) refreshHome()
             AppTab.CATEGORY -> if (!state.value.category.loaded && !state.value.category.loading) {
@@ -214,17 +226,25 @@ class HongguoViewModel(application: Application) : AndroidViewModel(application)
         homeJob?.cancel()
         val previous = if (append) current.home else FeedState()
         mutableState.update { it.copy(home = previous.copy(loading = !append, loadingMore = append, error = null)) }
+        val homeStartedAt = android.os.SystemClock.elapsedRealtime()
+        AppDiagnostics.record("HOME", "LOAD_START", stage = current.homeFeed.name, count = if (append) 1 else 0)
         homeJob = viewModelScope.launch {
             try {
                 val page = if (current.homeFeed == HomeFeed.GUESS) guessPage(append)
                     else repository.discover(current.homeFeed, if (append) previous.nextOffset else 0, previous.items.map { it.id })
                 if (version != homeVersion || !currentCoroutineContext().isActive) return@launch
                 mutableState.update { it.copy(home = mergePage(previous, page, append)) }
+                AppDiagnostics.record("HOME", "LOAD_OK", stage = current.homeFeed.name,
+                    elapsedMs = android.os.SystemClock.elapsedRealtime() - homeStartedAt, count = page.items.size)
             } catch (error: CancellationException) { throw error }
             catch (error: Exception) {
-                if (version == homeVersion) mutableState.update { it.copy(home = previous.copy(
-                    loading = false, loadingMore = false, loaded = true, error = readableFailure(error,
-                        if (current.homeFeed == HomeFeed.GUESS) "加载推荐" else "加载首页"))) }
+                if (version == homeVersion) {
+                    AppDiagnostics.failure("HOME", error = error,
+                        elapsedMs = android.os.SystemClock.elapsedRealtime() - homeStartedAt)
+                    mutableState.update { it.copy(home = previous.copy(
+                        loading = false, loadingMore = false, loaded = true, error = readableFailure(error,
+                            if (current.homeFeed == HomeFeed.GUESS) "加载推荐" else "加载首页"))) }
+                }
             }
         }
     }
@@ -245,6 +265,7 @@ class HongguoViewModel(application: Application) : AndroidViewModel(application)
         if (BrowseGenres.none { it.first == genre }) return
         if (genre == state.value.browseDraft.genre) return
         mutableState.update { it.copy(browseDraft = BrowseSelection(genre), filterGroups = emptyList(), filtersError = null) }
+        AppDiagnostics.record("CATEGORY", "GENRE_CHANGED", stage = genre)
         reloadFilters()
         applyBrowse()
     }
@@ -264,15 +285,23 @@ class HongguoViewModel(application: Application) : AndroidViewModel(application)
         val version = ++filtersVersion
         filtersJob?.cancel()
         mutableState.update { it.copy(filtersLoading = true, filtersError = null) }
+        val filterStartedAt = android.os.SystemClock.elapsedRealtime()
+        AppDiagnostics.record("FILTER", "LOAD_START", stage = genre)
         filtersJob = viewModelScope.launch {
             try {
                 val groups = repository.filters(genre)
                 if (version != filtersVersion || !currentCoroutineContext().isActive) return@launch
                 mutableState.update { it.copy(filterGroups = groups, filtersLoading = false) }
+                AppDiagnostics.record("FILTER", "LOAD_OK", stage = genre,
+                    elapsedMs = android.os.SystemClock.elapsedRealtime() - filterStartedAt, count = groups.size)
             } catch (error: CancellationException) { throw error }
             catch (error: Exception) {
-                if (version == filtersVersion) mutableState.update { it.copy(filtersLoading = false,
-                    filtersError = readableFailure(error, "获取筛选条件")) }
+                if (version == filtersVersion) {
+                    AppDiagnostics.failure("FILTER", error = error,
+                        elapsedMs = android.os.SystemClock.elapsedRealtime() - filterStartedAt)
+                    mutableState.update { it.copy(filtersLoading = false,
+                        filtersError = readableFailure(error, "获取筛选条件")) }
+                }
             }
         }
     }
@@ -308,15 +337,24 @@ class HongguoViewModel(application: Application) : AndroidViewModel(application)
         val previous = if (append) current.category else FeedState()
         val selection = current.browseApplied
         mutableState.update { it.copy(category = previous.copy(loading = !append, loadingMore = append, error = null)) }
+        val browseStartedAt = android.os.SystemClock.elapsedRealtime()
+        AppDiagnostics.record("CATEGORY", "LOAD_START", stage = selection.genre,
+            count = if (append) 1 else 0)
         categoryJob = viewModelScope.launch {
             try {
                 val page = repository.browse(selection, if (append) previous.nextOffset else 0, previous.items.map { it.id })
                 if (version != categoryVersion || !currentCoroutineContext().isActive) return@launch
                 mutableState.update { it.copy(category = mergePage(previous, page, append)) }
+                AppDiagnostics.record("CATEGORY", "LOAD_OK", stage = selection.genre,
+                    elapsedMs = android.os.SystemClock.elapsedRealtime() - browseStartedAt, count = page.items.size)
             } catch (error: CancellationException) { throw error }
             catch (error: Exception) {
-                if (version == categoryVersion) mutableState.update { it.copy(category = previous.copy(
-                    loading = false, loadingMore = false, loaded = true, error = readableFailure(error, "加载分类"))) }
+                if (version == categoryVersion) {
+                    AppDiagnostics.failure("CATEGORY", error = error,
+                        elapsedMs = android.os.SystemClock.elapsedRealtime() - browseStartedAt)
+                    mutableState.update { it.copy(category = previous.copy(
+                        loading = false, loadingMore = false, loaded = true, error = readableFailure(error, "加载分类"))) }
+                }
             }
         }
     }
@@ -414,6 +452,8 @@ class HongguoViewModel(application: Application) : AndroidViewModel(application)
             results = emptyList(), searching = true, loadingMore = false, hasMore = false, nextOffset = 0,
             searchError = null, selectedCard = null, detail = null, video = null, preparing = false,
             playbackError = null, firstFrameRendered = false, playerOpen = false) }
+        val searchStartedAt = android.os.SystemClock.elapsedRealtime()
+        AppDiagnostics.record("SEARCH", "LOAD_START")
         searchJob = viewModelScope.launch {
             try {
                 val page = repository.search(query, 0)
@@ -422,11 +462,17 @@ class HongguoViewModel(application: Application) : AndroidViewModel(application)
                     it.copy(results = page.items.distinctBy(DramaCard::id), searching = false,
                         hasMore = page.hasMore, nextOffset = page.nextOffset)
                 }
+                AppDiagnostics.record("SEARCH", "LOAD_OK",
+                    elapsedMs = android.os.SystemClock.elapsedRealtime() - searchStartedAt, count = page.items.size)
             } catch (error: CancellationException) {
                 throw error
             } catch (error: Exception) {
-                if (version == searchVersion) mutableState.update {
-                    it.copy(searching = false, searchError = readableFailure(error, "搜索"))
+                if (version == searchVersion) {
+                    AppDiagnostics.failure("SEARCH", error = error,
+                        elapsedMs = android.os.SystemClock.elapsedRealtime() - searchStartedAt)
+                    mutableState.update {
+                        it.copy(searching = false, searchError = readableFailure(error, "搜索"))
+                    }
                 }
             }
         }
@@ -485,6 +531,8 @@ class HongguoViewModel(application: Application) : AndroidViewModel(application)
         startupPendingDetail = autoPlay || resume != null
         startupTrace = if (startupPendingDetail) PlaybackStartupTrace() else null
         val version = ++detailVersion
+        val detailStartedAt = android.os.SystemClock.elapsedRealtime()
+        AppDiagnostics.record("DETAIL", "LOAD_START")
         mutableState.update {
             it.copy(selectedCard = card, detail = null, loadingDetail = true, detailError = null, related = emptyList(),
                 video = null, preparing = false, preparationStage = "", playbackError = null,
@@ -502,6 +550,9 @@ class HongguoViewModel(application: Application) : AndroidViewModel(application)
             try {
                 val detail = repository.details(card)
                 if (version != detailVersion || !currentCoroutineContext().isActive) return@launch
+                AppDiagnostics.record("DETAIL", "LOAD_OK",
+                    elapsedMs = android.os.SystemClock.elapsedRealtime() - detailStartedAt,
+                    count = detail.episodes.size)
                 startupTrace?.mark("detail_ready")
                 val lastId = resume?.episodeId?.takeIf { it.isNotBlank() } ?: preferences.getString("${card.id}.episode", "")
                 val lastIndex = resume?.episodeIndex?.takeIf { it > 0 } ?: preferences.getInt("${card.id}.index", -1)
@@ -523,8 +574,12 @@ class HongguoViewModel(application: Application) : AndroidViewModel(application)
             } catch (error: CancellationException) {
                 throw error
             } catch (error: Exception) {
-                if (version == detailVersion) mutableState.update {
-                    it.copy(loadingDetail = false, detailError = readableFailure(error, "获取剧集"))
+                if (version == detailVersion) {
+                    AppDiagnostics.failure("DETAIL", error = error,
+                        elapsedMs = android.os.SystemClock.elapsedRealtime() - detailStartedAt)
+                    mutableState.update {
+                        it.copy(loadingDetail = false, detailError = readableFailure(error, "获取剧集"))
+                    }
                 }
             }
         }
@@ -550,6 +605,8 @@ class HongguoViewModel(application: Application) : AndroidViewModel(application)
             LibraryEntry(cardFor(detail), episode.id, episode.index), accounts.ownerKey)
         while (accountPlaybacks.size > 16) accountPlaybacks.remove(accountPlaybacks.keys.first())
         resumeTargets[episode.id] = ResumeTarget(cardFor(detail), episode.index)
+        AppDiagnostics.record("PLAYBACK", "EPISODE_SELECTED",
+            stage = if (warmClaim != null) "prefetch_claimed" else "direct")
         val savedPosition = if (restart) 0 else resumeOverrideMs ?: preferences.getLong("${detail.id}.${episode.id}.position", 0)
         mutableState.update {
             it.copy(episodePosition = position, preparing = true, video = null,
@@ -560,19 +617,30 @@ class HongguoViewModel(application: Application) : AndroidViewModel(application)
         mediaJob = viewModelScope.launch {
             var transferredWarm = false
             try {
+                var lastStage = ""
                 // If the preload is still resolving the video address, join that same request
                 // instead of canceling it and registering another anonymous device.
                 val warmed = warmClaim?.prepared?.await()
                 transferredWarm = warmed != null
+                if (warmed != null) AppDiagnostics.record("PREFETCH", "HANDOFF_OK")
                 val prepared = warmed ?: repository.prepare(episode) { stage, done, total ->
                     if (version == mediaVersion) {
                         startupTrace?.mark(stage)
+                        if (stage != lastStage) {
+                            lastStage = stage
+                            AppDiagnostics.record("PLAYBACK", "SOURCE_STAGE", stage = stage)
+                        }
                         mutableState.update {
                             it.copy(preparationStage = stage, preparationDone = done, preparationTotal = total)
                         }
                     }
                 }
-                if (version == mediaVersion) startupTrace?.mark("media_ready")
+                if (version == mediaVersion) {
+                    startupTrace?.mark("media_ready")
+                    AppDiagnostics.record("PLAYBACK", "MEDIA_READY",
+                        stage = if (warmed != null) "prefetched" else "direct",
+                        elapsedMs = startupTrace?.elapsedMillis())
+                }
                 if (version != mediaVersion || !currentCoroutineContext().isActive) {
                     releaseVideo(prepared)
                     return@launch
@@ -587,6 +655,8 @@ class HongguoViewModel(application: Application) : AndroidViewModel(application)
                     startupTrace?.mark("failed")
                     val diagnostic = PlaybackDiagnostic.fromPreparationFailure(error)
                         .copy(startupTimings = startupTrace?.report())
+                    AppDiagnostics.record("PLAYBACK", "PREPARE_ERROR",
+                        code = diagnostic.code, elapsedMs = startupTrace?.elapsedMillis())
                     android.util.Log.i("HongguoStartup", diagnostic.startupTimings.orEmpty())
                     mutableState.update {
                         it.copy(preparing = false, playbackError = diagnostic.message,
@@ -662,6 +732,7 @@ class HongguoViewModel(application: Application) : AndroidViewModel(application)
         takePrefetch(null)
         val slot = WarmSlot(episode.id)
         warmSlot = slot
+        AppDiagnostics.record("PREFETCH", "START")
         val job = viewModelScope.launch {
             var ready = false
             try {
@@ -669,6 +740,7 @@ class HongguoViewModel(application: Application) : AndroidViewModel(application)
                 slot.video = prepared
                 if (slot.abandoned) return@launch
                 slot.prepared.complete(prepared)
+                AppDiagnostics.record("PREFETCH", "READY")
                 if (slot.taken || warmSlot !== slot) return@launch
                 repository.warmNext(prepared) { reader ->
                     slot.reader = reader
@@ -676,7 +748,10 @@ class HongguoViewModel(application: Application) : AndroidViewModel(application)
                 }
                 ready = true
             } catch (cancelled: CancellationException) { throw cancelled }
-            catch (_: Exception) { /* Speculation must not break the selected episode. */ }
+            catch (error: Exception) {
+                AppDiagnostics.failure("PREFETCH", error = error)
+                /* Speculation must not break the selected episode. */
+            }
             finally {
                 if (!slot.prepared.isCompleted) slot.prepared.complete(null)
                 if (slot.abandoned || (!slot.taken && (!ready || warmSlot !== slot))) {
@@ -749,6 +824,15 @@ class HongguoViewModel(application: Application) : AndroidViewModel(application)
         if (!isCurrentVideo(episodeId, requestId)) return
         if (status == "正在缓冲") startupTrace?.mark("player_buffering")
         if (status == "正在播放" || status == "已暂停") startupTrace?.mark("player_ready")
+        if (state.value.playbackStatus != status) {
+            val event = when (status) {
+                "正在缓冲" -> "BUFFERING"
+                "正在播放" -> "PLAYING"
+                "已暂停" -> "PAUSED"
+                else -> "STATE_CHANGED"
+            }
+            AppDiagnostics.record("PLAYER", event)
+        }
         mutableState.update { it.copy(playbackStatus = status) }
     }
 
@@ -757,6 +841,7 @@ class HongguoViewModel(application: Application) : AndroidViewModel(application)
         val alreadyRendered = state.value.firstFrameRendered
         if (!alreadyRendered) {
             startupTrace?.mark("first_frame")
+            AppDiagnostics.record("PLAYBACK", "FIRST_FRAME", elapsedMs = startupTrace?.elapsedMillis())
             startupTrace?.report()?.let { android.util.Log.i("HongguoStartup", it) }
         }
         mutableState.update { it.copy(firstFrameRendered = true, playbackDiagnostic = null) }
@@ -770,6 +855,8 @@ class HongguoViewModel(application: Application) : AndroidViewModel(application)
     fun onPlaybackError(episodeId: String, requestId: Long, unsupported: Boolean) {
         if (!isCurrentVideo(episodeId, requestId)) return
         PlaybackSessionCoordinator.invalidate(state.value.video)
+        AppDiagnostics.record("PLAYER", if (unsupported) "DECODER_ERROR" else "MEDIA_ERROR",
+            elapsedMs = startupTrace?.elapsedMillis())
         startupTrace?.mark("failed")
         startupTrace?.report()?.let { android.util.Log.i("HongguoStartup", it) }
         mutableState.update {

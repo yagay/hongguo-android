@@ -18,6 +18,8 @@ internal class PlaybackStartupTrace(private val clock: () -> Long = System::nano
             checkpoints[label] = ((clock() - started).coerceAtLeast(0L) / 1_000_000L)
     }
 
+    fun elapsedMillis(): Long = ((clock() - started).coerceAtLeast(0L) / 1_000_000L)
+
     @Synchronized fun report(): String = buildString {
         append("startup_timing_ms")
         checkpoints.forEach { (key, ms) -> append("\n").append(key).append("=").append(ms) }
