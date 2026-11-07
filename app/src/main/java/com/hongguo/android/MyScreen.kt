@@ -25,6 +25,8 @@ import androidx.compose.foundation.selection.selectableGroup
 import androidx.compose.foundation.shape.CircleShape
 import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.material3.HorizontalDivider
+import androidx.compose.material3.AlertDialog
+import androidx.compose.material3.TextButton
 import androidx.compose.material3.Surface
 import androidx.compose.material3.Switch
 import androidx.compose.material3.SwitchDefaults
@@ -41,11 +43,15 @@ import androidx.compose.material.icons.outlined.StarBorder
 import androidx.compose.material.icons.outlined.ChevronRight
 import androidx.compose.material.icons.outlined.PersonOutline
 import androidx.compose.material.icons.outlined.Settings
+import androidx.compose.material.icons.outlined.Download
+import androidx.compose.material.icons.outlined.DeleteOutline
 import androidx.compose.material.icons.outlined.PrivacyTip
 import androidx.compose.material.icons.outlined.SystemUpdate
 import androidx.compose.material3.CircularProgressIndicator
 import androidx.compose.ui.graphics.vector.ImageVector
 import androidx.compose.runtime.Composable
+import androidx.compose.runtime.remember
+import androidx.compose.runtime.rememberCoroutineScope
 import androidx.compose.runtime.getValue
 import androidx.compose.runtime.mutableStateOf
 import androidx.compose.runtime.setValue
@@ -65,6 +71,12 @@ import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
 import androidx.compose.ui.layout.ContentScale
 import androidx.compose.ui.platform.LocalContext
+import androidx.activity.compose.rememberLauncherForActivityResult
+import androidx.activity.result.contract.ActivityResultContracts
+import android.widget.Toast
+import kotlinx.coroutines.Dispatchers
+import kotlinx.coroutines.launch
+import kotlinx.coroutines.withContext
 import coil.compose.AsyncImage
 import coil.request.ImageRequest
 
@@ -202,6 +214,36 @@ private fun PageHeader(title: String, backLabel: String, backTag: String, onBack
 internal fun SystemSettingsScreen(state: HongguoUiState, model: HongguoViewModel,
                                  updateState: UpdateUiState, updateModel: UpdateViewModel,
                                  onTheme: () -> Unit, onBack: () -> Unit) {
+    val context = LocalContext.current
+    val scope = rememberCoroutineScope()
+    var diagnosticEnabled by remember { mutableStateOf(AppDiagnostics.isEnabled()) }
+    var confirmClear by remember { mutableStateOf(false) }
+    val exportLogs = rememberLauncherForActivityResult(ActivityResultContracts.CreateDocument("text/plain")) { uri ->
+        if (uri != null) {
+            // Capture in-memory events immediately; writing to the user-selected URI runs on IO.
+            val snapshot = AppDiagnostics.exportText()
+            scope.launch {
+                val success = withContext(Dispatchers.IO) {
+                    runCatching {
+                        context.contentResolver.openOutputStream(uri, "w")?.bufferedWriter(Charsets.UTF_8)?.use {
+                            it.write(snapshot)
+                        } ?: throw java.io.IOException("Unable to open destination")
+                    }.isSuccess
+                }
+                Toast.makeText(context, if (success) "诊断日志已导出" else "导出失败，请换个位置重试",
+                    Toast.LENGTH_SHORT).show()
+            }
+        }
+    }
+    if (confirmClear) AlertDialog(onDismissRequest = { confirmClear = false },
+        title = { Text("清空诊断日志？") },
+        text = { Text("会清除本机之前记录的诊断事件，不影响收藏、观看记录和其他设置。") },
+        confirmButton = { TextButton(onClick = {
+            AppDiagnostics.clear()
+            confirmClear = false
+            Toast.makeText(context, "诊断日志已清空", Toast.LENGTH_SHORT).show()
+        }) { Text("清空") } },
+        dismissButton = { TextButton(onClick = { confirmClear = false }) { Text("取消") } })
     LazyColumn(Modifier.fillMaxSize().testTag("settings_screen").padding(horizontal = 20.dp),
         contentPadding = PaddingValues(0.dp).plusNavClearance(),
         verticalArrangement = Arrangement.spacedBy(12.dp)) {
@@ -234,6 +276,29 @@ internal fun SystemSettingsScreen(state: HongguoUiState, model: HongguoViewModel
             Surface(shape = RoundedCornerShape(16.dp), color = CardSurface, modifier = Modifier.padding(top = 12.dp)) {
                 SettingSwitch("启动时检查更新", "每次重新启动应用时检查，下载和安装仍需确认", updateState.automaticChecksEnabled,
                     "settings_auto_update", updateModel::setAutomaticChecksEnabled)
+            }
+        }
+        item {
+            Text("诊断与日志", color = Muted, fontSize = 14.sp)
+            Surface(shape = RoundedCornerShape(16.dp), color = CardSurface, modifier = Modifier.padding(top = 12.dp)) {
+                Column {
+                    SettingSwitch("记录详细日志", "记录页面加载、分类、网络错误、账号状态、预加载和播放耗时，不包含隐私令牌",
+                        diagnosticEnabled, "settings_diagnostic_enabled") { enabled ->
+                        diagnosticEnabled = enabled
+                        AppDiagnostics.setEnabled(enabled)
+                    }
+                    HorizontalDivider(color = Canvas, modifier = Modifier.padding(horizontal = 18.dp))
+                    MyMenuRow("导出诊断日志", "保存为 TXT，包含本机最近的全局运行事件", "settings_export_logs",
+                        Icons.Outlined.Download) {
+                        AppDiagnostics.record("APP", "EXPORT")
+                        val name = "Hongguo-diagnostic-" + java.text.SimpleDateFormat(
+                            "yyyyMMdd-HHmmss", java.util.Locale.ROOT).format(java.util.Date()) + ".txt"
+                        exportLogs.launch(name)
+                    }
+                    HorizontalDivider(color = Canvas, modifier = Modifier.padding(horizontal = 18.dp))
+                    MyMenuRow("清空诊断日志", "仅删除日志，不会清除其他数据", "settings_clear_logs",
+                        Icons.Outlined.DeleteOutline) { confirmClear = true }
+                }
             }
         }
         item {
