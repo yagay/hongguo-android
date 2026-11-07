@@ -66,6 +66,14 @@ internal fun PlaybackExperienceSheet(
                 TextButton(onClick = onDismiss) { Text("完成", color = HongguoColors.accent) }
             }
 
+            PlaybackHeading("刷剧内容")
+            PlaybackChoices(
+                listOf("all" to "全部推荐", "real" to "只看真人"),
+                state.reelsMode, model::setReelsMode, "official_reels_mode",
+            )
+            Text("只看真人优先使用官方动态推荐；无法核实类型时由官方真人分类持续补足，不读取固定剧单。切换时会重新开始刷剧。",
+                fontSize = 11.sp, color = secondary)
+
             PlaybackHeading("画面比例")
             PlaybackChoices(
                 listOf(false to "适应画面", true to "铺满画面"),
