@@ -89,3 +89,5 @@
 若备用 JSON 注册成功，沿用现有 `PlaybackDevice.parse` 校验服务返回的设备 ID，并继续现有播放模型请求。若备用连接也失败，错误 `DEVICE_REGISTER_ALTERNATE_FAILED` 包含 `alternate_transport` 安全原因码；备用服务器响应非 200 时返回 `DEVICE_REGISTER_ALTERNATE_HTTP` 并显示 HTTP 状态。依旧不能保证源站会接受身份或允许视频播放。
 
 **需要对比网络**：手机 Wi-Fi、移动数据和当前代理/私有 DNS；尝试将 `log5-applog-lf.fqnovel.com` 与 `log.snssdk.com` 交给同一规则处理（只在用户信任的网络方案中设置）。不要为了排障关闭所有设备的网络安全保护。若注册可以通过，但出现 `VIDEO_MODEL_...`，应转向播放模型请求处理，而不继续改注册协议。
+
+另外，OkHttp 注册连接恢复设置使用 `retryOnConnectionFailure(true)`：允许在 **同一个最长 9 秒的请求期限内** 尝试 DNS 返回的其他 IPv4/IPv6 地址及受支持的代理路由，而不是第一个 TCP 连接失败就终止。这里不是无上限重试，随后才会进入有界的旧网络栈/备用域名回退。单次注册可能由于多条路径而耗时较长；遇到明确的 HTTP 拒绝不会进行备用域名注册。
