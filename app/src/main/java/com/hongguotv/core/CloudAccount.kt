@@ -243,7 +243,10 @@ class CloudAccountClient(private val http: OkHttpClient) {
         )
         val raw = try {
             json(credentials, "/reading/ugc/action/mget/v1/", params)
-        } catch (problem: EmptyAccountResponseException) {
+        } catch (problem: IOException) {
+            // json() wraps an empty-body transport failure with a fixed stage message.
+            // Retry that one read once, never retry an auth/API error or submit a write.
+            if (!problem.message.orEmpty().contains("接口返回空响应")) throw problem
             json(credentials, "/reading/ugc/action/mget/v1/", params)
         }
         val likes = parseLikes(raw)
