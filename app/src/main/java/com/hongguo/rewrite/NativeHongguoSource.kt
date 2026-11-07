@@ -68,10 +68,21 @@ class NativeHongguoSource(
             // Exclude seed, hidden and previously shown titles at the official cursor layer.
             alreadyShown.filter { it.matches(Regex("[0-9]{1,30}")) }
                 .takeLast(300).forEach(reelsCursor::markSeen)
+            // The upstream cursor only advances after a successful page. A network
+            // error must never skip its expected page number on the next swipe.
+            if (reelsPageNumber > 100) {
+                reelsCursor = RecommendationCursor()
+                reelsFeed = RecommendationFeed(repository.http,
+                    account = synchronized(recommendationLock) { accountFeed },
+                    cursor = reelsCursor)
+                reelsPageNumber = 1
+                alreadyShown.takeLast(300).forEach(reelsCursor::markSeen)
+            }
             var attempts = 0
             var output: com.hongguotv.core.CatalogPage? = null
             while (attempts++ < 3) {
-                val page = reelsFeed.page(reelsPageNumber++)
+                val page = reelsFeed.page(reelsPageNumber)
+                reelsPageNumber++
                 if (page.items.isNotEmpty()) {
                     output = page
                     break
