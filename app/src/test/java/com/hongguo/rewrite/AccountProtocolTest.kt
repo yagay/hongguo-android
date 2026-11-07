@@ -36,6 +36,38 @@ class AccountProtocolTest {
         assertEquals(74000L, result[0].position)
     }
 
+    @Test fun mainCloudLikesAreReadOnlyParsedAndDeduplicated() {
+        val raw = JSONObject().put("data", JSONObject().put("mixed_data_list", JSONArray()
+            .put(JSONObject().put("series_title", "示例短剧")
+                .put("video_data", JSONObject().put("series_id", "70001")
+                    .put("cover_url", "https://example.com/a.jpg")
+                    .put("user_digg_timestamp_ms", 1700000001000L)
+                    .put("episode_cnt", 24)))
+            .put(JSONObject().put("series_title", "重复作品")
+                .put("video_data", JSONObject().put("series_id", "70001")
+                    .put("user_digg_timestamp_ms", 1700000000000L)))
+            .put(JSONObject().put("series_title", "无效作品")
+                .put("video_data", JSONObject().put("series_id", "invalid")))))
+        val likes = CloudAccountClient.parseLikes(raw)
+        assertEquals(1, likes.size)
+        assertEquals("70001", likes[0].series.id)
+        assertEquals("示例短剧", likes[0].series.title)
+        assertEquals(1700000001000L, likes[0].likedAt)
+    }
+
+    @Test fun likeProtocolDoesNotMisreportMissingDataAsEmptyAccount() {
+        val empty = JSONObject().put("data", JSONObject()
+            .put("mixed_data_list", JSONArray()))
+        assertTrue(CloudAccountClient.parseLikes(empty).isEmpty())
+        var rejected = false
+        try {
+            CloudAccountClient.parseLikes(JSONObject().put("data", JSONObject()))
+        } catch (_: java.io.IOException) {
+            rejected = true
+        }
+        assertTrue(rejected)
+    }
+
     @Test fun invalidProgressIdsCannotCreatePlayableRows() {
         val bad = JSONArray().put(JSONObject()
             .put("series_id", "not-an-id").put("vid", "not-a-vid"))
