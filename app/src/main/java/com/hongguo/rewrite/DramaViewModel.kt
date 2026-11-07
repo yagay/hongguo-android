@@ -204,6 +204,9 @@ class DramaViewModel(application: Application) : AndroidViewModel(application) {
                     .put("completedDramaIds", JSONArray().apply {
                         state.value.completedDramaIds.forEach(::put)
                     })
+                    .put("favoriteGroups", org.json.JSONObject().apply {
+                        state.value.favoriteGroups.forEach { (id, group) -> put(id, group) }
+                    })
                 getApplication<Application>().contentResolver.openOutputStream(uri)
                     ?.use { it.write(data.toString(2).toByteArray(Charsets.UTF_8)) }
                     ?: error("无法创建备份文件")
@@ -236,6 +239,7 @@ class DramaViewModel(application: Application) : AndroidViewModel(application) {
                 val laterArray = backup.getJSONArray("watchLater")
                 val likesArray = backup.getJSONArray("likedDramaIds")
                 val completedArray = backup.optJSONArray("completedDramaIds") ?: JSONArray()
+                val groupsObject = backup.optJSONObject("favoriteGroups") ?: org.json.JSONObject()
                 require(laterArray.length() <= 200 && likesArray.length() <= 500 &&
                     completedArray.length() <= 500) {
                     "备份条目超过限制"
@@ -255,8 +259,13 @@ class DramaViewModel(application: Application) : AndroidViewModel(application) {
                     completedArray.getString(it)
                 }.toSet()
                 require(completed.all { it.matches(Regex("[0-9]{1,30}")) })
+                val groups = groupsObject.keys().asSequence().associateWith { groupsObject.getString(it) }
+                require(groups.size <= 200 && groups.all { (id, group) ->
+                    id.matches(Regex("[0-9]{1,30}")) && group.length in 1..24
+                })
                 // All sections have passed validation before replacing current data.
                 library.importLists(backup)
+                library.replaceFavoriteGroups(groups)
                 prefs.edit().putString("watch_later_v1", JSONArray().apply {
                     later.forEach {
                         put(org.json.JSONObject().put("id", it.id)
@@ -269,7 +278,8 @@ class DramaViewModel(application: Application) : AndroidViewModel(application) {
                 mutable.update {
                     it.copy(library = library.list(false), favorites = library.list(true),
                         watchLater = later, likedDramaIds = likes,
-                        completedDramaIds = completed)
+                        completedDramaIds = completed,
+                        favoriteGroups = library.favoriteGroups())
                 }
             }
             mutable.update { it.copy(settingsMessage = if (result.isSuccess)
