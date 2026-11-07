@@ -81,7 +81,7 @@ class DramaViewModel(application: Application) : AndroidViewModel(application) {
                     .getOrDefault(false)
             }
             if (!accessible) {
-                mutable.update { it.copy(settingsMessage = "离线文件无法读取，请检查保存位置") }
+                mutable.update { it.copy(offlineLibraryMessage = "离线文件无法读取，请检查保存位置或文档访问权限") }
                 return@launch
             }
             ++detailId
@@ -96,6 +96,7 @@ class DramaViewModel(application: Application) : AndroidViewModel(application) {
                     Drama(episode.seriesId, episode.title, episode.cover, episode.episode),
                     listOf(Episode(episode.episode, episode.vid))),
                 episodeIndex = 0, offlinePlaybackUri = episode.documentUri,
+                offlineLibraryMessage = null,
                 playbackUrl = episode.documentUri, playing = true,
                 feedMode = false, preparingDetail = false, playbackError = null,
                 resumePositionMs = library.checkpoint(episode.seriesId, episode.vid),
