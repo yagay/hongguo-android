@@ -136,6 +136,33 @@ internal fun SettingsScreen(state: AppState, model: DramaViewModel) {
                         "当前集正常播放结束后自动切换下一集；手动切集不受影响",
                         state.autoPlayNext, model::setAutoPlayNext, "settings_autoplay")
                     HorizontalDivider(color = HongguoColors.divider)
+                    SettingToggle("播放失败自动重试", "网络错误后最多自动重试一次，不重复下载",
+                        state.retryPlaybackAutomatically, model::setAutomaticPlaybackRetry,
+                        "settings_auto_retry")
+                    HorizontalDivider(color = HongguoColors.divider)
+                    Text("片头跳过", color = HongguoColors.ink, fontWeight = FontWeight.SemiBold)
+                    FlowRow(horizontalArrangement = Arrangement.spacedBy(6.dp)) {
+                        listOf(0, 10, 20, 30, 60).forEach { sec ->
+                            OutlinedButton(onClick = { model.setSkipIntroSeconds(sec) },
+                                modifier = Modifier.testTag("intro_skip_$sec")) {
+                                Text(if (sec == 0) "关闭" else "${sec}秒" +
+                                    if (state.skipIntroSeconds == sec) " ✓" else "")
+                            }
+                        }
+                    }
+                    Text("片尾跳过", color = HongguoColors.ink, fontWeight = FontWeight.SemiBold)
+                    FlowRow(horizontalArrangement = Arrangement.spacedBy(6.dp)) {
+                        listOf(0, 5, 10, 15, 30).forEach { sec ->
+                            OutlinedButton(onClick = { model.setSkipOutroSeconds(sec) },
+                                modifier = Modifier.testTag("outro_skip_$sec")) {
+                                Text(if (sec == 0) "关闭" else "${sec}秒" +
+                                    if (state.skipOutroSeconds == sec) " ✓" else "")
+                            }
+                        }
+                    }
+                    Text("片尾跳过仅在已知有效总时长时生效，不影响睡眠定时。",
+                        color = HongguoColors.muted, fontSize = 12.sp)
+                    HorizontalDivider(color = HongguoColors.divider)
                     SettingsNavRow(
                         icon = Icons.Outlined.PlayCircleOutline,
                         title = "播放器设置",
