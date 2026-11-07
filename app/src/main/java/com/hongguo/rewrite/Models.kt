@@ -76,6 +76,8 @@ data class AppState(
     val error: String? = null,
     val modal: Modal = Modal.NONE,
     val detail: DramaDetail? = null,
+    val detailPageVisible: Boolean = false,
+    val detailEntryEnabled: Boolean = false,
     /** Separate one-video-per-series feed from full-series episode paging. */
     /** Official swipe feed: all recommendations or strictly real-person dramas. */
     val reelsMode: String = "all",
