@@ -458,6 +458,20 @@ class DramaViewModel(application: Application) : AndroidViewModel(application) {
     private val localDownloadSlots = Semaphore(2)
     private var requestId = 0L
     private var detailId = 0L
+    /** Recent reel IDs are content IDs only, never account identifiers or cookies. */
+    private fun recentlySwiped(): List<String> = runCatching {
+        val stored = JSONArray(prefs.getString("recent_official_reels_v1", "[]"))
+        (0 until minOf(stored.length(), 120)).map { stored.optString(it) }
+            .filter { it.matches(Regex("[0-9]{1,30}")) }
+    }.getOrDefault(emptyList())
+
+    private fun rememberSwiped(id: String) {
+        if (!id.matches(Regex("[0-9]{1,30}"))) return
+        val last = (recentlySwiped().filterNot { it == id } + id).takeLast(120)
+        prefs.edit().putString("recent_official_reels_v1",
+            JSONArray(last).toString()).apply()
+    }
+
     private var pendingFeedAdvance = false
     private var feedPrefetchJob: Job? = null
     private var officialFeedJob: Job? = null
@@ -469,7 +483,10 @@ class DramaViewModel(application: Application) : AndroidViewModel(application) {
         val generation = if (restart) ++officialFeedGeneration else officialFeedGeneration
         officialFeedJob?.cancel()
         val excluded = snapshot.feedItems.mapTo(linkedSetOf()) { it.id }
-            .apply { addAll(snapshot.hiddenRecommendationIds) }
+            .apply {
+                addAll(snapshot.hiddenRecommendationIds)
+                addAll(recentlySwiped())
+            }
         mutable.update { it.copy(feedLoading = true, feedError = null) }
         officialFeedJob = viewModelScope.launch {
             try {
@@ -1105,7 +1122,10 @@ class DramaViewModel(application: Application) : AndroidViewModel(application) {
     fun startFeed(drama: Drama? = null) {
         val current = state.value
         if (current.section != Section.RECOMMEND) return
+        val recentlyShown = recentlySwiped().toSet()
         val selected = drama ?: current.items.firstOrNull {
+            it.id !in current.hiddenRecommendationIds && it.id !in recentlyShown
+        } ?: current.items.firstOrNull {
             it.id !in current.hiddenRecommendationIds
         } ?: return
         if (selected.id in current.hiddenRecommendationIds) return
@@ -1119,6 +1139,7 @@ class DramaViewModel(application: Application) : AndroidViewModel(application) {
             feedMode = true, feedItems = listOf(selected), feedIndex = 0,
             feedLoading = false, feedHasMore = true, feedError = null,
         ) }
+        rememberSwiped(selected.id)
         open(selected, resumeEp = 1, feed = true)
         // Homepage's manual three-result paging remains untouched.
         loadOfficialReels(restart = true)
@@ -1135,6 +1156,7 @@ class DramaViewModel(application: Application) : AndroidViewModel(application) {
         if (selected != null && selected.id != current.detail?.drama?.id) {
             pendingFeedAdvance = false
             mutable.update { it.copy(feedIndex = index) }
+            rememberSwiped(selected.id)
             open(selected, resumeEp = 1, feed = true)
             prefetchFollowingFeedItem(index)
             if (direction > 0 &&
