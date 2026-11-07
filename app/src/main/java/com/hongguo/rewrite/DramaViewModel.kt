@@ -207,7 +207,11 @@ class DramaViewModel(application: Application) : AndroidViewModel(application) {
     fun setPreloadNext(enabled: Boolean) {
         prefs.edit().putBoolean("preload_next_episode", enabled).apply()
         mutable.update { it.copy(preloadNext = enabled) }
-        if (!enabled) clearPreloadedNext()
+        if (!enabled) {
+            clearPreloadedNext()
+            feedPrefetchJob?.cancel()
+            clearReelWarmVideo()
+        }
     }
 
     fun setAutoPlayNext(enabled: Boolean) {
@@ -267,6 +271,19 @@ class DramaViewModel(application: Application) : AndroidViewModel(application) {
     private var preloadedNextQuality = 0
     private var preloadedNextVideo: RemoteVideo? = null
     private var preloadEpisodeJob: Job? = null
+
+    /** Stream prepared for a different series, not the next episode of this series. */
+    private var reelWarmSeriesId: String? = null
+    private var reelWarmVid: String? = null
+    private var reelWarmQuality = 0
+    private var reelWarmVideo: RemoteVideo? = null
+
+    private fun clearReelWarmVideo() {
+        reelWarmVideo?.close()
+        reelWarmVideo = null
+        reelWarmSeriesId = null
+        reelWarmVid = null
+    }
 
     private fun clearPreloadedNext() {
         preloadEpisodeJob?.cancel()
@@ -562,27 +579,47 @@ class DramaViewModel(application: Application) : AndroidViewModel(application) {
 
     private fun prefetchFollowingFeedItem(index: Int) {
         val current = state.value
+        if (!current.feedMode) return
         val next = current.feedItems.drop(index + 1)
             .firstOrNull { it.id !in current.hiddenRecommendationIds } ?: return
-        if (prefetchedFeedDetails.containsKey(next.id)) return
+        if (reelWarmSeriesId == next.id && reelWarmVideo != null) return
         feedPrefetchJob?.cancel()
         feedPrefetchJob = viewModelScope.launch {
+            var warming: RemoteVideo? = null
             try {
-                val detail = nativeSource.detail(next.id)
-                if (state.value.feedMode && state.value.feedItems
-                        .drop(state.value.feedIndex + 1)
-                        .firstOrNull { it.id !in state.value.hiddenRecommendationIds }?.id == next.id) {
-                    prefetchedFeedDetails[next.id] = detail
-                    while (prefetchedFeedDetails.size > 3)
-                        prefetchedFeedDetails.remove(prefetchedFeedDetails.keys.first())
-                    diagnostics.record("FEED", "NEXT_DETAIL_PREFETCHED")
-                }
+                val detail = prefetchedFeedDetails[next.id] ?: nativeSource.detail(next.id)
+                if (!isUpcomingReel(next.id)) return@launch
+                prefetchedFeedDetails[next.id] = detail
+                while (prefetchedFeedDetails.size > 3)
+                    prefetchedFeedDetails.remove(prefetchedFeedDetails.keys.first())
+                diagnostics.record("FEED", "NEXT_DETAIL_PREFETCHED")
+                if (!state.value.preloadNext || detail.episodes.isEmpty()) return@launch
+                val first = detail.episodes.first().vid
+                val quality = state.value.qualityLimit
+                warming = nativeSource.openVideo(first, qualityLimit = quality)
+                if (!isUpcomingReel(next.id) || !state.value.preloadNext ||
+                    state.value.qualityLimit != quality) return@launch
+                clearReelWarmVideo()
+                reelWarmSeriesId = next.id
+                reelWarmVid = first
+                reelWarmQuality = quality
+                reelWarmVideo = warming
+                warming = null
+                diagnostics.record("FEED", "NEXT_VIDEO_PREPARED")
             } catch (e: CancellationException) {
                 throw e
-            } catch (e: Exception) {
-                diagnostics.record("FEED", "NEXT_DETAIL_UNAVAILABLE")
+            } catch (_: Exception) {
+                diagnostics.record("FEED", "NEXT_PRELOAD_UNAVAILABLE")
+            } finally {
+                warming?.close()
             }
         }
+    }
+
+    private fun isUpcomingReel(seriesId: String): Boolean {
+        val current = state.value
+        return current.feedMode && current.feedItems.drop(current.feedIndex + 1)
+            .firstOrNull { it.id !in current.hiddenRecommendationIds }?.id == seriesId
     }
     private var firstFrameFor: String? = null
     private var startEpisodeHint: Int? = null
@@ -1167,6 +1204,7 @@ class DramaViewModel(application: Application) : AndroidViewModel(application) {
         officialFeedGeneration++
         pendingFeedAdvance = false
         feedPrefetchJob?.cancel()
+        clearReelWarmVideo()
         prefetchedFeedDetails.clear()
         nativeSource.setAccountRecommendations(account.recommendationAccount())
         // Official App feed is separate from "为你推荐". Never show its already-loaded
@@ -1216,6 +1254,8 @@ class DramaViewModel(application: Application) : AndroidViewModel(application) {
         officialFeedGeneration++
         homeFeedExcludedIds = emptySet()
         pendingFeedAdvance = false
+        feedPrefetchJob?.cancel()
+        clearReelWarmVideo()
         mutable.update { it.copy(feedMode = false, feedLoading = false) }
         play(index)
     }
@@ -1317,8 +1357,19 @@ class DramaViewModel(application: Application) : AndroidViewModel(application) {
         val vid = detail.episodes[index].vid
         detailJob?.cancel()
         closeNativeVideo()
-        val cachedNative = if (preloadedNextVid == vid &&
-            preloadedNextQuality == state.value.qualityLimit) preloadedNextVideo else null
+        val reelCached = state.value.feedMode &&
+            reelWarmSeriesId == detail.drama.id &&
+            reelWarmVid == vid && reelWarmQuality == state.value.qualityLimit
+        val cachedNative = if (reelCached) reelWarmVideo
+            else if (preloadedNextVid == vid &&
+                preloadedNextQuality == state.value.qualityLimit) preloadedNextVideo
+            else null
+        // Transfer the warmed reel's ownership to the active playback request.
+        if (reelCached) {
+            reelWarmVideo = null
+            reelWarmVid = null
+            reelWarmSeriesId = null
+        }
         preloadEpisodeJob?.cancel()
         preloadEpisodeJob = null
         if (cachedNative == null) preloadedNextVideo?.close()
@@ -1509,6 +1560,7 @@ class DramaViewModel(application: Application) : AndroidViewModel(application) {
         officialFeedJob?.cancel()
         officialFeedGeneration++
         feedPrefetchJob?.cancel()
+        clearReelWarmVideo()
         prefetchedFeedDetails.clear()
         ++relatedGeneration
         relatedJob?.cancel()
