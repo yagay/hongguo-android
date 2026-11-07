@@ -350,7 +350,7 @@ private fun CatalogSectionTools(state: AppState, model: DramaViewModel,
                 fontSize = 20.sp, fontWeight = FontWeight.Bold, color = HongguoColors.ink,
                 modifier = Modifier.weight(1f),
             )
-            if (state.section == Section.RECOMMEND && state.items.isNotEmpty()) {
+            if (state.section == Section.RECOMMEND) {
                 TextButton(
                     onClick = { model.startFeed() },
                     modifier = Modifier.testTag("start_video_feed"),
@@ -362,6 +362,19 @@ private fun CatalogSectionTools(state: AppState, model: DramaViewModel,
             if (state.items.isNotEmpty()) {
                 Text("已加载 " + state.items.size + " 部", fontSize = 11.sp,
                     color = HongguoColors.muted)
+            }
+        }
+        if (state.section == Section.RECOMMEND && state.feedMode &&
+            state.feedError != null) {
+            Row(Modifier.fillMaxWidth(), verticalAlignment = Alignment.CenterVertically) {
+                Text(state.feedError, color = HongguoColors.accent,
+                    fontSize = 12.sp, modifier = Modifier.weight(1f),
+                    maxLines = 2, overflow = TextOverflow.Ellipsis)
+                TextButton(onClick = model::retryOfficialReels,
+                    enabled = !state.feedLoading,
+                    modifier = Modifier.testTag("retry_official_reels_home")) {
+                    Text("重试官方推荐")
+                }
             }
         }
         if (state.section == Section.RANK) {
