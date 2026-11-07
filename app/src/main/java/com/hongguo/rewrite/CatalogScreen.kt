@@ -33,10 +33,13 @@ import androidx.compose.material.icons.outlined.History
 import androidx.compose.material.icons.outlined.PersonOutline
 import androidx.compose.material.icons.outlined.Search
 import androidx.compose.material.icons.outlined.Settings
+import androidx.compose.material.icons.outlined.MoreVert
 import androidx.compose.material.icons.outlined.Share
 import androidx.compose.material.icons.outlined.StarBorder
 import androidx.compose.material.icons.outlined.Tune
 import androidx.compose.material3.Button
+import androidx.compose.material3.DropdownMenu
+import androidx.compose.material3.DropdownMenuItem
 import androidx.compose.material3.CircularProgressIndicator
 import androidx.compose.material3.ExperimentalMaterial3Api
 import androidx.compose.material3.FilterChip
@@ -132,8 +135,14 @@ internal fun CatalogScreen(state: AppState, model: DramaViewModel, onMine: () ->
                     }
                 }
             }
-            items(state.items, key = { it.id }) { drama ->
-                CatalogPoster(drama, model.cover(drama.cover)) { model.open(drama) }
+            items(state.items.filter { it.id !in state.hiddenRecommendationIds ||
+                state.section != Section.RECOMMEND }, key = { it.id }) { drama ->
+                CatalogPoster(drama, model.cover(drama.cover),
+                    savedLater = state.watchLater.any { it.id == drama.id },
+                    onLater = { model.toggleWatchLater(drama) },
+                    onHide = if (state.section == Section.RECOMMEND)
+                        ({ model.hideRecommendation(drama) }) else null
+                ) { model.open(drama) }
             }
             if (state.hasMore) {
                 item(span = { GridItemSpan(maxLineSpan) }) {
@@ -357,7 +366,9 @@ private fun CompactChoices(
 }
 
 @Composable
-private fun CatalogPoster(drama: Drama, cover: String, onClick: () -> Unit) {
+private fun CatalogPoster(drama: Drama, cover: String, savedLater: Boolean,
+    onLater: () -> Unit, onHide: (() -> Unit)?, onClick: () -> Unit) {
+    var menuOpen by remember { mutableStateOf(false) }
     Column(
         Modifier.fillMaxWidth().clickable(onClick = onClick)
             .testTag("drama_" + drama.id),
@@ -377,6 +388,18 @@ private fun CatalogPoster(drama: Drama, cover: String, onClick: () -> Unit) {
                     model = cover, contentDescription = drama.title,
                     modifier = Modifier.fillMaxSize(), contentScale = ContentScale.Crop,
                 )
+            }
+            Box(Modifier.align(Alignment.TopEnd)) {
+                IconButton(onClick = { menuOpen = true },
+                    modifier = Modifier.testTag("poster_menu_" + drama.id)) {
+                    Icon(Icons.Outlined.MoreVert, contentDescription = "剧集管理", tint = Color.White)
+                }
+                DropdownMenu(expanded = menuOpen, onDismissRequest = { menuOpen = false }) {
+                    DropdownMenuItem(text = { Text(if (savedLater) "移出稍后看" else "加入稍后看") },
+                        onClick = { menuOpen = false; onLater() })
+                    if (onHide != null) DropdownMenuItem(text = { Text("不再推荐") },
+                        onClick = { menuOpen = false; onHide() })
+                }
             }
             if (drama.total > 0) {
                 Box(Modifier.fillMaxWidth().align(Alignment.BottomCenter)
