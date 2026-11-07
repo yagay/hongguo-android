@@ -19,8 +19,7 @@ concurrency:
 
 jobs:
   debug:
-    # An internal pull request already builds at each branch push; skip duplicate cold runners.
-    if: github.event_name != 'pull_request' || github.event.pull_request.head.repo.full_name != github.repository
+    # Build push and pull-request events to ensure account fixes are checked in CI.
     name: Build and test Debug APK
     runs-on: ubuntu-latest
     timeout-minutes: 40
