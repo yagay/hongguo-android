@@ -19,6 +19,7 @@ data class AccountUiState(
     val accountRecommendations: Boolean = false,
     val qrImage: ByteArray? = null,
     val qrExpires: Int = 0,
+    val qrRemainingSeconds: Int = 0,
     val waitingQr: Boolean = false,
     val smsSent: Boolean = false,
     val smsRetrySeconds: Int = 0,
@@ -98,7 +99,7 @@ internal class AccountManager(app: Application, private val scope: CoroutineScop
         webLogin?.cancel()
         webLogin = null
         phoneLogin = null
-        mutable.update { it.copy(qrImage = null, waitingQr = false, busy = false) }
+        mutable.update { it.copy(qrImage = null, qrRemainingSeconds = 0, waitingQr = false, busy = false) }
     }
 
     fun cancelQr() {
@@ -128,12 +129,17 @@ internal class AccountManager(app: Application, private val scope: CoroutineScop
                 mutable.update { it.copy(
                     busy = false, waitingQr = true,
                     qrImage = qr.image, qrExpires = qr.expiresIn,
+                    qrRemainingSeconds = qr.expiresIn.coerceIn(1, 300),
                     message = "请使用红果 App 扫码并确认登录",
                 ) }
                 val deadline = SystemClock.elapsedRealtime() +
                     qr.expiresIn.coerceIn(1, 300) * 1_000L
                 while (isActive && token == epoch && SystemClock.elapsedRealtime() < deadline) {
                     delay(2_500L)
+                    if (token != epoch) return@launch
+                    val remaining = ((deadline - SystemClock.elapsedRealtime() + 999) / 1000)
+                        .coerceAtLeast(0).toInt()
+                    mutable.update { it.copy(qrRemainingSeconds = remaining) }
                     if (withContext(Dispatchers.IO) { session.poll() }) {
                         val web = withContext(Dispatchers.IO) { session.credentials() }
                         accept(web, token)
@@ -141,7 +147,7 @@ internal class AccountManager(app: Application, private val scope: CoroutineScop
                     }
                 }
                 if (token == epoch) mutable.update { it.copy(
-                    waitingQr = false, qrImage = null,
+                    waitingQr = false, qrImage = null, qrRemainingSeconds = 0,
                     message = "二维码已过期，请重新获取",
                 ) }
             } catch (e: CancellationException) { throw e }
