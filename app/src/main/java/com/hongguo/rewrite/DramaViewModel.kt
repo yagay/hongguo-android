@@ -1540,20 +1540,21 @@ class DramaViewModel(application: Application) : AndroidViewModel(application) {
             return
         }
         mutable.update { it.copy(sleepTimerLabel = sleepTimer.label()) }
-        if (!s.autoPlayNext) {
-            diagnostics.record("PLAYBACK", "AUTO_NEXT_DISABLED")
-            return
-        }
-        // An ended episode is NOT a vertical swipe. Continue the same drama
-        // until its last episode; only then advance to the next recommended drama.
-        val index = s.episodeIndex + 1
-        if (index < (s.detail?.episodes?.size ?: 0)) {
-            diagnostics.record("PLAYBACK", if (s.feedMode)
-                "REEL_NEXT_EPISODE" else "NEXT_EPISODE")
-            play(index)
-        } else if (s.feedMode) {
-            diagnostics.record("REELS", "SERIES_FINISHED_NEXT_DRAMA")
-            navigateFeed(1)
+        when (ReelAutoplayPolicy.onEnded(
+            s.episodeIndex, s.detail?.episodes?.size ?: 0,
+            s.autoPlayNext, s.feedMode,
+        )) {
+            ReelAutoplayPolicy.Action.STOP ->
+                diagnostics.record("PLAYBACK", "AUTO_NEXT_STOPPED")
+            ReelAutoplayPolicy.Action.NEXT_EPISODE -> {
+                diagnostics.record("PLAYBACK",
+                    if (s.feedMode) "REEL_NEXT_EPISODE" else "NEXT_EPISODE")
+                play(s.episodeIndex + 1)
+            }
+            ReelAutoplayPolicy.Action.NEXT_DRAMA -> {
+                diagnostics.record("REELS", "SERIES_FINISHED_NEXT_DRAMA")
+                navigateFeed(1)
+            }
         }
     }
 
