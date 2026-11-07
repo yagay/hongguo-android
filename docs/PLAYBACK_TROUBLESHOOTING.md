@@ -91,3 +91,35 @@
 **需要对比网络**：手机 Wi-Fi、移动数据和当前代理/私有 DNS；尝试将 `log5-applog-lf.fqnovel.com` 与 `log.snssdk.com` 交给同一规则处理（只在用户信任的网络方案中设置）。不要为了排障关闭所有设备的网络安全保护。若注册可以通过，但出现 `VIDEO_MODEL_...`，应转向播放模型请求处理，而不继续改注册协议。
 
 另外，OkHttp 注册连接恢复设置使用 `retryOnConnectionFailure(true)`：允许在 **同一个最长 9 秒的请求期限内** 尝试 DNS 返回的其他 IPv4/IPv6 地址及受支持的代理路由，而不是第一个 TCP 连接失败就终止。这里不是无上限重试，随后才会进入有界的旧网络栈/备用域名回退。单次注册可能由于多条路径而耗时较长；遇到明确的 HTTP 拒绝不会进行备用域名注册。
+
+## 所有三个注册连接均无法建立：网络路由诊断（2026-11-07）
+
+真机新报表：
+
+```
+code=DEVICE_REGISTER_ALTERNATE_FAILED
+stage=device_register
+primary_transport=DEVICE_REGISTER_CONNECT_FAILED
+fallback_transport=DEVICE_REGISTER_CONNECT_FAILED
+alternate_transport=DEVICE_REGISTER_CONNECT_FAILED
+```
+
+这说明两个公开注册域名、三个连接尝试均在获取 HTTP 响应前失败，不能据此断言服务端已经拒绝设备身份。此时继续增补注册域名、改签名、改视频解码、增大 HTTP 读取超时都缺乏证据。应先排查手机实际 TCP 网络路由。
+
+现在仅在设备注册失败时附带**脱敏**的网络环境快照：
+- `network_transport=wifi|cellular|ethernet|other|none|unknown`：应用看到的默认网络类型。
+- `vpn_active=yes|no`：Android 当前默认网络是否通过 VPN transport。
+- `system_proxy=yes|no`：Android 系统默认 HTTP 代理是否配置。
+- `private_dns=yes|no`：系统报告是否启用 Private DNS（Android 9+）。
+- `network_validated=yes|no`：Android 是否将默认网络判为具有通用互联网连通性（**不代表注册域名一定可达**）。
+
+不记录网络接口、VPN 应用名、SSID、DNS 服务器、IP 地址、代理主机/端口、账号和请求 URL。Root iptables/NAT 转发、UID 防火墙和 root 透明代理通常**不会直接在上述 Android 网络 API 中体现**，需要外部诊断。
+
+建议复测矩阵（每次重试前注意已有 10 秒失败冷却）：
+1. 当前 Wi-Fi/代理配置；记录五项新状态。
+2. 只关掉临时 VPN/透明代理路由后，再试同一 Wi-Fi，其他条件不变。
+3. 只使用移动数据（暂时关闭 Wi-Fi，并确保适用的代理规则不会覆盖），再试。
+4. 若浏览器/Termux 可直接连接但应用无法连接，排查此 App 的 VPN 分应用路由、Root UID 规则、联网权限，以及本地代理端口是否监听。
+5. 不对公开服务做无限重试或请求洪泛；涉及代理/过滤策略时仅调整自己控制的设备，并可随时恢复原设置。
+
+网络快照是**故障发生时的背景环境**，不构成 Root 流量一定经过某条规则的证明。
