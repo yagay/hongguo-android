@@ -37,6 +37,19 @@ class OfficialReelsPolicyTest {
         assertEquals(listOf("30", "31"), queue.map { it.id })
     }
 
+    @Test fun readAheadCountsOnlyVisibleUpcomingReels() {
+        val feed = listOf(title("1"), title("2"), title("3"),
+            title("4"), title("5"))
+        assertEquals(true, OfficialReelsPolicy.needsMore(
+            feed, 1, setOf("4"), hasMore = true, loading = false))
+        assertEquals(false, OfficialReelsPolicy.needsMore(
+            feed, 0, emptySet(), hasMore = true, loading = false))
+        assertEquals(false, OfficialReelsPolicy.needsMore(
+            feed, 4, emptySet(), hasMore = false, loading = false))
+        assertEquals(false, OfficialReelsPolicy.needsMore(
+            feed, 4, emptySet(), hasMore = true, loading = true))
+    }
+
     @Test fun homeListAndFeedQueueRemainSeparate() {
         val home = listOf(title("10"), title("11"), title("12"))
         val queue = OfficialReelsPolicy.append(listOf(home.first()),
