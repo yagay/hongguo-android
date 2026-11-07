@@ -46,6 +46,7 @@ internal class AccountManager(app: Application, private val scope: CoroutineScop
     val state = mutable.asStateFlow()
     private var credentials: AccountCredentials? = null
     private var webLogin: WebLogin? = null
+    private var phoneLogin: PhoneLogin? = null
     private var authJob: Job? = null
     private var dataJob: Job? = null
     private var uploadJob: Job? = null
@@ -82,6 +83,7 @@ internal class AccountManager(app: Application, private val scope: CoroutineScop
         authJob?.cancel()
         webLogin?.cancel()
         webLogin = null
+        phoneLogin = null
         mutable.update { it.copy(qrImage = null, waitingQr = false, busy = false) }
     }
 
@@ -93,8 +95,8 @@ internal class AccountManager(app: Application, private val scope: CoroutineScop
         if (state.value.busy) return
         resetLogin()
         val token = epoch
-        val session = WebLogin(http)
-        webLogin = session
+        val session = PhoneLogin(http)
+        phoneLogin = session
         mutable.update { it.copy(busy = true, smsSent = false,
             message = "正在获取红果官方二维码…") }
         authJob = scope.launch {
@@ -145,7 +147,7 @@ internal class AccountManager(app: Application, private val scope: CoroutineScop
             message = "正在申请验证码…") }
         authJob = scope.launch {
             try {
-                val sent = withContext(Dispatchers.IO) { session.send(phone) }
+                val sent = withContext(Dispatchers.IO) { session.send(PhoneLogin.parse(phone)) }
                 if (token == epoch) mutable.update { it.copy(
                     busy = false, smsSent = true,
                     maskedPhone = sent.maskedMobile.take(50),
@@ -164,7 +166,7 @@ internal class AccountManager(app: Application, private val scope: CoroutineScop
             mutable.update { it.copy(message = "请先获取验证码，输入 4–8 位数字") }
             return
         }
-        val session = webLogin ?: return
+        val session = phoneLogin ?: return
         val token = epoch
         mutable.update { it.copy(busy = true, message = "正在验证登录…") }
         authJob = scope.launch {
@@ -173,7 +175,9 @@ internal class AccountManager(app: Application, private val scope: CoroutineScop
                 accept(credentials, token)
             } catch (e: CancellationException) { throw e }
             catch (e: Exception) { if (token == epoch) mutable.update {
-                it.copy(busy = false, message = explain(e))
+                it.copy(busy = false,
+                    smsSent = (e as? PhoneLogin.Failure)?.canRetryCode == true,
+                    message = explain(e))
             } }
         }
     }
@@ -183,8 +187,12 @@ internal class AccountManager(app: Application, private val scope: CoroutineScop
      */
     private suspend fun accept(web: AccountCredentials, token: Long) {
         val pair = withContext(Dispatchers.IO) {
-            val device = cloud.registerDevice() ?: throw IOException("账号设备注册失败")
-            val next = web.copy(deviceId = device.deviceId, installId = device.installId)
+            // App passport SMS already provides the device used to obtain the session.
+            // Website QR sessions need a separate registered business device.
+            val next = if (web.deviceId.isNotBlank() && web.installId.isNotBlank()) web else {
+                val device = cloud.registerDevice() ?: throw IOException("账号设备注册失败")
+                web.copy(deviceId = device.deviceId, installId = device.installId)
+            }
             val profile = cloud.profile(next)
             store.save(next)
             next to profile
@@ -192,6 +200,7 @@ internal class AccountManager(app: Application, private val scope: CoroutineScop
         if (token != epoch) return
         credentials = pair.first
         webLogin = null
+        phoneLogin = null
         mutable.update { it.copy(
             busy = false, waitingQr = false, qrImage = null,
             smsSent = false, profile = pair.second,
