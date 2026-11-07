@@ -72,6 +72,23 @@ class DramaViewModel(application: Application) : AndroidViewModel(application) {
         mutable.update { it.copy(autoPlayNext = enabled) }
     }
 
+    fun setSkipIntroSeconds(seconds: Int) {
+        if (seconds !in 0..120) return
+        prefs.edit().putInt("skip_intro_seconds", seconds).apply()
+        mutable.update { it.copy(skipIntroSeconds = seconds) }
+    }
+
+    fun setSkipOutroSeconds(seconds: Int) {
+        if (seconds !in 0..120) return
+        prefs.edit().putInt("skip_outro_seconds", seconds).apply()
+        mutable.update { it.copy(skipOutroSeconds = seconds) }
+    }
+
+    fun setAutomaticPlaybackRetry(enabled: Boolean) {
+        prefs.edit().putBoolean("playback_auto_retry", enabled).apply()
+        mutable.update { it.copy(retryPlaybackAutomatically = enabled) }
+    }
+
     private val diagnostics = DiagnosticLog(File(application.filesDir, "diagnostics"),
         prefs.getBoolean("diagnostic_enabled", true))
     private val publicWebsite = NativeWebsiteSource(diagnostics = diagnostics)
@@ -254,6 +271,9 @@ class DramaViewModel(application: Application) : AndroidViewModel(application) {
             completedDramaIds = prefs.getStringSet("completed_drama_ids_v1", emptySet())?.toSet().orEmpty(),
             hiddenRecommendationIds = prefs.getStringSet("hidden_recommendations_v1", emptySet())?.toSet().orEmpty(),
             autoPlayNext = prefs.getBoolean("auto_play_next", true),
+            skipIntroSeconds = prefs.getInt("skip_intro_seconds", 0).coerceIn(0, 120),
+            skipOutroSeconds = prefs.getInt("skip_outro_seconds", 0).coerceIn(0, 120),
+            retryPlaybackAutomatically = prefs.getBoolean("playback_auto_retry", true),
             recentSearches = recentQueries(),
             qualityLimit = prefs.getInt("quality_limit", 0)
                 .takeIf { it in setOf(0, 360, 480, 720, 1080) } ?: 0,
