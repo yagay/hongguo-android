@@ -768,10 +768,14 @@ class HongguoViewModel(application: Application) : AndroidViewModel(application)
     }
 
     fun onPlaybackError(episodeId: String, requestId: Long, unsupported: Boolean) {
-        if (isCurrentVideo(episodeId, requestId)) mutableState.update {
+        if (!isCurrentVideo(episodeId, requestId)) return
+        PlaybackSessionCoordinator.invalidate(state.value.video)
+        startupTrace?.mark("failed")
+        startupTrace?.report()?.let { android.util.Log.i("HongguoStartup", it) }
+        mutableState.update {
             it.copy(playbackError = if (unsupported) "当前设备无法解码这集视频，可重试或选择其他集。" else "视频播放失败，可重试或选择其他集。",
                 playbackDiagnostic = PlaybackDiagnostic.playerFailure(unsupported).copy(
-                    startupTimings = startupTrace?.apply { mark("failed") }?.report()),
+                    startupTimings = startupTrace?.report()),
                 playbackStatus = "播放失败")
         }
     }

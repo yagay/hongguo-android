@@ -28,6 +28,7 @@ internal object PlaybackSessionCoordinator {
     private val closeLock = Mutex()
     private val guard = Any()
     private val closing = Collections.newSetFromMap(WeakHashMap<ProgressiveMedia.Session, Boolean>())
+    private val invalid = Collections.newSetFromMap(WeakHashMap<ProgressiveMedia.Session, Boolean>())
     private val idle = LinkedHashMap<String, IdleEntry>()
 
     private class IdleEntry(val video: PreparedVideo) {
@@ -39,6 +40,19 @@ internal object PlaybackSessionCoordinator {
         idle.remove(episodeId)?.video
     }
 
+    /** Decoder/source errors must not poison retries with an already-broken signed session. */
+    fun invalidate(video: PreparedVideo?) {
+        val session = video?.session ?: return
+        synchronized(guard) {
+            invalid.add(session)
+            val cached = idle[video.episodeId]
+            if (cached?.video?.session === session) {
+                idle.remove(video.episodeId)
+                closeAsync(session)
+            }
+        }
+    }
+
     /** Keep only fully initialized sessions. Local completed MP4 files use Stream's own cache. */
     fun release(video: PreparedVideo?) {
         val session = video?.session ?: return
@@ -46,6 +60,10 @@ internal object PlaybackSessionCoordinator {
         val entry: IdleEntry
         synchronized(guard) {
             if (session in closing) return
+            if (session in invalid) {
+                closeAsync(session)
+                return
+            }
             val old = idle.remove(video.episodeId)
             if (old != null && old.video.session !== session) old.video.session?.let(toClose::add)
             // A repeated release resets the timer without creating duplicate owners.
