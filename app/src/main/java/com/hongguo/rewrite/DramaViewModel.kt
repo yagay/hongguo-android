@@ -126,6 +126,12 @@ class DramaViewModel(application: Application) : AndroidViewModel(application) {
         mutable.update { it.copy(hiddenRecommendationIds = emptySet()) }
     }
 
+    fun setPreloadNext(enabled: Boolean) {
+        prefs.edit().putBoolean("preload_next_episode", enabled).apply()
+        mutable.update { it.copy(preloadNext = enabled) }
+        if (!enabled) clearPreloadedNext()
+    }
+
     fun setAutoPlayNext(enabled: Boolean) {
         prefs.edit().putBoolean("auto_play_next", enabled).apply()
         mutable.update { it.copy(autoPlayNext = enabled) }
@@ -179,6 +185,46 @@ class DramaViewModel(application: Application) : AndroidViewModel(application) {
     private val sleepTimer = SleepTimer { android.os.SystemClock.elapsedRealtime() }
     @Volatile private var activeNativeVideo: RemoteVideo? = null
     @Volatile private var activeNativeVid: String? = null
+    private var preloadedNextVid: String? = null
+    private var preloadedNextQuality = 0
+    private var preloadedNextVideo: RemoteVideo? = null
+    private var preloadEpisodeJob: Job? = null
+
+    private fun clearPreloadedNext() {
+        preloadEpisodeJob?.cancel()
+        preloadEpisodeJob = null
+        preloadedNextVideo?.close()
+        preloadedNextVideo = null
+        preloadedNextVid = null
+    }
+
+    private fun preloadFollowingEpisode() {
+        val s = state.value
+        if (!s.preloadNext || source != null || s.feedMode) return
+        val next = s.detail?.episodes?.getOrNull(s.episodeIndex + 1)?.vid ?: return
+        if (next == preloadedNextVid) return
+        clearPreloadedNext()
+        val generation = detailId
+        val quality = s.qualityLimit
+        preloadEpisodeJob = viewModelScope.launch {
+            delay(850)
+            var remote: RemoteVideo? = null
+            try {
+                remote = nativeSource.openVideo(next, qualityLimit = quality)
+                if (generation == detailId && state.value.preloadNext &&
+                    state.value.detail?.episodes?.getOrNull(state.value.episodeIndex + 1)?.vid == next &&
+                    state.value.qualityLimit == quality) {
+                    preloadedNextVideo = remote
+                    preloadedNextVid = next
+                    preloadedNextQuality = quality
+                    remote = null
+                    diagnostics.record("PLAYBACK", "NEXT_NATIVE_PREPARED")
+                }
+            } catch (e: CancellationException) { throw e }
+            catch (_: Exception) { diagnostics.record("PLAYBACK", "NEXT_PREFETCH_UNAVAILABLE") }
+            finally { remote?.close() }
+        }
+    }
     fun nativeVideoFor(vid: String): RemoteVideo? =
         if (activeNativeVid == vid) activeNativeVideo else null
     private fun closeNativeVideo() {
@@ -370,6 +416,7 @@ class DramaViewModel(application: Application) : AndroidViewModel(application) {
             themeMode = prefs.getString("theme_mode", "light")?.takeIf { it in setOf("system", "light", "dark") } ?: "light",
             navigationStyle = prefs.getString("navigation_style", "classic")?.takeIf { it in setOf("classic", "glass") } ?: "classic",
             autoPlayNext = prefs.getBoolean("auto_play_next", true),
+            preloadNext = prefs.getBoolean("preload_next_episode", true),
             episodeUpdateNotificationsEnabled = prefs.getBoolean("episode_update_notifications", false),
             skipIntroSeconds = prefs.getInt("skip_intro_seconds", 0).coerceIn(0, 120),
             skipOutroSeconds = prefs.getInt("skip_outro_seconds", 0).coerceIn(0, 120),
@@ -993,6 +1040,7 @@ class DramaViewModel(application: Application) : AndroidViewModel(application) {
         detailJob?.cancel()
         val version = ++detailId
         firstFrameFor = null
+        clearPreloadedNext()
         startEpisodeHint = resumeEp
         mutable.update { it.copy(detail = null, preparingDetail = true,
             feedMode = feed, relatedWorks = emptyList(), relatedSeries = null,
@@ -1048,6 +1096,13 @@ class DramaViewModel(application: Application) : AndroidViewModel(application) {
         val vid = detail.episodes[index].vid
         detailJob?.cancel()
         closeNativeVideo()
+        val cachedNative = if (preloadedNextVid == vid &&
+            preloadedNextQuality == state.value.qualityLimit) preloadedNextVideo else null
+        preloadEpisodeJob?.cancel()
+        preloadEpisodeJob = null
+        if (cachedNative == null) preloadedNextVideo?.close()
+        preloadedNextVideo = null
+        preloadedNextVid = null
         firstFrameFor = null
         val checkpoint = library.checkpoint(detail.drama.id, vid)
         mutable.update { it.copy(episodeIndex = index, playbackUrl = null,
@@ -1066,7 +1121,7 @@ class DramaViewModel(application: Application) : AndroidViewModel(application) {
                     mutable.update { it.copy(playbackUrl = url, playing = true) }
                 } else {
                     val ahead = detail.episodes.getOrNull(index + 1)?.vid
-                    val video = nativeSource.openVideo(vid, ahead, state.value.qualityLimit)
+                    val video = cachedNative ?: nativeSource.openVideo(vid, ahead, state.value.qualityLimit)
                     if (version != detailId) {
                         video.close()
                         return@launch
@@ -1078,8 +1133,10 @@ class DramaViewModel(application: Application) : AndroidViewModel(application) {
                 }
                 diagnostics.record("PLAYBACK", "SOURCE_READY", elapsed(started))
             } catch (e: CancellationException) {
+                if (cachedNative != null && activeNativeVideo !== cachedNative) cachedNative.close()
                 throw e
             } catch (e: Exception) {
+                if (cachedNative != null && activeNativeVideo !== cachedNative) cachedNative.close()
                 if (version == detailId) mutable.update {
                     it.copy(playbackError = errorText("准备播放", e), playing = false)
                 }
@@ -1145,6 +1202,7 @@ class DramaViewModel(application: Application) : AndroidViewModel(application) {
         diagnostics.record("MEDIA", "FIRST_FRAME")
         library.record(s.detail.drama, ep.index)
         updateLibrary()
+        preloadFollowingEpisode()
     }
 
 
@@ -1210,6 +1268,7 @@ class DramaViewModel(application: Application) : AndroidViewModel(application) {
         ++detailId
         detailJob?.cancel()
         closeNativeVideo()
+        clearPreloadedNext()
         firstFrameFor = null
         mutable.update { it.copy(detail = null, playbackUrl = null,
             feedMode = false, relatedSeries = null, relatedWorks = emptyList(),
