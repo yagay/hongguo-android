@@ -1,6 +1,11 @@
 package com.hongguo.rewrite
 
 import android.graphics.BitmapFactory
+import android.app.Activity
+import android.content.Intent
+import androidx.activity.compose.rememberLauncherForActivityResult
+import androidx.activity.result.contract.ActivityResultContracts
+import androidx.compose.ui.platform.LocalContext
 import androidx.activity.compose.BackHandler
 import androidx.compose.foundation.background
 import androidx.compose.foundation.layout.*
@@ -35,6 +40,28 @@ import androidx.lifecycle.compose.collectAsStateWithLifecycle
 @Composable
 internal fun AccountScreen(model: DramaViewModel) {
     val account by model.account.state.collectAsStateWithLifecycle()
+    val context = LocalContext.current
+    var webOpen by remember { mutableStateOf(false) }
+    var webError by remember { mutableStateOf<String?>(null) }
+    val webLauncher = rememberLauncherForActivityResult(ActivityResultContracts.StartActivityForResult()) { result ->
+        webOpen = false
+        if (result.resultCode == Activity.RESULT_OK) {
+            val cookie = OfficialLoginActivity.consumeCookie(result.data)
+            if (!cookie.isNullOrBlank()) model.account.importLoginCookie(cookie)
+            else webError = "官网登录确认已过期，请重新打开页面"
+        }
+    }
+    val openWebsite: () -> Unit = {
+        if (!webOpen) {
+            webError = null
+            webOpen = true
+            try { webLauncher.launch(Intent(context, OfficialLoginActivity::class.java)) }
+            catch (_: RuntimeException) {
+                webOpen = false
+                webError = "无法打开官网登录，请稍后重试"
+            }
+        }
+    }
     // Authentication inputs must not be written to saved instance state.
     var phone by remember { mutableStateOf("+86 ") }
     var code by remember { mutableStateOf("") }
@@ -79,6 +106,8 @@ internal fun AccountScreen(model: DramaViewModel) {
             contentPadding = PaddingValues(horizontal = 20.dp, vertical = 12.dp),
             verticalArrangement = Arrangement.spacedBy(12.dp),
         ) {
+            webError?.let { error -> item { Text(error, color = HongguoColors.accent,
+                fontSize = 13.sp, modifier = Modifier.testTag("account_web_error")) } }
             item {
                 Surface(color = HongguoColors.surface, shape = RoundedCornerShape(12.dp)) {
                     Column(Modifier.fillMaxWidth().padding(13.dp),
@@ -131,21 +160,28 @@ internal fun AccountScreen(model: DramaViewModel) {
                     Surface(color = HongguoColors.surface, shape = RoundedCornerShape(20.dp)) {
                         Row(Modifier.fillMaxWidth().padding(6.dp),
                             horizontalArrangement = Arrangement.spacedBy(8.dp)) {
-                            listOf("手机验证码", "扫码登录").forEachIndexed { index, label ->
+                            listOf("手机验证码", "官网登录", "扫码登录").forEachIndexed { index, label ->
                                 FilterChip(selected = loginMethod == index, onClick = {
                                     if (loginMethod != index) {
                                         if (index == 0) model.account.cancelQr()
-                                        else model.account.cancelSms()
+                                        else {
+                                            model.account.cancelSms()
+                                            model.account.cancelQr()
+                                        }
                                         loginMethod = index
                                     }
                                 }, label = { Text(label) },
                                     modifier = Modifier.weight(1f).testTag(
-                                        if (index == 0) "account_method_sms" else "account_method_qr"))
+                                        when (index) {
+                                            0 -> "account_method_sms"
+                                            1 -> "account_method_web"
+                                            else -> "account_method_qr"
+                                        }))
                             }
                         }
                     }
                 }
-                if (loginMethod == 1) item {
+                if (loginMethod == 2) item {
                     Surface(shape = RoundedCornerShape(20.dp), color = HongguoColors.surface) {
                         Column(Modifier.fillMaxWidth().padding(16.dp),
                             verticalArrangement = Arrangement.spacedBy(12.dp)) {
@@ -194,6 +230,21 @@ internal fun AccountScreen(model: DramaViewModel) {
                                 modifier = Modifier.testTag("account_login_cancel")) { Text("取消登录") }
                         }
                     }
+                        }
+                    }
+                }
+                if (loginMethod == 1) item {
+                    Surface(shape = RoundedCornerShape(20.dp), color = HongguoColors.surface) {
+                        Column(Modifier.fillMaxWidth().padding(16.dp),
+                            verticalArrangement = Arrangement.spacedBy(12.dp)) {
+                            Text("官网登录", fontSize = 18.sp, fontWeight = FontWeight.SemiBold,
+                                color = HongguoColors.ink)
+                            Text("在官方红果页面自行完成手机号、扫码和平台滑块验证，再点击官网窗口内「完成登录」。客户端只有核实云账号身份后才会显示登录成功。",
+                                color = HongguoColors.muted, fontSize = 13.sp, lineHeight = 21.sp)
+                            Button(onClick = openWebsite, enabled = !webOpen && !account.busy,
+                                modifier = Modifier.fillMaxWidth().testTag("account_web_login")) {
+                                Text(if (webOpen) "正在打开官网…" else "打开官网登录")
+                            }
                         }
                     }
                 }
@@ -284,8 +335,19 @@ internal fun AccountScreen(model: DramaViewModel) {
                         }
                     }
                 }
+                if (account.message.contains("滑块") || account.message.contains("人工验证")) item {
+                    Surface(color = HongguoColors.accentSoft, shape = RoundedCornerShape(12.dp)) {
+                        Row(Modifier.fillMaxWidth().padding(12.dp), verticalAlignment = Alignment.CenterVertically) {
+                            Text("需要平台验证，请到官网登录完成", color = HongguoColors.ink,
+                                modifier = Modifier.weight(1f), fontSize = 13.sp)
+                            TextButton(onClick = openWebsite, modifier = Modifier.testTag("account_sms_to_web")) {
+                                Text("去验证")
+                            }
+                        }
+                    }
+                }
                 item {
-                    Text("登录为可选功能；不登录也能浏览和播放。账号数据不写入诊断日志。若平台要求滑块验证，请到官方 App 操作，当前客户端不会绕过验证。",
+                    Text("登录为可选功能；不登录也能浏览和播放。遇到滑块时请亲自在官网完成，不会自动绕过验证。账号凭据不写入日志。",
                         fontSize = 11.sp, color = HongguoColors.muted)
                 }
             } else {
