@@ -6,6 +6,7 @@ import com.hongguotv.core.TimedComments
 import org.json.JSONObject
 import com.hongguotv.core.ContentRepository
 import com.hongguotv.core.RecommendationFeed
+import com.hongguotv.core.Series
 import com.hongguotv.core.DramaCategory
 import com.hongguotv.core.DiscoveryCursor
 import com.hongguotv.core.DiscoverySelection
@@ -29,9 +30,14 @@ class NativeHongguoSource(
     private val diagnostics: DiagnosticLog? = null,
 ) {
     private val websiteCovers = NativeWebsiteSource(diagnostics = diagnostics)
+    private val recommendationLock = Any()
     private var recommendationFeed = RecommendationFeed(repository.http)
-    private var usePublicRecommendationFallback = false
-    private var publicRecommendationStartPage = 1
+    private var recommendationBuffer = RecommendationAccumulator<Series> { it.id }
+    private var recommendationOffset = 0
+    private var recommendationFeedPage = 1
+    private var recommendationPublicPage = 1
+    private var recommendationUsePublic = false
+    private var recommendationEnd = false
     private val episodeComments by lazy { AppCommentPages() }
     private val publicComments by lazy { PublicComments(repository.http) }
     private val timedComments by lazy { TimedComments() }
@@ -87,10 +93,82 @@ class NativeHongguoSource(
         repository.searchSuggestions(prefix.trim().take(80))
     }
 
+    /** Build a full 12-drama UI batch from the small anonymous feed pages.
+     * Runs on Dispatchers.IO; one lock protects this cursor across calls.
+     * Extra results from public catalog pages stay queued for later scrolling.
+     */
+    private fun recommendationBatch(offset: Int): CatalogPage =
+        synchronized(recommendationLock) {
+            require(offset >= 0)
+            if (offset == 0) {
+                recommendationFeed = RecommendationFeed(repository.http)
+                recommendationBuffer = RecommendationAccumulator { it.id }
+                recommendationOffset = 0
+                recommendationFeedPage = 1
+                recommendationPublicPage = 1
+                recommendationUsePublic = false
+                recommendationEnd = false
+            } else if (offset != recommendationOffset) {
+                throw IOException("RECOMMEND_CURSOR_EXPIRED")
+            }
+            var attempts = 0
+            var officialAttempts = 0
+            while (recommendationBuffer.available < 12 && !recommendationEnd && attempts < 12) {
+                attempts++
+                if (!recommendationUsePublic && officialAttempts >= 8) {
+                    recommendationUsePublic = true
+                    diagnostics?.record("FEED", "CATALOG_PUBLIC_TOP_UP")
+                }
+                try {
+                    if (recommendationUsePublic) {
+                        val page = recommendationPublicPage++
+                        if (page > 100) {
+                            recommendationEnd = true
+                            break
+                        }
+                        val response = repository.home(page)
+                        val added = recommendationBuffer.add(response.items)
+                        if (!response.hasMore || added == 0) recommendationEnd = true
+                        diagnostics?.record("FEED", "PUBLIC_BATCH")
+                    } else {
+                        officialAttempts++
+                        val response = recommendationFeed.page(recommendationFeedPage++)
+                        val added = recommendationBuffer.add(response.items)
+                        if (response.items.size <= 3)
+                            diagnostics?.record("FEED", "SMALL_BATCH")
+                        if (!response.hasMore || added == 0) {
+                            recommendationUsePublic = true
+                            diagnostics?.record("FEED", "CATALOG_PUBLIC_TOP_UP")
+                        }
+                    }
+                } catch (cancel: kotlinx.coroutines.CancellationException) {
+                    throw cancel
+                } catch (error: Exception) {
+                    if (!recommendationUsePublic) {
+                        recommendationUsePublic = true
+                        diagnostics?.record("FEED", "CATALOG_PUBLIC_FALLBACK")
+                    } else {
+                        recommendationEnd = true
+                        diagnostics?.record("FEED", "CATALOG_SOURCES_UNAVAILABLE")
+                        if (recommendationBuffer.available == 0) throw error
+                    }
+                }
+            }
+            val rows = recommendationBuffer.take(12)
+            recommendationOffset = offset + rows.size
+            CatalogPage(
+                items = rows.map { it.toDrama() },
+                hasMore = rows.isNotEmpty() &&
+                    (recommendationBuffer.available > 0 || !recommendationEnd),
+                nextOffset = recommendationOffset,
+            )
+        }
+
     suspend fun list(
         section: Section, offset: Int, genre: String, board: String,
         query: String, filters: Map<String, String>,
     ): CatalogPage = withContext(Dispatchers.IO) {
+        if (section == Section.RECOMMEND) return@withContext recommendationBatch(offset)
         val page = (offset / PAGE_SIZE + 1).coerceIn(1, 100)
         // Unlike a generic /category route, the landpage selector explicitly
         // sorts by online_time, so the "最新" tab does not silently show random
@@ -109,35 +187,7 @@ class NativeHongguoSource(
             }
         }
         val origin = when (section) {
-            Section.RECOMMEND -> {
-                if (page == 1) {
-                    recommendationFeed = RecommendationFeed(repository.http)
-                    usePublicRecommendationFallback = false
-                    publicRecommendationStartPage = 1
-                }
-                if (usePublicRecommendationFallback) {
-                    repository.home((page - publicRecommendationStartPage + 1).coerceAtLeast(1))
-                } else try {
-                    recommendationFeed.page(page).also { batch ->
-                        if (batch.items.size <= 3) {
-                            diagnostics?.record("FEED", "SMALL_BATCH")
-                        }
-                    }
-                } catch (cancel: kotlinx.coroutines.CancellationException) {
-                    throw cancel
-                } catch (error: Exception) {
-                    // If the anonymous feed stops after an initial 1–3 cards,
-                    // continue with public page 1 rather than trapping the
-                    // grid on those few dramas. Keep the fallback page offset
-                    // consistent on all subsequent "more" calls.
-                    usePublicRecommendationFallback = true
-                    publicRecommendationStartPage = page
-                    diagnostics?.record("FEED",
-                        if (page == 1) "PUBLIC_FALLBACK"
-                        else "PAGINATION_PUBLIC_FALLBACK")
-                    repository.home(1)
-                }
-            }
+            Section.RECOMMEND -> error("handled above")
             Section.RANK -> repository.rankPage(boardFor(board), page)
             Section.BROWSE -> repository.discover(
                 categoryFor(genre), filters["topic"].orEmpty(), page)
