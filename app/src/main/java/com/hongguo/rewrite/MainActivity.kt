@@ -106,11 +106,12 @@ private fun HongguoApp(model: DramaViewModel = viewModel()) {
             Box(Modifier.fillMaxSize().safeDrawingPadding().imePadding()) {
                 BackHandler(
                     enabled = state.detail != null || state.preparingDetail ||
-                        state.modal != Modal.NONE || mineOpen,
+                        state.feedMode || state.modal != Modal.NONE || mineOpen,
                 ) {
                     if (state.modal == Modal.ACCOUNT) model.closeAccount()
                     else if (state.modal != Modal.NONE) model.closeModal()
-                    else if (state.detail != null || state.preparingDetail) model.closePlayer()
+                    else if (state.detail != null || state.preparingDetail || state.feedMode)
+                        model.closePlayer()
                     else mineOpen = false
                 }
                 when {
