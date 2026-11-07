@@ -404,9 +404,22 @@ class NativeHongguoSource(
 
     suspend fun websiteLabels(id: String): DramaLabels = websiteCovers.labels(id)
 
-    suspend fun appSocial(id: String): SocialStats = withContext(Dispatchers.IO) {
-        SocialStatsParser.application(repository.socialDetail(id), id)
-    }
+    /**
+     * A single signed video_detail response feeds counters AND the optional
+     * openhongguo secondary info rows. Failure to parse optional metadata
+     * never discards verified social data or interrupts playback.
+     */
+    suspend fun appEnrichment(id: String): Pair<SocialStats, OpenHongguoMetadata?> =
+        withContext(Dispatchers.IO) {
+            val response = repository.socialDetail(id)
+            val social = SocialStatsParser.application(response, id)
+            val metadata = runCatching {
+                OpenHongguoMetadataParser.parse(response, id)
+            }.getOrNull()
+            social to metadata
+        }
+
+    suspend fun appSocial(id: String): SocialStats = appEnrichment(id).first
 
     /** Signed first-party related-work cells; upcoming seasons never playable. */
     suspend fun related(id: String): List<RelatedDrama> = withContext(Dispatchers.IO) {
