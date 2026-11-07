@@ -467,6 +467,8 @@ internal fun AccountScreen(model: DramaViewModel) {
                                 else -> "官方预约 · 待上线不能播放"
                             }, fontSize = 12.sp, color = HongguoColors.muted,
                         )
+                        Text("拇指为本机点赞，不会上传官方账号；爱心为真实云端追剧，修改后读取云端确认。",
+                            fontSize = 11.sp, color = HongguoColors.muted)
                     }
                 }
                 if (tab == 0) {
