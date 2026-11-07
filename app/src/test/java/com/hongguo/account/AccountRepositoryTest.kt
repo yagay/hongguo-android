@@ -719,6 +719,24 @@ class AccountRepositoryTest {
         assertFalse(card.id in repo.state.value.favoriteUncertainIds)
     }
 
+    @Test fun otpEntryRemainsVisibleAndLockedOnlyWhileVerificationIsRunning() = runTest {
+        val login = Login().apply { verifyError = PhoneLogin.Failure("验证码有误", 1102, canRetryCode = true) }
+        val repo = repository(MemoryStore(), Gateway(), login); runCurrent()
+        repo.sendSms("13800138000"); runCurrent()
+        assertEquals(PhoneStep.CODE_SENT, repo.state.value.phoneStep)
+        repo.verifySms("123456")
+        // The Compose OTP field is controlled by phoneStep: it must not disappear during the network call.
+        assertTrue(repo.state.value.busy)
+        assertEquals(PhoneStep.CODE_SENT, repo.state.value.phoneStep)
+        runCurrent()
+        assertFalse(repo.state.value.busy)
+        assertEquals(PhoneStep.CODE_SENT, repo.state.value.phoneStep)
+        login.verifyError = null
+        repo.verifySms("654321"); runCurrent()
+        assertEquals(AccountSessionStatus.LOGGED_IN, repo.state.value.sessionStatus)
+        assertEquals(PhoneStep.IDLE, repo.state.value.phoneStep)
+    }
+
     @Test fun wrongSmsCodeStaysOnTheCodeStepWhileAnEndedSessionDoesNot() = runTest {
         val login = Login().apply { verifyError = PhoneLogin.Failure("验证码有误", 1102, canRetryCode = true) }
         val repo = repository(MemoryStore(), Gateway(), login); runCurrent()
