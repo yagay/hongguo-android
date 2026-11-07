@@ -147,7 +147,7 @@ internal fun NativePlayer(state: AppState, model: DramaViewModel) {
         pageCount = { if (state.feedMode) feedPages else detail.episodes.size },
     )
     val playback = remember(state.episodeIndex) { ReelPlaybackControls() }
-    var speed by remember { mutableFloatStateOf(1f) }
+    var speed by remember(detail.drama.id) { mutableFloatStateOf(state.defaultPlaybackSpeed) }
     // Full-bleed video as in the reference screenshot; users can switch to
     // fit mode when letterbox/crop considerations or subtitles require it.
     var fillVideo by rememberSaveable { mutableStateOf(false) }
@@ -436,7 +436,10 @@ internal fun NativePlayer(state: AppState, model: DramaViewModel) {
             speed = speed,
             fillVideo = fillVideo,
             onDismiss = { showPlaybackSettings = false },
-            onSpeed = { speed = it },
+            onSpeed = {
+                speed = it
+                model.setDefaultPlaybackSpeed(it)
+            },
             onFillVideo = { fillVideo = it },
             onQuality = {
                 model.setQualityLimit(it, playback.positionMs, playback.durationMs)
