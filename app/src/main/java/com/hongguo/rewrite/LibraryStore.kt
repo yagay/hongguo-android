@@ -44,6 +44,18 @@ class LibraryStore(context: Context) {
         prefs.edit().putString("favorite_groups", root.toString()).apply()
     }
 
+    @Synchronized fun replaceFavoriteGroups(groups: Map<String, String>) {
+        require(groups.size <= 200 && groups.all { (id, name) ->
+            id.matches(Regex("[0-9]{1,30}")) && name.length in 1..24 &&
+                name.none(Char::isISOControl)
+        })
+        val saved = JSONObject()
+        groups.forEach { (id, name) -> saved.put(id, name) }
+        check(prefs.edit().putString("favorite_groups", saved.toString()).commit()) {
+            "无法恢复收藏分组"
+        }
+    }
+
     @Synchronized fun record(drama: Drama, episode: Int) {
         val now = System.currentTimeMillis()
         val old = list(false).filterNot { it.drama.id == drama.id }
