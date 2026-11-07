@@ -89,7 +89,7 @@ internal fun SettingsScreen(state: AppState, model: DramaViewModel) {
                 Column(Modifier.weight(1f)) {
                     Text("设置", fontSize = 20.sp, fontWeight = FontWeight.Bold,
                         color = HongguoColors.ink)
-                    Text("内容来源与诊断",
+                    Text("账号、播放、内容来源与隐私",
                         fontSize = 11.sp, color = HongguoColors.muted)
                 }
                 Icon(Icons.Outlined.Settings, contentDescription = null,
@@ -101,10 +101,10 @@ internal fun SettingsScreen(state: AppState, model: DramaViewModel) {
             modifier = Modifier.fillMaxSize().padding(padding).testTag("settings_page"),
             contentPadding = PaddingValues(start = 14.dp, top = 18.dp,
                 end = 14.dp, bottom = 28.dp),
-            verticalArrangement = Arrangement.spacedBy(20.dp),
+            verticalArrangement = Arrangement.spacedBy(14.dp),
         ) {
             item {
-                SettingsGroup("红果账号") {
+                SettingsGroup("账号与隐私") {
                     Text(
                         account.profile?.nickname?.let { "已登录 · " + it }
                             ?: if (account.checking) "正在检查登录状态" else "未登录",
@@ -116,6 +116,22 @@ internal fun SettingsScreen(state: AppState, model: DramaViewModel) {
                         onClick = { model.show(Modal.ACCOUNT) },
                         modifier = Modifier.testTag("open_account"),
                     ) { Text(if (account.profile != null) "管理红果账号" else "登录红果账号") }
+                    if (account.profile != null) {
+                        HorizontalDivider()
+                        SettingToggle("账号推荐", "默认关闭，按本人账号推荐", account.accountRecommendations,
+                            model.account::setAccountRecommendations, "settings_account_recommendations")
+                        HorizontalDivider()
+                        SettingToggle("同步观看进度", "默认关闭，仅上报此后播放进度", account.syncEnabled,
+                            model.account::setProgressSync, "settings_account_sync")
+                    }
+                }
+            }
+            item {
+                SettingsGroup("播放偏好") {
+                    Text("播放时点击右上角「···」进入播放设置", color = HongguoColors.ink,
+                        fontWeight = FontWeight.SemiBold)
+                    Text("画面模式、倍速、画质、弹幕、定时停止及单集下载都在播放器内调整。",
+                        color = HongguoColors.muted, fontSize = 12.sp)
                 }
             }
             item {
@@ -220,7 +236,7 @@ internal fun SettingsScreen(state: AppState, model: DramaViewModel) {
                     Text("红果短剧 · Native Rewrite",
                         color = HongguoColors.ink,
                         fontWeight = FontWeight.SemiBold)
-                    Text("Debug 开发版 · Jetpack Compose + Media3",
+                    Text("版本 ${BuildConfig.VERSION_NAME} · Jetpack Compose + Media3",
                         color = HongguoColors.muted, fontSize = 12.sp)
                     Text("部分视频和评论接口可能因网络或上游限制不可用；可在诊断中查看具体阶段。",
                         color = HongguoColors.muted, fontSize = 11.sp)
