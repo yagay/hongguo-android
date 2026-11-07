@@ -140,6 +140,9 @@ internal fun MyScreen(state: AppState, model: DramaViewModel, onBack: () -> Unit
                     TextButton(onClick = { offlineOpen = false }) { Text("返回") }
                 }
             }
+            state.offlineLibraryMessage?.let { message ->
+                item { Text(message, color = HongguoColors.accent, fontSize = 13.sp) }
+            }
             if (state.offlineEpisodes.isEmpty()) item {
                 Text("还没有已完成的离线保存。播放器选集页可批量保存到手机。",
                     color = HongguoColors.muted, fontSize = 13.sp)
