@@ -17,6 +17,7 @@ import kotlinx.coroutines.flow.MutableStateFlow
 import kotlinx.coroutines.flow.asStateFlow
 import kotlinx.coroutines.flow.update
 import kotlinx.coroutines.launch
+import kotlinx.coroutines.coroutineScope
 
 class DramaViewModel(application: Application) : AndroidViewModel(application) {
     private val library = LibraryStore(application)
@@ -39,6 +40,10 @@ class DramaViewModel(application: Application) : AndroidViewModel(application) {
     private var detailJob: Job? = null
     private var downloadJob: Job? = null
     private var commentsJob: Job? = null
+    private var socialJob: Job? = null
+    private var socialGeneration = 0L
+    private data class SocialCache(val stats: SocialStats, val savedAt: Long)
+    private val socialCache = linkedMapOf<String, SocialCache>()
     private var danmakuJob: Job? = null
     private var commentsGeneration = 0L
     private var danmakuGeneration = 0L
@@ -163,6 +168,77 @@ class DramaViewModel(application: Application) : AndroidViewModel(application) {
             } catch (e: Exception) {
                 if (version == requestId) mutable.update { it.copy(moreLoading = false,
                     error = errorText("加载更多", e)) }
+            }
+        }
+    }
+
+    private fun clearSocial() {
+        socialGeneration++
+        socialJob?.cancel()
+        mutable.update {
+            it.copy(socialForSeries = null, socialStats = null,
+                socialStatsLoading = false)
+        }
+    }
+
+    /** Auto-load server-sourced statistics for the opened drama.
+     *
+     * Website and anonymous app reads run independently; each successful
+     * response updates the rail as soon as it arrives. Neither blocks video,
+     * comments, or Media3. No account writes or synthetic counters.
+     */
+    private fun loadSocialStats(seriesId: String) {
+        socialJob?.cancel()
+        val generation = ++socialGeneration
+        val now = System.currentTimeMillis()
+        val cached = socialCache[seriesId]?.takeIf {
+            now - it.savedAt in 0..120_000
+        }?.stats
+        mutable.update {
+            it.copy(socialForSeries = seriesId, socialStats = cached,
+                socialStatsLoading = true)
+        }
+        socialJob = viewModelScope.launch {
+            suspend fun applyStats(candidate: SocialStats, label: String) {
+                if (generation != socialGeneration ||
+                    state.value.detail?.drama?.id != seriesId) return
+                mutable.update { s ->
+                    val merged = s.socialStats?.merge(candidate) ?: candidate
+                    s.copy(socialStats = merged)
+                }
+                val combined = state.value.socialStats
+                if (combined != null) {
+                    socialCache[seriesId] = SocialCache(combined, System.currentTimeMillis())
+                    while (socialCache.size > 16) socialCache.remove(socialCache.keys.first())
+                }
+                diagnostics.record("SOCIAL", label + "_READY")
+            }
+
+            try {
+                coroutineScope {
+                    launch {
+                        try {
+                            applyStats(nativeSource.websiteSocial(seriesId), "WEB")
+                        } catch (e: CancellationException) {
+                            throw e
+                        } catch (e: Exception) {
+                            diagnostics.record("SOCIAL", "WEB_FAIL")
+                        }
+                    }
+                    launch {
+                        try {
+                            applyStats(nativeSource.appSocial(seriesId), "APP")
+                        } catch (e: CancellationException) {
+                            throw e
+                        } catch (e: Exception) {
+                            diagnostics.record("SOCIAL", "APP_FAIL")
+                        }
+                    }
+                }
+            } finally {
+                if (generation == socialGeneration &&
+                    state.value.detail?.drama?.id == seriesId)
+                    mutable.update { it.copy(socialStatsLoading = false) }
             }
         }
     }
@@ -378,6 +454,7 @@ class DramaViewModel(application: Application) : AndroidViewModel(application) {
     fun cover(image: String): String = source?.coverUrl(image) ?: nativeSource.coverUrl(image)
 
     fun open(drama: Drama, resumeEp: Int? = null) {
+        clearSocial()
         clearEngagement()
         detailJob?.cancel()
         val version = ++detailId
@@ -405,6 +482,7 @@ class DramaViewModel(application: Application) : AndroidViewModel(application) {
                 mutable.update { it.copy(detail = resolved, episodeIndex = index,
                     preparingDetail = false) }
                 diagnostics.record("DETAIL", "SUCCESS", elapsed(started))
+                loadSocialStats(resolved.drama.id)
                 play(index)
             } catch (e: CancellationException) {
                 throw e
@@ -491,6 +569,7 @@ class DramaViewModel(application: Application) : AndroidViewModel(application) {
     }
 
     fun closePlayer() {
+        clearSocial()
         clearEngagement()
         ++detailId
         detailJob?.cancel()
