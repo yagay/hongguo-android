@@ -90,6 +90,7 @@ data class AppState(
     val completedDramaIds: Set<String> = emptySet(),
     val trackedEpisodeUpdates: Map<String, Int> = emptyMap(),
     val trackingUpdates: Boolean = false,
+    val episodeUpdateNotificationsEnabled: Boolean = false,
     val trackingUpdateMessage: String? = null,
     val hiddenRecommendationIds: Set<String> = emptySet(),
     val autoPlayNext: Boolean = true,
