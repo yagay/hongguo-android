@@ -270,7 +270,8 @@ class DramaViewModel(application: Application) : AndroidViewModel(application) {
                     danmakuLoadedUntilMs = page.nextMs.coerceAtMost(durationMs),
                     danmakuLoading = false,
                 ) }
-                diagnostics.record("DANMAKU", "READ_SUCCESS")
+                diagnostics.record("DANMAKU",
+                    if (page.items.isEmpty()) "READ_EMPTY" else "READ_NONEMPTY")
             } catch (e: CancellationException) {
                 throw e
             } catch (e: Exception) {

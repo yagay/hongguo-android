@@ -90,3 +90,21 @@ CI 只执行 Debug 构建，不生成 Release/Magisk 包。
   **日志记录开关、日志预览、清空、TXT 导出功能保留**。
 - 所有界面在应用根层处理系统安全 Insets，子 \`Scaffold\` 不重复扣除。
 - CI 只构建 Debug 和运行单元测试。**真实手机上的截图/手势/折叠屏/大字体仍需验收**。
+
+
+## Danmaku and video obstruction fix
+
+- The native video player now owns a **separate video viewport** above the full-drama dock.
+  The bottom CTA and orange seek control are outside the video; neither can cover
+  burned-in subtitles.
+- Default aspect mode is \`FIT\` to preserve the entire image. The top-right
+  overflow menu can optionally switch to full-bleed \`ZOOM\` and back.
+- Timed comments use measured text width to travel completely from the right
+  edge to the left edge; deterministic four-lane assignment avoids text
+  collisions and preserves lane positions through pause/seek.
+- Movement is driven by Media3 position, not wall-clock time. Seeking and
+  pausing update/stop the overlay.
+- Diagnostics distinguish \`DANMAKU READ_EMPTY\` from \`READ_NONEMPTY\` so a
+  successful request with no visible comments can be diagnosed separately.
+- Independent unit tests cover lane contention, non-overlap, seek progress,
+  width-aware animation boundaries, and stable ordering.
