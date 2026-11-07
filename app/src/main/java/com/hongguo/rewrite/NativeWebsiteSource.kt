@@ -59,6 +59,13 @@ class NativeWebsiteSource(
         return CatalogPage(items, items.isNotEmpty() && page < pages, page * PAGE_SIZE)
     }
 
+    /** Reads only series-scoped public statistics from a verified player page. */
+    suspend fun socialStats(id: String): SocialStats {
+        require(ID.matches(id))
+        val root = extractRouter(fetch("player", id))
+        return SocialStatsParser.website(root, id)
+    }
+
     suspend fun detail(id: String): DramaDetail {
         require(ID.matches(id))
         val root = extractRouter(fetch("player", id))

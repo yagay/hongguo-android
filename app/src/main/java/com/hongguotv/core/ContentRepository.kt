@@ -705,6 +705,35 @@ constructor(
         throw IOException("相关作品暂时无法加载，请重试", failure)
     }
 
+    /**
+     * Anonymous, read-only app detail stats. Field names and JSON body follow
+     * beilunyang/openhongguo's verified video_detail/v1 protocol.
+     * Only one signed request is made: social data is optional, and failure
+     * must never block or rotate the active playback device.
+     */
+    fun socialDetail(id: String): JSONObject {
+        require(id.matches(Regex("[0-9]{1,30}")))
+        if (Thread.currentThread().isInterrupted)
+            throw java.io.InterruptedIOException("已取消读取统计")
+        val body = JSONObject().put("series_id", id).put(
+            "biz_param", JSONObject()
+                .put("caller_scene", "single_col")
+                .put("detail_page_version", 0)
+                .put("from_video_id", "")
+                .put("need_all_video_definition", false)
+                .put("need_mp4_align", false)
+                .put("source", 4)
+                .put("video_id_type", 1),
+        ).toString().toByteArray(Charsets.UTF_8)
+        val identity = playbackSession.profile(http)
+        val request = playbackRequest(
+            "https://api5-normal-sinfonlinea.fqnovel.com/novel/player/video_detail/v1/",
+            identity, body = body,
+        )
+        return JSONObject(fetchOnce(request, http, refreshTicket = false,
+            rejectEmptyPlayback = true))
+    }
+
     fun detail(id: String): Detail {
         require(id.matches(Regex("[0-9]{1,30}")))
         val o =

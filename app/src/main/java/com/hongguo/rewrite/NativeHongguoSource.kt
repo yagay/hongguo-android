@@ -27,7 +27,7 @@ class NativeHongguoSource(
     private val repository: ContentRepository = ContentRepository(),
     private val diagnostics: DiagnosticLog? = null,
 ) {
-    private val websiteCovers = NativeWebsiteSource()
+    private val websiteCovers = NativeWebsiteSource(diagnostics = diagnostics)
     private val episodeComments by lazy { AppCommentPages() }
     private val publicComments by lazy { PublicComments(repository.http) }
     private val timedComments by lazy { TimedComments() }
@@ -188,6 +188,16 @@ class NativeHongguoSource(
             FilterGroup(key, group.label, listOf(FilterOption("", "全部")) +
                 group.options.map { FilterOption(it.id, it.label) })
         }
+
+    /**
+     * Source-separated requests allow the UI to show website counters as soon
+     * as the website responds; a slow app registration never blocks that.
+     */
+    suspend fun websiteSocial(id: String): SocialStats = websiteCovers.socialStats(id)
+
+    suspend fun appSocial(id: String): SocialStats = withContext(Dispatchers.IO) {
+        SocialStatsParser.application(repository.socialDetail(id), id)
+    }
 
     suspend fun detail(id: String): DramaDetail = withContext(Dispatchers.IO) {
         val detail = repository.detail(id)
