@@ -139,7 +139,11 @@ internal fun CatalogScreen(state: AppState, model: DramaViewModel, onMine: () ->
                 state.section != Section.RECOMMEND }, key = { it.id }) { drama ->
                 CatalogPoster(drama, model.cover(drama.cover),
                     savedLater = state.watchLater.any { it.id == drama.id },
+                    savedFavorite = state.favorites.any { it.drama.id == drama.id },
+                    savedLike = drama.id in state.likedDramaIds,
                     onLater = { model.toggleWatchLater(drama) },
+                    onFavorite = { model.toggleFavoriteForDrama(drama) },
+                    onLike = { model.toggleLocalLikeForDrama(drama.id) },
                     onHide = if (state.section == Section.RECOMMEND)
                         ({ model.hideRecommendation(drama) }) else null
                 ) { model.open(drama) }
@@ -367,7 +371,9 @@ private fun CompactChoices(
 
 @Composable
 private fun CatalogPoster(drama: Drama, cover: String, savedLater: Boolean,
-    onLater: () -> Unit, onHide: (() -> Unit)?, onClick: () -> Unit) {
+    savedFavorite: Boolean, savedLike: Boolean,
+    onLater: () -> Unit, onFavorite: () -> Unit, onLike: () -> Unit,
+    onHide: (() -> Unit)?, onClick: () -> Unit) {
     var menuOpen by remember { mutableStateOf(false) }
     Column(
         Modifier.fillMaxWidth().clickable(onClick = onClick)
@@ -397,6 +403,10 @@ private fun CatalogPoster(drama: Drama, cover: String, savedLater: Boolean,
                 DropdownMenu(expanded = menuOpen, onDismissRequest = { menuOpen = false }) {
                     DropdownMenuItem(text = { Text(if (savedLater) "移出稍后看" else "加入稍后看") },
                         onClick = { menuOpen = false; onLater() })
+                    DropdownMenuItem(text = { Text(if (savedFavorite) "取消本机收藏" else "本机收藏") },
+                        onClick = { menuOpen = false; onFavorite() })
+                    DropdownMenuItem(text = { Text(if (savedLike) "取消本机点赞" else "本机点赞") },
+                        onClick = { menuOpen = false; onLike() })
                     if (onHide != null) DropdownMenuItem(text = { Text("不再推荐") },
                         onClick = { menuOpen = false; onHide() })
                 }
