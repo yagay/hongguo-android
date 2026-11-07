@@ -202,7 +202,8 @@ class NativeHongguoSource(
         val ladder = try {
             repository.streamLadder(vid)
         } catch (error: Exception) {
-            diagnostics?.record("PLAYBACK", "MODEL_FAIL",
+            val code = PlaybackProblem.describe("播放模型", error).substringBefore(" · ")
+            diagnostics?.record("PLAYBACK", "MODEL_FAIL_" + code,
                 (System.nanoTime() - started) / 1_000_000)
             throw error
         }

@@ -1,5 +1,8 @@
 package com.hongguo.rewrite
 
+import com.hongguotv.core.PlaybackDeviceRegistrationException
+import com.hongguotv.core.EmptyPlaybackResponseException
+import com.hongguotv.core.ContentHttpException
 import java.io.EOFException
 import java.io.IOException
 import java.net.ConnectException
@@ -16,6 +19,16 @@ object PlaybackProblem {
         val chain = generateSequence(failure) { it.cause }.take(8).toList()
         val messages = chain.mapNotNull { it.message }
         val code = when {
+            chain.any { it is PlaybackDeviceRegistrationException } && chain.any { it is UnknownHostException } ->
+                "DEVICE_REGISTER_DNS"
+            chain.any { it is PlaybackDeviceRegistrationException } && chain.any { it is SocketTimeoutException } ->
+                "DEVICE_REGISTER_TIMEOUT"
+            chain.any { it is PlaybackDeviceRegistrationException } ->
+                "DEVICE_REGISTER_FAILED"
+            chain.any { it is EmptyPlaybackResponseException } -> "PLAYBACK_EMPTY_RESPONSE"
+            chain.any { it is ContentHttpException && it.statusCode == 429 } -> "UPSTREAM_RATE_LIMIT"
+            chain.any { it is ContentHttpException && it.statusCode == 403 } -> "UPSTREAM_FORBIDDEN"
+            chain.any { it is ContentHttpException } -> "UPSTREAM_HTTP_ERROR"
             chain.any { it is UnknownHostException } -> "NETWORK_DNS"
             chain.any { it is SocketTimeoutException } -> "NETWORK_TIMEOUT"
             chain.any { it is ConnectException } -> "NETWORK_CONNECT"
@@ -28,12 +41,17 @@ object PlaybackProblem {
             messages.any { it.contains("WEBSITE_HTTP_401") || it.contains("HTTP 401") } -> "UPSTREAM_UNAUTHORIZED"
             messages.any { it.contains("WEBSITE_HTTP_") || it.contains("HTTP ") } -> "UPSTREAM_HTTP_ERROR"
             messages.any { it.contains("DEVICE_REGISTER", true) } -> "DEVICE_REGISTER_FAILED"
-            messages.any { it.contains("bytevc2", true) || it.contains("VVC", true) } -> "CODEC_NOT_SUPPORTED"
+            messages.any { it.contains("CODEC_NOT_SUPPORTED", true) ||
+                it.contains("bytevc2", true) || it.contains("VVC", true) } -> "CODEC_NOT_SUPPORTED"
             chain.any { it is UnsupportedOperationException } -> "SOURCE_NOT_SUPPORTED"
             chain.any { it is IOException } -> "NETWORK_IO"
             else -> "UNEXPECTED"
         }
         val hint = when (code) {
+            "DEVICE_REGISTER_DNS" -> "设备注册阶段无法解析服务器域名"
+            "DEVICE_REGISTER_TIMEOUT" -> "设备注册阶段请求超时"
+            "PLAYBACK_EMPTY_RESPONSE" -> "播放模型接口返回空响应，上游暂不可用"
+            "UPSTREAM_RATE_LIMIT" -> "上游请求频率受限"
             "NETWORK_DNS" -> "无法解析服务器域名"
             "NETWORK_TIMEOUT" -> "网络请求超时"
             "NETWORK_CONNECT" -> "无法连接服务器"
