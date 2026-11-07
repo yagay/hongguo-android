@@ -213,7 +213,7 @@ class NativeHongguoSource(
             // handoff without starting a second anonymous registration.
             val ahead = nextVid?.takeIf {
                 it != vid && it.matches(Regex("[0-9]{1,30}"))
-            }?.let(::listOf).orEmpty()
+            }?.let { listOf(it) }.orEmpty()
             repository.streamLadder(vid, metadataAhead = ahead)
         } catch (error: Exception) {
             val code = PlaybackProblem.describe("播放模型", error).substringBefore(" · ")
