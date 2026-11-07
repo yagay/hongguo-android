@@ -4,6 +4,12 @@ plugins {
     id("org.jetbrains.kotlin.plugin.compose")
 }
 
+// Keep the upstream update source by default; a fork can opt into its own signed releases.
+val updateRepository = providers.gradleProperty("updateRepository").orElse("OOIUa/hongguo-android").get()
+require(Regex("[A-Za-z0-9_.-]+/[A-Za-z0-9_.-]+").matches(updateRepository)) {
+    "updateRepository must be in owner/repository form"
+}
+
 android {
     namespace = "com.hongguo.android"
     compileSdk = 36
@@ -13,8 +19,8 @@ android {
         targetSdk = 36
         versionCode = providers.gradleProperty("appVersionCode").orElse("27").get().toInt()
         versionName = providers.gradleProperty("appVersionName").orElse("0.7.16").get()
-        buildConfigField("String", "UPDATE_REPOSITORY", "\"OOIUa/hongguo-android\"")
-        buildConfigField("String", "UPDATE_MANIFEST_URL", "\"https://github.com/OOIUa/hongguo-android/releases/latest/download/update.json\"")
+        buildConfigField("String", "UPDATE_REPOSITORY", "\"${updateRepository}\"")
+        buildConfigField("String", "UPDATE_MANIFEST_URL", "\"https://github.com/${updateRepository}/releases/latest/download/update.json\"")
         testInstrumentationRunner = "com.hongguo.android.HongguoTestRunner"
     }
     buildTypes {
