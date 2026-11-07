@@ -123,7 +123,7 @@ object SocialStatsParser {
             val number = BigDecimal(match.groupValues[1] +
                 if (match.groupValues[2].isBlank()) "" else "." + match.groupValues[2])
             val factor = if (match.groupValues[3] == "亿") 100_000_000L else 10_000L
-            number.multiply(BigDecimal.valueOf(factor)).toLongExact()
+            number.multiply(BigDecimal.valueOf(factor)).longValueExact()
                 .takeIf { it >= 0L }
         } catch (_: ArithmeticException) {
             null
