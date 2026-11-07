@@ -74,6 +74,7 @@ internal fun OpenHongguoExploreScreen(
         "discover" to "书城频道",
         "search" to "SDK搜索",
         "rankGroups" to "书城榜单",
+        "activity" to "活动榜",
         "category" to "书籍分类",
         "calendar" to "指定日期",
     )
@@ -98,6 +99,8 @@ internal fun OpenHongguoExploreScreen(
     var nextWorksCursor by remember { mutableStateOf("") }
     var worksLoading by remember { mutableStateOf(false) }
     var worksRefresh by remember { mutableIntStateOf(0) }
+    var suggestionRequest by remember { mutableIntStateOf(0) }
+    var suggestions by remember { mutableStateOf(emptyList<String>()) }
 
     BackHandler {
         when {
@@ -150,6 +153,18 @@ internal fun OpenHongguoExploreScreen(
         } finally {
             loading = false
         }
+    }
+
+    LaunchedEffect(suggestionRequest) {
+        if (suggestionRequest == 0 || tab != "search") return@LaunchedEffect
+        try {
+            suggestions = if (query.trim().isBlank())
+                source.searchCues().take(10)
+            else source.suggest(query.trim()).map {
+                it.keyword.ifBlank { it.text }
+            }.filter(String::isNotBlank).distinct().take(10)
+        } catch (e: CancellationException) { throw e }
+        catch (_: Exception) { suggestions = emptyList() }
     }
 
     LaunchedEffect(actorId, worksCursor, worksRefresh) {
@@ -218,6 +233,7 @@ internal fun OpenHongguoExploreScreen(
                                 nextCursor = ""
                                 error = null
                                 selectedFilters = emptyMap()
+                                suggestions = emptyList()
                             }
                         },
                         label = { Text(name) })
@@ -271,6 +287,9 @@ internal fun OpenHongguoExploreScreen(
                         else -> "书籍分类 ID"
                     }) },
                 )
+                if (tab == "search") TextButton(onClick = { suggestionRequest++ }) {
+                    Text("联想", fontSize = 12.sp, color = HongguoColors.accent)
+                }
                 OutlinedButton(onClick = {
                     activeQuery = query.trim()
                     cursor = ""
@@ -278,6 +297,24 @@ internal fun OpenHongguoExploreScreen(
                     nextCursor = ""
                     refresh++
                 }) { Text("查询") }
+            }
+        }
+        if (actorId.isBlank() && tab == "search" && suggestions.isNotEmpty()) {
+            Row(Modifier.fillMaxWidth().horizontalScroll(rememberScrollState())
+                .padding(horizontal = 12.dp),
+                horizontalArrangement = Arrangement.spacedBy(6.dp)) {
+                suggestions.forEach { phrase ->
+                    FilterChip(
+                        selected = false,
+                        onClick = {
+                            query = phrase
+                            activeQuery = phrase
+                            suggestions = emptyList()
+                            cursor = ""; rows = emptyList(); nextCursor = ""
+                        },
+                        label = { Text(phrase.take(40)) },
+                    )
+                }
             }
         }
         if (actorId.isNotBlank()) {
@@ -312,10 +349,16 @@ internal fun OpenHongguoExploreScreen(
                         },
                         enabled = (tab == "rankGroups" && rankCell.isBlank() &&
                                 row.id.isNotBlank()) ||
+                            row.searchQuery.isNotBlank() ||
                             row.actorUserId.isNotBlank() ||
                             (row.playable && row.id.matches(Regex("[1-9][0-9]{0,29}"))),
                         onClick = {
-                            if (tab == "rankGroups" && rankCell.isBlank()) {
+                            if (row.searchQuery.isNotBlank()) {
+                                tab = "search"
+                                query = row.searchQuery
+                                activeQuery = row.searchQuery
+                                cursor = ""; rows = emptyList(); nextCursor = ""
+                            } else if (tab == "rankGroups" && rankCell.isBlank()) {
                                 rankCell = row.id
                                 cursor = ""
                                 rows = emptyList()
