@@ -21,6 +21,8 @@ import androidx.compose.material.icons.outlined.History
 import androidx.compose.material.icons.outlined.Share
 import androidx.compose.material.icons.outlined.StarBorder
 import androidx.compose.material3.Button
+import androidx.compose.material3.AlertDialog
+import androidx.compose.material3.Checkbox
 import androidx.compose.material3.CircularProgressIndicator
 import androidx.compose.material3.ExperimentalMaterial3Api
 import androidx.compose.material3.HorizontalDivider
@@ -77,6 +79,10 @@ private fun LibraryRows(state: AppState, model: DramaViewModel) {
     val rows = if (isFavorites) state.favorites else state.library
     var query by rememberSaveable(state.modal) { mutableStateOf("") }
     var completionFilter by rememberSaveable(state.modal) { mutableStateOf(0) }
+    var selecting by rememberSaveable(state.modal) { mutableStateOf(false) }
+    var confirmClear by rememberSaveable(state.modal) { mutableStateOf(false) }
+    var confirmBatch by rememberSaveable(state.modal) { mutableStateOf(false) }
+    var selectedIds by rememberSaveable(state.modal) { mutableStateOf(emptyList<String>()) }
     val filtered = rows.filter { entry ->
         entry.drama.title.contains(query.trim(), ignoreCase = true) &&
             (isFavorites || when (completionFilter) {
@@ -93,7 +99,11 @@ private fun LibraryRows(state: AppState, model: DramaViewModel) {
             fontSize = 20.sp, fontWeight = FontWeight.Bold,
             modifier = Modifier.weight(1f))
         if (rows.isNotEmpty()) {
-            TextButton(onClick = { model.clear(isFavorites) }) {
+            TextButton(onClick = {
+                selecting = !selecting
+                selectedIds = emptyList()
+            }) { Text(if (selecting) "完成" else "批量管理") }
+            TextButton(onClick = { confirmClear = true }) {
                 Text("清空", color = HongguoColors.muted)
             }
         }
@@ -109,6 +119,19 @@ private fun LibraryRows(state: AppState, model: DramaViewModel) {
             }
         }
     }
+    if (selecting) {
+        Row(Modifier.fillMaxWidth(), verticalAlignment = Alignment.CenterVertically) {
+            TextButton(onClick = { selectedIds = filtered.map { it.drama.id } }) {
+                Text("全选当前结果")
+            }
+            TextButton(onClick = { selectedIds = emptyList() }) {
+                Text("取消全选")
+            }
+            TextButton(onClick = { confirmBatch = true }, enabled = selectedIds.isNotEmpty()) {
+                Text("删除选中 ${selectedIds.size} 部")
+            }
+        }
+    }
     Text("显示 " + filtered.size + " / " + rows.size + " 部",
         color = HongguoColors.muted, fontSize = 12.sp)
     LazyColumn(
@@ -118,12 +141,22 @@ private fun LibraryRows(state: AppState, model: DramaViewModel) {
         items(filtered, key = { it.drama.id }) { entry ->
             Row(
                 Modifier.fillMaxWidth().clickable {
-                    model.closeModal()
-                    model.open(entry.drama, entry.episode)
+                    if (selecting) {
+                        selectedIds = if (entry.drama.id in selectedIds)
+                            selectedIds - entry.drama.id else selectedIds + entry.drama.id
+                    } else {
+                        model.closeModal()
+                        model.open(entry.drama, entry.episode)
+                    }
                 }.padding(vertical = 8.dp),
                 verticalAlignment = Alignment.CenterVertically,
                 horizontalArrangement = Arrangement.spacedBy(12.dp),
             ) {
+                if (selecting) Checkbox(checked = entry.drama.id in selectedIds,
+                    onCheckedChange = { enabled ->
+                        selectedIds = if (enabled) (selectedIds + entry.drama.id).distinct()
+                            else selectedIds - entry.drama.id
+                    })
                 val image = model.cover(entry.drama.cover)
                 if (image.isNotBlank()) {
                     AsyncImage(
@@ -144,7 +177,7 @@ private fun LibraryRows(state: AppState, model: DramaViewModel) {
                         color = HongguoColors.muted, fontSize = 12.sp)
                     Text("点击继续观看", color = HongguoColors.accent, fontSize = 11.sp)
                 }
-                TextButton(onClick = { model.remove(entry.drama.id, isFavorites) }) {
+                if (!selecting) TextButton(onClick = { model.remove(entry.drama.id, isFavorites) }) {
                     Text("移除", color = HongguoColors.muted, fontSize = 12.sp)
                 }
             }
@@ -160,6 +193,33 @@ private fun LibraryRows(state: AppState, model: DramaViewModel) {
             }
         }
     }
+    if (confirmClear) AlertDialog(
+        onDismissRequest = { confirmClear = false },
+        title = { Text(if (isFavorites) "清空全部本机收藏？" else "清空全部本机历史？") },
+        text = { Text("操作无法撤销，不影响另一类片单和云端账号。") },
+        confirmButton = {
+            TextButton(onClick = {
+                confirmClear = false
+                selectedIds = emptyList()
+                model.clear(isFavorites)
+            }) { Text("确认清空") }
+        },
+        dismissButton = { TextButton(onClick = { confirmClear = false }) { Text("取消") } },
+    )
+    if (confirmBatch) AlertDialog(
+        onDismissRequest = { confirmBatch = false },
+        title = { Text("删除选中的 ${selectedIds.size} 部短剧？") },
+        text = { Text("只移除本机片单记录，不删除视频文件或云端收藏。") },
+        confirmButton = {
+            TextButton(onClick = {
+                val chosen = selectedIds.toList()
+                confirmBatch = false
+                selectedIds = emptyList()
+                chosen.forEach { model.remove(it, isFavorites) }
+            }) { Text("确认删除") }
+        },
+        dismissButton = { TextButton(onClick = { confirmBatch = false }) { Text("取消") } },
+    )
 }
 
 @Composable
