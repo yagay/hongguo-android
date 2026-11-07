@@ -1,5 +1,6 @@
 package com.hongguo.android
 
+import com.hongguo.api.service.AppSource
 import com.hongguo.api.service.PlaybackDevice
 import java.io.IOException
 import java.net.ConnectException
@@ -30,6 +31,20 @@ class PlaybackDiagnosticTest {
         val result = PlaybackDiagnostic.fromPreparationFailure(IllegalStateException("token=abc"))
         assertEquals("PLAYBACK_PREPARE_FAILED", result.code)
         assertFalse(result.safeReport().contains("token=abc"))
+    }
+
+
+    @Test fun routeSummaryIsSafeAndActionable() {
+        val failure = IllegalStateException("https://example.test?token=secret")
+        val ctor = AppSource.AttemptTrace::class.java.getDeclaredConstructor(
+            Int::class.javaPrimitiveType, String::class.java, String::class.java, Int::class.javaPrimitiveType)
+        ctor.isAccessible = true
+        failure.addSuppressed(ctor.newInstance(4, "post_alternate", "HTTP", 503))
+        val result = PlaybackDiagnostic.fromPreparationFailure(failure)
+        assertEquals(4, result.attempts)
+        assertEquals(503, result.httpStatus)
+        assertFalse(result.safeReport().contains("token"))
+        assertFalse(result.safeReport().contains("example.test"))
     }
 
     @Test fun decoderFailureIsDistinctFromTransportFailure() {

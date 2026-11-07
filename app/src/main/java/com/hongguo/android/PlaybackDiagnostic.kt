@@ -1,5 +1,6 @@
 package com.hongguo.android
 
+import com.hongguo.api.service.AppSource
 import com.hongguo.api.service.PlaybackDevice
 import java.io.IOException
 import java.net.ConnectException
@@ -11,18 +12,42 @@ import javax.net.ssl.SSLException
  * User-visible, credential-safe diagnostics. Values come exclusively from fixed constants:
  * never serialize Throwable messages, request URLs, headers, account data or media secrets.
  */
-data class PlaybackDiagnostic(val code: String, val stage: String, val message: String) {
-    fun safeReport(): String = "Hongguo Android playback diagnostic\ncode=$code\nstage=$stage"
+data class PlaybackDiagnostic(
+    val code: String,
+    val stage: String,
+    val message: String,
+    val attempts: Int = 0,
+    val lastRoute: String? = null,
+    val lastReason: String? = null,
+    val httpStatus: Int = 0,
+) {
+    fun safeReport(): String = buildString {
+        append("Hongguo Android playback diagnostic\ncode=").append(code)
+        append("\nstage=").append(stage)
+        if (attempts > 0) append("\nroute_attempts=").append(attempts)
+        if (lastRoute != null) append("\nlast_route=").append(lastRoute)
+        if (lastReason != null) append("\nlast_reason=").append(lastReason)
+        if (httpStatus in 100..599) append("\nhttp_status=").append(httpStatus)
+    }
 
     companion object {
         fun fromPreparationFailure(error: Throwable): PlaybackDiagnostic {
             val causes = generateSequence(error) { it.cause }.take(8).toList()
             val hint = causes.joinToString(" ") { it.message.orEmpty() }.lowercase()
-            fun issue(code: String, stage: String, message: String) = PlaybackDiagnostic(code, stage, message)
+            val trace = chain.asSequence().flatMap { it.suppressed.asSequence() }
+                .filterIsInstance<AppSource.AttemptTrace>().firstOrNull()
+            val registrationStatus = chain.filterIsInstance<PlaybackDevice.RegistrationHttpException>()
+                .firstOrNull()?.status ?: 0
+            fun issue(code: String, stage: String, message: String) = PlaybackDiagnostic(
+                code, stage, message, trace?.attempts ?: 0, trace?.lastRoute, trace?.lastReason,
+                if (registrationStatus != 0) registrationStatus else trace?.httpStatus ?: 0
+            )
             val register = causes.any { it is PlaybackDevice.RegistrationException }
             // The registration exception retains a sanitized cause when transport has a
             // known category. HTTP and malformed-response errors remain generic here.
             if (register) return when {
+                registrationStatus != 0 ->
+                    issue("DEVICE_REGISTER_HTTP_FAILED", "device_register", "设备注册服务返回错误状态，请稍后重试。")
                 causes.any { it is UnknownHostException } ->
                     issue("DEVICE_REGISTER_DNS_FAILED", "device_register", "设备注册域名解析失败，请检查网络和 DNS。")
                 causes.any { it is SocketTimeoutException } ->
@@ -38,7 +63,9 @@ data class PlaybackDiagnostic(val code: String, val stage: String, val message: 
                     issue("CODEC_UNSUPPORTED", "codec_select", "本集没有可用的兼容编码，请尝试其他剧集。")
                 hint.contains("app 接口返回空响应") ->
                     issue("VIDEO_MODEL_EMPTY", "multi_video_model", "片源接口返回空数据，稍后重试。")
-                hint.contains("app 接口未返回所选分集") || hint.contains("app 接口未返回 video_model") ->
+                hint.contains("app 接口未返回所选分集") || hint.contains("app 接口未返回 video_model") ||
+                    hint.contains("video_tab 模型不完整") || hint.contains("app 接口未返回播放数据") ||
+                    hint.contains("播放信息格式无效") ->
                     issue("VIDEO_MODEL_INVALID", "multi_video_model", "片源接口没有返回当前分集的完整模型。")
                 hint.contains("app 接口 http") ->
                     issue("VIDEO_MODEL_HTTP", "multi_video_model", "片源接口没有完成请求，请稍后重试。")

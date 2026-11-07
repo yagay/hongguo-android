@@ -113,50 +113,68 @@ public final class AppSource {
             throw new IllegalArgumentException("分集编号无效");
         }
 
+
+        // Include device registration in the elapsed budget. Individual connections have their
+        // own timeouts; the deadline prevents launching further routes once time is exhausted.
+        final long deadline = System.nanoTime() + java.util.concurrent.TimeUnit.MILLISECONDS.toNanos(PLAYBACK_BUDGET_MS);
         byte[] body = Json.stringify(payload(vid)).getBytes(StandardCharsets.UTF_8);
         PlaybackDevice.Identity identity = PlaybackDevice.fresh();
-        // 2026-11-05 起无签名请求一律返回 200 + 0 字节；带完整签名的请求仍随「身份 × 路径」偶发为空，
-        // 新身份通常能恢复（hongguoTV 0.1.22–0.1.25）。所以先走官方 GET，再 POST，然后换新身份走 GET
-        // 和备用域名，全程有总时限。
-        long started = System.currentTimeMillis();
         Exception failure = null;
         IOException renewal = null;
-        for (PlaybackRoute route : PLAYBACK_ROUTES) {
-            if (System.currentTimeMillis() - started >= PLAYBACK_BUDGET_MS) break;
-            if (Thread.currentThread().isInterrupted()) throw new InterruptedIOException("播放请求已取消");
-            if (route.renewsIdentity) {
+        String lastRoute = "none";
+        String lastReason = "EMPTY";
+        int lastStatus = 0;
+        int attempted = 0;
+        PLAYBACK_DEADLINE.set(deadline);
+        try {
+            for (int i = 0; i < PLAYBACK_ROUTES.length; i++) {
+                PlaybackRoute route = PLAYBACK_ROUTES[i];
+                if (System.nanoTime() >= deadline) break;
+                if (Thread.currentThread().isInterrupted()) throw new InterruptedIOException("播放请求已取消");
+                // A near-expired budget must not trigger a new full device registration.
+                if (route.renewsIdentity) {
+                    if (deadline - System.nanoTime() < java.util.concurrent.TimeUnit.SECONDS.toNanos(3)) continue;
+                    try {
+                        identity = PlaybackDevice.fresh();
+                    } catch (IOException e) {
+                        if (Thread.currentThread().isInterrupted()) throw e;
+                        renewal = e;
+                    }
+                }
+                lastRoute = (i == 0 ? "tab_primary" : i == 1 ? "post_primary" :
+                        i == 2 ? "tab_renewed" : "post_alternate");
+                attempted++;
+                Map<String, Object> j;
                 try {
-                    identity = PlaybackDevice.fresh();
-                } catch (IOException e) {
-                    // 换身份失败（冷却或离线）时仍用原身份试完剩余路径。
+                    j = route.post ? playbackPost.post(body, identity, route.host) : playbackTab.get(vid, identity);
+                    if (j == null) {
+                        lastReason = "EMPTY";
+                        continue;
+                    }
+                    try {
+                        return parseModel(vid, j, quality);
+                    } catch (PlaybackModelUnavailableException incompleteModel) {
+                        // The service returned a response without this episode's model. Try
+                        // another signed route; never retry codec/DRM/business rejections.
+                        failure = incompleteModel;
+                        lastReason = "MODEL";
+                    }
+                } catch (EmptyPlaybackResponseException e) {
+                    lastReason = "EMPTY";
+                } catch (PlaybackHttpException | PlaybackModelUnavailableException | IOException e) {
                     if (Thread.currentThread().isInterrupted()) throw e;
-                    renewal = e;
+                    failure = e;
+                    lastReason = failureReason(e);
+                    lastStatus = e instanceof PlaybackHttpException ? ((PlaybackHttpException) e).status : 0;
                 }
             }
-            Map<String, Object> j;
-            try {
-                j = route.post ? playbackPost.post(body, identity, route.host) : playbackTab.get(vid, identity);
-            } catch (EmptyPlaybackResponseException e) {
-                continue;
-            } catch (PlaybackHttpException | IOException e) {
-                if (Thread.currentThread().isInterrupted()) throw e;
-                failure = e;
-                continue;
-            }
-            if (j != null) {
-                try {
-                    return parseModel(vid, j, quality);
-                } catch (PlaybackModelUnavailableException incompleteModel) {
-                    // Missing model/episode fields can vary by playback route. Other
-                    // failures (business rejection, codec, key, URL) are not retried.
-                    failure = incompleteModel;
-                }
-            }
+        } finally {
+            PLAYBACK_DEADLINE.remove();
         }
-        if (failure != null) throw failure;
-        EmptyPlaybackResponseException empty = new EmptyPlaybackResponseException();
-        if (renewal != null) empty.addSuppressed(renewal);
-        throw empty;
+        Exception result = failure != null ? failure : new EmptyPlaybackResponseException();
+        if (renewal != null) result.addSuppressed(renewal);
+        result.addSuppressed(new AttemptTrace(attempted, lastRoute, lastReason, lastStatus));
+        throw result;
     }
 
     /** 一条候选路径：GET 或 POST、主机、是否先换新身份。 */
@@ -182,11 +200,47 @@ public final class AppSource {
     /** 一次取片源的总时限；单次请求另有 {@link #PLAYBACK_TIMEOUT_MS}。 */
     static final long PLAYBACK_BUDGET_MS = 20_000L;
     private static final int PLAYBACK_TIMEOUT_MS = 8_000;
+    private static final ThreadLocal<Long> PLAYBACK_DEADLINE = new ThreadLocal<>();
+
+    private static int requestTimeoutMs() {
+        Long deadline = PLAYBACK_DEADLINE.get();
+        if (deadline == null) return PLAYBACK_TIMEOUT_MS;
+        long remaining = java.util.concurrent.TimeUnit.NANOSECONDS.toMillis(deadline - System.nanoTime());
+        return (int) Math.max(1_000L, Math.min(PLAYBACK_TIMEOUT_MS, remaining));
+    }
+
+    /** Stable route metadata only. Never retain signed URLs, credentials or server bodies. */
+    public static final class AttemptTrace extends Exception {
+        public final int attempts;
+        public final String lastRoute;
+        public final String lastReason;
+        public final int httpStatus;
+
+        AttemptTrace(int attempts, String route, String reason, int httpStatus) {
+            super("playback route summary");
+            this.attempts = attempts;
+            this.lastRoute = route;
+            this.lastReason = reason;
+            this.httpStatus = httpStatus;
+        }
+    }
+
+    private static String failureReason(Exception failure) {
+        if (failure instanceof PlaybackHttpException) return "HTTP";
+        if (failure instanceof PlaybackModelUnavailableException) return "MODEL";
+        if (failure instanceof java.net.UnknownHostException) return "DNS";
+        if (failure instanceof java.net.SocketTimeoutException) return "TIMEOUT";
+        if (failure instanceof java.net.ConnectException) return "CONNECT";
+        if (failure instanceof javax.net.ssl.SSLException) return "TLS";
+        return "IO";
+    }
 
     /** 播放接口 HTTP 状态异常：换路径可能恢复，与业务或格式错误不同。 */
     static final class PlaybackHttpException extends IllegalStateException {
+        final int status;
         PlaybackHttpException(int status) {
             super("App 接口 HTTP " + status);
+            this.status = status;
         }
     }
 
@@ -650,17 +704,15 @@ public final class AppSource {
     private static Map<String, Object> getTabModel(String vid, PlaybackDevice.Identity identity)
             throws Exception {
         SignedPlayback signed = signPlayback(TAB_API, identity, tabQuery(vid), null, System.currentTimeMillis());
-        Http.Req req = new Http.Req(signed.url).method("GET").timeout(PLAYBACK_TIMEOUT_MS);
+        Http.Req req = new Http.Req(signed.url).method("GET").timeout(requestTimeoutMs());
         req.followRedirect = false;
         for (Map.Entry<String, String> e : signed.headers.entrySet()) req.header(e.getKey(), e.getValue());
-        Http.Resp res;
-        try {
-            res = Http.send(req);
-        } catch (IOException e) {
-            if (Thread.currentThread().isInterrupted()) throw e;
-            return null;
-        }
-        return res.status == 200 ? parseTabResponse(vid, res.text()) : null;
+        Http.Resp res = Http.send(req);
+        if (res.status != 200) throw new PlaybackHttpException(res.status);
+        if (res.bytes.length == 0) throw new EmptyPlaybackResponseException();
+        Map<String, Object> parsed = parseTabResponse(vid, res.text());
+        if (parsed == null) throw new PlaybackModelUnavailableException("App video_tab 模型不完整");
+        return parsed;
     }
 
     /**
@@ -694,7 +746,7 @@ public final class AppSource {
             String host) throws Exception {
         SignedPlayback signed = signPlayback(VIDEO_API.replace(VIDEO_API_HOST, host), identity,
                 new LinkedHashMap<>(), body, System.currentTimeMillis());
-        Http.Req req = new Http.Req(signed.url).method("POST").timeout(PLAYBACK_TIMEOUT_MS);
+        Http.Req req = new Http.Req(signed.url).method("POST").timeout(requestTimeoutMs());
         req.followRedirect = false;
         for (Map.Entry<String, String> e : signed.headers.entrySet()) req.header(e.getKey(), e.getValue());
         req.body(body);
@@ -710,10 +762,10 @@ public final class AppSource {
         }
         Map<String, Object> j;
         try { j = Json.parseObject(text); }
-        catch (Exception ignored) { throw new IllegalStateException("播放信息格式无效"); }
+        catch (Exception ignored) { throw new PlaybackModelUnavailableException("播放信息格式无效"); }
         if (j == null || Json.optObj(j.get("data")) == null) {
             // data 缺失：接口变更或 IP 风控。
-            throw new IllegalStateException("App 接口未返回播放数据");
+            throw new PlaybackModelUnavailableException("App 接口未返回播放数据");
         }
         return j;
     }

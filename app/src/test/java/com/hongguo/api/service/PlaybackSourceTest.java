@@ -243,6 +243,47 @@ public class PlaybackSourceTest {
         assertEquals(1, postCalls.get());
     }
 
+
+    @Test public void missingPostEnvelopeFallsThroughToAlternateRoute() throws Exception {
+        PlaybackDevice.resetForTest((url, headers, body) -> okReply());
+        AppSource.setPlaybackTabForTest((vid, identity) -> null);
+        java.util.concurrent.atomic.AtomicInteger posts = new java.util.concurrent.atomic.AtomicInteger();
+        Map<String, Object> model = Json.obj();
+        List<Object> list = Json.arr();
+        list.add(item("bytevc1", 1080, 1920, "https://v1.qznovelvod.com/1080.mp4", VALID_SPADE));
+        model.put("video_list", list);
+        AppSource.setPlaybackPostForTest((body, identity, host) ->
+            posts.incrementAndGet() == 1
+                ? AppSource.parsePlaybackResponse("{\"code\":0}")
+                : response("7600000000000000001", model));
+        assertEquals("https://v1.qznovelvod.com/1080.mp4",
+            AppSource.fetch("7600000000000000001", "auto").url);
+        assertEquals(2, posts.get());
+    }
+
+    @Test public void exhaustedRoutesCarryOnlySanitizedAttemptMetadata() throws Exception {
+        PlaybackDevice.resetForTest((url, headers, body) -> okReply());
+        AppSource.setPlaybackTabForTest((vid, identity) -> null);
+        AppSource.setPlaybackPostForTest((body, identity, host) -> {
+            throw new AppSource.PlaybackHttpException(503);
+        });
+        try {
+            AppSource.fetch("7600000000000000001", "auto");
+            fail("Expected route failure");
+        } catch (AppSource.PlaybackHttpException expected) {
+            AppSource.AttemptTrace trace = null;
+            for (Throwable suppressed : expected.getSuppressed()) {
+                if (suppressed instanceof AppSource.AttemptTrace) trace = (AppSource.AttemptTrace) suppressed;
+            }
+            assertNotNull(trace);
+            assertEquals(4, trace.attempts);
+            assertEquals("post_alternate", trace.lastRoute);
+            assertEquals("HTTP", trace.lastReason);
+            assertEquals(503, trace.httpStatus);
+            assertFalse(trace.toString().contains("7600000000000000001"));
+        }
+    }
+
     // ==================== 签名播放请求 ====================
 
     @Test public void playbackRequestIsSignedWithTheRegisteredIdentityAndCookie() throws Exception {

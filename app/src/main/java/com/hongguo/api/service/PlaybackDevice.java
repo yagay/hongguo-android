@@ -115,6 +115,15 @@ public final class PlaybackDevice {
         }
     }
 
+    /** HTTP status without response body, headers or request URL. */
+    public static final class RegistrationHttpException extends IOException {
+        public final int status;
+        RegistrationHttpException(int status) {
+            super("匿名播放设备注册 HTTP " + status);
+            this.status = status;
+        }
+    }
+
     /** 注册响应（状态码 + 正文）。 */
     static final class Reply {
         final int status;
@@ -218,7 +227,7 @@ public final class PlaybackDevice {
         RND.nextBytes(random);
         byte[] body = buildBody(now, cdid, random);
         Reply res = transport.post(REGISTER_URL, headers(body, now), body);
-        if (res.status != 200) throw new IOException("register HTTP " + res.status);
+        if (res.status != 200) throw new RegistrationHttpException(res.status);
         Map<String, Object> j;
         try {
             j = Json.parseObject(res.text);
