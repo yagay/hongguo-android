@@ -1,5 +1,6 @@
 package com.hongguo.rewrite
 
+import android.net.Uri
 import androidx.activity.compose.BackHandler
 import androidx.activity.compose.rememberLauncherForActivityResult
 import androidx.activity.result.contract.ActivityResultContracts
@@ -68,11 +69,19 @@ import java.time.format.DateTimeFormatter
 internal fun SettingsScreen(state: AppState, model: DramaViewModel) {
     var address by remember(state.backend) { mutableStateOf(state.backend) }
     var confirmClear by remember { mutableStateOf(false) }
+    var pendingRestore by remember { mutableStateOf<Uri?>(null) }
     var showLogPreview by rememberSaveable { mutableStateOf(false) }
     val account by model.account.state.collectAsStateWithLifecycle()
     val exporter = rememberLauncherForActivityResult(
         ActivityResultContracts.CreateDocument("text/plain")
     ) { uri -> if (uri != null) model.exportDiagnostics(uri) }
+
+    val localExporter = rememberLauncherForActivityResult(
+        ActivityResultContracts.CreateDocument("application/json")
+    ) { uri -> if (uri != null) model.exportLocalBackup(uri) }
+    val localImporter = rememberLauncherForActivityResult(
+        ActivityResultContracts.OpenDocument()
+    ) { uri -> if (uri != null) pendingRestore = uri }
 
     LaunchedEffect(Unit) { model.refreshDiagnostics() }
     BackHandler { model.closeModal() }
@@ -189,6 +198,27 @@ internal fun SettingsScreen(state: AppState, model: DramaViewModel) {
                 }
             }
             item {
+                SettingsGroup("本机数据备份") {
+                    Text("可备份与恢复本机收藏、观看历史、稍后看及本机点赞。不会导出账号 Cookie、短信信息或云端凭据。",
+                        color = HongguoColors.muted, fontSize = 12.sp)
+                    FlowRow(horizontalArrangement = Arrangement.spacedBy(8.dp)) {
+                        OutlinedButton(onClick = {
+                            localExporter.launch("Hongguo-local-backup.json")
+                        }, modifier = Modifier.testTag("export_local_backup")) {
+                            Text("导出备份")
+                        }
+                        OutlinedButton(onClick = {
+                            localImporter.launch(arrayOf("application/json", "text/plain"))
+                        }, modifier = Modifier.testTag("import_local_backup")) {
+                            Text("导入恢复")
+                        }
+                    }
+                    state.settingsMessage?.let {
+                        Text(it, color = HongguoColors.accent, fontSize = 12.sp)
+                    }
+                }
+            }
+            item {
                 SettingsGroup("诊断与日志") {
                     Text("遇到播放失败时，可在这里导出诊断日志。日志包含请求阶段、HTTP 状态及错误码，不采集 API 密钥、搜索内容或视频地址。",
                         color = HongguoColors.muted, fontSize = 12.sp)
@@ -260,6 +290,22 @@ internal fun SettingsScreen(state: AppState, model: DramaViewModel) {
         }
     }
 
+    pendingRestore?.let { uri ->
+        AlertDialog(
+            onDismissRequest = { pendingRestore = null },
+            title = { Text("恢复本机片单？") },
+            text = { Text("将替换本机收藏、历史、稍后看和本机点赞。此操作不可撤销，但不会影响云端账号。") },
+            confirmButton = {
+                TextButton(onClick = {
+                    pendingRestore = null
+                    model.importLocalBackup(uri)
+                }) { Text("确认恢复") }
+            },
+            dismissButton = {
+                TextButton(onClick = { pendingRestore = null }) { Text("取消") }
+            },
+        )
+    }
     if (confirmClear) AlertDialog(
         onDismissRequest = { confirmClear = false },
         title = { Text("清空诊断日志？") },
