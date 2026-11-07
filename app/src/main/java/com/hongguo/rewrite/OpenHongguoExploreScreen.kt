@@ -26,6 +26,7 @@ import androidx.compose.material3.FilterChip
 import androidx.compose.material3.Icon
 import androidx.compose.material3.IconButton
 import androidx.compose.material3.OutlinedButton
+import androidx.compose.material3.OutlinedTextField
 import androidx.compose.material3.Text
 import androidx.compose.material3.TextButton
 import androidx.compose.runtime.Composable
@@ -67,9 +68,17 @@ internal fun OpenHongguoExploreScreen(
         "ai" to "AI榜",
         "hot" to "热搜",
         "filter" to "真人筛选",
+        "discover" to "书城频道",
+        "search" to "SDK搜索",
+        "rankGroups" to "书城榜单",
+        "category" to "书籍分类",
+        "calendar" to "指定日期",
     )
     var tab by remember { mutableStateOf("new") }
     var cursor by remember { mutableStateOf("") }
+    var query by remember { mutableStateOf("") }
+    var activeQuery by remember { mutableStateOf("") }
+    var rankCell by remember { mutableStateOf("") }
     var rows by remember { mutableStateOf(emptyList<OpenHongguoBrowseItem>()) }
     var more by remember { mutableStateOf(false) }
     var nextCursor by remember { mutableStateOf("") }
@@ -85,13 +94,30 @@ internal fun OpenHongguoExploreScreen(
     var worksLoading by remember { mutableStateOf(false) }
     var worksRefresh by remember { mutableIntStateOf(0) }
 
-    BackHandler { if (actorId.isNotBlank()) actorId = "" else onClose() }
+    BackHandler {
+        when {
+            actorId.isNotBlank() -> actorId = ""
+            rankCell.isNotBlank() -> { rankCell = ""; cursor = ""; rows = emptyList() }
+            else -> onClose()
+        }
+    }
 
-    LaunchedEffect(tab, cursor, refresh) {
+    LaunchedEffect(tab, cursor, refresh, activeQuery, rankCell) {
+        if (tab in setOf("search", "calendar", "category") && activeQuery.isBlank()) {
+            rows = emptyList()
+            error = null
+            return@LaunchedEffect
+        }
         loading = true
         error = null
         try {
-            val page = source.browse(tab, cursor)
+            val page = if (tab in setOf("discover", "search", "calendar",
+                    "category", "rankGroups") || rankCell.isNotBlank()) {
+                source.browseExtended(
+                    if (rankCell.isNotBlank()) "rankRows" else tab,
+                    if (rankCell.isNotBlank()) rankCell else activeQuery,
+                    cursor)
+            } else source.browse(tab, cursor)
             rows = if (cursor.isEmpty()) page.items else
                 (rows + page.items).distinctBy { it.id.ifBlank { it.title } }
             nextCursor = page.cursor
@@ -134,7 +160,13 @@ internal fun OpenHongguoExploreScreen(
         Row(Modifier.fillMaxWidth().height(54.dp),
             verticalAlignment = Alignment.CenterVertically) {
             IconButton(onClick = {
-                if (actorId.isBlank()) onClose() else actorId = ""
+                when {
+                    actorId.isNotBlank() -> actorId = ""
+                    rankCell.isNotBlank() -> {
+                        rankCell = ""; cursor = ""; rows = emptyList()
+                    }
+                    else -> onClose()
+                }
             }) {
                 Icon(Icons.AutoMirrored.Outlined.ArrowBack, "返回",
                     tint = HongguoColors.ink)
@@ -157,6 +189,9 @@ internal fun OpenHongguoExploreScreen(
                         onClick = {
                             if (id != tab) {
                                 tab = id
+                                query = ""
+                                activeQuery = ""
+                                rankCell = ""
                                 cursor = ""
                                 rows = emptyList()
                                 more = false
@@ -166,6 +201,31 @@ internal fun OpenHongguoExploreScreen(
                         },
                         label = { Text(name) })
                 }
+            }
+        }
+        if (actorId.isBlank() && tab in setOf("search", "discover",
+                "calendar", "category")) {
+            Row(Modifier.fillMaxWidth().padding(horizontal = 12.dp, vertical = 6.dp),
+                verticalAlignment = Alignment.CenterVertically,
+                horizontalArrangement = Arrangement.spacedBy(8.dp)) {
+                OutlinedTextField(
+                    value = query, onValueChange = { query = it.take(120) },
+                    modifier = Modifier.weight(1f),
+                    singleLine = true,
+                    label = { Text(when (tab) {
+                        "search" -> "搜索关键词"
+                        "discover" -> "频道（空为推荐）"
+                        "calendar" -> "日期 YYYYMMDD"
+                        else -> "书籍分类 ID"
+                    }) },
+                )
+                OutlinedButton(onClick = {
+                    activeQuery = query.trim()
+                    cursor = ""
+                    rows = emptyList()
+                    nextCursor = ""
+                    refresh++
+                }) { Text("查询") }
             }
         }
         if (actorId.isNotBlank()) {
@@ -198,10 +258,17 @@ internal fun OpenHongguoExploreScreen(
                         subtitle = row.subtitle.ifBlank {
                             if (row.episodes > 0) "全 ${row.episodes} 集" else ""
                         },
-                        enabled = row.actorUserId.isNotBlank() ||
+                        enabled = (tab == "rankGroups" && rankCell.isBlank() &&
+                                row.id.isNotBlank()) ||
+                            row.actorUserId.isNotBlank() ||
                             (row.playable && row.id.matches(Regex("[1-9][0-9]{0,29}"))),
                         onClick = {
-                            if (row.actorUserId.isNotBlank()) {
+                            if (tab == "rankGroups" && rankCell.isBlank()) {
+                                rankCell = row.id
+                                cursor = ""
+                                rows = emptyList()
+                                nextCursor = ""
+                            } else if (row.actorUserId.isNotBlank()) {
                                 actorId = row.actorUserId
                                 actor = null
                                 works = emptyList()
