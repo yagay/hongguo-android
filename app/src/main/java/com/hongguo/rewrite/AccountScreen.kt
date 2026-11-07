@@ -89,6 +89,9 @@ internal fun AccountScreen(model: DramaViewModel) {
         } else code = ""
     }
     var tab by rememberSaveable { mutableIntStateOf(0) }
+    LaunchedEffect(tab, account.profile?.id) {
+        if (tab == 2 && account.profile != null) model.account.loadLikes()
+    }
     var confirmLogout by remember { mutableStateOf(false) }
     var loginMethod by rememberSaveable { mutableIntStateOf(0) }
     var accountMenu by remember { mutableStateOf(false) }
@@ -452,9 +455,12 @@ internal fun AccountScreen(model: DramaViewModel) {
                             fontSize = 19.sp, fontWeight = FontWeight.Medium,
                             modifier = Modifier.weight(1f))
                         TextButton(onClick = {
-                            model.account.refresh()
-                            if (tab == 3) model.account.loadReservations()
-                        }, enabled = !account.busy,
+                            if (tab == 2) model.account.loadLikes(force = true)
+                            else {
+                                model.account.refresh()
+                                if (tab == 3) model.account.loadReservations()
+                            }
+                        }, enabled = !account.busy && !account.likesLoading,
                             modifier = Modifier.testTag("account_library_refresh")) {
                             Text("刷新", color = HongguoColors.accent, fontSize = 14.sp)
                         }
@@ -508,15 +514,11 @@ internal fun AccountScreen(model: DramaViewModel) {
                                 model.account.cloudFavorite(favorite.series.id, false)
                             })
                     }
-                    2 -> (account.history.map { it.series } +
-                        account.favorites.map { it.series })
-                        .distinctBy { it.id }
-                        .filter { it.id in libraryState.likedDramaIds }
-                        .map { series ->
-                            AccountGalleryEntry(series, "本机点赞",
-                                onOpen = { model.openCloudDrama(series) },
-                                saved = null, onSave = null)
-                        }
+                    2 -> account.likes.map { item ->
+                        AccountGalleryEntry(item.series, item.series.badge.ifBlank { "账号点赞" },
+                            onOpen = { model.openCloudDrama(item.series) },
+                            saved = null, onSave = null)
+                    }
                     else -> (account.upcoming.map { it to false } +
                         account.online.map { it to true })
                         .map { (reservation, online) ->
@@ -536,7 +538,10 @@ internal fun AccountScreen(model: DramaViewModel) {
                                 else "历史暂未加载成功，点击刷新重试"
                             1 -> if (account.favoritesLoaded) "还没有收藏的短剧"
                                 else "收藏暂未加载成功，点击刷新重试"
-                            2 -> "暂无已加载作品的本机点赞"
+                            2 -> if (account.likesLoading) "正在读取账号点赞…"
+                                else if (account.likesError != null) account.likesError.orEmpty()
+                                else if (account.likesLoaded) "账号暂无点赞作品"
+                                else "点赞记录尚未读取，请点击刷新"
                             else -> if (account.reservationsLoaded) "暂无预约短剧"
                                 else "预约尚未加载，点击刷新重试"
                         }, color = HongguoColors.muted, fontSize = 13.sp)
@@ -551,9 +556,9 @@ internal fun AccountScreen(model: DramaViewModel) {
                                 onOpen = item.onOpen, saved = item.saved,
                                 onSave = item.onSave,
                                 liked = item.series.id in libraryState.likedDramaIds,
-                                onLike = {
+                                onLike = if (tab == 2) null else ({
                                     model.toggleLocalLikeForDrama(item.series.id)
-                                }, modifier = Modifier.weight(1f))
+                                }), modifier = Modifier.weight(1f))
                         }
                         repeat(3 - line.size) { Spacer(Modifier.weight(1f)) }
                     }
@@ -622,7 +627,7 @@ private fun AccountPoster(
     saved: Boolean?,
     onSave: (() -> Unit)?,
     liked: Boolean,
-    onLike: () -> Unit,
+    onLike: (() -> Unit)?,
     modifier: Modifier = Modifier,
 ) {
     var menuOpen by remember { mutableStateOf(false) }
@@ -656,7 +661,7 @@ private fun AccountPoster(
                 if (saved != null && onSave != null) DropdownMenuItem(
                     text = { Text(if (saved) "取消云端收藏" else "加入云端收藏") },
                     onClick = { menuOpen = false; onSave() })
-                DropdownMenuItem(
+                if (onLike != null) DropdownMenuItem(
                     text = { Text(if (liked) "取消本机点赞" else "本机点赞") },
                     onClick = { menuOpen = false; onLike() })
             }
