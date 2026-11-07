@@ -93,7 +93,7 @@ class PhoneLogin(private val http: OkHttpClient) {
                     throw Failure(
                         describe(data) ?: "验证码校验失败（错误码 $errorCode）",
                         errorCode,
-                        errorCode == 1102,
+                        errorCode == 1102 || errorCode == 1202,
                     )
             }
         }
