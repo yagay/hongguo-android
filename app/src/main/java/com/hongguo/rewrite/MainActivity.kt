@@ -65,7 +65,8 @@ class MainActivity : ComponentActivity() {
 private fun HongguoApp(model: DramaViewModel = viewModel()) {
     val state by model.state.collectAsStateWithLifecycle()
     var mineOpen by rememberSaveable { mutableStateOf(false) }
-    val darkPlayer = state.detail != null && state.modal != Modal.SETTINGS
+    val darkPlayer = state.detail != null && !state.detailPageVisible &&
+        state.modal != Modal.SETTINGS
     val systemDark = isSystemInDarkTheme()
     val darkTheme = when (state.themeMode) {
         "dark" -> true
@@ -110,13 +111,17 @@ private fun HongguoApp(model: DramaViewModel = viewModel()) {
                 ) {
                     if (state.modal == Modal.ACCOUNT) model.closeAccount()
                     else if (state.modal != Modal.NONE) model.closeModal()
-                    else if (state.detail != null || state.preparingDetail || state.feedMode)
-                        model.closePlayer()
+                    else if (state.detail != null || state.preparingDetail || state.feedMode) {
+                        if (state.detailPageVisible) model.closePlayer()
+                        else model.backFromPlayer()
+                    }
                     else mineOpen = false
                 }
                 when {
                     state.modal == Modal.SETTINGS -> SettingsScreen(state, model)
                     state.modal == Modal.ACCOUNT -> AccountScreen(model)
+                    state.detailPageVisible && state.detail != null ->
+                        DramaDetailScreen(state, model)
                     state.detail != null -> key(state.detail?.drama?.id, state.feedMode) {
                         NativePlayer(state, model)
                     }
