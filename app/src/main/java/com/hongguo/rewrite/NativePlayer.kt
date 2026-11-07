@@ -134,13 +134,14 @@ internal fun NativePlayer(state: AppState, model: DramaViewModel) {
     }
     val context = LocalContext.current
     val selected = detail.episodes.getOrNull(state.episodeIndex)
-    val previousFeedDrama = if (state.feedMode) state.items.take(state.feedIndex)
+    val previousFeedDrama = if (state.feedMode) state.feedItems.take(state.feedIndex)
         .lastOrNull { it.id !in state.hiddenRecommendationIds } else null
-    val nextFeedDrama = if (state.feedMode) state.items.drop(state.feedIndex + 1)
+    val nextFeedDrama = if (state.feedMode) state.feedItems.drop(state.feedIndex + 1)
         .firstOrNull { it.id !in state.hiddenRecommendationIds } else null
     val activeFeedPage = if (previousFeedDrama != null) 1 else 0
     val nextFeedPage = state.feedMode &&
-        (nextFeedDrama != null || state.hasMore || state.moreLoading)
+        (nextFeedDrama != null || state.feedHasMore || state.feedLoading ||
+            state.feedError != null)
     val feedPages = activeFeedPage + 1 + if (nextFeedPage) 1 else 0
     val activePage = if (state.feedMode) activeFeedPage
         else state.episodeIndex.coerceIn(0, detail.episodes.lastIndex)
@@ -379,12 +380,25 @@ internal fun NativePlayer(state: AppState, model: DramaViewModel) {
                     } else null
                     Column(horizontalAlignment = Alignment.CenterHorizontally,
                         verticalArrangement = Arrangement.spacedBy(9.dp)) {
-                        Text(preview?.title ?: if (state.feedMode) "正在获取更多推荐"
+                        Text(preview?.title ?: if (state.feedMode) "正在获取官方推荐"
                              else detail.drama.title,
                             color = Color.White, fontSize = 19.sp)
-                        Text(if (state.feedMode) "正在切换短剧…"
-                             else "第 ${episode?.index ?: page + 1} 集",
-                            color = Color.LightGray)
+                        Text(if (state.feedMode) {
+                                when {
+                                    state.feedLoading -> "正在载入新短剧…"
+                                    state.feedError != null -> state.feedError
+                                    nextFeedDrama == null -> "继续上滑获取推荐"
+                                    else -> "正在切换短剧…"
+                                }
+                            } else "第 ${episode?.index ?: page + 1} 集",
+                            color = Color.LightGray, fontSize = 13.sp)
+                        if (state.feedMode && state.feedError != null &&
+                            !state.feedLoading && preview == null) {
+                            OutlinedButton(onClick = model::retryOfficialReels,
+                                modifier = Modifier.testTag("official_reels_retry")) {
+                                Text("重试官方推荐", color = Color.White)
+                            }
+                        }
                     }
                 }
             }
