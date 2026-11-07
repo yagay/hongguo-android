@@ -1302,7 +1302,8 @@ class DramaViewModel(application: Application) : AndroidViewModel(application) {
         val ep = s.detail?.episodes?.getOrNull(s.episodeIndex) ?: return
         if (ep.vid == expectedVid) {
             library.clearCheckpoint(s.detail.drama.id, expectedVid)
-            if (s.episodeIndex == s.detail.episodes.lastIndex) {
+            if (s.offlinePlaybackUri == null &&
+                s.episodeIndex == s.detail.episodes.lastIndex) {
                 val finished = state.value.completedDramaIds + s.detail.drama.id
                 prefs.edit().putStringSet("completed_drama_ids_v1", finished).apply()
                 mutable.update { it.copy(completedDramaIds = finished) }
