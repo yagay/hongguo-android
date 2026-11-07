@@ -221,7 +221,10 @@ private fun CatalogPageScreen(state: AppState, model: DramaViewModel) {
                     }
                     if (state.section == Section.RANK) {
                         Row(horizontalArrangement = Arrangement.spacedBy(8.dp)) {
-                            listOf("hot" to "热播", "new" to "新剧", "recommend" to "推荐").forEach { (key, label) ->
+                            (if (state.backend.isBlank())
+                                listOf("all" to "综合", "real" to "真人", "comic" to "漫剧", "ai" to "AI")
+                             else listOf("hot" to "热播", "new" to "新剧", "recommend" to "推荐"))
+                                .forEach { (key, label) ->
                                 FilterChip(selected = state.board == key, onClick = { model.board(key) },
                                     label = { Text(label) })
                             }
@@ -229,7 +232,7 @@ private fun CatalogPageScreen(state: AppState, model: DramaViewModel) {
                     }
                     if (state.section == Section.LATEST || state.section == Section.BROWSE) {
                         Row(horizontalArrangement = Arrangement.spacedBy(8.dp)) {
-                            listOf("short_play" to "短剧", "comic_series" to "漫剧", "ai_series" to "AI 剧")
+                            listOf("short_play" to "真人", "comic_series" to "漫剧", "ai_series" to "AI 剧")
                                 .forEach { (key, label) ->
                                     FilterChip(selected = state.genre == key, onClick = { model.genre(key) },
                                         label = { Text(label) })

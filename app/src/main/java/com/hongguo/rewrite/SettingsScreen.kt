@@ -81,13 +81,13 @@ internal fun SettingsScreen(state: AppState, model: DramaViewModel) {
         ) {
             item {
                 Text("内容来源", style = MaterialTheme.typography.titleMedium)
-                Text("默认读取官网公开的目录信息。完整视频播放和部分分类目前需要另行连接 hongguo-web 服务。",
+                Text("默认使用手机内置的原生内容和视频模块，可搜索、查看真人/漫剧/AI 分类并尝试直接播放。若上游限制或网络异常，设置中的诊断日志会显示错误阶段。",
                     style = MaterialTheme.typography.bodySmall)
             }
             item {
                 OutlinedTextField(
                     value = address, onValueChange = { address = it },
-                    label = { Text("网页版 API 地址（可选）") },
+                    label = { Text("可选：替代 API 服务地址") },
                     placeholder = { Text("https://your-server.example") },
                     singleLine = true,
                     modifier = Modifier.fillMaxWidth().testTag("backend_address")
@@ -103,13 +103,13 @@ internal fun SettingsScreen(state: AppState, model: DramaViewModel) {
                     OutlinedButton(onClick = {
                         address = ""
                         model.saveBackend("")
-                    }) { Text("使用官网目录") }
+                    }) { Text("恢复原生模式") }
                 }
                 state.settingsMessage?.let {
                     Text(it, style = MaterialTheme.typography.bodySmall,
                         color = MaterialTheme.colorScheme.primary)
                 }
-                Text("局域网 HTTP 仅供调试；公网 API 请使用 HTTPS。手机无法直接连接电脑的 127.0.0.1。",
+                Text("默认无需服务器；填写地址会改用独立部署的网页版服务。局域网 HTTP 仅供调试，公网使用 HTTPS。",
                     style = MaterialTheme.typography.bodySmall)
             }
             item { HorizontalDivider() }

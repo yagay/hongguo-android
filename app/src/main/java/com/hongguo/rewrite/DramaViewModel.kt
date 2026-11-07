@@ -2,6 +2,7 @@ package com.hongguo.rewrite
 
 import android.app.Application
 import android.net.Uri
+import com.hongguotv.core.RemoteVideo
 import java.io.File
 import java.io.IOException
 import kotlinx.coroutines.Dispatchers
@@ -21,6 +22,16 @@ class DramaViewModel(application: Application) : AndroidViewModel(application) {
     private val diagnostics = DiagnosticLog(File(application.filesDir, "diagnostics"),
         prefs.getBoolean("diagnostic_enabled", true))
     private val publicWebsite = NativeWebsiteSource(diagnostics = diagnostics)
+    private val nativeSource = NativeHongguoSource(diagnostics = diagnostics)
+    @Volatile private var activeNativeVideo: RemoteVideo? = null
+    @Volatile private var activeNativeVid: String? = null
+    fun nativeVideoFor(vid: String): RemoteVideo? =
+        if (activeNativeVid == vid) activeNativeVideo else null
+    private fun closeNativeVideo() {
+        activeNativeVideo?.close()
+        activeNativeVideo = null
+        activeNativeVid = null
+    }
     private var pageJob: Job? = null
     private var detailJob: Job? = null
     private var downloadJob: Job? = null
@@ -92,7 +103,7 @@ class DramaViewModel(application: Application) : AndroidViewModel(application) {
             try {
                 val result = if (api != null)
                     api.list(s.section, 0, s.genre, s.board, s.search, s.activeFilters, emptyList())
-                else publicWebsite.list(s.section, 0, s.search)
+                else nativeSource.list(s.section, 0, s.genre, s.board, s.search, s.activeFilters)
                 if (version != requestId) return@launch
                 mutable.update { it.copy(items = result.items, nextOffset = result.nextOffset,
                     hasMore = result.hasMore, loading = false) }
@@ -105,10 +116,16 @@ class DramaViewModel(application: Application) : AndroidViewModel(application) {
                 }
             }
         }
-        if (api != null && s.section == Section.BROWSE && s.filters.isEmpty()) {
+        if (s.section == Section.BROWSE && s.filters.isEmpty()) {
             viewModelScope.launch {
-                runCatching { api.filters(s.genre) }.onSuccess { rows ->
-                    if (version == requestId) mutable.update { it.copy(filters = rows) }
+                try {
+                    val groups = if (api != null) api.filters(s.genre)
+                        else nativeSource.filters(s.genre)
+                    if (version == requestId) mutable.update { it.copy(filters = groups) }
+                } catch (e: CancellationException) {
+                    throw e
+                } catch (e: Exception) {
+                    diagnostics.record("FILTERS", "LOAD_FAIL")
                 }
             }
         }
@@ -123,7 +140,8 @@ class DramaViewModel(application: Application) : AndroidViewModel(application) {
             try {
                 val result = source?.list(s.section, s.nextOffset, s.genre,
                     s.board, s.search, s.activeFilters, s.items.map { it.id })
-                    ?: publicWebsite.list(s.section, s.nextOffset, s.search)
+                    ?: nativeSource.list(s.section, s.nextOffset,
+                        s.genre, s.board, s.search, s.activeFilters)
                 if (version != requestId) return@launch
                 mutable.update {
                     it.copy(items = (it.items + result.items).distinctBy(Drama::id),
@@ -210,7 +228,7 @@ class DramaViewModel(application: Application) : AndroidViewModel(application) {
         refresh()
     }
 
-    fun cover(image: String): String = source?.coverUrl(image) ?: publicWebsite.coverUrl(image)
+    fun cover(image: String): String = source?.coverUrl(image) ?: nativeSource.coverUrl(image)
 
     fun open(drama: Drama, resumeEp: Int? = null) {
         detailJob?.cancel()
@@ -224,7 +242,7 @@ class DramaViewModel(application: Application) : AndroidViewModel(application) {
         detailJob = viewModelScope.launch {
             val started = System.nanoTime()
             try {
-                val result = api?.detail(drama.id) ?: publicWebsite.detail(drama.id)
+                val result = api?.detail(drama.id) ?: nativeSource.detail(drama.id)
                 if (version != detailId) return@launch
                 val resolved = result.copy(drama = result.drama.copy(
                     title = result.drama.title.ifBlank { drama.title },
@@ -254,24 +272,32 @@ class DramaViewModel(application: Application) : AndroidViewModel(application) {
         if (index !in detail.episodes.indices) return
         val api = source
         val version = ++detailId
+        val vid = detail.episodes[index].vid
+        detailJob?.cancel()
+        closeNativeVideo()
         firstFrameFor = null
         mutable.update { it.copy(episodeIndex = index, playbackUrl = null,
-            playing = false, playbackError = if (api == null)
-                "PLAYBACK_SOURCE_UNAVAILABLE: 官网只提供分集信息；原生视频取址尚未移植，播放需连接网页版服务"
-                else null) }
-        detailJob?.cancel()
-        if (api == null) {
-            diagnostics.record("PLAYBACK", "SOURCE_UNAVAILABLE")
-            return
-        }
+            playing = false, playbackError = null) }
         diagnostics.record("PLAYBACK", "START")
         detailJob = viewModelScope.launch {
             val started = System.nanoTime()
             try {
-                val url = api.playableUrl(detail.episodes[index].vid)
-                if (version != detailId) return@launch
-                mutable.update { it.copy(playbackUrl = url, playing = true) }
-                diagnostics.record("PLAYBACK", "URL_READY", elapsed(started))
+                if (api != null) {
+                    val url = api.playableUrl(vid)
+                    if (version != detailId) return@launch
+                    mutable.update { it.copy(playbackUrl = url, playing = true) }
+                } else {
+                    val video = nativeSource.openVideo(vid)
+                    if (version != detailId) {
+                        video.close()
+                        return@launch
+                    }
+                    activeNativeVideo = video
+                    activeNativeVid = vid
+                    mutable.update { it.copy(playbackUrl = "native://episode/" + vid,
+                        playing = true) }
+                }
+                diagnostics.record("PLAYBACK", "SOURCE_READY", elapsed(started))
             } catch (e: CancellationException) {
                 throw e
             } catch (e: Exception) {
@@ -311,6 +337,7 @@ class DramaViewModel(application: Application) : AndroidViewModel(application) {
     fun closePlayer() {
         ++detailId
         detailJob?.cancel()
+        closeNativeVideo()
         firstFrameFor = null
         mutable.update { it.copy(detail = null, playbackUrl = null,
             playbackError = null, preparingDetail = false, playing = false) }
@@ -339,11 +366,12 @@ class DramaViewModel(application: Application) : AndroidViewModel(application) {
     }
 
     fun share(message: String) {
-        val api = source ?: return
+        val api = source
         detailJob?.cancel()
         detailJob = viewModelScope.launch {
             try {
-                val (id, ep) = api.resolveShare(message)
+                val (id, ep) = if (api != null) api.resolveShare(message)
+                    else nativeSource.resolveShare(message)
                 mutable.update { it.copy(modal = Modal.NONE) }
                 open(Drama(id, "分享的短剧"), ep)
             } catch (e: CancellationException) {
@@ -356,7 +384,13 @@ class DramaViewModel(application: Application) : AndroidViewModel(application) {
 
     fun download(from: Int, to: Int) {
         val s = state.value
-        val api = source ?: return
+        val api = source
+        if (api == null) {
+            diagnostics.record("DOWNLOAD", "NATIVE_PENDING")
+            mutable.update { it.copy(playbackError =
+                "本机下载尚未接入；原生播放已经独立，下载需要继续完成本地文件保存模块") }
+            return
+        }
         val id = s.detail?.drama?.id ?: return
         downloadJob = viewModelScope.launch {
             try {

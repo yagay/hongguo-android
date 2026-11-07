@@ -29,7 +29,7 @@ data class AppState(
     val section: Section = Section.RECOMMEND,
     val search: String = "",
     val genre: String = "short_play",
-    val board: String = "hot",
+    val board: String = "all",
     val filters: List<FilterGroup> = emptyList(),
     val activeFilters: Map<String, String> = emptyMap(),
     val items: List<Drama> = emptyList(),

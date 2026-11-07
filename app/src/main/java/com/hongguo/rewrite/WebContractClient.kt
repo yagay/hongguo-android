@@ -143,7 +143,7 @@ class WebContractClient(
         val params = mutableMapOf("limit" to "30")
         val path = when (section) {
             Section.RECOMMEND -> { params["board"] = "recommend"; "rank" }
-            Section.RANK -> { params["board"] = board; "rank" }
+            Section.RANK -> { params["board"] = if (board == "all") "hot" else board; "rank" }
             Section.LATEST -> {
                 params["genre"] = genre; params["only_today"] = "false"; "latest"
             }
