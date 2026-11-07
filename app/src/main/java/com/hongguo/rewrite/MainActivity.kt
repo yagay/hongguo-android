@@ -24,6 +24,9 @@ import androidx.compose.runtime.Composable
 import androidx.compose.runtime.SideEffect
 import androidx.compose.runtime.getValue
 import androidx.compose.runtime.key
+import androidx.compose.runtime.mutableStateOf
+import androidx.compose.runtime.setValue
+import androidx.compose.runtime.saveable.rememberSaveable
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.graphics.Color
@@ -48,6 +51,7 @@ class MainActivity : ComponentActivity() {
 @Composable
 private fun HongguoApp(model: DramaViewModel = viewModel()) {
     val state by model.state.collectAsStateWithLifecycle()
+    var mineOpen by rememberSaveable { mutableStateOf(false) }
     val darkPlayer = state.detail != null && state.modal != Modal.SETTINGS
     val activity = LocalContext.current as? Activity
     SideEffect {
@@ -75,11 +79,12 @@ private fun HongguoApp(model: DramaViewModel = viewModel()) {
             Box(Modifier.fillMaxSize().safeDrawingPadding().imePadding()) {
                 BackHandler(
                     enabled = state.detail != null || state.preparingDetail ||
-                        state.modal != Modal.NONE,
+                        state.modal != Modal.NONE || mineOpen,
                 ) {
                     if (state.modal == Modal.ACCOUNT) model.closeAccount()
                     else if (state.modal != Modal.NONE) model.closeModal()
-                    else model.closePlayer()
+                    else if (state.detail != null || state.preparingDetail) model.closePlayer()
+                    else mineOpen = false
                 }
                 when {
                     state.modal == Modal.SETTINGS -> SettingsScreen(state, model)
@@ -99,7 +104,8 @@ private fun HongguoApp(model: DramaViewModel = viewModel()) {
                             }
                         }
                     }
-                    else -> CatalogScreen(state, model)
+                    mineOpen -> MyScreen(state, model, onBack = { mineOpen = false })
+                    else -> CatalogScreen(state, model, onMine = { mineOpen = true })
                 }
                 LibrarySheets(state, model)
             }
