@@ -538,8 +538,18 @@ class DramaViewModel(application: Application) : AndroidViewModel(application) {
                 }
                 if (pendingFeedAdvance) {
                     pendingFeedAdvance = false
-                    navigateFeed(1)
+                    // A duplicate-only upstream response must not repeatedly
+                    // page forever while the user remains on the last reel.
+                    if (state.value.feedItems.size > snapshot.feedItems.size) navigateFeed(1)
                 } else prefetchFollowingFeedItem(state.value.feedIndex)
+                val latest = state.value
+                if (!needsFirstDrama && OfficialReelsPolicy.needsMore(
+                        latest.feedItems, latest.feedIndex, latest.hiddenRecommendationIds,
+                        latest.feedHasMore, latest.feedLoading) &&
+                    latest.feedItems.size > snapshot.feedItems.size) {
+                    // One request ahead, bounded by the page's new visible items.
+                    loadOfficialReels()
+                }
             } catch (cancel: CancellationException) {
                 throw cancel
             } catch (error: Exception) {
@@ -1244,9 +1254,9 @@ class DramaViewModel(application: Application) : AndroidViewModel(application) {
             rememberSwiped(selected.id)
             open(selected, resumeEp = 1, feed = true)
             prefetchFollowingFeedItem(index)
-            if (direction > 0 &&
-                index >= current.feedItems.lastIndex - 2 && current.feedHasMore &&
-                !current.feedLoading) loadOfficialReels()
+            if (direction > 0 && OfficialReelsPolicy.needsMore(
+                    current.feedItems, index, current.hiddenRecommendationIds,
+                    current.feedHasMore, current.feedLoading)) loadOfficialReels()
         } else if (direction > 0 && current.feedHasMore) {
             pendingFeedAdvance = true
             if (!current.feedLoading) loadOfficialReels()
