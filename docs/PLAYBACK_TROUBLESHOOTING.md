@@ -66,3 +66,16 @@
 如果更新后仍失败，按新错误码判断：DNS/TLS/timeout 可以比较 Wi-Fi 与蜂窝网络；HTTP 或服务业务拒绝请记录状态码和大致时间（不发送账号和 Cookie），它不是本机视频解码问题；INVALID_IDS/INVALID_JSON 提示上游响应与当前注册协议不匹配，不能通过盲目延长播放器缓冲解决。
 
 这些改动**不能保证**上游注册服务接受第三方请求。切换网络或等待可能帮助排查，但修复最终依赖真实错误码，必要时使用服务提供的官方客户端或正式支持的接口。
+
+## 注册传输兼容性（2026-11-07）
+
+若诊断是 `DEVICE_REGISTER_NETWORK_FAILED` 且 **没有** `http_status`，表示请求没有取得可用 HTTP 响应，**并不等于服务端明确拒绝注册**。之前注册专用的 `HttpURLConnection` 通道会把连接拒绝、连接中断和提前关闭等 I/O 统统缩为 `IOException("网络请求失败")`，无法定位。
+
+现改为 `RegistrationHttp` 单一注册传输模块：
+- **首选** App 已依赖的 OkHttp 4.12；遵循设备的 HTTPS/系统代理配置，并可协商 HTTP/2。单次连接、发送与总预算均有限时。
+- **回退**：只有首选方式发生 I/O/握手/连接异常时，才使用原 `HttpURLConnection` 对 **同一域名、相同 POST 二进制内容和原始注册头** 重试一次。HTTP 状态码或格式明确错误不会触发此传输回退。不存在第三方代理/隐藏转发/随机域名，也不会绕过服务端身份审查。
+- 如果两个传输都失败，安全诊断报告增加 `primary_transport` 和 `fallback_transport`，如 `DEVICE_REGISTER_CONNECT_FAILED`、`DEVICE_REGISTER_SOCKET_FAILED`、`DEVICE_REGISTER_EOF`、`DEVICE_REGISTER_UNREACHABLE` 或 `DEVICE_REGISTER_NETWORK_FAILED`。
+- 两套传输都是同步调用，不引入新的后台或持续重试任务。仍遵守已有的 10 秒注册失败冷却。
+- **不可保证成功**：两条连接路径均不可用可能是网络出口/系统代理/运营商连通性问题，或者服务端临时限制。客户端无法替网络提供实际连接。
+
+复现时，请复制完整诊断（不含 URL/凭据）；优先比较同一台手机上的 Wi-Fi、移动数据和代理/私有 DNS 的不同结果。若两条传输都失败且 code 不同，保留两个原因便于继续定位。若改为 `DEVICE_REGISTER_HTTP` 或 `DEVICE_REGISTER_REJECTED`，说明网络已经能取得 HTTP/业务回应，不应继续按纯连接问题排查。
