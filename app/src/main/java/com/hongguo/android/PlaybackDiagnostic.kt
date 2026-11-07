@@ -20,6 +20,8 @@ data class PlaybackDiagnostic(
     val attempts: Int? = null,
     val httpStatus: Int? = null,
     val responseBytes: Int? = null,
+    val primaryTransportFailure: String? = null,
+    val fallbackTransportFailure: String? = null,
 ) {
     /** A privacy-safe support report. No episode, account, signature or provider data. */
     fun safeReport(): String = buildString {
@@ -29,6 +31,14 @@ data class PlaybackDiagnostic(
         attempts?.takeIf { it > 0 }?.let { append("attempts=").append(it).append('\n') }
         httpStatus?.takeIf { it in 100..599 }?.let { append("http_status=").append(it).append('\n') }
         responseBytes?.takeIf { it >= 0 }?.let { append("response_bytes=").append(it).append('\n') }
+        // Only fixed allowlisted diagnostic identifiers; never append exception messages.
+        val codePattern = Regex("^DEVICE_REGISTER_[A-Z0-9_]{1,48}$")
+        primaryTransportFailure?.takeIf { codePattern.matches(it) }?.let {
+            append("primary_transport=").append(it).append('\n')
+        }
+        fallbackTransportFailure?.takeIf { codePattern.matches(it) }?.let {
+            append("fallback_transport=").append(it).append('\n')
+        }
     }
 
     companion object {
@@ -116,7 +126,12 @@ data class PlaybackDiagnostic(
                 "DEVICE_REGISTER_INVALID_IDS" -> "注册服务未提供有效设备编号，无法获取播放信息。"
                 "DEVICE_REGISTER_REJECTED" -> "注册服务未接受本次请求，暂时无法初始化播放。"
                 "DEVICE_REGISTER_RESPONSE_TOO_LARGE" -> "注册服务响应不符合客户端处理限制。"
-                "DEVICE_REGISTER_NETWORK_FAILED" -> "无法完成注册请求，请检查网络后重试。"
+                "DEVICE_REGISTER_NETWORK_FAILED" -> "无法完成注册请求，请检查网络、代理或服务连接后重试。"
+                "DEVICE_REGISTER_CONNECT_FAILED" -> "注册服务无法建立 TCP 连接，请尝试其他网络。"
+                "DEVICE_REGISTER_SOCKET_FAILED" -> "注册连接被中断，请检查网络、代理及防火墙设置。"
+                "DEVICE_REGISTER_UNREACHABLE" -> "当前网络无法到达注册服务，请尝试其他网络。"
+                "DEVICE_REGISTER_EOF" -> "注册服务提前关闭连接，请尝试其他网络或稍后重试。"
+                "DEVICE_REGISTER_PROTOCOL_FAILED" -> "注册服务传输协议不兼容，请稍后重试。"
                 else -> "播放设备初始化失败，请稍后重试。"
             }
             return PlaybackDiagnostic(
@@ -125,7 +140,9 @@ data class PlaybackDiagnostic(
                 stageLabel = "设备注册",
                 message = message,
                 httpStatus = status,
-                responseBytes = bytes
+                responseBytes = bytes,
+                primaryTransportFailure = error.primaryTransportFailure,
+                fallbackTransportFailure = error.fallbackTransportFailure
             )
         }
 
