@@ -75,18 +75,20 @@ internal object PlaybackSessionCoordinator {
                 idle.remove(first.key)
                 first.value.video.session?.let(toClose::add)
             }
+            // Mark evictions closing before releasing the lock, or a late release
+            // could put a session back into the pool while its closer is pending.
+            toClose.forEach(::closeAsync)
         }
-        toClose.forEach(::closeAsync)
         val generation = entry.generation
         cleanupScope.launch {
             delay(IDLE_MS)
-            val expired = synchronized(guard) {
+            synchronized(guard) {
                 if (idle[video.episodeId] === entry && entry.generation == generation) {
                     idle.remove(video.episodeId)
-                    true
-                } else false
+                    // The session is marked closing while holding the same checkout lock.
+                    closeAsync(session)
+                }
             }
-            if (expired) closeAsync(session)
         }
     }
 
