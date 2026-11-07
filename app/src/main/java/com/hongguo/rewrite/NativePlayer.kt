@@ -3,6 +3,8 @@ package com.hongguo.rewrite
 import androidx.activity.compose.BackHandler
 import androidx.activity.compose.rememberLauncherForActivityResult
 import androidx.activity.result.contract.ActivityResultContracts
+import android.provider.DocumentsContract
+import android.content.Intent
 import androidx.compose.foundation.background
 import androidx.compose.foundation.clickable
 import androidx.compose.foundation.rememberScrollState
@@ -166,6 +168,35 @@ internal fun NativePlayer(state: AppState, model: DramaViewModel) {
         val vid = pendingDownloadVid
         pendingDownloadVid = null
         if (uri != null && vid != null) model.downloadNative(vid, uri)
+    }
+    var batchEpisodes by remember { mutableStateOf(emptyList<Episode>()) }
+    val batchFolder = rememberLauncherForActivityResult(
+        ActivityResultContracts.OpenDocumentTree()
+    ) { folder ->
+        val episodesToSave = batchEpisodes
+        batchEpisodes = emptyList()
+        if (folder != null && episodesToSave.isNotEmpty()) {
+            runCatching {
+                context.contentResolver.takePersistableUriPermission(
+                    folder, Intent.FLAG_GRANT_READ_URI_PERMISSION or
+                        Intent.FLAG_GRANT_WRITE_URI_PERMISSION)
+            }
+            val safeTitle = detail.drama.title.replace(
+                Regex("""[^\p{L}\p{N}_-]"""), "_"
+            ).take(35).ifBlank { "Hongguo" }
+            episodesToSave.forEach { ep ->
+                val uri = runCatching {
+                    DocumentsContract.createDocument(context.contentResolver, folder,
+                        "video/mp4", safeTitle + "-EP" + ep.index + ".mp4")
+                }.getOrNull()
+                if (uri != null) model.downloadNative(ep.vid, uri)
+            }
+        }
+    }
+    val downloadBatch: (Int) -> Unit = { count ->
+        val from = state.episodeIndex
+        batchEpisodes = detail.episodes.drop(from).take(count)
+        if (batchEpisodes.isNotEmpty()) batchFolder.launch(null)
     }
     val downloadSelected: () -> Unit = {
         selected?.let { ep ->
@@ -434,8 +465,24 @@ internal fun NativePlayer(state: AppState, model: DramaViewModel) {
                 .verticalScroll(rememberScrollState())
                 .padding(horizontal = 16.dp, vertical = 12.dp),
             verticalArrangement = Arrangement.spacedBy(8.dp)) {
-            Text("选集 · 共 ${detail.episodes.size} 集",
-                style = MaterialTheme.typography.titleMedium)
+            Row(Modifier.fillMaxWidth(), verticalAlignment = Alignment.CenterVertically) {
+                Text("选集 · 共 ${detail.episodes.size} 集",
+                    style = MaterialTheme.typography.titleMedium,
+                    modifier = Modifier.weight(1f))
+                if (state.backend.isBlank()) {
+                    TextButton(onClick = { downloadBatch(5) },
+                        modifier = Modifier.testTag("batch_download_5")) {
+                        Text("下载当前起5集")
+                    }
+                } else {
+                    TextButton(onClick = {
+                        model.download(detail.episodes[state.episodeIndex].index,
+                            detail.episodes.drop(state.episodeIndex).take(5)
+                                .lastOrNull()?.index ?: detail.episodes[state.episodeIndex].index)
+                        showEpisodes = false
+                    }) { Text("下载5集") }
+                }
+            }
             LazyVerticalGrid(
                 columns = GridCells.Fixed(5),
                 modifier = Modifier.fillMaxWidth().heightIn(max = 460.dp),
