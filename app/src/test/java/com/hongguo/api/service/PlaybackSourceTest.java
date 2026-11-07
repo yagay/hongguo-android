@@ -325,6 +325,90 @@ public class PlaybackSourceTest {
         }
     }
 
+    @Test public void registrationPreferredTransportSuccessDoesNotRetry() throws Exception {
+        AtomicInteger primary = new AtomicInteger(), fallback = new AtomicInteger();
+        PlaybackDevice.Reply reply = RegistrationHttp.postWithFallback(
+                (url, headers, body) -> {
+                    primary.incrementAndGet();
+                    return okReply();
+                },
+                (url, headers, body) -> {
+                    fallback.incrementAndGet();
+                    throw new AssertionError("No fallback after HTTP response");
+                },
+                PlaybackDevice.REGISTER_URL, java.util.Collections.emptyMap(), new byte[]{1, 2, 3});
+        assertEquals(200, reply.status);
+        assertEquals(1, primary.get());
+        assertEquals(0, fallback.get());
+    }
+
+    @Test public void registrationFallbackPreservesExactBodyHeadersAndHost() throws Exception {
+        AtomicInteger preferredCount = new AtomicInteger(), fallbackCount = new AtomicInteger();
+        Map<String, String> headers = new java.util.LinkedHashMap<>();
+        headers.put("Content-Type", "application/octet-stream;tt-data=a");
+        headers.put("x-ss-stub", "DEADBEEF");
+        byte[] body = new byte[]{1, 2, 3};
+        PlaybackDevice.Reply reply = RegistrationHttp.postWithFallback(
+                (url, h, b) -> {
+                    preferredCount.incrementAndGet();
+                    assertEquals(PlaybackDevice.REGISTER_URL, url);
+                    assertSame(headers, h);
+                    assertSame(body, b);
+                    throw new java.net.ConnectException("private-token.secret");
+                },
+                (url, h, b) -> {
+                    fallbackCount.incrementAndGet();
+                    assertEquals(PlaybackDevice.REGISTER_URL, url);
+                    assertSame(headers, h);
+                    assertSame(body, b);
+                    return okReply();
+                }, PlaybackDevice.REGISTER_URL, headers, body);
+        assertEquals(200, reply.status);
+        assertEquals(1, preferredCount.get());
+        assertEquals(1, fallbackCount.get());
+    }
+
+    @Test public void registrationDoubleTransportFailureHasRedactedIndependentReasons() throws Exception {
+        try {
+            RegistrationHttp.postWithFallback(
+                    (url, h, body) -> {
+                        throw new java.net.ConnectException("https://secret.primary/?token=abc");
+                    },
+                    (url, h, body) -> {
+                        throw new java.io.EOFException("Authorization: Bearer secret-secondary");
+                    }, PlaybackDevice.REGISTER_URL, java.util.Collections.emptyMap(), new byte[]{8});
+            fail("Expected both transports to fail");
+        } catch (PlaybackDevice.RegistrationException failure) {
+            assertEquals("DEVICE_REGISTER_EOF", failure.getCode());
+            assertEquals("DEVICE_REGISTER_CONNECT_FAILED", failure.getPrimaryTransportFailure());
+            assertEquals("DEVICE_REGISTER_EOF", failure.getFallbackTransportFailure());
+            String report = com.hongguo.android.PlaybackDiagnostic.Companion
+                    .fromPreparationFailure(failure).safeReport();
+            assertTrue(report.contains("primary_transport=DEVICE_REGISTER_CONNECT_FAILED"));
+            assertTrue(report.contains("fallback_transport=DEVICE_REGISTER_EOF"));
+            assertFalse(report.contains("secret.primary"));
+            assertFalse(report.contains("secret-secondary"));
+        }
+    }
+
+    @Test public void registrationProtocolResponseFailureDoesNotRetryTransport() throws Exception {
+        AtomicInteger calls = new AtomicInteger();
+        try {
+            RegistrationHttp.postWithFallback(
+                    (url, h, body) -> {
+                        throw new PlaybackDevice.RegistrationException("DEVICE_REGISTER_INVALID_JSON", 200, -1);
+                    },
+                    (url, h, body) -> {
+                        calls.incrementAndGet();
+                        return okReply();
+                    }, PlaybackDevice.REGISTER_URL, java.util.Collections.emptyMap(), new byte[]{8});
+            fail("Invalid JSON must remain terminal");
+        } catch (PlaybackDevice.RegistrationException failure) {
+            assertEquals("DEVICE_REGISTER_INVALID_JSON", failure.getCode());
+        }
+        assertEquals(0, calls.get());
+    }
+
     // ==================== 签名播放请求 ====================
 
     @Test public void playbackRequestIsSignedWithTheRegisteredIdentityAndCookie() throws Exception {
