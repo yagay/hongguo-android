@@ -1,6 +1,10 @@
 package com.hongguo.rewrite
 
 import android.app.Application
+import android.net.Uri
+import java.io.File
+import java.io.IOException
+import kotlinx.coroutines.Dispatchers
 import androidx.lifecycle.AndroidViewModel
 import androidx.lifecycle.viewModelScope
 import kotlinx.coroutines.CancellationException
@@ -14,7 +18,9 @@ class DramaViewModel(application: Application) : AndroidViewModel(application) {
     private val library = LibraryStore(application)
     private val prefs = application.getSharedPreferences("web_rewrite_settings", 0)
     private var source: WebContractClient? = null
-    private val publicWebsite = NativeWebsiteSource()
+    private val diagnostics = DiagnosticLog(File(application.filesDir, "diagnostics"),
+        prefs.getBoolean("diagnostic_enabled", true))
+    private val publicWebsite = NativeWebsiteSource(diagnostics = diagnostics)
     private var pageJob: Job? = null
     private var detailJob: Job? = null
     private var downloadJob: Job? = null
@@ -25,13 +31,16 @@ class DramaViewModel(application: Application) : AndroidViewModel(application) {
 
     private val mutable = MutableStateFlow(
         AppState(backend = prefs.getString("backend", "").orEmpty(),
-            library = library.list(false), favorites = library.list(true))
+            library = library.list(false), favorites = library.list(true),
+            logEnabled = diagnostics.enabled)
     )
     val state = mutable.asStateFlow()
 
     init {
+        diagnostics.record("APP", "START")
         if (state.value.backend.isNotBlank()) {
-            source = runCatching { WebContractClient(state.value.backend) }.getOrNull()
+            source = runCatching { WebContractClient(state.value.backend,
+                diagnostics = diagnostics) }.getOrNull()
         }
         refresh()
     }
@@ -77,7 +86,9 @@ class DramaViewModel(application: Application) : AndroidViewModel(application) {
         mutable.update { it.copy(items = emptyList(), loading = true, moreLoading = false,
             error = null, hasMore = false, nextOffset = 0) }
         val api = source
+        diagnostics.record("CATALOG", if (api != null) "SOURCE_API" else "SOURCE_WEBSITE")
         pageJob = viewModelScope.launch {
+            val started = System.nanoTime()
             try {
                 val result = if (api != null)
                     api.list(s.section, 0, s.genre, s.board, s.search, s.activeFilters, emptyList())
@@ -85,6 +96,7 @@ class DramaViewModel(application: Application) : AndroidViewModel(application) {
                 if (version != requestId) return@launch
                 mutable.update { it.copy(items = result.items, nextOffset = result.nextOffset,
                     hasMore = result.hasMore, loading = false) }
+                diagnostics.record("CATALOG", "SUCCESS", elapsed(started))
             } catch (e: CancellationException) {
                 throw e
             } catch (e: Exception) {
@@ -127,26 +139,74 @@ class DramaViewModel(application: Application) : AndroidViewModel(application) {
         }
     }
 
-    fun show(modal: Modal) = mutable.update { it.copy(modal = modal) }
+    fun show(modal: Modal) {
+        mutable.update { it.copy(modal = modal) }
+        if (modal == Modal.SETTINGS) refreshDiagnostics()
+    }
     fun closeModal() = show(Modal.NONE)
+
+    fun refreshDiagnostics() {
+        viewModelScope.launch(Dispatchers.IO) {
+            val snapshot = diagnostics.snapshot()
+            mutable.update { it.copy(logText = snapshot) }
+        }
+    }
+
+    fun setLoggingEnabled(enabled: Boolean) {
+        diagnostics.enabled = enabled
+        prefs.edit().putBoolean("diagnostic_enabled", enabled).apply()
+        if (enabled) diagnostics.record("SETTINGS", "ENABLED")
+        mutable.update { it.copy(logEnabled = enabled,
+            logNotice = if (enabled) "日志记录已开启" else "日志记录已关闭") }
+        refreshDiagnostics()
+    }
+
+    fun clearDiagnostics() {
+        viewModelScope.launch(Dispatchers.IO) {
+            diagnostics.clear()
+            mutable.update { it.copy(logText = diagnostics.snapshot(),
+                logNotice = "日志已清空") }
+        }
+    }
+
+    fun exportDiagnostics(uri: Uri) {
+        diagnostics.record("SETTINGS", "EXPORT_REQUEST")
+        viewModelScope.launch(Dispatchers.IO) {
+            try {
+                val output = getApplication<Application>().contentResolver.openOutputStream(uri, "w")
+                    ?: throw IOException("无法打开导出文件")
+                output.writer(Charsets.UTF_8).use { it.write(diagnostics.snapshot()) }
+                diagnostics.record("SETTINGS", "EXPORT_OK")
+                mutable.update { it.copy(logNotice = "诊断日志已导出为 TXT 文件") }
+            } catch (error: Exception) {
+                diagnostics.record("SETTINGS", "EXPORT_FAIL")
+                mutable.update { it.copy(logNotice = "导出失败，请重新选择保存位置") }
+            }
+        }
+    }
+
+    private fun elapsed(started: Long): Long =
+        (System.nanoTime() - started).coerceAtLeast(0L) / 1_000_000L
 
     fun saveBackend(value: String) {
         if (value.isBlank()) {
             source = null
             prefs.edit().remove("backend").apply()
-            mutable.update { it.copy(backend = "", modal = Modal.NONE) }
+            diagnostics.record("SETTINGS", "SOURCE_WEBSITE")
+            mutable.update { it.copy(backend = "", settingsMessage = "已切换为官网公开目录模式") }
             refresh()
             return
         }
         val candidate = runCatching { WebContractClient(value) }
         if (candidate.isFailure) {
-            mutable.update { it.copy(error = "地址格式错误：" +
-                (candidate.exceptionOrNull()?.message ?: "未知错误")) }
+            diagnostics.record("SETTINGS", "INVALID_ADDRESS")
+            mutable.update { it.copy(settingsMessage = "API 地址格式错误，请检查域名和协议") }
             return
         }
-        source = candidate.getOrThrow()
+        source = WebContractClient(value.trim(), diagnostics = diagnostics)
         prefs.edit().putString("backend", value.trim()).apply()
-        mutable.update { it.copy(backend = value.trim(), modal = Modal.NONE) }
+        diagnostics.record("SETTINGS", "SOURCE_API")
+        mutable.update { it.copy(backend = value.trim(), settingsMessage = "API 地址已保存") }
         refresh()
     }
 
@@ -160,7 +220,9 @@ class DramaViewModel(application: Application) : AndroidViewModel(application) {
         mutable.update { it.copy(detail = null, preparingDetail = true,
             playbackError = null, playbackUrl = null, playing = false) }
         val api = source
+        diagnostics.record("DETAIL", "START")
         detailJob = viewModelScope.launch {
+            val started = System.nanoTime()
             try {
                 val result = api?.detail(drama.id) ?: publicWebsite.detail(drama.id)
                 if (version != detailId) return@launch
@@ -176,6 +238,7 @@ class DramaViewModel(application: Application) : AndroidViewModel(application) {
                     .takeIf { it >= 0 } ?: 0
                 mutable.update { it.copy(detail = resolved, episodeIndex = index,
                     preparingDetail = false) }
+                diagnostics.record("DETAIL", "SUCCESS", elapsed(started))
                 play(index)
             } catch (e: CancellationException) {
                 throw e
@@ -197,12 +260,18 @@ class DramaViewModel(application: Application) : AndroidViewModel(application) {
                 "PLAYBACK_SOURCE_UNAVAILABLE: 官网只提供分集信息；原生视频取址尚未移植，播放需连接网页版服务"
                 else null) }
         detailJob?.cancel()
-        if (api == null) return
+        if (api == null) {
+            diagnostics.record("PLAYBACK", "SOURCE_UNAVAILABLE")
+            return
+        }
+        diagnostics.record("PLAYBACK", "START")
         detailJob = viewModelScope.launch {
+            val started = System.nanoTime()
             try {
                 val url = api.playableUrl(detail.episodes[index].vid)
                 if (version != detailId) return@launch
                 mutable.update { it.copy(playbackUrl = url, playing = true) }
+                diagnostics.record("PLAYBACK", "URL_READY", elapsed(started))
             } catch (e: CancellationException) {
                 throw e
             } catch (e: Exception) {
@@ -218,6 +287,7 @@ class DramaViewModel(application: Application) : AndroidViewModel(application) {
     fun mediaError(expectedVid: String, message: String) {
         if (state.value.detail?.episodes?.getOrNull(state.value.episodeIndex)?.vid != expectedVid) return
         mutable.update { it.copy(playbackError = message, playing = false) }
+        diagnostics.record("MEDIA", "FAIL_" + message.substringBefore(" · "))
     }
 
     /** A history entry is created only after Media3 reports an actual rendered video frame. */
@@ -226,6 +296,7 @@ class DramaViewModel(application: Application) : AndroidViewModel(application) {
         val ep = s.detail?.episodes?.getOrNull(s.episodeIndex) ?: return
         if (ep.vid != expectedVid || firstFrameFor == ep.vid) return
         firstFrameFor = ep.vid
+        diagnostics.record("MEDIA", "FIRST_FRAME")
         library.record(s.detail.drama, ep.index)
         updateLibrary()
     }
@@ -311,6 +382,17 @@ class DramaViewModel(application: Application) : AndroidViewModel(application) {
         }
     }
 
-    private fun errorText(stage: String, error: Exception): String =
-        PlaybackProblem.describe(stage, error)
+    private fun errorText(stage: String, error: Exception): String {
+        val description = PlaybackProblem.describe(stage, error)
+        val sourceStage = when (stage) {
+            "加载剧集", "加载更多" -> "CATALOG"
+            "读取剧集列表" -> "DETAIL"
+            "准备播放" -> "PLAYBACK"
+            "下载" -> "DOWNLOAD"
+            "解析分享" -> "SHARE"
+            else -> "APP"
+        }
+        diagnostics.record(sourceStage, "FAIL_" + description.substringBefore(" · "))
+        return description
+    }
 }

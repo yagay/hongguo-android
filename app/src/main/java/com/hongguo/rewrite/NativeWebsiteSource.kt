@@ -21,6 +21,7 @@ class NativeWebsiteSource(
     private val http: OkHttpClient = OkHttpClient.Builder()
         .connectTimeout(10, TimeUnit.SECONDS).readTimeout(12, TimeUnit.SECONDS)
         .callTimeout(16, TimeUnit.SECONDS).build(),
+    private val diagnostics: DiagnosticLog? = null,
 ) {
     init {
         require(origin.scheme == "https" || origin.host == "127.0.0.1" || origin.host == "localhost")
@@ -100,13 +101,26 @@ class NativeWebsiteSource(
                 .header("Accept-Language", "zh-CN,zh;q=0.9")
                 .header("User-Agent", "Mozilla/5.0 (Linux; Android 16) AppleWebKit/537.36 Chrome/122.0 Mobile Safari/537.36")
                 .build()
-            http.newCall(request).execute().use { response ->
-                if (!response.isSuccessful) throw IOException("WEBSITE_HTTP_" + response.code)
-                val body = response.body ?: throw IOException("WEBSITE_EMPTY_RESPONSE")
-                val html = body.charStream().use { it.readText().take(MAX_HTML + 1) }
-                if (html.length > MAX_HTML) throw IOException("WEBSITE_RESPONSE_TOO_LARGE")
-                if (html.isBlank()) throw IOException("WEBSITE_EMPTY_RESPONSE")
-                html
+            val started = System.nanoTime()
+            var status = 0
+            try {
+                http.newCall(request).execute().use { response ->
+                    status = response.code
+                    if (!response.isSuccessful) throw IOException("WEBSITE_HTTP_" + response.code)
+                    val body = response.body ?: throw IOException("WEBSITE_EMPTY_RESPONSE")
+                    val html = body.charStream().use { it.readText().take(MAX_HTML + 1) }
+                    if (html.length > MAX_HTML) throw IOException("WEBSITE_RESPONSE_TOO_LARGE")
+                    if (html.isBlank()) throw IOException("WEBSITE_EMPTY_RESPONSE")
+                    diagnostics?.record("WEBSITE_HTTP", "SUCCESS_" + path.uppercase(),
+                        (System.nanoTime() - started) / 1_000_000,
+                        httpStatus = response.code, bytes = html.length)
+                    html
+                }
+            } catch (error: Exception) {
+                diagnostics?.record("WEBSITE_HTTP", "FAIL_" + path.uppercase(),
+                    (System.nanoTime() - started) / 1_000_000,
+                    httpStatus = status.takeIf { it > 0 })
+                throw error
             }
         }
 

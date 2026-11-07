@@ -49,4 +49,8 @@ data class AppState(
     val favorites: List<Watched> = emptyList(),
     val downloadTasks: List<DownloadTask> = emptyList(),
     val backend: String = "",
+    val settingsMessage: String? = null,
+    val logEnabled: Boolean = true,
+    val logText: String = "",
+    val logNotice: String? = null,
 )

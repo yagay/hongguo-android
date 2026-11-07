@@ -5,6 +5,8 @@
 ## 设计基准
 
 - 网页版导航结构：推荐 / 榜单 / 最新 / 筛选，顶部搜索、历史、收藏、分享与下载任务。
+- 顶部明确可见「设置」入口：独立设置页包含内容来源、API 地址、详细日志预览、日志开关、清空和 TXT 导出。
+- 诊断事件存储在本机私有目录（256 KB 上限），记录阶段、耗时、HTTP 状态和错误代码，不收集 URL、搜索内容和凭据；经 Android 文档选择器导出。
 - 所有页面使用 Kotlin + Jetpack Compose；视频使用 AndroidX Media3。
 - 不引入旧 Android 项目的 Activity、播放器、设备注册、缓存、状态或 Hook。
 - 单向数据流：DramaViewModel -> AppState -> Compose。

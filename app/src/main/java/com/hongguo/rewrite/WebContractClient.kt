@@ -22,6 +22,7 @@ class WebContractClient(
         .connectTimeout(10, TimeUnit.SECONDS)
         .readTimeout(25, TimeUnit.SECONDS)
         .build(),
+    private val diagnostics: DiagnosticLog? = null,
 ) {
     private val origin: HttpUrl = normalizedBase(base)
     @Volatile private var key: String? = null
@@ -62,17 +63,44 @@ class WebContractClient(
         return builder.build()
     }
 
-    private fun execute(req: Request): JSONObject =
-        client.newCall(req).execute().use { response: Response ->
-            val body = response.body?.string().orEmpty()
-            if (!response.isSuccessful) {
-                throw IOException("HTTP " + response.code + " (" + req.url.encodedPath + ")")
-            }
-            if (body.isBlank()) throw IOException("EMPTY_RESPONSE: " + req.url.encodedPath)
-            try { JSONObject(body) } catch (_: Exception) {
-                throw IOException("INVALID_JSON: " + req.url.encodedPath)
-            }
+    private fun execute(req: Request): JSONObject {
+        val started = System.nanoTime()
+        val endpoint = when (req.url.encodedPath) {
+            "/api-key" -> "KEY"
+            "/health" -> "HEALTH"
+            "/rank" -> "RANK"
+            "/latest" -> "LATEST"
+            "/browse" -> "BROWSE"
+            "/filters" -> "FILTERS"
+            "/search" -> "SEARCH"
+            "/episodes" -> "EPISODES"
+            "/stream" -> "STREAM"
+            "/share/resolve" -> "SHARE"
+            "/download/task" -> "DOWNLOAD"
+            else -> "OTHER"
         }
+        var status = 0
+        try {
+            return client.newCall(req).execute().use { response: Response ->
+                status = response.code
+                val body = response.body?.string().orEmpty()
+                diagnostics?.record("SERVER_HTTP", "REPLY_" + endpoint,
+                    (System.nanoTime() - started) / 1_000_000,
+                    httpStatus = response.code, bytes = body.length)
+                if (!response.isSuccessful) {
+                    throw IOException("HTTP " + response.code + " (" + req.url.encodedPath + ")")
+                }
+                if (body.isBlank()) throw IOException("EMPTY_RESPONSE: " + req.url.encodedPath)
+                try { JSONObject(body) } catch (_: Exception) {
+                    throw IOException("INVALID_JSON: " + req.url.encodedPath)
+                }
+            }
+        } catch (e: IOException) {
+            if (status == 0) diagnostics?.record("SERVER_HTTP", "IO_" + endpoint,
+                (System.nanoTime() - started) / 1_000_000)
+            throw e
+        }
+    }
 
     private suspend fun get(path: String, params: Map<String, String> = emptyMap()): JSONObject {
         val apiKey = ensureKey()

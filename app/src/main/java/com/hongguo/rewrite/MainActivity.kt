@@ -103,6 +103,7 @@ private fun ApplicationRoot(model: DramaViewModel = viewModel()) {
             }
         }
         when {
+            state.modal == Modal.SETTINGS -> SettingsScreen(state, model)
             state.detail != null -> NativePlayer(state, model)
             state.preparingDetail -> Box(Modifier.fillMaxSize(), contentAlignment = Alignment.Center) {
                 Column(horizontalAlignment = Alignment.CenterHorizontally,
@@ -128,6 +129,15 @@ private fun CatalogPageScreen(state: AppState, model: DramaViewModel) {
                     Text("红果", fontSize = 23.sp, fontWeight = FontWeight.ExtraBold, color = Orange)
                     Text(" · 短剧", fontSize = 13.sp, color = Muted)
                     Spacer(Modifier.weight(1f))
+                    TextButton(onClick = { model.show(Modal.SETTINGS) },
+                        modifier = Modifier.testTag("open_settings")) {
+                        Icon(Icons.Outlined.Settings, contentDescription = null,
+                            modifier = Modifier.size(20.dp))
+                        Text(" 设置")
+                    }
+                }
+                Row(Modifier.fillMaxWidth().padding(horizontal = 14.dp),
+                    horizontalArrangement = Arrangement.End) {
                     SmallAction(Icons.Outlined.History, "播放历史") { model.show(Modal.HISTORY) }
                     SmallAction(Icons.Outlined.StarBorder, "收藏") { model.show(Modal.FAVORITES) }
                     SmallAction(Icons.Outlined.Download, "下载进度") {
@@ -135,7 +145,6 @@ private fun CatalogPageScreen(state: AppState, model: DramaViewModel) {
                         model.show(Modal.DOWNLOAD)
                     }
                     SmallAction(Icons.Outlined.Share, "分享解析") { model.show(Modal.SHARE) }
-                    SmallAction(Icons.Outlined.Settings, "设置") { model.show(Modal.SETTINGS) }
                 }
                 Row(Modifier.fillMaxWidth().horizontalScroll(rememberScrollState())
                     .padding(horizontal = 14.dp),
@@ -284,24 +293,7 @@ private fun SmallAction(icon: androidx.compose.ui.graphics.vector.ImageVector,
 private fun WebDialogs(state: AppState, model: DramaViewModel) {
     when (state.modal) {
         Modal.NONE -> Unit
-        Modal.SETTINGS -> {
-            var address by remember(state.backend) { mutableStateOf(state.backend) }
-            AlertDialog(onDismissRequest = model::closeModal,
-                title = { Text("连接网页版 API") },
-                text = {
-                    Column(verticalArrangement = Arrangement.spacedBy(10.dp)) {
-                        Text("无需配置即可尝试读取官网公开的推荐、搜索和分集信息。要播放完整视频或使用更多功能，请填写正在运行的 hongguo-web 服务地址。手机不能直接访问电脑的 127.0.0.1。")
-                        OutlinedTextField(value = address, onValueChange = { address = it },
-                            label = { Text("可选：API 地址（留空恢复原生目录模式）") }, singleLine = true,
-                            placeholder = { Text("https://your-server.example") })
-                        Text("调试连接允许局域网 HTTP；公网服务器请使用 HTTPS 并自行保护访问权限。",
-                            fontSize = 12.sp, color = Muted)
-                    }
-                },
-                confirmButton = { TextButton(onClick = { model.saveBackend(address) }) { Text("保存") } },
-                dismissButton = { TextButton(onClick = model::closeModal) { Text("取消") } },
-            )
-        }
+        Modal.SETTINGS -> Unit
         Modal.SHARE -> {
             var share by remember { mutableStateOf("") }
             AlertDialog(onDismissRequest = model::closeModal, title = { Text("分享解析") },
