@@ -124,6 +124,9 @@ internal fun AccountScreen(model: DramaViewModel) {
                     }
                 }
                 if (loginMethod == 1) item {
+                    Surface(shape = RoundedCornerShape(20.dp), color = HongguoColors.surface) {
+                        Column(Modifier.fillMaxWidth().padding(16.dp),
+                            verticalArrangement = Arrangement.spacedBy(12.dp)) {
                     Text("官方扫码登录", fontWeight = FontWeight.Bold,
                         color = HongguoColors.ink)
                     Text("请用手机红果 App 的扫一扫扫描，并在手机上确认。扫码失败可尝试手机号验证码。",
@@ -157,13 +160,22 @@ internal fun AccountScreen(model: DramaViewModel) {
                         }
                         Text("请在手机上确认；二维码有效期由服务端决定。",
                             fontSize = 12.sp, color = HongguoColors.muted)
-                        OutlinedButton(
-                            onClick = { model.account.cancelQr() },
-                            modifier = Modifier.fillMaxWidth(),
-                        ) { Text("取消扫码") }
+                        Row(Modifier.fillMaxWidth(), horizontalArrangement = Arrangement.spacedBy(8.dp)) {
+                            OutlinedButton(onClick = model.account::qrLogin,
+                                enabled = !account.busy, modifier = Modifier.testTag("account_qr_refresh")) {
+                                Text("刷新二维码")
+                            }
+                            TextButton(onClick = model.account::cancelQr,
+                                modifier = Modifier.testTag("account_login_cancel")) { Text("取消登录") }
+                        }
+                    }
+                        }
                     }
                 }
                 if (loginMethod == 0) item {
+                    Surface(shape = RoundedCornerShape(20.dp), color = HongguoColors.surface) {
+                        Column(Modifier.fillMaxWidth().padding(16.dp),
+                            verticalArrangement = Arrangement.spacedBy(12.dp)) {
                     Text("手机号验证码登录", fontWeight = FontWeight.Bold,
                         color = HongguoColors.ink)
                     OutlinedTextField(
@@ -211,6 +223,8 @@ internal fun AccountScreen(model: DramaViewModel) {
                             model.account.cancelSms()
                         }, enabled = !account.busy, modifier = Modifier.testTag("account_sms_change_phone")) {
                             Text("更换手机号")
+                        }
+                    }
                         }
                     }
                 }
