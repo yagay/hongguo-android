@@ -26,6 +26,7 @@ import androidx.compose.ui.platform.LocalSoftwareKeyboardController
 import androidx.compose.ui.platform.testTag
 import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.text.input.KeyboardType
+import androidx.compose.ui.text.input.PasswordVisualTransformation
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
 import androidx.lifecycle.compose.collectAsStateWithLifecycle
@@ -49,6 +50,8 @@ internal fun AccountScreen(model: DramaViewModel) {
     var confirmLogout by remember { mutableStateOf(false) }
     var loginMethod by rememberSaveable { mutableIntStateOf(0) }
     var accountMenu by remember { mutableStateOf(false) }
+    var advancedOpen by rememberSaveable { mutableStateOf(false) }
+    var importedCookie by remember { mutableStateOf("") }
     BackHandler { model.closeAccount() }
     Scaffold(
         containerColor = HongguoColors.background,
@@ -89,6 +92,25 @@ internal fun AccountScreen(model: DramaViewModel) {
                             modifier = Modifier.testTag("account_message"))
                         if (account.busy || account.checking)
                             LinearProgressIndicator(Modifier.fillMaxWidth())
+                    }
+                }
+            }
+            if (account.profile == null && account.savedSessionPresent) item {
+                Surface(color = HongguoColors.surface, shape = RoundedCornerShape(16.dp)) {
+                    Column(Modifier.fillMaxWidth().padding(16.dp),
+                        verticalArrangement = Arrangement.spacedBy(10.dp)) {
+                        Text("已保存的账号等待验证", fontWeight = FontWeight.SemiBold,
+                            color = HongguoColors.ink)
+                        Text("网络恢复后可重新验证；也可以清除已保存会话再登录。本机收藏和历史不受影响。",
+                            color = HongguoColors.muted, fontSize = 12.sp)
+                        OutlinedButton(onClick = model.account::refresh, enabled = !account.busy,
+                            modifier = Modifier.fillMaxWidth().testTag("account_verify_saved")) {
+                            Text("重新验证已保存账号")
+                        }
+                        TextButton(onClick = { confirmLogout = true }, enabled = !account.busy,
+                            modifier = Modifier.testTag("account_clear_saved")) {
+                            Text("清除已保存的登录态")
+                        }
                     }
                 }
             }
@@ -225,6 +247,37 @@ internal fun AccountScreen(model: DramaViewModel) {
                             Text("更换手机号")
                         }
                     }
+                        }
+                    }
+                }
+                item {
+                    Surface(color = HongguoColors.surface, shape = RoundedCornerShape(16.dp)) {
+                        Column(Modifier.fillMaxWidth().padding(16.dp),
+                            verticalArrangement = Arrangement.spacedBy(10.dp)) {
+                            TextButton(onClick = {
+                                advancedOpen = !advancedOpen
+                                importedCookie = ""
+                            }, modifier = Modifier.testTag("account_cookie_expand")) {
+                                Text(if (advancedOpen) "收起高级登录" else "高级：导入已有登录态")
+                            }
+                            if (advancedOpen) {
+                                Text("仅导入你本人的账号 Cookie。必须通过真实云端身份验证后才会登录；不记录或导出凭据。",
+                                    color = HongguoColors.muted, fontSize = 12.sp)
+                                OutlinedTextField(value = importedCookie,
+                                    onValueChange = { importedCookie = it.take(8192) },
+                                    label = { Text("已有红果登录 Cookie") }, singleLine = true,
+                                    visualTransformation = PasswordVisualTransformation(),
+                                    enabled = !account.busy,
+                                    modifier = Modifier.fillMaxWidth().testTag("account_cookie_input"))
+                                OutlinedButton(onClick = {
+                                    val candidate = importedCookie
+                                    importedCookie = ""
+                                    model.account.importLoginCookie(candidate)
+                                }, enabled = !account.busy && importedCookie.isNotBlank(),
+                                    modifier = Modifier.testTag("account_cookie_import")) {
+                                    Text("验证并导入")
+                                }
+                            }
                         }
                     }
                 }
