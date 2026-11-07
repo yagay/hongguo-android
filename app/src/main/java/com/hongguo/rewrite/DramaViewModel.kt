@@ -476,6 +476,8 @@ class DramaViewModel(application: Application) : AndroidViewModel(application) {
     private var feedPrefetchJob: Job? = null
     private var officialFeedJob: Job? = null
     private var officialFeedGeneration = 0L
+    /** Titles shown by the home recommendation grid are excluded from this swipe session. */
+    private var homeFeedExcludedIds: Set<String> = emptySet()
 
     private fun loadOfficialReels(restart: Boolean = false) {
         val snapshot = state.value
@@ -486,6 +488,7 @@ class DramaViewModel(application: Application) : AndroidViewModel(application) {
         val excluded = snapshot.feedItems.mapTo(linkedSetOf()) { it.id }
             .apply {
                 addAll(snapshot.hiddenRecommendationIds)
+                addAll(homeFeedExcludedIds)
                 addAll(recentlySwiped())
             }
         mutable.update { it.copy(feedLoading = true, feedError = null) }
@@ -495,7 +498,9 @@ class DramaViewModel(application: Application) : AndroidViewModel(application) {
                 if (generation != officialFeedGeneration || !state.value.feedMode) return@launch
                 mutable.update { current ->
                     val merged = OfficialReelsPolicy.append(
-                        current.feedItems, result.items, current.hiddenRecommendationIds)
+                        current.feedItems, result.items,
+                        current.hiddenRecommendationIds + homeFeedExcludedIds +
+                            recentlySwiped().toSet())
                     current.copy(feedItems = merged,
                         feedHasMore = result.hasMore,
                         feedLoading = false,
@@ -1148,6 +1153,9 @@ class DramaViewModel(application: Application) : AndroidViewModel(application) {
         feedPrefetchJob?.cancel()
         prefetchedFeedDetails.clear()
         nativeSource.setAccountRecommendations(account.recommendationAccount())
+        // Official App feed is separate from "为你推荐". Never show its already-loaded
+        // home cards as the first swipe queue, even when the server repeats them.
+        homeFeedExcludedIds = current.items.mapTo(linkedSetOf()) { it.id }
         mutable.update { it.copy(
             feedMode = true,
             feedItems = drama?.let(::listOf).orEmpty(),
@@ -1190,6 +1198,7 @@ class DramaViewModel(application: Application) : AndroidViewModel(application) {
     fun exitFeedToEpisode(index: Int) {
         officialFeedJob?.cancel()
         officialFeedGeneration++
+        homeFeedExcludedIds = emptySet()
         pendingFeedAdvance = false
         mutable.update { it.copy(feedMode = false, feedLoading = false) }
         play(index)
@@ -1451,6 +1460,7 @@ class DramaViewModel(application: Application) : AndroidViewModel(application) {
     }
 
     fun closePlayer() {
+        homeFeedExcludedIds = emptySet()
         pendingFeedAdvance = false
         officialFeedJob?.cancel()
         officialFeedGeneration++
