@@ -15,8 +15,16 @@ import androidx.compose.foundation.layout.imePadding
 import androidx.compose.foundation.layout.safeDrawingPadding
 import androidx.compose.foundation.layout.WindowInsets
 import androidx.compose.foundation.layout.padding
+import androidx.compose.foundation.layout.fillMaxWidth
 import androidx.compose.material3.CircularProgressIndicator
 import androidx.compose.material3.MaterialTheme
+import androidx.compose.material3.NavigationBar
+import androidx.compose.material3.NavigationBarItem
+import androidx.compose.material3.Icon
+import androidx.compose.material3.Scaffold
+import androidx.compose.material.icons.Icons
+import androidx.compose.material.icons.outlined.Home
+import androidx.compose.material.icons.outlined.PersonOutline
 import androidx.compose.material3.Text
 import androidx.compose.material3.TextButton
 import androidx.compose.material3.lightColorScheme
@@ -104,8 +112,25 @@ private fun HongguoApp(model: DramaViewModel = viewModel()) {
                             }
                         }
                     }
-                    mineOpen -> MyScreen(state, model, onBack = { mineOpen = false })
-                    else -> CatalogScreen(state, model, onMine = { mineOpen = true })
+                    else -> Scaffold(
+                        containerColor = HongguoColors.background,
+                        contentWindowInsets = WindowInsets(0, 0, 0, 0),
+                        bottomBar = {
+                            NavigationBar(containerColor = HongguoColors.surface) {
+                                NavigationBarItem(selected = !mineOpen, onClick = { mineOpen = false },
+                                    icon = { Icon(Icons.Outlined.Home, contentDescription = null) },
+                                    label = { Text("首页") })
+                                NavigationBarItem(selected = mineOpen, onClick = { mineOpen = true },
+                                    icon = { Icon(Icons.Outlined.PersonOutline, contentDescription = null) },
+                                    label = { Text("我的") })
+                            }
+                        },
+                    ) { insets ->
+                        Box(Modifier.fillMaxSize().padding(insets)) {
+                            if (mineOpen) MyScreen(state, model, onBack = { mineOpen = false })
+                            else CatalogScreen(state, model, onMine = { mineOpen = true })
+                        }
+                    }
                 }
                 LibrarySheets(state, model)
             }
