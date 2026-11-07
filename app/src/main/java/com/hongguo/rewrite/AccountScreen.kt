@@ -180,8 +180,11 @@ internal fun AccountScreen(model: DramaViewModel) {
                                 )
                             }
                         }
-                        Text("请在手机上确认；二维码有效期由服务端决定。",
-                            fontSize = 12.sp, color = HongguoColors.muted)
+                        Text(if (account.qrRemainingSeconds > 0)
+                                "请在手机红果 App 确认 · ${account.qrRemainingSeconds} 秒"
+                            else "二维码已过期，请刷新",
+                            fontSize = 12.sp, color = HongguoColors.muted,
+                            modifier = Modifier.testTag("account_qr_expiry"))
                         Row(Modifier.fillMaxWidth(), horizontalArrangement = Arrangement.spacedBy(8.dp)) {
                             OutlinedButton(onClick = model.account::qrLogin,
                                 enabled = !account.busy, modifier = Modifier.testTag("account_qr_refresh")) {
