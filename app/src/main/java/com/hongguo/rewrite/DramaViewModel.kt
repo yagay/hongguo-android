@@ -964,6 +964,10 @@ class DramaViewModel(application: Application) : AndroidViewModel(application) {
             return
         }
         mutable.update { it.copy(sleepTimerLabel = sleepTimer.label()) }
+        if (!s.autoPlayNext) {
+            diagnostics.record("PLAYBACK", "AUTO_NEXT_DISABLED")
+            return
+        }
         if (s.feedMode) {
             navigateFeed(1)
             return
