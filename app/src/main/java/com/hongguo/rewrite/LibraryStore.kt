@@ -47,6 +47,52 @@ class LibraryStore(context: Context) {
         write(favorites, list(favorites).filterNot { it.drama.id == id })
 
     @Synchronized fun clear(favorites: Boolean) = write(favorites, emptyList())
+    @Synchronized fun exportLists(): JSONObject {
+        fun encode(rows: List<Watched>) = JSONArray().apply {
+            rows.forEach {
+                put(JSONObject().put("id", it.drama.id).put("title", it.drama.title)
+                    .put("cover", it.drama.cover).put("total", it.drama.total)
+                    .put("episode", it.episode).put("updated", it.updated))
+            }
+        }
+        return JSONObject().put("history", encode(list(false)))
+            .put("favorites", encode(list(true)))
+    }
+
+    /** Validate all imported rows before touching either current list. */
+    @Synchronized fun importLists(data: JSONObject) {
+        fun decode(key: String): List<Watched> {
+            val array = data.getJSONArray(key)
+            require(array.length() <= 200) { "片单条目超过 200 部" }
+            return (0 until array.length()).map { i ->
+                val row = array.getJSONObject(i)
+                val id = row.getString("id")
+                val title = row.getString("title")
+                require(id.matches(Regex("[0-9]{1,30}")) && title.length <= 200) {
+                    "备份片单内容无效"
+                }
+                val cover = row.optString("cover")
+                require(cover.length <= 2048) { "封面地址过长" }
+                Watched(Drama(id, title, cover, row.optInt("total").coerceIn(0, 100000)),
+                    row.optInt("episode", 1).coerceIn(1, 100000),
+                    row.optLong("updated"))
+            }.distinctBy { it.drama.id }
+        }
+        val history = decode("history")
+        val favorites = decode("favorites")
+        fun encode(rows: List<Watched>) = JSONArray().apply {
+            rows.forEach {
+                put(JSONObject().put("id", it.drama.id).put("title", it.drama.title)
+                    .put("cover", it.drama.cover).put("total", it.drama.total)
+                    .put("episode", it.episode).put("updated", it.updated))
+            }
+        }.toString()
+        prefs.edit().putString("history", encode(history))
+            .putString("favorites", encode(favorites)).commit().also {
+                check(it) { "无法保存本机片单" }
+            }
+    }
+
 
 
     /**
