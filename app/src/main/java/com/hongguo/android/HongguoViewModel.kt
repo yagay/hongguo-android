@@ -534,7 +534,7 @@ class HongguoViewModel(application: Application) : AndroidViewModel(application)
     /** 沉浸暗场 preview: the episode list plus episode 1's progressive session. Writes no history or progress. */
     internal suspend fun previewFirstEpisode(card: DramaCard): Pair<DramaDetail, PreparedVideo> {
         val detail = repository.details(card)
-        val first = detail.episodes.first()
+        val first = detail.episodes.firstOrNull() ?: throw java.io.IOException("EMPTY_EPISODES")
         return detail to repository.prepare(first, allowFallback = false) { _, _, _ -> }
     }
 
