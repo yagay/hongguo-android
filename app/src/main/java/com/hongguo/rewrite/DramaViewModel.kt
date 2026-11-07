@@ -119,6 +119,9 @@ class DramaViewModel(application: Application) : AndroidViewModel(application) {
                     .put("likedDramaIds", JSONArray().apply {
                         state.value.likedDramaIds.forEach(::put)
                     })
+                    .put("completedDramaIds", JSONArray().apply {
+                        state.value.completedDramaIds.forEach(::put)
+                    })
                 getApplication<Application>().contentResolver.openOutputStream(uri)
                     ?.use { it.write(data.toString(2).toByteArray(Charsets.UTF_8)) }
                     ?: error("无法创建备份文件")
@@ -150,7 +153,9 @@ class DramaViewModel(application: Application) : AndroidViewModel(application) {
                 }
                 val laterArray = backup.getJSONArray("watchLater")
                 val likesArray = backup.getJSONArray("likedDramaIds")
-                require(laterArray.length() <= 200 && likesArray.length() <= 500) {
+                val completedArray = backup.optJSONArray("completedDramaIds") ?: JSONArray()
+                require(laterArray.length() <= 200 && likesArray.length() <= 500 &&
+                    completedArray.length() <= 500) {
                     "备份条目超过限制"
                 }
                 val later = (0 until laterArray.length()).map { i ->
@@ -164,6 +169,10 @@ class DramaViewModel(application: Application) : AndroidViewModel(application) {
                 }.distinctBy { it.id }
                 val likes = (0 until likesArray.length()).map { likesArray.getString(it) }.toSet()
                 require(likes.all { it.matches(Regex("[0-9]{1,30}")) })
+                val completed = (0 until completedArray.length()).map {
+                    completedArray.getString(it)
+                }.toSet()
+                require(completed.all { it.matches(Regex("[0-9]{1,30}")) })
                 // All sections have passed validation before replacing current data.
                 library.importLists(backup)
                 prefs.edit().putString("watch_later_v1", JSONArray().apply {
@@ -171,12 +180,14 @@ class DramaViewModel(application: Application) : AndroidViewModel(application) {
                         put(org.json.JSONObject().put("id", it.id)
                             .put("title", it.title).put("cover", it.cover).put("total", it.total))
                     }
-                }.toString()).putStringSet("local_liked_dramas", likes).commit().also {
+                }.toString()).putStringSet("local_liked_dramas", likes)
+                    .putStringSet("completed_drama_ids_v1", completed).commit().also {
                     check(it) { "无法保存本机备份" }
                 }
                 mutable.update {
                     it.copy(library = library.list(false), favorites = library.list(true),
-                        watchLater = later, likedDramaIds = likes)
+                        watchLater = later, likedDramaIds = likes,
+                        completedDramaIds = completed)
                 }
             }
             mutable.update { it.copy(settingsMessage = if (result.isSuccess)
