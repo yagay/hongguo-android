@@ -435,6 +435,12 @@ internal fun NativePlayer(state: AppState, model: DramaViewModel) {
             episode = selected,
             onPlaybackSettings = { showPlaybackSettings = true },
             onBack = ::flushThenClose,
+            onDramaDetails = {
+                selected?.let { ep ->
+                    model.savePlaybackPosition(ep.vid, playback.positionMs, playback.durationMs)
+                }
+                model.showDramaDetails()
+            },
             onFavorite = model::favorite,
             onLike = model::toggleLocalLike,
             onComments = { showComments = true },
