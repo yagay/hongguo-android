@@ -88,7 +88,7 @@ internal fun CatalogScreen(state: AppState, model: DramaViewModel) {
         topBar = { CatalogHeader(state, model) },
     ) { insets ->
         LazyVerticalGrid(
-            columns = GridCells.Adaptive(minSize = 108.dp),
+            columns = GridCells.Adaptive(minSize = 100.dp),
             state = grid,
             modifier = Modifier.fillMaxSize().padding(insets).testTag("web_catalog"),
             contentPadding = PaddingValues(start = 12.dp, top = 14.dp, end = 12.dp, bottom = 28.dp),
