@@ -1,6 +1,8 @@
 package com.hongguo.rewrite
 
 import android.net.Uri
+import android.Manifest
+import android.os.Build
 import androidx.activity.compose.BackHandler
 import androidx.activity.compose.rememberLauncherForActivityResult
 import androidx.activity.result.contract.ActivityResultContracts
@@ -83,6 +85,11 @@ internal fun SettingsScreen(state: AppState, model: DramaViewModel) {
         ActivityResultContracts.OpenDocument()
     ) { uri -> if (uri != null) pendingRestore = uri }
 
+    val notifyPermission = rememberLauncherForActivityResult(
+        ActivityResultContracts.RequestPermission()
+    ) { granted ->
+        if (granted) model.setEpisodeUpdateNotifications(true)
+    }
     LaunchedEffect(Unit) { model.refreshDiagnostics() }
     BackHandler { model.closeModal() }
 
@@ -222,6 +229,29 @@ internal fun SettingsScreen(state: AppState, model: DramaViewModel) {
                         enabled = state.hiddenRecommendationIds.isNotEmpty(),
                         modifier = Modifier.testTag("settings_restore_recommendations"),
                     ) { Text("恢复全部隐藏推荐") }
+                }
+            }
+            item {
+                SettingsGroup("追剧更新提醒") {
+                    SettingToggle(
+                        "定期检查收藏更新",
+                        "用户授权后通过 WorkManager 在联网时约每 12 小时检查；系统可能延迟执行",
+                        state.episodeUpdateNotificationsEnabled,
+                        { enabled ->
+                            if (enabled && Build.VERSION.SDK_INT >= 33) {
+                                notifyPermission.launch(Manifest.permission.POST_NOTIFICATIONS)
+                            } else model.setEpisodeUpdateNotifications(enabled)
+                        },
+                        "settings_tracking_notification",
+                    )
+                    OutlinedButton(onClick = model::checkTrackedUpdates,
+                        enabled = !state.trackingUpdates,
+                        modifier = Modifier.testTag("settings_check_updates")) {
+                        Text(if (state.trackingUpdates) "正在检查…" else "立即检查追剧更新")
+                    }
+                    state.trackingUpdateMessage?.let {
+                        Text(it, color = HongguoColors.muted, fontSize = 12.sp)
+                    }
                 }
             }
             item {
