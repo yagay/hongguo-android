@@ -13,6 +13,16 @@ internal object DramaCompletion {
         }
     }
 
+    /**
+     * The official App video_detail series_status is not the novel book's
+     * creation_status. 0 = updating, 1 = finished. Others are not verified.
+     */
+    fun fromSeriesStatus(value: Any?): String? = when (value?.toString()) {
+        "0" -> "更新中"
+        "1" -> "已完结"
+        else -> null
+    }
+
     fun episodeLabel(total: Int, status: String?, episodeIndex: Int?): String =
         buildList {
             if (total > 0) add("全${total}集")

@@ -60,6 +60,12 @@ class NativeWebsiteSource(
     }
 
     /** Reads only series-scoped public statistics from a verified player page. */
+    /** Verified public player cast and genre fields; identity checked. */
+    suspend fun labels(id: String): DramaLabels {
+        require(ID.matches(id))
+        return DramaTagParser.website(extractRouter(fetch("player", id)), id)
+    }
+
     suspend fun socialStats(id: String): SocialStats {
         require(ID.matches(id))
         val root = extractRouter(fetch("player", id))
@@ -85,11 +91,18 @@ class NativeWebsiteSource(
                 cleanCover(data.optString("series_cover")),
                 episodes.size,
                 data.optString("series_intro"),
-                DramaCompletion.fromOfficialText(
+                DramaCompletion.fromSeriesStatus(
+                    data.opt("series_status")
+                ) ?: DramaCompletion.fromOfficialText(
                     data.optString("creation_status_text")
                         .ifBlank { data.optString("episode_right_text") }
                         .ifBlank { data.optString("status_text") }
-                )),
+                ),
+                actors = runCatching { DramaTagParser.website(root, id).actors }
+                    .getOrDefault(emptyList()),
+                categories = runCatching { DramaTagParser.website(root, id).categories }
+                    .getOrDefault(emptyList())),
+
             episodes
         )
     }

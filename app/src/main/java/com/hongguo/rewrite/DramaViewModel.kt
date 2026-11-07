@@ -67,6 +67,8 @@ class DramaViewModel(application: Application) : AndroidViewModel(application) {
     private var downloadJob: Job? = null
     private var commentsJob: Job? = null
     private var socialJob: Job? = null
+    private var labelsJob: Job? = null
+    private var labelsGeneration = 0L
     private var relatedJob: Job? = null
     private var relatedGeneration = 0L
     private var socialGeneration = 0L
@@ -297,7 +299,35 @@ class DramaViewModel(application: Application) : AndroidViewModel(application) {
         }
     }
 
+    /** Public website's cast/genre metadata is optional and never blocks video. */
+    private fun loadLabels(seriesId: String) {
+        val generation = ++labelsGeneration
+        labelsJob?.cancel()
+        labelsJob = viewModelScope.launch {
+            try {
+                val labels = nativeSource.websiteLabels(seriesId)
+                if (generation == labelsGeneration &&
+                    state.value.detail?.drama?.id == seriesId) {
+                    mutable.update { current ->
+                        val d = current.detail ?: return@update current
+                        current.copy(detail = d.copy(drama = d.drama.copy(
+                            actors = labels.actors.ifEmpty { d.drama.actors },
+                            categories = labels.categories.ifEmpty { d.drama.categories },
+                        )))
+                    }
+                    diagnostics.record("DETAIL", "TAGS_READY")
+                }
+            } catch (cancel: CancellationException) {
+                throw cancel
+            } catch (error: Exception) {
+                diagnostics.record("DETAIL", "TAGS_UNAVAILABLE")
+            }
+        }
+    }
+
     private fun clearSocial() {
+        labelsGeneration++
+        labelsJob?.cancel()
         socialGeneration++
         socialJob?.cancel()
         mutable.update {
@@ -330,6 +360,17 @@ class DramaViewModel(application: Application) : AndroidViewModel(application) {
                 mutable.update { s ->
                     val merged = s.socialStats?.merge(candidate) ?: candidate
                     s.copy(socialStats = merged)
+                }
+                // Official app series_status is updated asynchronously; the
+                // public page may not contain a human-readable end badge.
+                candidate.completionStatus?.let { verified ->
+                    mutable.update { current ->
+                        val d = current.detail
+                        if (d == null || d.drama.id != seriesId) current
+                        else current.copy(detail = d.copy(drama = d.drama.copy(
+                            completionStatus = verified
+                        )))
+                    }
                 }
                 val combined = state.value.socialStats
                 if (combined != null) {
@@ -692,6 +733,9 @@ class DramaViewModel(application: Application) : AndroidViewModel(application) {
                     cover = result.drama.cover.ifBlank { drama.cover },
                     total = result.episodes.size,
                     synopsis = result.drama.synopsis.ifBlank { drama.synopsis },
+                    completionStatus = result.drama.completionStatus ?: drama.completionStatus,
+                    actors = result.drama.actors.ifEmpty { drama.actors },
+                    categories = result.drama.categories.ifEmpty { drama.categories },
                 ))
                 val remembered = startEpisodeHint ?: state.value.library
                     .firstOrNull { it.drama.id == drama.id }?.episode
@@ -701,6 +745,7 @@ class DramaViewModel(application: Application) : AndroidViewModel(application) {
                     preparingDetail = false) }
                 diagnostics.record("DETAIL", "SUCCESS", elapsed(started))
                 loadSocialStats(resolved.drama.id)
+                if (api == null) loadLabels(resolved.drama.id)
                 loadRelated(resolved.drama.id)
                 play(index)
             } catch (e: CancellationException) {

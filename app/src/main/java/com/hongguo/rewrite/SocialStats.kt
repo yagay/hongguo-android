@@ -19,6 +19,7 @@ data class SocialStats(
     val appFollows: Long? = null,
     val appLikes: Long? = null,
     val playCount: Long? = null,
+    val completionStatus: String? = null,
     val episodes: Map<String, EpisodeSocial> = emptyMap(),
 ) {
     fun merge(other: SocialStats): SocialStats {
@@ -29,6 +30,7 @@ data class SocialStats(
             appFollows = other.appFollows ?: appFollows,
             appLikes = other.appLikes ?: appLikes,
             playCount = other.playCount ?: playCount,
+            completionStatus = other.completionStatus ?: completionStatus,
             episodes = episodes + other.episodes,
         )
     }
@@ -104,6 +106,8 @@ object SocialStatsParser {
             appFollows = count(row, "followed_cnt"),
             appLikes = count(row, "digg_cnt"),
             playCount = count(row, "series_play_cnt"),
+            completionStatus = if (row.has("series_status") && !row.isNull("series_status"))
+                DramaCompletion.fromSeriesStatus(row.opt("series_status")) else null,
             episodes = items,
         )
     }

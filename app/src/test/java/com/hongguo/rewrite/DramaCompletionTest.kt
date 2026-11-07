@@ -19,6 +19,14 @@ class DramaCompletionTest {
         assertEquals("全80集", DramaCompletion.episodeLabel(80, null, null))
     }
 
+    @Test fun officialAppSeriesStatusIsDistinctFromNovelCreationStatus() {
+        assertEquals("已完结", DramaCompletion.fromSeriesStatus(1))
+        assertEquals("更新中", DramaCompletion.fromSeriesStatus(0))
+        assertEquals("已完结", DramaCompletion.fromSeriesStatus("1"))
+        assertNull(DramaCompletion.fromSeriesStatus(3))
+        assertNull(DramaCompletion.fromSeriesStatus(null))
+    }
+
     @Test fun onlyOfficialTextProvidesStatus() {
         assertEquals("已完结", DramaCompletion.fromOfficialText("全80集 · 已完结"))
         assertEquals("已完结", DramaCompletion.fromOfficialText("完结"))

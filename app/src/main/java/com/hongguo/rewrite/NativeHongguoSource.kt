@@ -232,6 +232,8 @@ class NativeHongguoSource(
      */
     suspend fun websiteSocial(id: String): SocialStats = websiteCovers.socialStats(id)
 
+    suspend fun websiteLabels(id: String): DramaLabels = websiteCovers.labels(id)
+
     suspend fun appSocial(id: String): SocialStats = withContext(Dispatchers.IO) {
         SocialStatsParser.application(repository.socialDetail(id), id)
     }
@@ -371,7 +373,8 @@ class NativeHongguoSource(
         val episodes = Regex("[0-9]+").find(badge)?.value?.toIntOrNull() ?: 0
         return Drama(id = id, title = title, cover = cover,
             total = episodes, synopsis = description,
-            completionStatus = DramaCompletion.fromOfficialText(badge))
+            completionStatus = DramaCompletion.fromOfficialText(badge),
+            categories = DramaTagParser.categoriesFromCore(tags))
     }
 
     private fun canDecode(row: Rendition): Boolean {
