@@ -146,8 +146,7 @@ private fun Media3Player(
                 if (playbackState == Player.STATE_ENDED) onFinished()
             }
             override fun onPlayerError(error: PlaybackException) {
-                onError("Media3 " + error.errorCodeName + ": " +
-                    (error.cause?.javaClass?.simpleName ?: error.message.orEmpty()))
+                onError(PlaybackProblem.media(error.errorCodeName, error.cause?.javaClass?.simpleName))
             }
         }
         player.addListener(listener)

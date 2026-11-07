@@ -217,7 +217,7 @@ class DramaViewModel(application: Application) : AndroidViewModel(application) {
 
     fun mediaError(expectedVid: String, message: String) {
         if (state.value.detail?.episodes?.getOrNull(state.value.episodeIndex)?.vid != expectedVid) return
-        mutable.update { it.copy(playbackError = "MEDIA_ERROR: " + message, playing = false) }
+        mutable.update { it.copy(playbackError = message, playing = false) }
     }
 
     /** A history entry is created only after Media3 reports an actual rendered video frame. */

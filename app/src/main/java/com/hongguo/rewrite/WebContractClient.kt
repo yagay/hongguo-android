@@ -66,8 +66,7 @@ class WebContractClient(
         client.newCall(req).execute().use { response: Response ->
             val body = response.body?.string().orEmpty()
             if (!response.isSuccessful) {
-                throw IOException("HTTP " + response.code + " (" + req.url.encodedPath + "): "
-                    + body.take(160))
+                throw IOException("HTTP " + response.code + " (" + req.url.encodedPath + ")")
             }
             if (body.isBlank()) throw IOException("EMPTY_RESPONSE: " + req.url.encodedPath)
             try { JSONObject(body) } catch (_: Exception) {

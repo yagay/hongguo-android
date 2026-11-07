@@ -290,9 +290,9 @@ private fun WebDialogs(state: AppState, model: DramaViewModel) {
                 title = { Text("连接网页版 API") },
                 text = {
                     Column(verticalArrangement = Arrangement.spacedBy(10.dp)) {
-                        Text("填写正在运行的 hongguo-web 服务地址。本阶段未嵌入 Node 后端，手机上不能直接使用电脑的 127.0.0.1。")
+                        Text("无需配置即可尝试读取官网公开的推荐、搜索和分集信息。要播放完整视频或使用更多功能，请填写正在运行的 hongguo-web 服务地址。手机不能直接访问电脑的 127.0.0.1。")
                         OutlinedTextField(value = address, onValueChange = { address = it },
-                            label = { Text("API 地址") }, singleLine = true,
+                            label = { Text("可选：API 地址（留空恢复原生目录模式）") }, singleLine = true,
                             placeholder = { Text("https://your-server.example") })
                         Text("调试连接允许局域网 HTTP；公网服务器请使用 HTTPS 并自行保护访问权限。",
                             fontSize = 12.sp, color = Muted)
