@@ -266,6 +266,7 @@ class DramaViewModel(application: Application) : AndroidViewModel(application) {
     private val nativeSource = NativeHongguoSource(diagnostics = diagnostics)
     /** Independent, lazy, read-only SDK; never used by Media3, account auth or reel paging. */
     private val openHongguo = OpenHongguoSource(application)
+    internal val openHongguoDiscovery: OpenHongguoSource get() = openHongguo
     private var sdkDetailJob: Job? = null
     private var sdkDetailGeneration = 0L
 
