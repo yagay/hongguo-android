@@ -81,6 +81,13 @@ internal fun ReelScreenshotOverlay(
     val saved = state.favorites.any { it.drama.id == detail.drama.id }
     val liked = detail.drama.id in state.likedDramaIds
     val inHistory = state.library.any { it.drama.id == detail.drama.id }
+    val social = state.socialStats?.takeIf {
+        it.seriesId == detail.drama.id && state.socialForSeries == detail.drama.id
+    }
+    val favoriteMetric = social?.favoriteMetric()
+    val likeMetric = episode?.vid?.let { social?.likeMetric(it) }
+    val commentCount = state.commentsTotal
+        ?: episode?.vid?.let { social?.episodes?.get(it)?.comments }
     var moreExpanded by remember { mutableStateOf(false) }
     var synopsisExpanded by rememberSaveable(detail.drama.id) { mutableStateOf(false) }
 
@@ -135,8 +142,9 @@ internal fun ReelScreenshotOverlay(
             }
         }
 
-        // Only the episode comment total is provided by the anonymous API.
-        // Do not present local favorite/heart actions as public counts.
+        // Public counts come from series-scoped website data and signed,
+        // identity-validated episode detail. Local taps never increment them.
+        // An unknown value must remain a label, never a fake zero.
         Column(
             Modifier.align(Alignment.BottomEnd)
                 .padding(end = 8.dp, bottom = 21.dp),
@@ -148,16 +156,22 @@ internal fun ReelScreenshotOverlay(
                 if (saved) "已收藏" else "收藏",
                 "reel_favorite", onFavorite,
                 if (saved) Color(0xFFFFD27C) else white,
+                count = favoriteMetric?.first?.let(SocialCountFormatter::format)
+                    ?: if (state.socialStatsLoading) "…" else null,
+                scope = favoriteMetric?.second?.takeIf { it != "收藏" },
             )
             ReferenceAction(Icons.Outlined.ChatBubbleOutline, "评论",
                 "reel_comments", onComments,
-                count = state.commentsTotal?.let(SocialCountFormatter::format)
+                count = commentCount?.let(SocialCountFormatter::format)
                     ?: if (state.commentsLoading) "…" else null)
             ReferenceAction(
                 if (liked) Icons.Outlined.Favorite else Icons.Outlined.FavoriteBorder,
                 if (liked) "已喜欢" else "喜欢",
                 "reel_like", onLike,
                 if (liked) Color(0xFFFF6E72) else white,
+                count = likeMetric?.first?.let(SocialCountFormatter::format)
+                    ?: if (state.socialStatsLoading) "…" else null,
+                scope = likeMetric?.second?.takeIf { it == "全剧" },
             )
             ReferenceAction(Icons.Outlined.Share, "分享", "reel_share", onShare)
         }
@@ -214,6 +228,9 @@ internal fun ReelScreenshotOverlay(
                 val count = detail.episodes.size
                 if (count > 0) ReferenceChip("全 " + count + " 集")
                 if (episode != null) ReferenceChip("第 " + episode.index + " 集")
+            }
+            social?.playCount?.let { count ->
+                ReferenceChip("播放 " + SocialCountFormatter.format(count))
             }
             if (detail.drama.synopsis.isNotBlank()) {
                 Text(detail.drama.synopsis, color = muted, fontSize = 12.sp,
@@ -304,6 +321,7 @@ private fun ReferenceAction(
     icon: ImageVector, label: String, tag: String,
     onClick: () -> Unit, tint: Color = Color.White,
     count: String? = null,
+    scope: String? = null,
 ) {
     Column(
         horizontalAlignment = Alignment.CenterHorizontally,
@@ -319,6 +337,10 @@ private fun ReferenceAction(
         }
         Text(count ?: label, fontSize = 12.sp, color = Color.White,
             maxLines = 1, fontWeight = FontWeight.Medium)
+        if (count != null && scope != null) {
+            Text(scope, fontSize = 9.sp, color = Color(0xFFE0E0E0),
+                maxLines = 1)
+        }
     }
 }
 

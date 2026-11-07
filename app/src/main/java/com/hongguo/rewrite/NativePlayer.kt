@@ -397,7 +397,10 @@ private fun CommentsSheet(state: AppState, model: DramaViewModel) {
             Text("评论", style = MaterialTheme.typography.titleLarge,
                 color = Color.White, fontWeight = FontWeight.Bold)
             Text(
-                state.commentsTotal?.let { total ->
+                (state.commentsTotal ?: state.socialStats
+                    ?.takeIf { it.seriesId == detail.drama.id }
+                    ?.episodes?.get(detail.episodes.getOrNull(state.episodeIndex)?.vid)
+                    ?.comments)?.let { total ->
                     " · 共 " + SocialCountFormatter.format(total) + " 条"
                 } ?: " · 已加载 " + state.comments.size + " 条",
                 color = Color.LightGray, fontSize = 12.sp,
