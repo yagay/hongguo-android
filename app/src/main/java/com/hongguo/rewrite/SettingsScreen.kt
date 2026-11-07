@@ -179,6 +179,9 @@ internal fun SettingsScreen(state: AppState, model: DramaViewModel) {
                         "当前集正常播放结束后自动切换下一集；手动切集不受影响",
                         state.autoPlayNext, model::setAutoPlayNext, "settings_autoplay")
                     HorizontalDivider(color = HongguoColors.divider)
+                    SettingToggle("预加载下一集", "播放当前集时预先准备下一集的原生媒体数据",
+                        state.preloadNext, model::setPreloadNext, "settings_preload_next")
+                    HorizontalDivider(color = HongguoColors.divider)
                     SettingToggle("播放失败自动重试", "网络错误后最多自动重试一次，不重复下载",
                         state.retryPlaybackAutomatically, model::setAutomaticPlaybackRetry,
                         "settings_auto_retry")
