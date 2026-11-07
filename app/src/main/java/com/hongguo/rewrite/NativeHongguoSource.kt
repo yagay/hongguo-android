@@ -6,6 +6,8 @@ import com.hongguotv.core.TimedComments
 import org.json.JSONObject
 import com.hongguotv.core.ContentRepository
 import com.hongguotv.core.RecommendationFeed
+import com.hongguotv.core.RecommendationCursor
+import com.hongguotv.core.NoNewRecommendationsException
 import com.hongguotv.core.Series
 import com.hongguotv.core.FeedAccount
 import com.hongguotv.core.DramaCategory
@@ -45,6 +47,43 @@ class NativeHongguoSource(
     private var recommendationPublicPage = 1
     private var recommendationUsePublic = false
     private var recommendationEnd = false
+    /** Independent official one-drama-per-swipe cursor; never falls back to sorted web catalog. */
+    private val reelsLock = Any()
+    private var reelsCursor = RecommendationCursor()
+    private var reelsFeed = RecommendationFeed(repository.http, cursor = reelsCursor)
+    private var reelsPageNumber = 1
+
+    suspend fun officialReelsPage(
+        restart: Boolean = false,
+        alreadyShown: Set<String> = emptySet(),
+    ): CatalogPage = withContext(Dispatchers.IO) {
+        synchronized(reelsLock) {
+            if (restart) {
+                reelsCursor = RecommendationCursor()
+                reelsFeed = RecommendationFeed(repository.http,
+                    account = synchronized(recommendationLock) { accountFeed },
+                    cursor = reelsCursor)
+                reelsPageNumber = 1
+            }
+            // Exclude seed, hidden and previously shown titles at the official cursor layer.
+            alreadyShown.filter { it.matches(Regex("[0-9]{1,30}")) }
+                .takeLast(300).forEach(reelsCursor::markSeen)
+            var attempts = 0
+            var output: com.hongguotv.core.CatalogPage? = null
+            while (attempts++ < 3) {
+                val page = reelsFeed.page(reelsPageNumber++)
+                if (page.items.isNotEmpty()) {
+                    output = page
+                    break
+                }
+                if (!page.hasMore) break
+            }
+            val page = output ?: throw NoNewRecommendationsException()
+            CatalogPage(page.items.map { it.toDrama() }.distinctBy { it.id },
+                hasMore = page.hasMore, nextOffset = reelsPageNumber)
+        }
+    }
+
     private val episodeComments by lazy { AppCommentPages() }
     private val publicComments by lazy { PublicComments(repository.http) }
     private val timedComments by lazy { TimedComments() }
