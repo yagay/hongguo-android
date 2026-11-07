@@ -88,6 +88,9 @@ data class AppState(
     /** Private locally saved watch-later entries, separate from cloud favorites. */
     val watchLater: List<Drama> = emptyList(),
     val completedDramaIds: Set<String> = emptySet(),
+    val trackedEpisodeUpdates: Map<String, Int> = emptyMap(),
+    val trackingUpdates: Boolean = false,
+    val trackingUpdateMessage: String? = null,
     val hiddenRecommendationIds: Set<String> = emptySet(),
     val autoPlayNext: Boolean = true,
     val skipIntroSeconds: Int = 0,
