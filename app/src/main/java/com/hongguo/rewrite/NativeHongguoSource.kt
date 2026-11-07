@@ -52,10 +52,29 @@ class NativeHongguoSource(
     private var reelsCursor = RecommendationCursor()
     private var reelsFeed = RecommendationFeed(repository.http, cursor = reelsCursor)
     private var reelsPageNumber = 1
+    private var realReelsCursor = RecommendationCursor()
+    private var realReelsFeed = RecommendationFeed(repository.http, cursor = realReelsCursor,
+        category = DramaCategory.REAL)
+    private var realReelsPageNumber = 1
+    private var realReelsEnd = false
+
+    /** Classifies only explicit official type tokens; genre themes and titles are not evidence. */
+    internal fun isExplicitReal(series: Series): Boolean =
+        OfficialReelsType.isReal(series.tags)
+
+    /** Dynamically paged official real-drama distribution feed. */
+    private fun realCategoryPage(): com.hongguotv.core.CatalogPage {
+        if (realReelsEnd) throw NoNewRecommendationsException()
+        val page = realReelsFeed.page(realReelsPageNumber)
+        realReelsPageNumber++
+        if (!page.hasMore) realReelsEnd = true
+        return page
+    }
 
     suspend fun officialReelsPage(
         restart: Boolean = false,
         alreadyShown: Set<String> = emptySet(),
+        realOnly: Boolean = false,
     ): CatalogPage = withContext(Dispatchers.IO) {
         synchronized(reelsLock) {
             if (restart) {
@@ -64,34 +83,73 @@ class NativeHongguoSource(
                     account = synchronized(recommendationLock) { accountFeed },
                     cursor = reelsCursor)
                 reelsPageNumber = 1
+                realReelsCursor = RecommendationCursor()
+                realReelsFeed = RecommendationFeed(repository.http,
+                    cursor = realReelsCursor, category = DramaCategory.REAL)
+                realReelsPageNumber = 1
+                realReelsEnd = false
             }
-            // Exclude seed, hidden and previously shown titles at the official cursor layer.
-            alreadyShown.filter { it.matches(Regex("[0-9]{1,30}")) }
-                .takeLast(300).forEach(reelsCursor::markSeen)
-            // The upstream cursor only advances after a successful page. A network
-            // error must never skip its expected page number on the next swipe.
+            val excluded = alreadyShown.filterTo(linkedSetOf()) {
+                it.matches(Regex("[0-9]{1,30}"))
+            }
+            // The server itself can deduplicate its official feed with the seen IDs.
+            excluded.takeLast(300).forEach(reelsCursor::markSeen)
             if (reelsPageNumber > 100) {
                 reelsCursor = RecommendationCursor()
                 reelsFeed = RecommendationFeed(repository.http,
                     account = synchronized(recommendationLock) { accountFeed },
                     cursor = reelsCursor)
                 reelsPageNumber = 1
-                alreadyShown.toList().takeLast(300).forEach(reelsCursor::markSeen)
+                excluded.takeLast(300).forEach(reelsCursor::markSeen)
             }
-            var attempts = 0
-            var output: com.hongguotv.core.CatalogPage? = null
-            while (attempts++ < 3) {
-                val page = reelsFeed.page(reelsPageNumber)
-                reelsPageNumber++
-                if (page.items.isNotEmpty()) {
-                    output = page
-                    break
+            val candidates = mutableListOf<Series>()
+            var upstreamMore = true
+            var officialFailure: Exception? = null
+            // Always try dynamic official recommendations first, including in real-only mode.
+            // In real-only mode, admit exclusively explicit server-typed real dramas.
+            repeat(if (realOnly) 2 else 3) {
+                if (candidates.size >= 5 || !upstreamMore) return@repeat
+                try {
+                    val page = reelsFeed.page(reelsPageNumber)
+                    reelsPageNumber++
+                    upstreamMore = page.hasMore
+                    candidates += page.items.filter { it.id !in excluded &&
+                        (!realOnly || isExplicitReal(it)) }
+                } catch (cancel: kotlinx.coroutines.CancellationException) {
+                    throw cancel
+                } catch (failure: Exception) {
+                    officialFailure = failure
+                    upstreamMore = false
                 }
-                if (!page.hasMore) break
             }
-            val page = output ?: throw NoNewRecommendationsException()
-            CatalogPage(page.items.map { it.toDrama() }.distinctBy { it.id },
-                hasMore = page.hasMore, nextOffset = reelsPageNumber)
+            var realCategoryFailure: Exception? = null
+            if (realOnly && candidates.size < 5 && !realReelsEnd) {
+                // Official genre selector is authoritative when general recommendation
+                // cards omit their content type. It also has its own changing cursor.
+                repeat(2) {
+                    if (candidates.size >= 5 || realReelsEnd) return@repeat
+                    try {
+                        val page = realCategoryPage()
+                        candidates += page.items.filter { it.id !in excluded }
+                        diagnostics?.record("REELS", "REAL_CATEGORY_FALLBACK")
+                    } catch (cancel: kotlinx.coroutines.CancellationException) {
+                        throw cancel
+                    } catch (failure: Exception) {
+                        realCategoryFailure = failure
+                        // Keep the same cursor for manual retry; no invented fixed list.
+                        return@repeat
+                    }
+                }
+            }
+            val unique = candidates.distinctBy { it.id }
+            if (unique.isEmpty()) {
+                throw realCategoryFailure ?: officialFailure ?: NoNewRecommendationsException()
+            }
+            diagnostics?.record("REELS",
+                if (realOnly) "REAL_DYNAMIC_BATCH" else "OFFICIAL_DYNAMIC_BATCH")
+            CatalogPage(unique.map { it.toDrama() },
+                hasMore = if (realOnly) (upstreamMore || !realReelsEnd) else upstreamMore,
+                nextOffset = reelsPageNumber)
         }
     }
 
