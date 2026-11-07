@@ -57,6 +57,18 @@ jobs:
         # Only Debug variants, with task outputs restored from Gradle's shared build cache.
         run: ./gradlew --no-daemon --build-cache --stacktrace :app:assembleDebug :app:testDebugUnitTest :app:lintDebug
 
+      - name: Upload Debug test reports on failure
+        if: failure()
+        uses: actions/upload-artifact@v4
+        with:
+          name: hongguo-debug-test-reports
+          path: |
+            app/build/reports/tests/
+            app/build/test-results/
+            app/build/reports/lint-results-debug.html
+          if-no-files-found: ignore
+          retention-days: 7
+
       - name: Upload Debug APK
         if: success()
         uses: actions/upload-artifact@v4
