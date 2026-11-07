@@ -88,6 +88,7 @@ data class AppState(
     val likedDramaIds: Set<String> = emptySet(),
     /** Private locally saved watch-later entries, separate from cloud favorites. */
     val watchLater: List<Drama> = emptyList(),
+    val favoriteGroups: Map<String, String> = emptyMap(),
     val completedDramaIds: Set<String> = emptySet(),
     val trackedEpisodeUpdates: Map<String, Int> = emptyMap(),
     val trackingUpdates: Boolean = false,
