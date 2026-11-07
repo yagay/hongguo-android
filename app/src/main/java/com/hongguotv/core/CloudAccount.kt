@@ -71,7 +71,7 @@ data class CloudProgress(
 internal class EmptyAccountResponseException(val detail: String) :
     IOException("账号接口返回空响应，请稍后重试")
 
-internal fun cloudResponse(response: okhttp3.Response): String {
+internal fun accountResponse(response: okhttp3.Response): String {
     if (!response.isSuccessful) throw IOException("账号请求失败（HTTP ${response.code}）")
     val body = response.body ?: throw IOException("账号接口响应为空")
     val limit = 2 * 1024 * 1024L
@@ -112,7 +112,7 @@ class CloudAccountClient(private val http: OkHttpClient) {
         }
         request.post(body.toRequestBody("application/octet-stream".toMediaType()))
         return http.newCall(request.build()).execute().use {
-            DeviceRegister.parse(cloudResponse(it), it.headers("Set-Cookie"))
+            DeviceRegister.parse(accountResponse(it), it.headers("Set-Cookie"))
         }
     }
 
@@ -158,7 +158,7 @@ class CloudAccountClient(private val http: OkHttpClient) {
             else http
         return transport.newCall(request.build()).execute().use { response ->
             val text = try {
-                cloudResponse(response)
+                accountResponse(response)
             } catch (error: EmptyAccountResponseException) {
                 // 只暴露固定阶段与传输结果，不携带请求地址、账号、Cookie 或设备身份。
                 val stage = when (path) {
@@ -287,7 +287,10 @@ class CloudAccountClient(private val http: OkHttpClient) {
         val rows = parseReservations(raw, online)
         if (!online) return rows
         val missing =
-            rows.filter { EpisodeSummary.total(it.series.badge) == 0 }.map { it.series.id }
+            rows.filter {
+            val badge = it.series.badge
+            badge.substringAfter("共", "").substringBefore("集").toIntOrNull() == null
+        }.map { it.series.id }
         if (missing.isEmpty()) return rows
         // Optional batch metadata: its failure must not hide a valid reservation list.
         val totals =

@@ -150,7 +150,7 @@ class PhoneLogin(private val http: OkHttpClient) {
                     val value = pair.substringAfter('=', "").trim()
                     if (name.isNotEmpty() && value.isNotEmpty()) cookies[name] = value
                 }
-                val text = cloudResponse(response)
+                val text = accountResponse(response)
                 runCatching { JSONObject(text) }
                     .getOrElse {
                         JSONObject().put("http", response.code).put("raw", text.take(300))
