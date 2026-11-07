@@ -69,7 +69,7 @@ internal fun DramaDetailScreen(state: AppState, model: DramaViewModel) {
         .testTag("drama_detail_screen")) {
         Row(Modifier.fillMaxWidth().height(56.dp).padding(horizontal = 8.dp),
             verticalAlignment = Alignment.CenterVertically) {
-            IconButton(onClick = model::closePlayer) {
+            IconButton(onClick = model::backFromDramaDetails) {
                 Icon(Icons.AutoMirrored.Outlined.ArrowBack, "返回",
                     tint = HongguoColors.ink)
             }
