@@ -23,6 +23,7 @@ data class PlaybackDiagnostic(
     val primaryTransportFailure: String? = null,
     val fallbackTransportFailure: String? = null,
     val alternateTransportFailure: String? = null,
+    val networkSnapshot: PlaybackNetworkSnapshot? = null,
 ) {
     /** A privacy-safe support report. No episode, account, signature or provider data. */
     fun safeReport(): String = buildString {
@@ -43,6 +44,7 @@ data class PlaybackDiagnostic(
         alternateTransportFailure?.takeIf { codePattern.matches(it) }?.let {
             append("alternate_transport=").append(it).append('\n')
         }
+        if (stage == "device_register") networkSnapshot?.appendSafeReport(this)
     }
 
     companion object {
