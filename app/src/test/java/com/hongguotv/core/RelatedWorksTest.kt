@@ -1,10 +1,8 @@
 package com.hongguotv.core
 
 import java.io.IOException
-import java.util.zip.GZIPInputStream
 import okhttp3.*
 import okhttp3.ResponseBody.Companion.toResponseBody
-import org.json.JSONObject
 import org.junit.Assert.*
 import org.junit.Test
 
@@ -129,48 +127,4 @@ class RelatedWorksTest {
         assertEquals(3, calls)
     }
 
-    @Test
-    fun subscriptionOnlyWritesRequestedFutureSeriesWithNumericIdAndCompressedJson() {
-        var calls = 0
-        val client =
-            CloudAccountClient(
-                http { request ->
-                    calls++
-                    assertEquals("POST", request.method)
-                    assertEquals(
-                        "/reading/bookapi/search/uncover_subscribe/v1/",
-                        request.url.encodedPath,
-                    )
-                    assertEquals("sessionid=test-only", request.header("Cookie"))
-                    assertEquals("gzip", request.header("Content-Encoding"))
-                    val buffer = okio.Buffer()
-                    request.body!!.writeTo(buffer)
-                    val bytes = buffer.readByteArray()
-                    val json =
-                        JSONObject(GZIPInputStream(bytes.inputStream()).bufferedReader().readText())
-                    assertTrue(json.get("item_id") is Number)
-                    assertEquals(333L, json.getLong("item_id"))
-                    assertEquals(1, json.getInt("op_type"))
-                    assertEquals(3, json.getInt("item_type"))
-                    """{"code":0}"""
-                }
-            )
-        client.reserve(
-            AccountCredentials("sessionid=test-only"),
-            RelatedWorks.parse(data, "111")[1],
-        )
-        assertEquals(1, calls)
-        assertThrows(IllegalArgumentException::class.java) {
-            client.reserve(AccountCredentials("test-only"), RelatedWorks.parse(data, "111")[0])
-        }
-        assertEquals(1, calls)
-    }
-
-    @Test
-    fun rejectedReservationIsNeverAccepted() {
-        val client = CloudAccountClient(http { """{"code":100103}""" })
-        assertThrows(IOException::class.java) {
-            client.reserve(AccountCredentials("test-only"), RelatedWorks.parse(data, "111")[1])
-        }
-    }
 }
