@@ -5,6 +5,7 @@ import com.hongguotv.core.PublicComments
 import com.hongguotv.core.TimedComments
 import org.json.JSONObject
 import com.hongguotv.core.ContentRepository
+import com.hongguotv.core.RecommendationFeed
 import com.hongguotv.core.DramaCategory
 import com.hongguotv.core.DiscoveryCursor
 import com.hongguotv.core.DiscoverySelection
@@ -28,6 +29,8 @@ class NativeHongguoSource(
     private val diagnostics: DiagnosticLog? = null,
 ) {
     private val websiteCovers = NativeWebsiteSource(diagnostics = diagnostics)
+    private var recommendationFeed = RecommendationFeed(repository.http)
+    private var usePublicRecommendationFallback = false
     private val episodeComments by lazy { AppCommentPages() }
     private val publicComments by lazy { PublicComments(repository.http) }
     private val timedComments by lazy { TimedComments() }
@@ -105,7 +108,24 @@ class NativeHongguoSource(
             }
         }
         val origin = when (section) {
-            Section.RECOMMEND -> repository.home(page)
+            Section.RECOMMEND -> {
+                if (page == 1) {
+                    recommendationFeed = RecommendationFeed(repository.http)
+                    usePublicRecommendationFallback = false
+                }
+                if (usePublicRecommendationFallback) repository.home(page)
+                else try {
+                    recommendationFeed.page(page)
+                } catch (error: Exception) {
+                    // A failed official anonymous feed must not blank the
+                    // recommendation screen; use the public catalog for this
+                    // session, with consistent pagination origin.
+                    if (page != 1) throw error
+                    usePublicRecommendationFallback = true
+                    diagnostics?.record("FEED", "PUBLIC_FALLBACK")
+                    repository.home(page)
+                }
+            }
             Section.RANK -> repository.rankPage(boardFor(board), page)
             Section.BROWSE -> repository.discover(
                 categoryFor(genre), filters["topic"].orEmpty(), page)
