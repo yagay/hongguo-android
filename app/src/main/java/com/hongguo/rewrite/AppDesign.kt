@@ -50,7 +50,7 @@ internal object HongguoColors {
                 0xFF6B625CL, 0xFFE5DCD5L
             )
         }
-        fun c(index: Int) = Color(colors[index])
+        fun c(index: Int) = Color(colors[index].toULong())
         if (accent != c(0)) accent = c(0)
         if (accentSoft != c(1)) accentSoft = c(1)
         if (background != c(2)) background = c(2)
