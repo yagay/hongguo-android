@@ -10,7 +10,9 @@ import org.junit.Test
 
 class PlaybackDiagnosticTest {
     @Test fun registrationUsesSafeFixedCategory() {
-        val error = PlaybackDevice.RegistrationException(ConnectException("https://private.example/?cookie=abc"))
+        val constructor = PlaybackDevice.RegistrationException::class.java.getDeclaredConstructor(Throwable::class.java)
+        constructor.isAccessible = true
+        val error = constructor.newInstance(ConnectException("https://private.example/?cookie=abc"))
         val result = PlaybackDiagnostic.fromPreparationFailure(error)
         assertEquals("DEVICE_REGISTER_CONNECT_FAILED", result.code)
         assertEquals("device_register", result.stage)
