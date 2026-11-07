@@ -442,6 +442,11 @@ class DramaViewModel(application: Application) : AndroidViewModel(application) {
     private var commentsGeneration = 0L
     private var danmakuGeneration = 0L
     private val localDownloadJobs = mutableMapOf<String, Job>()
+    private data class LocalDownloadTarget(
+        val vid: String, val uri: Uri, val drama: Drama?, val episode: Episode?,
+    )
+    /** Retry destinations exist only while this process is alive. Never persist an expired URI. */
+    private val retryableDownloads = mutableMapOf<String, LocalDownloadTarget>()
     /** Avoid overloading upstream decryption/network when batch saving episodes. */
     private val localDownloadSlots = Semaphore(2)
     private var requestId = 0L
@@ -1471,19 +1476,26 @@ class DramaViewModel(application: Application) : AndroidViewModel(application) {
     /** Export a single decrypted MP4 to the user-chosen SAF document.
      * Foreground-process task: not resumable after process death.
      */
-    fun downloadNative(vid: String, uri: Uri) {
+    fun downloadNative(vid: String, uri: Uri, previousTaskId: String? = null) {
         if (!vid.matches(Regex("[0-9]{1,30}"))) return
+        val existing = previousTaskId?.let { retryableDownloads[it] }
+        if (previousTaskId != null && (existing == null || existing.vid != vid ||
+            existing.uri != uri)) return
         val currentDetail = state.value.detail
-        val savedDrama = currentDetail?.drama
-        val savedEpisode = currentDetail?.episodes?.firstOrNull { it.vid == vid }
+        val savedDrama = existing?.drama ?: currentDetail?.drama
+        val savedEpisode = existing?.episode ?: currentDetail?.episodes?.firstOrNull { it.vid == vid }
         runCatching {
             getApplication<Application>().contentResolver.takePersistableUriPermission(
                 uri, Intent.FLAG_GRANT_READ_URI_PERMISSION)
         }
-        val taskId = "local-" + System.currentTimeMillis() + "-" + vid.takeLast(6)
+        val taskId = previousTaskId ?: ("local-" + java.util.UUID.randomUUID().toString())
+        synchronized(retryableDownloads) {
+            retryableDownloads[taskId] = LocalDownloadTarget(vid, uri, savedDrama, savedEpisode)
+        }
         mutable.update { s ->
             s.copy(downloadTasks = (
-                listOf(DownloadTask(taskId, "等待下载", 0, 1, emptyList())) + s.downloadTasks
+                listOf(DownloadTask(taskId, "等待下载", 0, 1, emptyList())) +
+                    s.downloadTasks.filterNot { it.id == taskId }
             ).take(40), modal = Modal.DOWNLOAD)
         }
         val job = viewModelScope.launch(Dispatchers.IO) {
@@ -1498,7 +1510,7 @@ class DramaViewModel(application: Application) : AndroidViewModel(application) {
                 val total = video.total
                 if (total <= 0) throw IOException("下载资源长度无效")
                 val output = getApplication<Application>()
-                    .contentResolver.openOutputStream(uri, "w")
+                    .contentResolver.openOutputStream(uri, "wt")
                     ?: throw IOException("无法打开目标文件")
                 output.use { stream ->
                     var offset = 0L
@@ -1530,6 +1542,7 @@ class DramaViewModel(application: Application) : AndroidViewModel(application) {
                     stream.flush()
                 }
                 diagnostics.record("DOWNLOAD", "COMPLETE", elapsed(started))
+                synchronized(retryableDownloads) { retryableDownloads.remove(taskId) }
                 if (savedDrama != null && savedEpisode != null) {
                     val entry = OfflineEpisode(savedDrama.id, savedDrama.title, savedDrama.cover,
                         savedEpisode.index, vid, uri.toString(), System.currentTimeMillis())
@@ -1543,7 +1556,7 @@ class DramaViewModel(application: Application) : AndroidViewModel(application) {
             } catch (e: CancellationException) {
                 diagnostics.record("DOWNLOAD", "CANCELLED")
                 mutable.update { s -> s.copy(downloadTasks = s.downloadTasks.map {
-                    if (it.id == taskId) it.copy(status = "已取消（目标文件可能不完整）") else it
+                    if (it.id == taskId) it.copy(status = "已取消 · 可重试（文件未完成）") else it
                 }) }
                 throw e
             } catch (e: Exception) {
@@ -1563,6 +1576,15 @@ class DramaViewModel(application: Application) : AndroidViewModel(application) {
 
     fun cancelDownload(taskId: String) {
         synchronized(localDownloadJobs) { localDownloadJobs[taskId] }?.cancel()
+    }
+
+    fun retryLocalDownload(taskId: String) {
+        val active = synchronized(localDownloadJobs) {
+            localDownloadJobs[taskId]?.isActive == true
+        }
+        if (active) return
+        val request = synchronized(retryableDownloads) { retryableDownloads[taskId] } ?: return
+        downloadNative(request.vid, request.uri, taskId)
     }
 
     fun updateDownloads() {
