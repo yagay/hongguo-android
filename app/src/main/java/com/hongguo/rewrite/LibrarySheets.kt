@@ -1,6 +1,8 @@
 package com.hongguo.rewrite
 
 import androidx.compose.foundation.clickable
+import androidx.compose.foundation.horizontalScroll
+import androidx.compose.foundation.rememberScrollState
 import androidx.compose.foundation.layout.Arrangement
 import androidx.compose.foundation.layout.Box
 import androidx.compose.foundation.layout.Column
@@ -23,6 +25,8 @@ import androidx.compose.material.icons.outlined.StarBorder
 import androidx.compose.material3.Button
 import androidx.compose.material3.AlertDialog
 import androidx.compose.material3.Checkbox
+import androidx.compose.material3.DropdownMenu
+import androidx.compose.material3.DropdownMenuItem
 import androidx.compose.material3.CircularProgressIndicator
 import androidx.compose.material3.ExperimentalMaterial3Api
 import androidx.compose.material3.HorizontalDivider
@@ -83,9 +87,15 @@ private fun LibraryRows(state: AppState, model: DramaViewModel) {
     var confirmClear by rememberSaveable(state.modal) { mutableStateOf(false) }
     var confirmBatch by rememberSaveable(state.modal) { mutableStateOf(false) }
     var selectedIds by rememberSaveable(state.modal) { mutableStateOf(emptyList<String>()) }
+    var groupFilter by rememberSaveable(state.modal) { mutableStateOf("全部") }
+    var menuFor by rememberSaveable(state.modal) { mutableStateOf("") }
+    var customGroupFor by rememberSaveable(state.modal) { mutableStateOf("") }
+    var customGroupText by rememberSaveable(state.modal) { mutableStateOf("") }
     val filtered = rows.filter { entry ->
         entry.drama.title.contains(query.trim(), ignoreCase = true) &&
-            (isFavorites || when (completionFilter) {
+            (if (isFavorites) (groupFilter == "全部" ||
+                (state.favoriteGroups[entry.drama.id] ?: "默认") == groupFilter)
+            else when (completionFilter) {
                 1 -> entry.drama.id !in state.completedDramaIds
                 2 -> entry.drama.id in state.completedDramaIds
                 else -> true
@@ -111,6 +121,16 @@ private fun LibraryRows(state: AppState, model: DramaViewModel) {
     OutlinedTextField(value = query, onValueChange = { query = it.take(60) },
         singleLine = true, label = { Text("搜索本机片单") },
         modifier = Modifier.fillMaxWidth().testTag("local_library_search"))
+    if (isFavorites) {
+        Row(Modifier.fillMaxWidth().horizontalScroll(rememberScrollState()),
+            horizontalArrangement = Arrangement.spacedBy(7.dp)) {
+            (listOf("全部", "默认", "追剧中", "待看", "已看完") +
+                state.favoriteGroups.values).distinct().forEach { group ->
+                FilterChip(selected = groupFilter == group,
+                    onClick = { groupFilter = group }, label = { Text(group) })
+            }
+        }
+    }
     if (!isFavorites) {
         Row(Modifier.fillMaxWidth(), horizontalArrangement = Arrangement.spacedBy(7.dp)) {
             listOf("全部", "未看完", "已看完").forEachIndexed { index, label ->
@@ -177,6 +197,27 @@ private fun LibraryRows(state: AppState, model: DramaViewModel) {
                         color = HongguoColors.muted, fontSize = 12.sp)
                     Text("点击继续观看", color = HongguoColors.accent, fontSize = 11.sp)
                 }
+                if (!selecting && isFavorites) Box {
+                    TextButton(onClick = { menuFor = entry.drama.id }) {
+                        Text(state.favoriteGroups[entry.drama.id] ?: "默认",
+                            maxLines = 1, fontSize = 11.sp)
+                    }
+                    DropdownMenu(expanded = menuFor == entry.drama.id,
+                        onDismissRequest = { menuFor = "" }) {
+                        (listOf("默认", "追剧中", "待看", "已看完") +
+                            state.favoriteGroups.values).distinct().forEach { group ->
+                            DropdownMenuItem(text = { Text(group) }, onClick = {
+                                menuFor = ""
+                                model.setFavoriteGroup(entry.drama.id, group)
+                            })
+                        }
+                        DropdownMenuItem(text = { Text("自定义分组…") }, onClick = {
+                            menuFor = ""
+                            customGroupFor = entry.drama.id
+                            customGroupText = state.favoriteGroups[entry.drama.id].orEmpty()
+                        })
+                    }
+                }
                 if (!selecting && !isFavorites) TextButton(onClick = {
                     model.setDramaCompleted(entry.drama.id,
                         entry.drama.id !in state.completedDramaIds)
@@ -200,6 +241,22 @@ private fun LibraryRows(state: AppState, model: DramaViewModel) {
             }
         }
     }
+    if (customGroupFor.isNotBlank()) AlertDialog(
+        onDismissRequest = { customGroupFor = "" },
+        title = { Text("自定义收藏分组") },
+        text = {
+            OutlinedTextField(value = customGroupText,
+                onValueChange = { customGroupText = it.take(24) },
+                label = { Text("分组名称，最多24个字") }, singleLine = true)
+        },
+        confirmButton = {
+            TextButton(onClick = {
+                model.setFavoriteGroup(customGroupFor, customGroupText.trim())
+                customGroupFor = ""
+            }, enabled = customGroupText.isNotBlank()) { Text("保存") }
+        },
+        dismissButton = { TextButton(onClick = { customGroupFor = "" }) { Text("取消") } },
+    )
     if (confirmClear) AlertDialog(
         onDismissRequest = { confirmClear = false },
         title = { Text(if (isFavorites) "清空全部本机收藏？" else "清空全部本机历史？") },
