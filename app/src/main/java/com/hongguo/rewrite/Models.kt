@@ -64,6 +64,7 @@ data class AppState(
     val playbackError: String? = null,
     val library: List<Watched> = emptyList(),
     val favorites: List<Watched> = emptyList(),
+    val likedDramaIds: Set<String> = emptySet(),
     val downloadTasks: List<DownloadTask> = emptyList(),
     val backend: String = "",
     val settingsMessage: String? = null,

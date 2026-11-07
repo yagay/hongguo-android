@@ -51,6 +51,7 @@ class DramaViewModel(application: Application) : AndroidViewModel(application) {
     private val mutable = MutableStateFlow(
         AppState(backend = prefs.getString("backend", "").orEmpty(),
             library = library.list(false), favorites = library.list(true),
+            likedDramaIds = prefs.getStringSet("local_liked_dramas", emptySet())?.toSet().orEmpty(),
             logEnabled = diagnostics.enabled,
             danmakuEnabled = prefs.getBoolean("danmaku_enabled", false))
     )
@@ -481,6 +482,23 @@ class DramaViewModel(application: Application) : AndroidViewModel(application) {
         val ep = detail.episodes.getOrNull(s.episodeIndex)?.index ?: 1
         library.toggle(detail.drama, ep)
         updateLibrary()
+    }
+
+    /** Local-only 'like' is independent from saved favorites.
+     * Never invent public likes or claim to post an upstream reaction.
+     */
+    fun toggleLocalLike() {
+        val id = state.value.detail?.drama?.id ?: return
+        val saved = state.value.likedDramaIds.toMutableSet()
+        if (!saved.add(id)) saved.remove(id)
+        prefs.edit().putStringSet("local_liked_dramas", saved).apply()
+        mutable.update { it.copy(likedDramaIds = saved.toSet()) }
+        diagnostics.record("LIBRARY", "LOCAL_LIKE_TOGGLED")
+    }
+
+    fun likeIfNotAlready() {
+        val id = state.value.detail?.drama?.id ?: return
+        if (id !in state.value.likedDramaIds) toggleLocalLike()
     }
 
     fun remove(id: String, fav: Boolean) {
