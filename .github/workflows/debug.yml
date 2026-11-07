@@ -1,0 +1,25 @@
+name: Native rewrite debug
+on:
+  push:
+    branches: [rewrite-web-native]
+  workflow_dispatch:
+jobs:
+  debug:
+    runs-on: ubuntu-latest
+    permissions:
+      contents: read
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-java@v4
+        with:
+          distribution: temurin
+          java-version: '17'
+          cache: gradle
+      - uses: android-actions/setup-android@v3
+      - name: Build Debug APK
+        run: bash ./gradlew :app:assembleDebug :app:testDebugUnitTest --build-cache --no-daemon
+      - uses: actions/upload-artifact@v4
+        with:
+          name: hongguo-native-rewrite-debug
+          path: app/build/outputs/apk/debug/app-debug.apk
+          compression-level: 9
