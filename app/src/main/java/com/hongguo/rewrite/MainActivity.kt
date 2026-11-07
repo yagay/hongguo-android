@@ -112,7 +112,7 @@ private fun HongguoApp(model: DramaViewModel = viewModel()) {
                     if (state.modal == Modal.ACCOUNT) model.closeAccount()
                     else if (state.modal != Modal.NONE) model.closeModal()
                     else if (state.detail != null || state.preparingDetail || state.feedMode) {
-                        if (state.detailPageVisible) model.closePlayer()
+                        if (state.detailPageVisible) model.backFromDramaDetails()
                         else model.backFromPlayer()
                     }
                     else mineOpen = false
