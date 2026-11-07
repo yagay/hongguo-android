@@ -139,8 +139,8 @@ internal fun NativePlayer(state: AppState, model: DramaViewModel) {
     var showHeart by remember { mutableStateOf(false) }
     var longHolding by remember { mutableStateOf(false) }
     var speedBeforeHold by remember { mutableFloatStateOf(1f) }
-    val favoriteNow by rememberUpdatedState(
-        state.favorites.any { it.drama.id == detail.drama.id }
+    val likedNow by rememberUpdatedState(
+        detail.drama.id in state.likedDramaIds
     )
     val currentSpeed by rememberUpdatedState(speed)
     var pendingDownloadVid by rememberSaveable { mutableStateOf<String?>(null) }
@@ -210,7 +210,7 @@ internal fun NativePlayer(state: AppState, model: DramaViewModel) {
                                     detectTapGestures(
                                         onTap = { playback.toggle() },
                                         onDoubleTap = {
-                                            if (!favoriteNow) model.favorite()
+                                            if (!likedNow) model.likeIfNotAlready()
                                             showHeart = true
                                         },
                                         onLongPress = {
@@ -290,43 +290,20 @@ internal fun NativePlayer(state: AppState, model: DramaViewModel) {
                 Modifier.fillMaxWidth().align(Alignment.TopCenter).padding(top = 86.dp))
         }
 
-        // These controls intentionally live above the pager, not inside its
-        // scrolling page, so the active episode cannot move the action rail.
-        Row(
-            Modifier.fillMaxWidth().align(Alignment.TopCenter)
-                .padding(start = 9.dp, end = 10.dp, top = 7.dp),
-            verticalAlignment = Alignment.CenterVertically,
-        ) {
-            IconButton(onClick = model::closePlayer) {
-                Icon(Icons.AutoMirrored.Outlined.ArrowBack, "返回", tint = Color.White)
-            }
-            Column(Modifier.weight(1f)) {
-                Text(detail.drama.title, color = Color.White, maxLines = 1,
-                    overflow = TextOverflow.Ellipsis, fontWeight = FontWeight.Bold)
-                Text("第 ${selected?.index ?: 1} / ${detail.episodes.size} 集",
-                    color = Color.LightGray, fontSize = 12.sp)
-            }
-        }
-
-        Column(
-            Modifier.align(Alignment.BottomEnd)
-                .padding(end = 7.dp, bottom = 86.dp),
-            horizontalAlignment = Alignment.CenterHorizontally,
-            verticalArrangement = Arrangement.spacedBy(2.dp),
-        ) {
-            val saved = state.favorites.any { it.drama.id == detail.drama.id }
-            ReelAction(
-                if (saved) Icons.Outlined.Favorite else Icons.Outlined.FavoriteBorder,
-                if (saved) "已收藏" else "收藏", "reel_favorite",
-            ) { model.favorite() }
-            ReelAction(Icons.Outlined.ChatBubbleOutline, "评论", "reel_comments") {
-                showComments = true
-            }
-            ReelAction(Icons.Outlined.Subtitles,
-                if (state.danmakuEnabled) "弹幕开" else "弹幕关", "reel_danmaku") {
-                model.setDanmaku(!state.danmakuEnabled)
-            }
-            ReelAction(Icons.Outlined.Share, "分享", "reel_share") {
+        ReelScreenshotOverlay(
+            state = state,
+            detail = detail,
+            episode = selected,
+            playback = playback,
+            speed = speed,
+            onBack = model::closePlayer,
+            onFavorite = model::favorite,
+            onLike = model::toggleLocalLike,
+            onComments = { showComments = true },
+            onDanmaku = { model.setDanmaku(!state.danmakuEnabled) },
+            onEpisodes = { showEpisodes = true },
+            onSpeed = { speed = it },
+            onShare = {
                 val vid = selected?.vid.orEmpty()
                 val link = "https://hongguoduanju.com/player/${detail.drama.id}/$vid"
                 val intent = Intent(Intent.ACTION_SEND).apply {
@@ -334,8 +311,8 @@ internal fun NativePlayer(state: AppState, model: DramaViewModel) {
                     putExtra(Intent.EXTRA_TEXT, detail.drama.title + "\n" + link)
                 }
                 context.startActivity(Intent.createChooser(intent, "分享剧集"))
-            }
-            ReelAction(Icons.Outlined.Download, "下载", "reel_download") {
+            },
+            onDownload = {
                 selected?.let { ep ->
                     if (state.backend.isBlank()) {
                         pendingDownloadVid = ep.vid
@@ -343,65 +320,12 @@ internal fun NativePlayer(state: AppState, model: DramaViewModel) {
                             Regex("""[^\p{L}\p{N}_-]"""), "_"
                         ).take(35).ifBlank { "Hongguo" }
                         downloader.launch(safeTitle + "-EP" + ep.index + ".mp4")
-                    } else model.download(ep.index, ep.index)
-                }
-            }
-            ReelAction(Icons.Outlined.FormatListNumbered, "选集", "reel_episodes") {
-                showEpisodes = true
-            }
-        }
-
-        Column(
-            Modifier.fillMaxWidth().align(Alignment.BottomCenter)
-                .padding(start = 14.dp, end = 73.dp, top = 8.dp, bottom = 8.dp),
-            verticalArrangement = Arrangement.spacedBy(3.dp),
-        ) {
-            Text(detail.drama.title, color = Color.White,
-                fontSize = 17.sp, fontWeight = FontWeight.Bold,
-                maxLines = 2, overflow = TextOverflow.Ellipsis)
-            if (detail.drama.synopsis.isNotBlank()) {
-                Text(detail.drama.synopsis, color = Color.White.copy(alpha = 0.80f),
-                    fontSize = 11.sp, lineHeight = 15.sp,
-                    maxLines = 2, overflow = TextOverflow.Ellipsis)
-            }
-            Row(verticalAlignment = Alignment.CenterVertically) {
-                Text("第 ${selected?.index ?: 1} 集", color = Color.White,
-                    fontWeight = FontWeight.SemiBold, modifier = Modifier.weight(1f))
-                TextButton(onClick = {
-                    speed = when (speed) {
-                        1f -> 1.25f
-                        1.25f -> 1.5f
-                        1.5f -> 2f
-                        else -> 1f
+                    } else {
+                        model.download(ep.index, ep.index)
                     }
-                }) { Text("${speed}×", color = Color.White) }
-            }
-            val duration = playback.durationMs
-            if (duration > 0L) {
-                var dragging by remember { mutableStateOf<Float?>(null) }
-                val fraction = (playback.positionMs.toFloat() / duration)
-                    .coerceIn(0f, 1f)
-                Slider(
-                    value = dragging ?: fraction,
-                    onValueChange = { dragging = it },
-                    onValueChangeFinished = {
-                        dragging?.let { playback.seekTo((it * duration).toLong()) }
-                        dragging = null
-                    },
-                    modifier = Modifier.fillMaxWidth().height(25.dp).testTag("reel_seek"),
-                )
-                Row(horizontalArrangement = Arrangement.spacedBy(6.dp)) {
-                    Text(formatClock(playback.positionMs), color = Color.LightGray, fontSize = 11.sp)
-                    Text("/ " + formatClock(duration), color = Color.LightGray, fontSize = 11.sp)
                 }
-            } else {
-                Text("上滑下一集 · 下滑上一集 · 双击收藏 · 长按2×",
-                    color = Color.LightGray, fontSize = 11.sp)
-            }
-            state.danmakuError?.let {
-                Text(it, color = Color(0xFFFFD0C7), fontSize = 11.sp, maxLines = 1)
-            }
-        }
+            },
+        )
     }
 
     if (showComments) ModalBottomSheet(
@@ -447,28 +371,6 @@ internal fun NativePlayer(state: AppState, model: DramaViewModel) {
             }
             Spacer(Modifier.height(22.dp))
         }
-    }
-}
-
-@Composable
-private fun ReelAction(
-    icon: androidx.compose.ui.graphics.vector.ImageVector,
-    title: String,
-    test: String,
-    onClick: () -> Unit,
-) {
-    Column(horizontalAlignment = Alignment.CenterHorizontally,
-        verticalArrangement = Arrangement.spacedBy(0.dp)) {
-        IconButton(
-            onClick = onClick,
-            modifier = Modifier.size(44.dp)
-                .background(Color.Black.copy(alpha = 0.18f), CircleShape)
-                .testTag(test),
-        ) {
-            Icon(icon, contentDescription = title, tint = Color.White,
-                modifier = Modifier.size(25.dp))
-        }
-        Text(title, color = Color.White, fontSize = 10.sp)
     }
 }
 
