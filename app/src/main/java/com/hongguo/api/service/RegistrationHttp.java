@@ -40,7 +40,9 @@ final class RegistrationHttp {
             .writeTimeout(8, TimeUnit.SECONDS)
             .readTimeout(9, TimeUnit.SECONDS)
             .callTimeout(9, TimeUnit.SECONDS)
-            .retryOnConnectionFailure(false)
+            // Allow OkHttp to try alternate resolved IPv4/IPv6 addresses and proxy routes.
+            // The total call timeout still bounds all connection attempts.
+            .retryOnConnectionFailure(true)
             // Device-registration bytes must never be redirected to another host.
             .followRedirects(false)
             .followSslRedirects(false)
