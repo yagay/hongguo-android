@@ -441,7 +441,13 @@ public class PlaybackSourceTest {
             AppSource.fetch("7000000000000000001", "auto");
             fail();
         } catch (AppSource.EmptyPlaybackResponseException e) {
-            assertEquals(1, e.getSuppressed().length);
+            boolean renewal = false, trace = false;
+            for (Throwable item : e.getSuppressed()) {
+                if (item instanceof IOException) renewal = true;
+                if (item instanceof AppSource.AttemptTrace) trace = true;
+            }
+            assertTrue("Renewal failure must be retained for diagnostics", renewal);
+            assertTrue("Playback route history must be retained safely", trace);
         }
         assertEquals("换身份失败仍以原身份试一次备用域名", 2, posts.get());
         assertEquals(2, registrations.get());
