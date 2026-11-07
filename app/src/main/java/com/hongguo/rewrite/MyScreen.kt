@@ -56,6 +56,7 @@ internal fun MyScreen(state: AppState, model: DramaViewModel, onBack: () -> Unit
     val account by model.account.state.collectAsStateWithLifecycle()
     val openAccount = { model.show(Modal.ACCOUNT) }
     var watchLaterOpen by remember { mutableStateOf(false) }
+    var offlineOpen by remember { mutableStateOf(false) }
     LazyColumn(
         Modifier.fillMaxSize().testTag("my_screen").padding(horizontal = 20.dp),
         contentPadding = PaddingValues(top = 16.dp, bottom = 32.dp),
@@ -130,7 +131,42 @@ internal fun MyScreen(state: AppState, model: DramaViewModel, onBack: () -> Unit
                 }
             }
         }
-        if (watchLaterOpen) {
+        if (offlineOpen) {
+            item {
+                Row(Modifier.fillMaxWidth(), verticalAlignment = Alignment.CenterVertically) {
+                    Text("本机离线 · ${state.offlineEpisodes.size} 集",
+                        color = HongguoColors.ink, fontSize = 20.sp,
+                        fontWeight = FontWeight.Bold, modifier = Modifier.weight(1f))
+                    TextButton(onClick = { offlineOpen = false }) { Text("返回") }
+                }
+            }
+            if (state.offlineEpisodes.isEmpty()) item {
+                Text("还没有已完成的离线保存。播放器选集页可批量保存到手机。",
+                    color = HongguoColors.muted, fontSize = 13.sp)
+            }
+            items(state.offlineEpisodes.size) { index ->
+                val episode = state.offlineEpisodes[index]
+                Surface(color = HongguoColors.surface, shape = RoundedCornerShape(14.dp)) {
+                    Row(Modifier.fillMaxWidth().padding(12.dp),
+                        verticalAlignment = Alignment.CenterVertically) {
+                        Column(Modifier.weight(1f).clickable {
+                            model.openOfflineEpisode(episode)
+                        }) {
+                            Text(episode.title, color = HongguoColors.ink,
+                                fontWeight = FontWeight.SemiBold, maxLines = 1,
+                                overflow = TextOverflow.Ellipsis)
+                            Text("第 ${episode.episode} 集 · 本机播放",
+                                color = HongguoColors.muted, fontSize = 12.sp)
+                        }
+                        TextButton(onClick = {
+                            model.removeOfflineEpisode(episode.documentUri)
+                        }, modifier = Modifier.testTag("offline_remove_" + episode.vid)) {
+                            Text("移除记录")
+                        }
+                    }
+                }
+            }
+        } else if (watchLaterOpen) {
             item {
                 Row(Modifier.fillMaxWidth(), verticalAlignment = Alignment.CenterVertically) {
                     Text("稍后看 · ${state.watchLater.size} 部", color = HongguoColors.ink,
@@ -193,6 +229,11 @@ internal fun MyScreen(state: AppState, model: DramaViewModel, onBack: () -> Unit
                         "my_download", Icons.Outlined.Download) {
                         model.updateDownloads()
                         model.show(Modal.DOWNLOAD)
+                    }
+                    MyMenuDivider()
+                    MyMenuRow("本机离线", "已保存的视频 · ${state.offlineEpisodes.size} 集",
+                        "my_offline_library", Icons.Outlined.Download) {
+                        offlineOpen = true
                     }
                     MyMenuDivider()
                     MyMenuRow("分享解析", "从短剧分享链接查找作品",
