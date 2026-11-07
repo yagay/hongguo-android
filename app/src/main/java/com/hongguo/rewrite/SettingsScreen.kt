@@ -3,23 +3,29 @@ package com.hongguo.rewrite
 import androidx.activity.compose.BackHandler
 import androidx.activity.compose.rememberLauncherForActivityResult
 import androidx.activity.result.contract.ActivityResultContracts
+import androidx.compose.foundation.background
 import androidx.compose.foundation.layout.Arrangement
 import androidx.compose.foundation.layout.Column
-import androidx.compose.foundation.layout.PaddingValues
-import androidx.compose.foundation.layout.WindowInsets
+import androidx.compose.foundation.layout.ColumnScope
 import androidx.compose.foundation.layout.FlowRow
+import androidx.compose.foundation.layout.PaddingValues
 import androidx.compose.foundation.layout.Row
 import androidx.compose.foundation.layout.Spacer
+import androidx.compose.foundation.layout.WindowInsets
 import androidx.compose.foundation.layout.fillMaxSize
 import androidx.compose.foundation.layout.fillMaxWidth
 import androidx.compose.foundation.layout.height
 import androidx.compose.foundation.layout.padding
+import androidx.compose.foundation.layout.size
 import androidx.compose.foundation.lazy.LazyColumn
 import androidx.compose.foundation.rememberScrollState
+import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.foundation.verticalScroll
 import androidx.compose.material.icons.Icons
 import androidx.compose.material.icons.automirrored.outlined.ArrowBack
 import androidx.compose.material.icons.outlined.Description
+import androidx.compose.material.icons.outlined.ExpandLess
+import androidx.compose.material.icons.outlined.ExpandMore
 import androidx.compose.material.icons.outlined.Settings
 import androidx.compose.material3.AlertDialog
 import androidx.compose.material3.Button
@@ -31,6 +37,7 @@ import androidx.compose.material3.MaterialTheme
 import androidx.compose.material3.OutlinedButton
 import androidx.compose.material3.OutlinedTextField
 import androidx.compose.material3.Scaffold
+import androidx.compose.material3.Surface
 import androidx.compose.material3.Switch
 import androidx.compose.material3.Text
 import androidx.compose.material3.TextButton
@@ -39,163 +46,190 @@ import androidx.compose.runtime.LaunchedEffect
 import androidx.compose.runtime.getValue
 import androidx.compose.runtime.mutableStateOf
 import androidx.compose.runtime.remember
+import androidx.compose.runtime.saveable.rememberSaveable
 import androidx.compose.runtime.setValue
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.platform.testTag
 import androidx.compose.ui.text.font.FontFamily
+import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
 import java.time.LocalDateTime
 import java.time.format.DateTimeFormatter
 
-/** Actual, navigable settings screen; diagnostics are outside the video player. */
+/** Sectioned settings: existing backend configuration and diagnostics are kept. */
 @Composable
 internal fun SettingsScreen(state: AppState, model: DramaViewModel) {
     var address by remember(state.backend) { mutableStateOf(state.backend) }
     var confirmClear by remember { mutableStateOf(false) }
+    var showLogPreview by rememberSaveable { mutableStateOf(false) }
     val exporter = rememberLauncherForActivityResult(
         ActivityResultContracts.CreateDocument("text/plain")
     ) { uri -> if (uri != null) model.exportDiagnostics(uri) }
+
     LaunchedEffect(Unit) { model.refreshDiagnostics() }
     BackHandler { model.closeModal() }
 
     Scaffold(
+        containerColor = HongguoColors.background,
         contentWindowInsets = WindowInsets(0, 0, 0, 0),
         topBar = {
-            Row(Modifier.fillMaxWidth().padding(8.dp),
-                verticalAlignment = Alignment.CenterVertically) {
+            Row(
+                Modifier.fillMaxWidth().background(HongguoColors.surface)
+                    .height(60.dp).padding(start = 4.dp, end = 16.dp),
+                verticalAlignment = Alignment.CenterVertically,
+            ) {
                 IconButton(onClick = model::closeModal) {
-                    Icon(Icons.AutoMirrored.Outlined.ArrowBack, contentDescription = "返回")
+                    Icon(Icons.AutoMirrored.Outlined.ArrowBack, contentDescription = "返回",
+                        tint = HongguoColors.ink)
                 }
-                Icon(Icons.Outlined.Settings, contentDescription = null)
-                Text(" 设置", style = MaterialTheme.typography.titleLarge)
+                Column(Modifier.weight(1f)) {
+                    Text("设置", fontSize = 20.sp, fontWeight = FontWeight.Bold,
+                        color = HongguoColors.ink)
+                    Text("播放、内容来源与诊断",
+                        fontSize = 11.sp, color = HongguoColors.muted)
+                }
+                Icon(Icons.Outlined.Settings, contentDescription = null,
+                    tint = HongguoColors.muted)
             }
-        }
+        },
     ) { padding ->
         LazyColumn(
             modifier = Modifier.fillMaxSize().padding(padding).testTag("settings_page"),
-            contentPadding = PaddingValues(start = 16.dp, top = 16.dp,
-                end = 16.dp, bottom = 24.dp),
-            verticalArrangement = Arrangement.spacedBy(14.dp),
+            contentPadding = PaddingValues(start = 14.dp, top = 18.dp,
+                end = 14.dp, bottom = 28.dp),
+            verticalArrangement = Arrangement.spacedBy(20.dp),
         ) {
             item {
-                Text("内容来源", style = MaterialTheme.typography.titleMedium)
-                Text("默认使用手机内置的原生内容和视频模块，可搜索、查看真人/漫剧/AI 分类并尝试直接播放。若上游限制或网络异常，设置中的诊断日志会显示错误阶段。",
-                    style = MaterialTheme.typography.bodySmall)
-            }
-            item {
-                OutlinedTextField(
-                    value = address, onValueChange = { address = it },
-                    label = { Text("可选：替代 API 服务地址") },
-                    placeholder = { Text("https://your-server.example") },
-                    singleLine = true,
-                    modifier = Modifier.fillMaxWidth().testTag("backend_address")
-                )
-            }
-            item {
-                FlowRow(horizontalArrangement = Arrangement.spacedBy(8.dp),
-                    verticalArrangement = Arrangement.spacedBy(4.dp)) {
-                    Button(onClick = { model.saveBackend(address) },
-                        modifier = Modifier.testTag("save_backend")) {
-                        Text("保存连接")
-                    }
-                    OutlinedButton(onClick = {
-                        address = ""
-                        model.saveBackend("")
-                    }) { Text("恢复原生模式") }
-                }
-                state.settingsMessage?.let {
-                    Text(it, style = MaterialTheme.typography.bodySmall,
-                        color = MaterialTheme.colorScheme.primary)
-                }
-                Text("默认无需服务器；填写地址会改用独立部署的网页版服务。局域网 HTTP 仅供调试，公网使用 HTTPS。",
-                    style = MaterialTheme.typography.bodySmall)
-            }
-            item { HorizontalDivider() }
-            item {
-                Text("播放交互", style = MaterialTheme.typography.titleMedium)
-                Row(Modifier.fillMaxWidth(), verticalAlignment = Alignment.CenterVertically) {
-                    Column(Modifier.weight(1f)) {
-                        Text("播放画面弹幕")
-                        Text("显示红果匿名只读的分集定时评论；关闭后不请求弹幕",
-                            style = MaterialTheme.typography.bodySmall)
-                    }
-                    Switch(checked = state.danmakuEnabled,
-                        onCheckedChange = model::setDanmaku,
-                        modifier = Modifier.testTag("danmaku_switch"))
-                }
-            }
-            item { HorizontalDivider() }
-            item {
-                Text("诊断日志", style = MaterialTheme.typography.titleMedium)
-                Text("记录目录、剧集、播放和下载的操作阶段、错误代码、响应状态及耗时。不采集账号、搜索关键词、剧名、视频地址或 API 密钥。",
-                    style = MaterialTheme.typography.bodySmall)
-            }
-            item {
-                Row(Modifier.fillMaxWidth(),
-                    verticalAlignment = Alignment.CenterVertically) {
-                    Column(Modifier.weight(1f)) {
-                        Text("记录诊断事件")
-                        Text(if (state.logEnabled) "已启用" else "已停用",
-                            style = MaterialTheme.typography.bodySmall)
-                    }
-                    Switch(checked = state.logEnabled, onCheckedChange = model::setLoggingEnabled,
-                        modifier = Modifier.testTag("log_switch"))
-                }
-            }
-            item {
-                FlowRow(horizontalArrangement = Arrangement.spacedBy(8.dp),
-                    verticalArrangement = Arrangement.spacedBy(4.dp)) {
-                    Button(
-                        onClick = {
-                            val stamp = LocalDateTime.now()
-                                .format(DateTimeFormatter.ofPattern("yyyyMMdd-HHmmss"))
-                            exporter.launch("Hongguo-diagnostic-$stamp.txt")
-                        },
-                        modifier = Modifier.testTag("export_diagnostic")
-                    ) {
-                        Icon(Icons.Outlined.Description, contentDescription = null)
-                        Text(" 导出 TXT")
-                    }
-                    OutlinedButton(onClick = model::refreshDiagnostics) {
-                        Text("刷新日志")
-                    }
-                    OutlinedButton(onClick = { confirmClear = true }) {
-                        Text("清空")
-                    }
-                }
-                state.logNotice?.let {
-                    Text(it, style = MaterialTheme.typography.bodySmall,
-                        color = MaterialTheme.colorScheme.primary)
-                }
-            }
-            item {
-                Text("最近日志预览", style = MaterialTheme.typography.titleSmall)
-                Card(Modifier.fillMaxWidth().height(270.dp)) {
-                    Text(
-                        state.logText.ifBlank { "暂无日志，尝试加载剧集后刷新。" }.takeLast(14000),
-                        modifier = Modifier.fillMaxSize().verticalScroll(rememberScrollState()).padding(12.dp)
-                            .testTag("diagnostic_preview"),
-                        fontFamily = FontFamily.Monospace, fontSize = 11.sp,
-                        lineHeight = 16.sp,
+                SettingsGroup("内容来源") {
+                    Text(if (state.backend.isBlank()) "原生内容模式" else "使用自定义 API",
+                        fontWeight = FontWeight.SemiBold,
+                        color = HongguoColors.ink)
+                    Text("默认使用手机内置的原生模块。可选连接自建网页版服务；视频播放仍受上游接口可用性影响。",
+                        color = HongguoColors.muted, fontSize = 12.sp)
+                    OutlinedTextField(
+                        value = address,
+                        onValueChange = { address = it },
+                        label = { Text("替代 API 地址（可选）") },
+                        placeholder = { Text("https://your-server.example") },
+                        modifier = Modifier.fillMaxWidth().testTag("backend_address"),
+                        shape = RoundedCornerShape(13.dp),
+                        singleLine = true,
                     )
+                    FlowRow(
+                        horizontalArrangement = Arrangement.spacedBy(8.dp),
+                        verticalArrangement = Arrangement.spacedBy(7.dp),
+                    ) {
+                        Button(
+                            onClick = { model.saveBackend(address) },
+                            shape = RoundedCornerShape(12.dp),
+                            modifier = Modifier.testTag("save_backend"),
+                        ) { Text("保存连接") }
+                        OutlinedButton(
+                            onClick = {
+                                address = ""
+                                model.saveBackend("")
+                            },
+                            shape = RoundedCornerShape(12.dp),
+                        ) { Text("恢复原生模式") }
+                    }
+                    state.settingsMessage?.let { Text(it, color = HongguoColors.accent,
+                        fontSize = 12.sp) }
+                    Text("公网 API 请使用 HTTPS；手机不能通过 127.0.0.1 访问电脑上的服务。",
+                        color = HongguoColors.muted, fontSize = 11.sp)
                 }
             }
             item {
-                HorizontalDivider()
-                Text("关于", style = MaterialTheme.typography.titleMedium)
-                Text("Hongguo Native Rewrite · Debug 开发版",
-                    style = MaterialTheme.typography.bodySmall)
-                Text("日志仅存储在本机应用私有目录，最多 256 KB。只有你主动选择导出位置时才会保存 TXT 文件。",
-                    style = MaterialTheme.typography.bodySmall)
+                SettingsGroup("播放体验") {
+                    SettingToggle(
+                        title = "弹幕",
+                        explanation = "显示与本集播放时间同步的公开评论",
+                        enabled = state.danmakuEnabled,
+                        onChange = model::setDanmaku,
+                        testTag = "danmaku_switch",
+                    )
+                    HorizontalDivider(color = HongguoColors.divider)
+                    Text("播放页支持上滑下一集、下滑上一集、单击暂停、双击收藏和长按临时 2× 倍速。",
+                        color = HongguoColors.muted, fontSize = 12.sp)
+                }
+            }
+            item {
+                SettingsGroup("诊断与日志") {
+                    Text("遇到播放失败时，可在这里导出诊断日志。日志包含请求阶段、HTTP 状态及错误码，不采集 API 密钥、搜索内容或视频地址。",
+                        color = HongguoColors.muted, fontSize = 12.sp)
+                    SettingToggle(
+                        title = "记录诊断事件",
+                        explanation = if (state.logEnabled) "已启用 · 本机最多保留 256 KB"
+                                      else "已停用 · 原有日志仍保留",
+                        enabled = state.logEnabled,
+                        onChange = model::setLoggingEnabled,
+                        testTag = "log_switch",
+                    )
+                    FlowRow(
+                        horizontalArrangement = Arrangement.spacedBy(8.dp),
+                        verticalArrangement = Arrangement.spacedBy(7.dp),
+                    ) {
+                        Button(
+                            onClick = {
+                                val stamp = LocalDateTime.now()
+                                    .format(DateTimeFormatter.ofPattern("yyyyMMdd-HHmmss"))
+                                exporter.launch("Hongguo-diagnostic-$stamp.txt")
+                            },
+                            shape = RoundedCornerShape(12.dp),
+                            modifier = Modifier.testTag("export_diagnostic"),
+                        ) {
+                            Icon(Icons.Outlined.Description, null, Modifier.size(18.dp))
+                            Spacer(Modifier.size(5.dp))
+                            Text("导出 TXT")
+                        }
+                        OutlinedButton(onClick = model::refreshDiagnostics,
+                            shape = RoundedCornerShape(12.dp)) { Text("刷新") }
+                        OutlinedButton(onClick = { confirmClear = true },
+                            shape = RoundedCornerShape(12.dp)) { Text("清空") }
+                    }
+                    state.logNotice?.let { Text(it, color = HongguoColors.accent,
+                        fontSize = 12.sp) }
+                    TextButton(onClick = {
+                        showLogPreview = !showLogPreview
+                        if (showLogPreview) model.refreshDiagnostics()
+                    }) {
+                        Text(if (showLogPreview) "收起日志预览" else "展开日志预览")
+                        Icon(if (showLogPreview) Icons.Outlined.ExpandLess
+                             else Icons.Outlined.ExpandMore, null)
+                    }
+                    if (showLogPreview) {
+                        Card(Modifier.fillMaxWidth().height(270.dp)) {
+                            Text(
+                                state.logText.ifBlank { "暂无诊断记录" }.takeLast(14000),
+                                modifier = Modifier.fillMaxSize()
+                                    .verticalScroll(rememberScrollState())
+                                    .padding(12.dp).testTag("diagnostic_preview"),
+                                fontFamily = FontFamily.Monospace,
+                                fontSize = 11.sp, lineHeight = 16.sp,
+                            )
+                        }
+                    }
+                }
+            }
+            item {
+                SettingsGroup("关于") {
+                    Text("红果短剧 · Native Rewrite",
+                        color = HongguoColors.ink,
+                        fontWeight = FontWeight.SemiBold)
+                    Text("Debug 开发版 · Jetpack Compose + Media3",
+                        color = HongguoColors.muted, fontSize = 12.sp)
+                    Text("部分视频和评论接口可能因网络或上游限制不可用；可在诊断中查看具体阶段。",
+                        color = HongguoColors.muted, fontSize = 11.sp)
+                }
             }
         }
     }
+
     if (confirmClear) AlertDialog(
         onDismissRequest = { confirmClear = false },
         title = { Text("清空诊断日志？") },
-        text = { Text("只删除本应用保存的诊断事件，不会影响历史、收藏或设置。") },
+        text = { Text("不会影响收藏、播放历史和设置。") },
         confirmButton = {
             TextButton(onClick = {
                 confirmClear = false
@@ -206,4 +240,48 @@ internal fun SettingsScreen(state: AppState, model: DramaViewModel) {
             TextButton(onClick = { confirmClear = false }) { Text("取消") }
         },
     )
+}
+
+@Composable
+private fun SettingsGroup(
+    title: String,
+    content: @Composable ColumnScope.() -> Unit,
+) {
+    Column(verticalArrangement = Arrangement.spacedBy(8.dp)) {
+        Text(title, fontSize = 15.sp, fontWeight = FontWeight.SemiBold,
+            color = HongguoColors.ink, modifier = Modifier.padding(start = 6.dp))
+        Surface(
+            modifier = Modifier.fillMaxWidth(),
+            color = HongguoColors.surface,
+            shape = RoundedCornerShape(17.dp),
+        ) {
+            Column(
+                Modifier.fillMaxWidth().padding(16.dp),
+                verticalArrangement = Arrangement.spacedBy(12.dp),
+                content = content,
+            )
+        }
+    }
+}
+
+@Composable
+private fun SettingToggle(
+    title: String,
+    explanation: String,
+    enabled: Boolean,
+    onChange: (Boolean) -> Unit,
+    testTag: String,
+) {
+    Row(Modifier.fillMaxWidth(), verticalAlignment = Alignment.CenterVertically) {
+        Column(Modifier.weight(1f),
+            verticalArrangement = Arrangement.spacedBy(3.dp)) {
+            Text(title, fontWeight = FontWeight.SemiBold, color = HongguoColors.ink)
+            Text(explanation, fontSize = 11.sp, color = HongguoColors.muted)
+        }
+        Switch(
+            checked = enabled,
+            onCheckedChange = onChange,
+            modifier = Modifier.testTag(testTag),
+        )
+    }
 }
