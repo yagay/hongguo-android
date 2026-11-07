@@ -80,8 +80,8 @@ private fun LibraryRows(state: AppState, model: DramaViewModel) {
     val filtered = rows.filter { entry ->
         entry.drama.title.contains(query.trim(), ignoreCase = true) &&
             (isFavorites || when (completionFilter) {
-                1 -> entry.drama.total <= 0 || entry.episode < entry.drama.total
-                2 -> entry.drama.total > 0 && entry.episode >= entry.drama.total
+                1 -> entry.drama.id !in state.completedDramaIds
+                2 -> entry.drama.id in state.completedDramaIds
                 else -> true
             })
     }
