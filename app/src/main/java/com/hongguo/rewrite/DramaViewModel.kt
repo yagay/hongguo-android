@@ -995,6 +995,13 @@ class DramaViewModel(application: Application) : AndroidViewModel(application) {
             preparingDetail = false, playing = false) }
     }
 
+    fun toggleFavoriteForDrama(drama: Drama) {
+        if (!drama.id.matches(Regex("[0-9]{1,30}"))) return
+        val episode = state.value.library.firstOrNull { it.drama.id == drama.id }?.episode ?: 1
+        library.toggle(drama, episode)
+        updateLibrary()
+    }
+
     fun favorite() {
         val s = state.value
         val detail = s.detail ?: return
