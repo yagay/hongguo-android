@@ -24,6 +24,7 @@ import androidx.compose.material3.Button
 import androidx.compose.material3.CircularProgressIndicator
 import androidx.compose.material3.ExperimentalMaterial3Api
 import androidx.compose.material3.HorizontalDivider
+import androidx.compose.material3.FilterChip
 import androidx.compose.material3.Icon
 import androidx.compose.material3.ModalBottomSheet
 import androidx.compose.material3.OutlinedTextField
@@ -74,6 +75,16 @@ internal fun LibrarySheets(state: AppState, model: DramaViewModel) {
 private fun LibraryRows(state: AppState, model: DramaViewModel) {
     val isFavorites = state.modal == Modal.FAVORITES
     val rows = if (isFavorites) state.favorites else state.library
+    var query by rememberSaveable(state.modal) { mutableStateOf("") }
+    var completionFilter by rememberSaveable(state.modal) { mutableStateOf(0) }
+    val filtered = rows.filter { entry ->
+        entry.drama.title.contains(query.trim(), ignoreCase = true) &&
+            (isFavorites || when (completionFilter) {
+                1 -> entry.drama.total <= 0 || entry.episode < entry.drama.total
+                2 -> entry.drama.total > 0 && entry.episode >= entry.drama.total
+                else -> true
+            })
+    }
     Row(Modifier.fillMaxWidth(), verticalAlignment = Alignment.CenterVertically) {
         Icon(if (isFavorites) Icons.Outlined.StarBorder else Icons.Outlined.History,
             null, tint = HongguoColors.accent)
@@ -87,12 +98,24 @@ private fun LibraryRows(state: AppState, model: DramaViewModel) {
             }
         }
     }
-    Text("共 " + rows.size + " 部", color = HongguoColors.muted, fontSize = 12.sp)
+    OutlinedTextField(value = query, onValueChange = { query = it.take(60) },
+        singleLine = true, label = { Text("搜索本机片单") },
+        modifier = Modifier.fillMaxWidth().testTag("local_library_search"))
+    if (!isFavorites) {
+        Row(Modifier.fillMaxWidth(), horizontalArrangement = Arrangement.spacedBy(7.dp)) {
+            listOf("全部", "未看完", "已看完").forEachIndexed { index, label ->
+                FilterChip(selected = completionFilter == index, onClick = { completionFilter = index },
+                    label = { Text(label) }, modifier = Modifier.testTag("history_filter_$index"))
+            }
+        }
+    }
+    Text("显示 " + filtered.size + " / " + rows.size + " 部",
+        color = HongguoColors.muted, fontSize = 12.sp)
     LazyColumn(
         Modifier.fillMaxWidth().heightIn(max = 500.dp),
         verticalArrangement = Arrangement.spacedBy(4.dp),
     ) {
-        items(rows, key = { it.drama.id }) { entry ->
+        items(filtered, key = { it.drama.id }) { entry ->
             Row(
                 Modifier.fillMaxWidth().clickable {
                     model.closeModal()
@@ -127,11 +150,11 @@ private fun LibraryRows(state: AppState, model: DramaViewModel) {
             }
             HorizontalDivider(color = HongguoColors.divider)
         }
-        if (rows.isEmpty()) {
+        if (filtered.isEmpty()) {
             item {
                 Box(Modifier.fillMaxWidth().height(180.dp),
                     contentAlignment = Alignment.Center) {
-                    Text(if (isFavorites) "还没有收藏的短剧" else "暂无观看历史",
+                    Text(if (rows.isNotEmpty()) "没有符合筛选条件的短剧" else if (isFavorites) "还没有收藏的短剧" else "暂无观看历史",
                         color = HongguoColors.muted)
                 }
             }
