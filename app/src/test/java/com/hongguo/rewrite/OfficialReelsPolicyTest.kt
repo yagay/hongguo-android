@@ -29,6 +29,14 @@ class OfficialReelsPolicyTest {
         assertNull(OfficialReelsPolicy.nextIndex(q, 2, 1, hidden))
     }
 
+    @Test fun homeRecommendationCardsNeverLeakIntoOfficialSwipeQueue() {
+        val homeIds = setOf("10", "11", "12")
+        val current = emptyList<Drama>()
+        val page = listOf(title("10"), title("11"), title("30"), title("31"))
+        val queue = OfficialReelsPolicy.append(current, page, homeIds)
+        assertEquals(listOf("30", "31"), queue.map { it.id })
+    }
+
     @Test fun homeListAndFeedQueueRemainSeparate() {
         val home = listOf(title("10"), title("11"), title("12"))
         val queue = OfficialReelsPolicy.append(listOf(home.first()),
