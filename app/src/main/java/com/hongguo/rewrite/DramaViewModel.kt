@@ -335,6 +335,7 @@ class DramaViewModel(application: Application) : AndroidViewModel(application) {
             library = library.list(false), favorites = library.list(true),
             likedDramaIds = prefs.getStringSet("local_liked_dramas", emptySet())?.toSet().orEmpty(),
             watchLater = readWatchLater(),
+            favoriteGroups = library.favoriteGroups(),
             completedDramaIds = prefs.getStringSet("completed_drama_ids_v1", emptySet())?.toSet().orEmpty(),
             hiddenRecommendationIds = prefs.getStringSet("hidden_recommendations_v1", emptySet())?.toSet().orEmpty(),
             autoPlayNext = prefs.getBoolean("auto_play_next", true),
@@ -1186,6 +1187,15 @@ class DramaViewModel(application: Application) : AndroidViewModel(application) {
             preparingDetail = false, playing = false) }
     }
 
+    fun setFavoriteGroup(seriesId: String, group: String) {
+        val exists = state.value.favorites.any { it.drama.id == seriesId }
+        if (!exists) return
+        runCatching { library.setFavoriteGroup(seriesId, group) }
+            .onSuccess {
+                mutable.update { it.copy(favoriteGroups = library.favoriteGroups()) }
+            }
+    }
+
     fun setDramaCompleted(seriesId: String, completed: Boolean) {
         if (!seriesId.matches(Regex("[0-9]{1,30}"))) return
         val updated = if (completed) state.value.completedDramaIds + seriesId
@@ -1243,7 +1253,8 @@ class DramaViewModel(application: Application) : AndroidViewModel(application) {
     }
 
     private fun updateLibrary() = mutable.update {
-        it.copy(library = library.list(false), favorites = library.list(true))
+        it.copy(library = library.list(false), favorites = library.list(true),
+            favoriteGroups = library.favoriteGroups())
     }
 
     fun share(message: String) {
