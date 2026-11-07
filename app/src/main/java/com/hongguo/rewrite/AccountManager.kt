@@ -91,6 +91,12 @@ internal class AccountManager(app: Application, private val scope: CoroutineScop
         if (state.value.waitingQr) resetLogin()
     }
 
+    fun cancelSms() {
+        resetLogin()
+        mutable.update { it.copy(smsSent = false, maskedPhone = "",
+            message = "可更换手机号并重新获取验证码") }
+    }
+
     fun qrLogin() {
         if (state.value.busy) return
         resetLogin()
