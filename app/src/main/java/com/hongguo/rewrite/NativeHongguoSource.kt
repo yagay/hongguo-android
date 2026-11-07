@@ -93,7 +93,7 @@ class NativeHongguoSource(
         repository.searchSuggestions(prefix.trim().take(80))
     }
 
-    /** Build a full 12-drama UI batch from the small anonymous feed pages.
+    /** Build a small three-drama UI batch from anonymous feed pages.
      * Runs on Dispatchers.IO; one lock protects this cursor across calls.
      * Extra results from public catalog pages stay queued for later scrolling.
      */
@@ -113,9 +113,13 @@ class NativeHongguoSource(
             }
             var attempts = 0
             var officialAttempts = 0
-            while (recommendationBuffer.available < 12 && !recommendationEnd && attempts < 12) {
+            while (recommendationBuffer.available < RecommendationLoadingPolicy.BATCH_SIZE &&
+                !recommendationEnd && attempts < RecommendationLoadingPolicy.MAX_TOTAL_REQUESTS
+            ) {
                 attempts++
-                if (!recommendationUsePublic && officialAttempts >= 8) {
+                if (!recommendationUsePublic &&
+                    officialAttempts >= RecommendationLoadingPolicy.MAX_OFFICIAL_REQUESTS
+                ) {
                     recommendationUsePublic = true
                     diagnostics?.record("FEED", "CATALOG_PUBLIC_TOP_UP")
                 }
@@ -154,7 +158,7 @@ class NativeHongguoSource(
                     }
                 }
             }
-            val rows = recommendationBuffer.take(12)
+            val rows = recommendationBuffer.take(RecommendationLoadingPolicy.BATCH_SIZE)
             recommendationOffset = offset + rows.size
             CatalogPage(
                 items = rows.map { it.toDrama() },

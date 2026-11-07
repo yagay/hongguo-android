@@ -1,33 +1,17 @@
 package com.hongguo.rewrite
 
-import org.junit.Assert.assertFalse
+import org.junit.Assert.assertEquals
 import org.junit.Assert.assertTrue
 import org.junit.Test
 
 class RecommendationLoadingPolicyTest {
-    private fun nearEnd(
-        loaded: Int = 12, scrolled: Boolean = true,
-        lastVisible: Int = 13, count: Int = 14,
-        loading: Boolean = false, moreLoading: Boolean = false,
-        hasError: Boolean = false,
-    ) = RecommendationLoadingPolicy.nearEnd(
-        native = true, section = Section.RECOMMEND,
-        loading = loading, moreLoading = moreLoading, hasMore = true,
-        hasError = hasError, itemCount = loaded, hasScrolled = scrolled,
-        lastVisible = lastVisible, layoutItems = count,
-    )
-
-    @Test fun batchesHaveTwelveDramaTargets() {
-        assertTrue(RecommendationLoadingPolicy.BATCH_SIZE == 12)
+    @Test fun manuallyLoadedRecommendationBatchHasThreeItems() {
+        assertEquals(3, RecommendationLoadingPolicy.BATCH_SIZE)
     }
 
-    @Test fun onlyScrollToLastRowLoadsNext() {
-        assertTrue(nearEnd())
-        assertFalse(nearEnd(scrolled = false))
-        assertFalse(nearEnd(lastVisible = 8))
-        assertFalse(nearEnd(loaded = 3))
-        assertFalse(nearEnd(loading = true))
-        assertFalse(nearEnd(moreLoading = true))
-        assertFalse(nearEnd(hasError = true))
+    @Test fun boundedFeedRequestsRemainEnabled() {
+        assertTrue(RecommendationLoadingPolicy.MAX_OFFICIAL_REQUESTS > 0)
+        assertTrue(RecommendationLoadingPolicy.MAX_TOTAL_REQUESTS >=
+            RecommendationLoadingPolicy.MAX_OFFICIAL_REQUESTS)
     }
 }
