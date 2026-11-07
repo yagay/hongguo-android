@@ -18,6 +18,7 @@ import androidx.compose.material.icons.Icons
 import androidx.compose.material.icons.outlined.ChevronRight
 import androidx.compose.material.icons.outlined.Download
 import androidx.compose.material.icons.outlined.History
+import androidx.compose.material.icons.outlined.BookmarkBorder
 import androidx.compose.material.icons.outlined.PersonOutline
 import androidx.compose.material.icons.outlined.PrivacyTip
 import androidx.compose.material.icons.outlined.Settings
@@ -29,6 +30,9 @@ import androidx.compose.material3.Surface
 import androidx.compose.material3.Text
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.getValue
+import androidx.compose.runtime.setValue
+import androidx.compose.runtime.mutableStateOf
+import androidx.compose.runtime.remember
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.draw.clip
@@ -48,6 +52,7 @@ import androidx.lifecycle.compose.collectAsStateWithLifecycle
 internal fun MyScreen(state: AppState, model: DramaViewModel, onBack: () -> Unit) {
     val account by model.account.state.collectAsStateWithLifecycle()
     val openAccount = { model.show(Modal.ACCOUNT) }
+    var watchLaterOpen by remember { mutableStateOf(false) }
     LazyColumn(
         Modifier.fillMaxSize().testTag("my_screen").padding(horizontal = 20.dp),
         contentPadding = PaddingValues(top = 16.dp, bottom = 32.dp),
@@ -88,6 +93,37 @@ internal fun MyScreen(state: AppState, model: DramaViewModel, onBack: () -> Unit
                 }
             }
         }
+        if (watchLaterOpen) {
+            item {
+                Row(Modifier.fillMaxWidth(), verticalAlignment = Alignment.CenterVertically) {
+                    Text("稍后看 · ${state.watchLater.size} 部", color = HongguoColors.ink,
+                        fontSize = 20.sp, fontWeight = FontWeight.Bold,
+                        modifier = Modifier.weight(1f))
+                    Text("返回", color = HongguoColors.accent,
+                        modifier = Modifier.clickable { watchLaterOpen = false }.padding(8.dp))
+                }
+            }
+            if (state.watchLater.isEmpty()) item {
+                Text("没有稍后看的剧集，可在首页封面右上角添加。",
+                    color = HongguoColors.muted, fontSize = 13.sp)
+            }
+            items(state.watchLater.size) { index ->
+                val drama = state.watchLater[index]
+                Surface(color = HongguoColors.surface, shape = RoundedCornerShape(14.dp)) {
+                    Row(Modifier.fillMaxWidth().padding(12.dp),
+                        verticalAlignment = Alignment.CenterVertically) {
+                        Column(Modifier.weight(1f).clickable { model.open(drama) }) {
+                            Text(drama.title, color = HongguoColors.ink,
+                                fontWeight = FontWeight.SemiBold)
+                            Text("点击观看", color = HongguoColors.muted, fontSize = 12.sp)
+                        }
+                        Text("移除", color = HongguoColors.accent,
+                            modifier = Modifier.clickable { model.toggleWatchLater(drama) }
+                                .padding(10.dp).testTag("later_remove_" + drama.id))
+                    }
+                }
+            }
+        } else {
         item {
             Row(Modifier.fillMaxWidth(), horizontalArrangement = Arrangement.spacedBy(12.dp)) {
                 MyStat("本机收藏", state.favorites.size, Icons.Outlined.StarBorder,
@@ -111,6 +147,11 @@ internal fun MyScreen(state: AppState, model: DramaViewModel, onBack: () -> Unit
                         model.show(Modal.SETTINGS)
                     }
                     MyMenuDivider()
+                    MyMenuRow("稍后看", "待看的短剧 · ${state.watchLater.size} 部",
+                        "my_watch_later", Icons.Outlined.BookmarkBorder) {
+                        watchLaterOpen = true
+                    }
+                    MyMenuDivider()
                     MyMenuRow("下载任务", "本机已创建的下载与进度",
                         "my_download", Icons.Outlined.Download) {
                         model.updateDownloads()
@@ -129,6 +170,7 @@ internal fun MyScreen(state: AppState, model: DramaViewModel, onBack: () -> Unit
                 fontSize = 12.sp, modifier = Modifier.padding(top = 8.dp))
             Text("红果短剧 ${BuildConfig.VERSION_NAME}", color = HongguoColors.muted,
                 fontSize = 12.sp, modifier = Modifier.padding(top = 8.dp))
+        }
         }
     }
 }
