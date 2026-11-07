@@ -1,6 +1,14 @@
 package com.hongguo.rewrite
 
 import android.os.Bundle
+import android.app.Activity
+import androidx.activity.enableEdgeToEdge
+import androidx.compose.foundation.layout.WindowInsets
+import androidx.compose.foundation.layout.imePadding
+import androidx.compose.foundation.layout.safeDrawingPadding
+import androidx.compose.runtime.SideEffect
+import androidx.compose.ui.platform.LocalContext
+import androidx.core.view.WindowCompat
 import androidx.activity.ComponentActivity
 import androidx.activity.compose.BackHandler
 import androidx.activity.compose.setContent
@@ -83,6 +91,9 @@ private val Muted = Color(0xFF77716C)
 class MainActivity : ComponentActivity() {
     override fun onCreate(savedInstanceState: Bundle?) {
         super.onCreate(savedInstanceState)
+        // Explicit edge-to-edge on all supported Android versions. Insets are
+        // consumed once at ApplicationRoot, not independently on each screen.
+        enableEdgeToEdge()
         setContent { ApplicationRoot() }
     }
 }
@@ -95,33 +106,50 @@ private fun ApplicationRoot(model: DramaViewModel = viewModel()) {
         background = Background, surface = Background,
         onBackground = Ink, onSurface = Ink,
     )
+    val darkPlayer = state.detail != null && state.modal != Modal.SETTINGS
+    val activity = LocalContext.current as? Activity
+    SideEffect {
+        activity?.let {
+            val bars = WindowCompat.getInsetsController(it.window, it.window.decorView)
+            bars.isAppearanceLightStatusBars = !darkPlayer
+            bars.isAppearanceLightNavigationBars = !darkPlayer
+        }
+    }
     MaterialTheme(colorScheme = scheme) {
-        BackHandler(enabled = state.detail != null || state.preparingDetail || state.modal != Modal.NONE) {
-            when {
-                state.modal != Modal.NONE -> model.closeModal()
-                else -> model.closePlayer()
-            }
-        }
-        when {
-            state.modal == Modal.SETTINGS -> SettingsScreen(state, model)
-            state.detail != null -> NativePlayer(state, model)
-            state.preparingDetail -> Box(Modifier.fillMaxSize(), contentAlignment = Alignment.Center) {
-                Column(horizontalAlignment = Alignment.CenterHorizontally,
-                    verticalArrangement = Arrangement.spacedBy(14.dp)) {
-                    CircularProgressIndicator()
-                    Text("正在读取剧集…")
-                    TextButton(onClick = model::closePlayer) { Text("取消") }
+        // Draw the correct background beneath transparent status / navigation bars.
+        Box(Modifier.fillMaxSize().background(if (darkPlayer) Color(0xFF151315) else Background)) {
+            // Single inset owner: child Scaffold components must NOT apply system
+            // insets again. IME padding keeps search / API inputs above the keyboard.
+            Box(Modifier.fillMaxSize().safeDrawingPadding().imePadding()) {
+                BackHandler(enabled = state.detail != null || state.preparingDetail || state.modal != Modal.NONE) {
+                    when {
+                        state.modal != Modal.NONE -> model.closeModal()
+                        else -> model.closePlayer()
+                    }
                 }
+                when {
+                    state.modal == Modal.SETTINGS -> SettingsScreen(state, model)
+                    state.detail != null -> NativePlayer(state, model)
+                    state.preparingDetail -> Box(Modifier.fillMaxSize(), contentAlignment = Alignment.Center) {
+                        Column(horizontalAlignment = Alignment.CenterHorizontally,
+                            verticalArrangement = Arrangement.spacedBy(14.dp)) {
+                            CircularProgressIndicator()
+                            Text("正在读取剧集…")
+                            TextButton(onClick = model::closePlayer) { Text("取消") }
+                        }
+                    }
+                    else -> CatalogPageScreen(state, model)
+                }
+                WebDialogs(state, model)
             }
-            else -> CatalogPageScreen(state, model)
         }
-        WebDialogs(state, model)
     }
 }
 
 @Composable
 private fun CatalogPageScreen(state: AppState, model: DramaViewModel) {
     Scaffold(
+        contentWindowInsets = WindowInsets(0, 0, 0, 0),
         topBar = {
             Column(Modifier.fillMaxWidth().background(Background)) {
                 Row(Modifier.fillMaxWidth().padding(start = 18.dp, end = 8.dp, top = 5.dp),

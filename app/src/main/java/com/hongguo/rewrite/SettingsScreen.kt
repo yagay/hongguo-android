@@ -6,6 +6,8 @@ import androidx.activity.result.contract.ActivityResultContracts
 import androidx.compose.foundation.layout.Arrangement
 import androidx.compose.foundation.layout.Column
 import androidx.compose.foundation.layout.PaddingValues
+import androidx.compose.foundation.layout.WindowInsets
+import androidx.compose.foundation.layout.FlowRow
 import androidx.compose.foundation.layout.Row
 import androidx.compose.foundation.layout.Spacer
 import androidx.compose.foundation.layout.fillMaxSize
@@ -59,6 +61,7 @@ internal fun SettingsScreen(state: AppState, model: DramaViewModel) {
     BackHandler { model.closeModal() }
 
     Scaffold(
+        contentWindowInsets = WindowInsets(0, 0, 0, 0),
         topBar = {
             Row(Modifier.fillMaxWidth().padding(8.dp),
                 verticalAlignment = Alignment.CenterVertically) {
@@ -72,7 +75,8 @@ internal fun SettingsScreen(state: AppState, model: DramaViewModel) {
     ) { padding ->
         LazyColumn(
             modifier = Modifier.fillMaxSize().padding(padding).testTag("settings_page"),
-            contentPadding = PaddingValues(16.dp),
+            contentPadding = PaddingValues(start = 16.dp, top = 16.dp,
+                end = 16.dp, bottom = 24.dp),
             verticalArrangement = Arrangement.spacedBy(14.dp),
         ) {
             item {
@@ -90,7 +94,8 @@ internal fun SettingsScreen(state: AppState, model: DramaViewModel) {
                 )
             }
             item {
-                Row(horizontalArrangement = Arrangement.spacedBy(8.dp)) {
+                FlowRow(horizontalArrangement = Arrangement.spacedBy(8.dp),
+                    verticalArrangement = Arrangement.spacedBy(4.dp)) {
                     Button(onClick = { model.saveBackend(address) },
                         modifier = Modifier.testTag("save_backend")) {
                         Text("保存连接")
@@ -126,7 +131,8 @@ internal fun SettingsScreen(state: AppState, model: DramaViewModel) {
                 }
             }
             item {
-                Row(horizontalArrangement = Arrangement.spacedBy(8.dp)) {
+                FlowRow(horizontalArrangement = Arrangement.spacedBy(8.dp),
+                    verticalArrangement = Arrangement.spacedBy(4.dp)) {
                     Button(
                         onClick = {
                             val stamp = LocalDateTime.now()

@@ -2,6 +2,9 @@ package com.hongguo.rewrite
 
 import androidx.activity.compose.BackHandler
 import androidx.compose.foundation.background
+import androidx.compose.foundation.horizontalScroll
+import androidx.compose.foundation.verticalScroll
+import androidx.compose.foundation.rememberScrollState
 import androidx.compose.foundation.layout.Arrangement
 import androidx.compose.foundation.layout.Box
 import androidx.compose.foundation.layout.Column
@@ -93,11 +96,15 @@ internal fun NativePlayer(state: AppState, model: DramaViewModel) {
                 }
             }
         }
-        Column(Modifier.fillMaxWidth().padding(14.dp),
+        // Bounded, scrollable controls: expanded episodes or large font sizes
+        // must not push the final row below the gesture navigation area.
+        Column(Modifier.fillMaxWidth().heightIn(max = 255.dp)
+            .verticalScroll(rememberScrollState()).padding(14.dp),
             verticalArrangement = Arrangement.spacedBy(9.dp)) {
             Text(selectedEpisode?.let { "第 " + it.index + " 集" } ?: "暂无剧集",
                 color = Color.White)
-            Row(horizontalArrangement = Arrangement.spacedBy(7.dp),
+            Row(Modifier.horizontalScroll(rememberScrollState()),
+                horizontalArrangement = Arrangement.spacedBy(7.dp),
                 verticalAlignment = Alignment.CenterVertically) {
                 TextButton(onClick = { showEpisodes = !showEpisodes }) {
                     Text(if (showEpisodes) "收起选集" else "选集 · 共 " + detail.episodes.size + " 集",
@@ -109,7 +116,8 @@ internal fun NativePlayer(state: AppState, model: DramaViewModel) {
                 }, enabled = selectedEpisode != null) { Text("下载本集", color = Color.White) }
                 TextButton(onClick = model::nextEpisode) { Text("下一集", color = Color.White) }
             }
-            Row(horizontalArrangement = Arrangement.spacedBy(5.dp)) {
+            Row(Modifier.horizontalScroll(rememberScrollState()),
+                horizontalArrangement = Arrangement.spacedBy(5.dp)) {
                 listOf(0.75f, 1f, 1.25f, 1.5f, 2f).forEach { value ->
                     FilterChip(selected = speed == value, onClick = { speed = value },
                         label = { Text(value.toString() + "×") })
