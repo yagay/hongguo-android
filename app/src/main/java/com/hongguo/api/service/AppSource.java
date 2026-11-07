@@ -154,6 +154,8 @@ public final class AppSource {
                 lastRoute = (i == 0 ? "tab_primary" : i == 1 ? "post_primary" :
                         i == 2 ? "tab_renewed" : "post_alternate");
                 attempted++;
+                // Fixed route name only. No hostnames, signed URLs, headers or tokens.
+                if (progress != null) progress.update("model_route_" + lastRoute, attempted, PLAYBACK_ROUTES.length);
                 Map<String, Object> j;
                 try {
                     j = route.post ? playbackPost.post(body, identity, route.host) : playbackTab.get(vid, identity);
@@ -162,7 +164,9 @@ public final class AppSource {
                         continue;
                     }
                     try {
-                        return parseModel(vid, j, quality);
+                        Stream.VideoTrack selected = parseModel(vid, j, quality);
+                        if (progress != null) progress.update("model_ready", attempted, PLAYBACK_ROUTES.length);
+                        return selected;
                     } catch (PlaybackModelUnavailableException incompleteModel) {
                         // The service returned a response without this episode's model. Try
                         // another signed route; never retry codec/DRM/business rejections.

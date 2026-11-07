@@ -607,6 +607,10 @@ class HongguoViewModel(application: Application) : AndroidViewModel(application)
         resumeTargets[episode.id] = ResumeTarget(cardFor(detail), episode.index)
         AppDiagnostics.record("PLAYBACK", "EPISODE_SELECTED",
             stage = if (warmClaim != null) "prefetch_claimed" else "direct")
+        if (warmClaim != null) {
+            AppDiagnostics.record("PREFETCH", "CLAIM",
+                stage = if (warmClaim.prepared.isCompleted) "ready" else "inflight")
+        }
         val savedPosition = if (restart) 0 else resumeOverrideMs ?: preferences.getLong("${detail.id}.${episode.id}.position", 0)
         mutableState.update {
             it.copy(episodePosition = position, preparing = true, video = null,
@@ -620,9 +624,14 @@ class HongguoViewModel(application: Application) : AndroidViewModel(application)
                 var lastStage = ""
                 // If the preload is still resolving the video address, join that same request
                 // instead of canceling it and registering another anonymous device.
+                val claimWaitStartedAt = android.os.SystemClock.elapsedRealtime()
                 val warmed = warmClaim?.prepared?.await()
                 transferredWarm = warmed != null
-                if (warmed != null) AppDiagnostics.record("PREFETCH", "HANDOFF_OK")
+                if (warmClaim != null) {
+                    AppDiagnostics.record("PREFETCH",
+                        if (warmed != null) "HANDOFF_OK" else "HANDOFF_MISS",
+                        elapsedMs = android.os.SystemClock.elapsedRealtime() - claimWaitStartedAt)
+                }
                 val prepared = warmed ?: repository.prepare(episode) { stage, done, total ->
                     if (version == mediaVersion) {
                         startupTrace?.mark(stage)
@@ -733,23 +742,44 @@ class HongguoViewModel(application: Application) : AndroidViewModel(application)
         val slot = WarmSlot(episode.id)
         warmSlot = slot
         AppDiagnostics.record("PREFETCH", "START")
+        val warmStartedAt = android.os.SystemClock.elapsedRealtime()
         val job = viewModelScope.launch {
             var ready = false
+            var lastWarmStage = ""
             try {
-                val prepared = repository.prepare(episode, allowFallback = false) { _, _, _ -> }
+                // A claimed producer was previously opaque: keep fixed stage checkpoints so
+                // exported logs show whether registration, model routing, or CDN/MP4 is slow.
+                val prepared = repository.prepare(episode, allowFallback = false) { stage, _, _ ->
+                    if (stage != lastWarmStage) {
+                        lastWarmStage = stage
+                        AppDiagnostics.record("PREFETCH", "STAGE", stage = stage,
+                            elapsedMs = android.os.SystemClock.elapsedRealtime() - warmStartedAt)
+                    }
+                }
                 slot.video = prepared
                 if (slot.abandoned) return@launch
                 slot.prepared.complete(prepared)
-                AppDiagnostics.record("PREFETCH", "READY")
+                AppDiagnostics.record("PREFETCH", "READY",
+                    elapsedMs = android.os.SystemClock.elapsedRealtime() - warmStartedAt)
                 if (slot.taken || warmSlot !== slot) return@launch
                 repository.warmNext(prepared) { reader ->
                     slot.reader = reader
                     if (reader != null && (slot.taken || warmSlot !== slot)) reader.close()
                 }
                 ready = true
-            } catch (cancelled: CancellationException) { throw cancelled }
+            } catch (cancelled: CancellationException) {
+                AppDiagnostics.record("PREFETCH", "CANCELLED",
+                    elapsedMs = android.os.SystemClock.elapsedRealtime() - warmStartedAt)
+                throw cancelled
+            }
             catch (error: Exception) {
-                AppDiagnostics.failure("PREFETCH", error = error)
+                if (slot.abandoned || !currentCoroutineContext().isActive) {
+                    AppDiagnostics.record("PREFETCH", "ABANDONED",
+                        elapsedMs = android.os.SystemClock.elapsedRealtime() - warmStartedAt)
+                } else {
+                    AppDiagnostics.failure("PREFETCH", error = error,
+                        elapsedMs = android.os.SystemClock.elapsedRealtime() - warmStartedAt)
+                }
                 /* Speculation must not break the selected episode. */
             }
             finally {
