@@ -63,6 +63,9 @@ data class AppState(
     val error: String? = null,
     val modal: Modal = Modal.NONE,
     val detail: DramaDetail? = null,
+    /** Separate one-video-per-series feed from full-series episode paging. */
+    val feedMode: Boolean = false,
+    val feedIndex: Int = 0,
     val episodeIndex: Int = 0,
     val preparingDetail: Boolean = false,
     val relatedSeries: String? = null,

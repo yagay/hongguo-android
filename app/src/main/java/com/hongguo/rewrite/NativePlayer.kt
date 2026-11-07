@@ -134,9 +134,17 @@ internal fun NativePlayer(state: AppState, model: DramaViewModel) {
     }
     val context = LocalContext.current
     val selected = detail.episodes.getOrNull(state.episodeIndex)
+    val previousFeedDrama = if (state.feedMode) state.items.getOrNull(state.feedIndex - 1) else null
+    val nextFeedDrama = if (state.feedMode) state.items.getOrNull(state.feedIndex + 1) else null
+    val activeFeedPage = if (previousFeedDrama != null) 1 else 0
+    val nextFeedPage = state.feedMode &&
+        (nextFeedDrama != null || state.hasMore || state.moreLoading)
+    val feedPages = activeFeedPage + 1 + if (nextFeedPage) 1 else 0
+    val activePage = if (state.feedMode) activeFeedPage
+        else state.episodeIndex.coerceIn(0, detail.episodes.lastIndex)
     val pagerState = rememberPagerState(
-        initialPage = state.episodeIndex.coerceIn(0, detail.episodes.lastIndex),
-        pageCount = { detail.episodes.size },
+        initialPage = activePage,
+        pageCount = { if (state.feedMode) feedPages else detail.episodes.size },
     )
     val playback = remember(state.episodeIndex) { ReelPlaybackControls() }
     var speed by remember { mutableFloatStateOf(1f) }
@@ -162,14 +170,20 @@ internal fun NativePlayer(state: AppState, model: DramaViewModel) {
     }
     BackHandler { model.closePlayer() }
 
-    LaunchedEffect(pagerState, detail.drama.id) {
+    LaunchedEffect(pagerState, detail.drama.id, state.feedMode, state.feedIndex) {
         snapshotFlow { pagerState.settledPage }
             .distinctUntilChanged()
-            .collect { model.playIfDifferent(it) }
+            .collect { index ->
+                if (state.feedMode) {
+                    if (index != activePage) {
+                        model.navigateFeed(if (index > activePage) 1 else -1)
+                    }
+                } else model.playIfDifferent(index)
+            }
     }
     LaunchedEffect(state.episodeIndex) {
-        if (pagerState.settledPage != state.episodeIndex && !pagerState.isScrollInProgress) {
-            pagerState.animateScrollToPage(state.episodeIndex)
+        if (pagerState.settledPage != activePage && !pagerState.isScrollInProgress) {
+            pagerState.animateScrollToPage(activePage)
         }
         showComments = false
         showEpisodes = false
@@ -219,10 +233,12 @@ internal fun NativePlayer(state: AppState, model: DramaViewModel) {
             userScrollEnabled = !showComments && !showEpisodes,
             modifier = Modifier.fillMaxSize().testTag("episode_vertical_pager"),
         ) { page ->
-            val episode = detail.episodes[page]
+            val episode = detail.episodes.getOrNull(
+                if (state.feedMode) state.episodeIndex else page
+            )
             Box(Modifier.fillMaxSize().background(Color.Black),
                 contentAlignment = Alignment.Center) {
-                if (page == state.episodeIndex) {
+                if (page == activePage && episode != null) {
                     val url = state.playbackUrl
                     if (url != null) {
                         Media3Reel(
@@ -295,10 +311,17 @@ internal fun NativePlayer(state: AppState, model: DramaViewModel) {
                         }
                     }
                 } else {
+                    val preview = if (state.feedMode) {
+                        if (page < activePage) previousFeedDrama else nextFeedDrama
+                    } else null
                     Column(horizontalAlignment = Alignment.CenterHorizontally,
-                        verticalArrangement = Arrangement.spacedBy(8.dp)) {
-                        Text(detail.drama.title, color = Color.White, fontSize = 19.sp)
-                        Text("第 ${episode.index} 集", color = Color.LightGray)
+                        verticalArrangement = Arrangement.spacedBy(9.dp)) {
+                        Text(preview?.title ?: if (state.feedMode) "正在获取更多推荐"
+                             else detail.drama.title,
+                            color = Color.White, fontSize = 19.sp)
+                        Text(if (state.feedMode) "正在切换短剧…"
+                             else "第 ${episode?.index ?: page + 1} 集",
+                            color = Color.LightGray)
                     }
                 }
             }
@@ -406,7 +429,11 @@ internal fun NativePlayer(state: AppState, model: DramaViewModel) {
                             .clip(RoundedCornerShape(10.dp))
                             .background(if (active) HongguoColors.accent
                                         else Color(0xFF36363B))
-                            .clickable { model.play(index); showEpisodes = false }
+                            .clickable {
+                                if (state.feedMode) model.exitFeedToEpisode(index)
+                                else model.play(index)
+                                showEpisodes = false
+                            }
                             .testTag("episode_" + index),
                         contentAlignment = Alignment.Center,
                     ) {

@@ -77,6 +77,7 @@ class DramaViewModel(application: Application) : AndroidViewModel(application) {
     private val localDownloadJobs = mutableMapOf<String, Job>()
     private var requestId = 0L
     private var detailId = 0L
+    private var pendingFeedAdvance = false
     private var firstFrameFor: String? = null
     private var startEpisodeHint: Int? = null
 
@@ -226,6 +227,10 @@ class DramaViewModel(application: Application) : AndroidViewModel(application) {
                     it.copy(items = (it.items + result.items).distinctBy(Drama::id),
                         nextOffset = result.nextOffset, hasMore = result.hasMore,
                         moreLoading = false)
+                }
+                if (pendingFeedAdvance) {
+                    pendingFeedAdvance = false
+                    navigateFeed(1)
                 }
             } catch (e: CancellationException) {
                 throw e
@@ -549,7 +554,42 @@ class DramaViewModel(application: Application) : AndroidViewModel(application) {
         }
     }
 
-    fun open(drama: Drama, resumeEp: Int? = null) {
+    /** Start a dedicated one-episode-per-drama vertical recommendation feed. */
+    fun startFeed(drama: Drama? = null) {
+        val s = state.value
+        val selected = drama ?: s.items.firstOrNull() ?: return
+        val index = s.items.indexOfFirst { it.id == selected.id }
+        if (index < 0 || s.section != Section.RECOMMEND) return
+        pendingFeedAdvance = false
+        mutable.update { it.copy(feedIndex = index) }
+        open(selected, resumeEp = 1, feed = true)
+        if (index + 2 >= s.items.size && s.hasMore) more()
+    }
+
+    fun navigateFeed(direction: Int) {
+        val s = state.value
+        if (!s.feedMode || direction !in setOf(-1, 1)) return
+        val index = s.feedIndex + direction
+        val target = s.items.getOrNull(index)
+        if (target != null && target.id != s.detail?.drama?.id) {
+            pendingFeedAdvance = false
+            mutable.update { it.copy(feedIndex = index) }
+            open(target, resumeEp = 1, feed = true)
+            if (index + 2 >= s.items.size && s.hasMore) more()
+        } else if (direction > 0 && s.hasMore && !s.moreLoading) {
+            pendingFeedAdvance = true
+            more()
+        } else if (direction > 0 && s.moreLoading) {
+            pendingFeedAdvance = true
+        }
+    }
+
+    fun exitFeedToEpisode(index: Int) {
+        mutable.update { it.copy(feedMode = false) }
+        play(index)
+    }
+
+    fun open(drama: Drama, resumeEp: Int? = null, feed: Boolean = false) {
         ++relatedGeneration
         relatedJob?.cancel()
         clearSocial()
@@ -559,7 +599,7 @@ class DramaViewModel(application: Application) : AndroidViewModel(application) {
         firstFrameFor = null
         startEpisodeHint = resumeEp
         mutable.update { it.copy(detail = null, preparingDetail = true,
-            relatedWorks = emptyList(), relatedSeries = null,
+            feedMode = feed, relatedWorks = emptyList(), relatedSeries = null,
             relatedLoading = false, relatedError = null,
             playbackError = null, playbackUrl = null, playing = false) }
         val api = source
@@ -730,11 +770,16 @@ class DramaViewModel(application: Application) : AndroidViewModel(application) {
             return
         }
         mutable.update { it.copy(sleepTimerLabel = sleepTimer.label()) }
+        if (s.feedMode) {
+            navigateFeed(1)
+            return
+        }
         val index = s.episodeIndex + 1
         if (index < (s.detail?.episodes?.size ?: 0)) play(index)
     }
 
     fun closePlayer() {
+        pendingFeedAdvance = false
         ++relatedGeneration
         relatedJob?.cancel()
         clearSocial()
@@ -744,7 +789,7 @@ class DramaViewModel(application: Application) : AndroidViewModel(application) {
         closeNativeVideo()
         firstFrameFor = null
         mutable.update { it.copy(detail = null, playbackUrl = null,
-            relatedSeries = null, relatedWorks = emptyList(),
+            feedMode = false, relatedSeries = null, relatedWorks = emptyList(),
             relatedLoading = false, relatedError = null,
             resumePositionMs = 0L, playbackError = null,
             preparingDetail = false, playing = false) }

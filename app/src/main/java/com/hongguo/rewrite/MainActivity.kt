@@ -23,6 +23,7 @@ import androidx.compose.material3.lightColorScheme
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.SideEffect
 import androidx.compose.runtime.getValue
+import androidx.compose.runtime.key
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.graphics.Color
@@ -81,7 +82,9 @@ private fun HongguoApp(model: DramaViewModel = viewModel()) {
                 }
                 when {
                     state.modal == Modal.SETTINGS -> SettingsScreen(state, model)
-                    state.detail != null -> NativePlayer(state, model)
+                    state.detail != null -> key(state.detail.drama.id, state.feedMode) {
+                        NativePlayer(state, model)
+                    }
                     state.preparingDetail -> {
                         Box(Modifier.fillMaxSize(), contentAlignment = Alignment.Center) {
                             Column(

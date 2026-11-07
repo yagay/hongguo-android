@@ -288,6 +288,15 @@ private fun CatalogSectionTools(state: AppState, model: DramaViewModel,
                 fontSize = 20.sp, fontWeight = FontWeight.Bold, color = HongguoColors.ink,
                 modifier = Modifier.weight(1f),
             )
+            if (state.section == Section.RECOMMEND && state.items.isNotEmpty()) {
+                TextButton(
+                    onClick = { model.startFeed() },
+                    modifier = Modifier.testTag("start_video_feed"),
+                ) {
+                    Text("刷短剧", fontSize = 13.sp, color = HongguoColors.accent,
+                        fontWeight = FontWeight.SemiBold)
+                }
+            }
             if (state.items.isNotEmpty()) {
                 Text("已加载 " + state.items.size + " 部", fontSize = 11.sp,
                     color = HongguoColors.muted)
