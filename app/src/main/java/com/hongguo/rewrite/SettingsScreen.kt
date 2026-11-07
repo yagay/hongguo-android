@@ -4,6 +4,7 @@ import androidx.activity.compose.BackHandler
 import androidx.activity.compose.rememberLauncherForActivityResult
 import androidx.activity.result.contract.ActivityResultContracts
 import androidx.compose.foundation.background
+import androidx.compose.foundation.clickable
 import androidx.compose.foundation.layout.Arrangement
 import androidx.compose.foundation.layout.Column
 import androidx.compose.foundation.layout.ColumnScope
@@ -27,6 +28,9 @@ import androidx.compose.material.icons.outlined.Description
 import androidx.compose.material.icons.outlined.ExpandLess
 import androidx.compose.material.icons.outlined.ExpandMore
 import androidx.compose.material.icons.outlined.Settings
+import androidx.compose.material.icons.outlined.ChevronRight
+import androidx.compose.material.icons.outlined.PersonOutline
+import androidx.compose.material.icons.outlined.PlayCircleOutline
 import androidx.compose.material3.AlertDialog
 import androidx.compose.material3.Button
 import androidx.compose.material3.Card
@@ -86,36 +90,27 @@ internal fun SettingsScreen(state: AppState, model: DramaViewModel) {
                     Icon(Icons.AutoMirrored.Outlined.ArrowBack, contentDescription = "返回",
                         tint = HongguoColors.ink)
                 }
-                Column(Modifier.weight(1f)) {
-                    Text("设置", fontSize = 20.sp, fontWeight = FontWeight.Bold,
-                        color = HongguoColors.ink)
-                    Text("账号、播放、内容来源与隐私",
-                        fontSize = 11.sp, color = HongguoColors.muted)
-                }
-                Icon(Icons.Outlined.Settings, contentDescription = null,
-                    tint = HongguoColors.muted)
+                Text("设置", fontSize = 24.sp, fontWeight = FontWeight.Bold,
+                    color = HongguoColors.ink, modifier = Modifier.weight(1f))
             }
         },
     ) { padding ->
         LazyColumn(
             modifier = Modifier.fillMaxSize().padding(padding).testTag("settings_page"),
-            contentPadding = PaddingValues(start = 14.dp, top = 18.dp,
-                end = 14.dp, bottom = 28.dp),
-            verticalArrangement = Arrangement.spacedBy(14.dp),
+            contentPadding = PaddingValues(start = 20.dp, top = 12.dp,
+                end = 20.dp, bottom = 28.dp),
+            verticalArrangement = Arrangement.spacedBy(12.dp),
         ) {
             item {
                 SettingsGroup("账号与隐私") {
-                    Text(
-                        account.profile?.nickname?.let { "已登录 · " + it }
-                            ?: if (account.checking) "正在检查登录状态" else "未登录",
-                        color = HongguoColors.ink, fontWeight = FontWeight.SemiBold,
-                    )
-                    Text("可使用官方扫码或手机验证码登录，查看云端历史、收藏和预约。匿名播放与本机数据不受影响。",
-                        color = HongguoColors.muted, fontSize = 12.sp)
-                    Button(
+                    SettingsNavRow(
+                        icon = Icons.Outlined.PersonOutline,
+                        title = "红果账号",
+                        subtitle = account.profile?.nickname?.let { "已登录 · $it" }
+                            ?: if (account.checking) "正在检查登录状态" else "登录方式、云片单与账号管理",
+                        tag = "open_account",
                         onClick = { model.show(Modal.ACCOUNT) },
-                        modifier = Modifier.testTag("open_account"),
-                    ) { Text(if (account.profile != null) "管理红果账号" else "登录红果账号") }
+                    )
                     if (account.profile != null) {
                         HorizontalDivider()
                         SettingToggle("账号推荐", "默认关闭，按本人账号推荐", account.accountRecommendations,
@@ -128,10 +123,13 @@ internal fun SettingsScreen(state: AppState, model: DramaViewModel) {
             }
             item {
                 SettingsGroup("播放偏好") {
-                    Text("播放时点击右上角「···」进入播放设置", color = HongguoColors.ink,
-                        fontWeight = FontWeight.SemiBold)
-                    Text("画面模式、倍速、画质、弹幕、定时停止及单集下载都在播放器内调整。",
-                        color = HongguoColors.muted, fontSize = 12.sp)
+                    SettingsNavRow(
+                        icon = Icons.Outlined.PlayCircleOutline,
+                        title = "播放器设置",
+                        subtitle = "画质、倍速、弹幕、定时停止等在播放页右上角调整",
+                        tag = "settings_player_preferences",
+                        onClick = model::closeModal,
+                    )
                 }
             }
             item {
@@ -262,21 +260,50 @@ internal fun SettingsScreen(state: AppState, model: DramaViewModel) {
 }
 
 @Composable
+private fun SettingsNavRow(
+    icon: androidx.compose.ui.graphics.vector.ImageVector,
+    title: String,
+    subtitle: String,
+    tag: String,
+    onClick: () -> Unit,
+) {
+    Row(
+        Modifier.fillMaxWidth().clickable(onClick = onClick).testTag(tag)
+            .padding(vertical = 6.dp),
+        verticalAlignment = Alignment.CenterVertically,
+        horizontalArrangement = Arrangement.spacedBy(12.dp),
+    ) {
+        Surface(color = HongguoColors.accentSoft, shape = RoundedCornerShape(10.dp)) {
+            androidx.compose.foundation.layout.Box(Modifier.size(36.dp), contentAlignment = Alignment.Center) {
+                Icon(icon, contentDescription = null, modifier = Modifier.size(20.dp),
+                    tint = HongguoColors.accent)
+            }
+        }
+        Column(Modifier.weight(1f), verticalArrangement = Arrangement.spacedBy(5.dp)) {
+            Text(title, fontSize = 16.sp, fontWeight = FontWeight.Medium, color = HongguoColors.ink)
+            Text(subtitle, fontSize = 12.sp, lineHeight = 19.sp, color = HongguoColors.muted)
+        }
+        Icon(Icons.Outlined.ChevronRight, contentDescription = null,
+            modifier = Modifier.size(20.dp), tint = HongguoColors.muted)
+    }
+}
+
+@Composable
 private fun SettingsGroup(
     title: String,
     content: @Composable ColumnScope.() -> Unit,
 ) {
-    Column(verticalArrangement = Arrangement.spacedBy(8.dp)) {
-        Text(title, fontSize = 15.sp, fontWeight = FontWeight.SemiBold,
-            color = HongguoColors.ink, modifier = Modifier.padding(start = 6.dp))
+    Column(verticalArrangement = Arrangement.spacedBy(12.dp)) {
+        Text(title, fontSize = 14.sp, fontWeight = FontWeight.Medium,
+            color = HongguoColors.muted, modifier = Modifier.padding(start = 2.dp, top = 6.dp))
         Surface(
             modifier = Modifier.fillMaxWidth(),
             color = HongguoColors.surface,
-            shape = RoundedCornerShape(17.dp),
+            shape = RoundedCornerShape(16.dp),
         ) {
             Column(
                 Modifier.fillMaxWidth().padding(16.dp),
-                verticalArrangement = Arrangement.spacedBy(12.dp),
+                verticalArrangement = Arrangement.spacedBy(10.dp),
                 content = content,
             )
         }
