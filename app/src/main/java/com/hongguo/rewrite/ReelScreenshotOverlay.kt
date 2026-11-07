@@ -18,7 +18,6 @@ import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.material.icons.Icons
 import androidx.compose.material.icons.automirrored.outlined.ArrowBack
 import androidx.compose.material.icons.outlined.ChatBubbleOutline
-import androidx.compose.material.icons.outlined.Download
 import androidx.compose.material.icons.outlined.Favorite
 import androidx.compose.material.icons.outlined.FavoriteBorder
 import androidx.compose.material.icons.outlined.KeyboardArrowRight
@@ -28,8 +27,6 @@ import androidx.compose.material.icons.outlined.Share
 import androidx.compose.material.icons.outlined.Star
 import androidx.compose.material.icons.outlined.StarBorder
 import androidx.compose.material.icons.outlined.Subtitles
-import androidx.compose.material3.DropdownMenu
-import androidx.compose.material3.DropdownMenuItem
 import androidx.compose.material3.Icon
 import androidx.compose.material3.IconButton
 import androidx.compose.material3.Slider
@@ -64,22 +61,13 @@ internal fun ReelScreenshotOverlay(
     state: AppState,
     detail: DramaDetail,
     episode: Episode?,
-    speed: Float,
-    fillVideo: Boolean,
-    qualityLimit: Int,
-    sleepTimerLabel: String,
-    onQuality: (Int) -> Unit,
-    onSleepMinutes: (Int) -> Unit,
-    onSleepEpisodes: (Int) -> Unit,
-    onToggleFillVideo: () -> Unit,
+    onPlaybackSettings: () -> Unit,
     onBack: () -> Unit,
     onFavorite: () -> Unit,
     onLike: () -> Unit,
     onComments: () -> Unit,
     onDanmaku: () -> Unit,
     onShare: () -> Unit,
-    onDownload: () -> Unit,
-    onSpeed: (Float) -> Unit,
 ) {
     val white = Color.White
     val muted = Color(0xFFD5D5D5)
@@ -93,7 +81,6 @@ internal fun ReelScreenshotOverlay(
     val likeMetric = episode?.vid?.let { social?.likeMetric(it) }
     val commentCount = state.commentsTotal
         ?: episode?.vid?.let { social?.episodes?.get(it)?.comments }
-    var moreExpanded by remember { mutableStateOf(false) }
     var synopsisExpanded by rememberSaveable(detail.drama.id) { mutableStateOf(false) }
 
     Box(Modifier.fillMaxSize().testTag("reference_video_layout")) {
@@ -110,64 +97,14 @@ internal fun ReelScreenshotOverlay(
                     tint = white, modifier = Modifier.size(24.dp))
             }
             Spacer(Modifier.weight(1f))
-            Box {
-                IconButton(
-                    onClick = { moreExpanded = true },
-                    modifier = Modifier.size(44.dp)
-                        .background(Color.Black.copy(alpha = 0.25f), CircleShape)
-                        .testTag("reel_more"),
-                ) {
-                    Icon(Icons.Outlined.MoreVert, "播放选项",
-                        tint = white, modifier = Modifier.size(23.dp))
-                }
-                DropdownMenu(
-                    expanded = moreExpanded,
-                    onDismissRequest = { moreExpanded = false },
-                    containerColor = HongguoColors.playerSheet,
-                ) {
-                    DropdownMenuItem(
-                        text = { Text(
-                            if (fillVideo) "画面：铺满（可切换适应）" else "画面：适应（可切换铺满）",
-                            color = white) },
-                        onClick = { moreExpanded = false; onToggleFillVideo() },
-                    )
-                    DropdownMenuItem(
-                        text = { Text("下载本集", color = white) },
-                        leadingIcon = { Icon(Icons.Outlined.Download, null, tint = white) },
-                        onClick = { moreExpanded = false; onDownload() },
-                    )
-                    if (state.backend.isBlank()) {
-                        listOf(0 to "自动", 360 to "360P", 480 to "480P",
-                            720 to "720P", 1080 to "1080P").forEach { (value, label) ->
-                            DropdownMenuItem(
-                                text = { Text("清晰度上限 " + label +
-                                    if (qualityLimit == value) " ✓" else "",
-                                    color = white) },
-                                onClick = { moreExpanded = false; onQuality(value) }
-                            )
-                        }
-                    }
-                    listOf(0 to "关闭", 15 to "15分钟", 30 to "30分钟",
-                        60 to "60分钟").forEach { (minutes, label) ->
-                        DropdownMenuItem(
-                            text = { Text("定时停止 " + label +
-                                if (sleepTimerLabel != "关闭" && minutes == 0) " · 当前：" + sleepTimerLabel else "",
-                                color = white) },
-                            onClick = { moreExpanded = false; onSleepMinutes(minutes) }
-                        )
-                    }
-                    DropdownMenuItem(
-                        text = { Text("播完本集停止", color = white) },
-                        onClick = { moreExpanded = false; onSleepEpisodes(1) }
-                    )
-                    listOf(1f, 1.25f, 1.5f, 2f).forEach { value ->
-                        DropdownMenuItem(
-                            text = { Text("播放速度 " + value + "×" +
-                                (if (speed == value) "  ✓" else ""), color = white) },
-                            onClick = { moreExpanded = false; onSpeed(value) },
-                        )
-                    }
-                }
+            IconButton(
+                onClick = onPlaybackSettings,
+                modifier = Modifier.size(44.dp)
+                    .background(Color.Black.copy(alpha = 0.25f), CircleShape)
+                    .testTag("reel_more"),
+            ) {
+                Icon(Icons.Outlined.MoreVert, "播放设置",
+                    tint = white, modifier = Modifier.size(23.dp))
             }
         }
 
