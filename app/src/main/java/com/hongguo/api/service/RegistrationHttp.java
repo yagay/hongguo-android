@@ -36,6 +36,10 @@ final class RegistrationHttp {
             .readTimeout(9, TimeUnit.SECONDS)
             .callTimeout(9, TimeUnit.SECONDS)
             .retryOnConnectionFailure(false)
+            // Device-registration bytes must never be redirected to another host.
+            .followRedirects(false)
+            .followSslRedirects(false)
+            .cookieJar(okhttp3.CookieJar.NO_COOKIES)
             .build();
 
     static PlaybackDevice.Reply post(String url, Map<String, String> headers, byte[] body) throws IOException {
