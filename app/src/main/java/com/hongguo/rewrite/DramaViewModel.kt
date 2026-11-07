@@ -103,6 +103,88 @@ class DramaViewModel(application: Application) : AndroidViewModel(application) {
             JSONArray().apply { values.forEach(::put) }.toString()).apply()
         mutable.update { it.copy(recentSearches = values) }
     }
+
+    /** Portable local lists only. Never include cookies, account secrets or API credentials. */
+    fun exportLocalBackup(uri: Uri) {
+        viewModelScope.launch(Dispatchers.IO) {
+            val result = runCatching {
+                val data = library.exportLists()
+                    .put("format", "hongguo-local-v1")
+                    .put("watchLater", JSONArray().apply {
+                        state.value.watchLater.forEach {
+                            put(org.json.JSONObject().put("id", it.id).put("title", it.title)
+                                .put("cover", it.cover).put("total", it.total))
+                        }
+                    })
+                    .put("likedDramaIds", JSONArray().apply {
+                        state.value.likedDramaIds.forEach(::put)
+                    })
+                getApplication<Application>().contentResolver.openOutputStream(uri)
+                    ?.use { it.write(data.toString(2).toByteArray(Charsets.UTF_8)) }
+                    ?: error("无法创建备份文件")
+            }
+            mutable.update { it.copy(settingsMessage = if (result.isSuccess)
+                "本机片单备份已导出（不包含账号凭据）"
+                else "备份导出失败，请检查文件位置") }
+        }
+    }
+
+    fun importLocalBackup(uri: Uri) {
+        viewModelScope.launch(Dispatchers.IO) {
+            val result = runCatching {
+                val content = getApplication<Application>().contentResolver.openInputStream(uri)
+                    ?.use { input ->
+                        val data = java.io.ByteArrayOutputStream()
+                        val chunk = ByteArray(8192)
+                        while (true) {
+                            val count = input.read(chunk)
+                            if (count < 0) break
+                            require(data.size() + count <= 1024 * 1024) { "备份文件过大" }
+                            data.write(chunk, 0, count)
+                        }
+                        data.toString("UTF-8")
+                    } ?: error("无法读取备份文件")
+                val backup = org.json.JSONObject(content)
+                require(backup.optString("format") == "hongguo-local-v1") {
+                    "不支持的备份格式"
+                }
+                val laterArray = backup.getJSONArray("watchLater")
+                val likesArray = backup.getJSONArray("likedDramaIds")
+                require(laterArray.length() <= 200 && likesArray.length() <= 500) {
+                    "备份条目超过限制"
+                }
+                val later = (0 until laterArray.length()).map { i ->
+                    val row = laterArray.getJSONObject(i)
+                    val id = row.getString("id")
+                    val title = row.getString("title")
+                    require(id.matches(Regex("[0-9]{1,30}")) && title.length <= 200)
+                    val cover = row.optString("cover")
+                    require(cover.length <= 2048)
+                    Drama(id, title, cover, row.optInt("total").coerceIn(0, 100000))
+                }.distinctBy { it.id }
+                val likes = (0 until likesArray.length()).map { likesArray.getString(it) }.toSet()
+                require(likes.all { it.matches(Regex("[0-9]{1,30}")) })
+                // All sections have passed validation before replacing current data.
+                library.importLists(backup)
+                prefs.edit().putString("watch_later_v1", JSONArray().apply {
+                    later.forEach {
+                        put(org.json.JSONObject().put("id", it.id)
+                            .put("title", it.title).put("cover", it.cover).put("total", it.total))
+                    }
+                }.toString()).putStringSet("local_liked_dramas", likes).commit().also {
+                    check(it) { "无法保存本机备份" }
+                }
+                mutable.update {
+                    it.copy(library = library.list(false), favorites = library.list(true),
+                        watchLater = later, likedDramaIds = likes)
+                }
+            }
+            mutable.update { it.copy(settingsMessage = if (result.isSuccess)
+                "本机片单已恢复"
+                else "恢复失败：请确认是本应用导出的有效备份") }
+        }
+    }
+
     fun clearSearchHistory() {
         prefs.edit().remove("recent_queries").apply()
         mutable.update { it.copy(recentSearches = emptyList()) }
