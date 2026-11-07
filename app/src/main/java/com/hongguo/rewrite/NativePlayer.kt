@@ -347,9 +347,15 @@ internal fun NativePlayer(state: AppState, model: DramaViewModel) {
         )
 
         if (state.danmakuEnabled && selected != null && !showComments && !showEpisodes) {
-            TimedDanmakuOverlay(state.danmakuItems,
-                playback.positionMs,
-                Modifier.fillMaxWidth().align(Alignment.TopCenter).padding(top = 58.dp))
+            TimedDanmakuOverlay(
+                items = state.danmakuItems,
+                currentMs = playback.positionMs,
+                speedPreset = state.danmakuSpeed,
+                tracks = state.danmakuDensity,
+                fontSizeSp = state.danmakuFontSize,
+                modifier = Modifier.fillMaxWidth().align(Alignment.TopCenter)
+                    .padding(top = 58.dp)
+            )
         }
 
         ReelScreenshotOverlay(
@@ -557,7 +563,7 @@ private fun CommentsSheet(state: AppState, model: DramaViewModel) {
                             }
                         }
                         Text(comment.content, color = Color.White,
-                            fontSize = 14.sp, lineHeight = 20.sp)
+                            fontSize = fontSizeSp.coerceIn(12, 18).sp, lineHeight = 20.sp)
                         if (comment.created > 0) {
                             val date = remember(comment.created) {
                                 runCatching {
@@ -606,16 +612,23 @@ private fun CommentsSheet(state: AppState, model: DramaViewModel) {
 private fun TimedDanmakuOverlay(
     items: List<DanmakuEntry>,
     currentMs: Long,
+    speedPreset: Int,
+    tracks: Int,
+    fontSizeSp: Int,
     modifier: Modifier = Modifier,
 ) {
+    val flightMs = DanmakuLayout.flightForSpeed(speedPreset)
+    val lanes = tracks.coerceIn(1, 5)
     // Stable lane allocations prevent comments jumping to a different row
     // when one of their neighbors disappears.
-    val placed = remember(items) { DanmakuLayout.arrange(items) }
+    val placed = remember(items, lanes, flightMs) {
+        DanmakuLayout.arrange(items, lanes, flightMs)
+    }
     val visible = remember(placed, currentMs / 250L) {
         placed.filter { line ->
             currentMs >= line.startMs &&
-                currentMs < line.startMs + DanmakuLayout.FLIGHT_MS
-        }.take(DanmakuLayout.LANES)
+                currentMs < line.startMs + flightMs
+        }.take(lanes)
     }
     if (visible.isEmpty()) return
 
@@ -626,7 +639,7 @@ private fun TimedDanmakuOverlay(
         fontWeight = FontWeight.Medium,
         shadow = Shadow(Color.Black, Offset(1f, 2f), 4f),
     )
-    BoxWithConstraints(modifier.height(148.dp).clipToBounds()
+    BoxWithConstraints(modifier.height((lanes * 34 + 12).dp).clipToBounds()
         .testTag("timed_danmaku_overlay")) {
         val density = LocalDensity.current
         val widthPx = with(density) { maxWidth.toPx() }
@@ -641,7 +654,7 @@ private fun TimedDanmakuOverlay(
                     text = AnnotatedString(content), style = style,
                     maxLines = 1, softWrap = false,
                 ).size.width.toFloat() + paddingPx
-                val progress = DanmakuLayout.progress(currentMs, line.startMs)
+                val progress = DanmakuLayout.progress(currentMs, line.startMs, flightMs)
                 val targetPx = DanmakuLayout.xPosition(
                     widthPx, measuredWidth, progress
                 )

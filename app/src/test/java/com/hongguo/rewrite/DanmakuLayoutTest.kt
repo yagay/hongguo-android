@@ -22,6 +22,16 @@ class DanmakuLayoutTest {
         assertEquals(listOf("one", "three"), placed.map { it.id })
     }
 
+    @Test fun configurableSpeedAndTrackLimits() {
+        assertEquals(10_000L, DanmakuLayout.flightForSpeed(0))
+        assertEquals(7_000L, DanmakuLayout.flightForSpeed(1))
+        assertEquals(5_000L, DanmakuLayout.flightForSpeed(2))
+        assertEquals(1, DanmakuLayout.arrange(
+            (0..3).map { DanmakuEntry("id$it", "message", 1_000L) },
+            lanes = 1,
+        ).size)
+    }
+
     @Test fun movementUsesMeasuredTextWidthAndPlaybackTime() {
         assertEquals(360f, DanmakuLayout.xPosition(360f, 120f, 0f), 0.001f)
         assertEquals(120f, DanmakuLayout.xPosition(360f, 120f, 0.5f), 0.001f)

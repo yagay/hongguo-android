@@ -12,6 +12,12 @@ internal object DanmakuLayout {
     const val FLIGHT_MS: Long = 7_000L
     const val LANES: Int = 4
 
+    fun flightForSpeed(speed: Int): Long = when (speed) {
+        0 -> 10_000L
+        2 -> 5_000L
+        else -> FLIGHT_MS
+    }
+
     data class Placed(
         val id: String,
         val text: String,

@@ -31,6 +31,7 @@ import androidx.compose.material3.AlertDialog
 import androidx.compose.material3.Button
 import androidx.compose.material3.Card
 import androidx.compose.material3.HorizontalDivider
+import androidx.compose.material3.FilterChip
 import androidx.compose.material3.Icon
 import androidx.compose.material3.IconButton
 import androidx.compose.material3.MaterialTheme
@@ -149,6 +150,40 @@ internal fun SettingsScreen(state: AppState, model: DramaViewModel) {
                         onChange = model::setDanmaku,
                         testTag = "danmaku_switch",
                     )
+                    HorizontalDivider(color = HongguoColors.divider)
+                    Text("弹幕速度", color = HongguoColors.ink,
+                        fontWeight = FontWeight.SemiBold)
+                    FlowRow(horizontalArrangement = Arrangement.spacedBy(7.dp)) {
+                        listOf(0 to "慢", 1 to "标准", 2 to "快").forEach { (value, label) ->
+                            FilterChip(
+                                selected = state.danmakuSpeed == value,
+                                onClick = { model.setDanmakuSpeed(value) },
+                                label = { Text(label) },
+                            )
+                        }
+                    }
+                    Text("同时显示的轨道数", color = HongguoColors.ink,
+                        fontWeight = FontWeight.SemiBold)
+                    FlowRow(horizontalArrangement = Arrangement.spacedBy(7.dp)) {
+                        (1..5).forEach { value ->
+                            FilterChip(
+                                selected = state.danmakuDensity == value,
+                                onClick = { model.setDanmakuDensity(value) },
+                                label = { Text(value.toString()) },
+                            )
+                        }
+                    }
+                    Text("弹幕字体", color = HongguoColors.ink,
+                        fontWeight = FontWeight.SemiBold)
+                    FlowRow(horizontalArrangement = Arrangement.spacedBy(7.dp)) {
+                        listOf(12, 14, 16, 18).forEach { value ->
+                            FilterChip(
+                                selected = state.danmakuFontSize == value,
+                                onClick = { model.setDanmakuFontSize(value) },
+                                label = { Text(value.toString() + "sp") },
+                            )
+                        }
+                    }
                     HorizontalDivider(color = HongguoColors.divider)
                     Text("播放页支持上滑下一集、下滑上一集、单击暂停、双击收藏和长按临时 2× 倍速。",
                         color = HongguoColors.muted, fontSize = 12.sp)

@@ -113,7 +113,10 @@ class DramaViewModel(application: Application) : AndroidViewModel(application) {
             qualityLimit = prefs.getInt("quality_limit", 0)
                 .takeIf { it in setOf(0, 360, 480, 720, 1080) } ?: 0,
             logEnabled = diagnostics.enabled,
-            danmakuEnabled = prefs.getBoolean("danmaku_enabled", false))
+            danmakuEnabled = prefs.getBoolean("danmaku_enabled", false),
+            danmakuSpeed = prefs.getInt("danmaku_speed", 1).coerceIn(0, 2),
+            danmakuDensity = prefs.getInt("danmaku_density", 4).coerceIn(1, 5),
+            danmakuFontSize = prefs.getInt("danmaku_font_size", 14).coerceIn(12, 18))
     )
     val state = mutable.asStateFlow()
 
@@ -367,6 +370,24 @@ class DramaViewModel(application: Application) : AndroidViewModel(application) {
         mutable.update { it.copy(danmakuEnabled = enabled,
             danmakuError = if (enabled) null else it.danmakuError) }
         if (!enabled) danmakuJob?.cancel()
+    }
+
+    fun setDanmakuSpeed(value: Int) {
+        if (value !in 0..2) return
+        prefs.edit().putInt("danmaku_speed", value).apply()
+        mutable.update { it.copy(danmakuSpeed = value) }
+    }
+
+    fun setDanmakuDensity(value: Int) {
+        if (value !in 1..5) return
+        prefs.edit().putInt("danmaku_density", value).apply()
+        mutable.update { it.copy(danmakuDensity = value) }
+    }
+
+    fun setDanmakuFontSize(value: Int) {
+        if (value !in setOf(12, 14, 16, 18)) return
+        prefs.edit().putInt("danmaku_font_size", value).apply()
+        mutable.update { it.copy(danmakuFontSize = value) }
     }
 
     /** Open episode-specific anonymous comments. Never reuses stale pages. */
