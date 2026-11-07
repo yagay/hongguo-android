@@ -78,6 +78,30 @@ class DramaViewModel(application: Application) : AndroidViewModel(application) {
     private var requestId = 0L
     private var detailId = 0L
     private var pendingFeedAdvance = false
+    private var feedPrefetchJob: Job? = null
+    private val prefetchedFeedDetails = linkedMapOf<String, DramaDetail>()
+
+    private fun prefetchFollowingFeedItem(index: Int) {
+        val next = state.value.items.getOrNull(index + 1) ?: return
+        if (source != null || prefetchedFeedDetails.containsKey(next.id)) return
+        feedPrefetchJob?.cancel()
+        feedPrefetchJob = viewModelScope.launch {
+            try {
+                val detail = nativeSource.detail(next.id)
+                if (state.value.feedMode && state.value.items.getOrNull(
+                        state.value.feedIndex + 1)?.id == next.id) {
+                    prefetchedFeedDetails[next.id] = detail
+                    while (prefetchedFeedDetails.size > 3)
+                        prefetchedFeedDetails.remove(prefetchedFeedDetails.keys.first())
+                    diagnostics.record("FEED", "NEXT_DETAIL_PREFETCHED")
+                }
+            } catch (e: CancellationException) {
+                throw e
+            } catch (e: Exception) {
+                diagnostics.record("FEED", "NEXT_DETAIL_UNAVAILABLE")
+            }
+        }
+    }
     private var firstFrameFor: String? = null
     private var startEpisodeHint: Int? = null
 
@@ -231,10 +255,13 @@ class DramaViewModel(application: Application) : AndroidViewModel(application) {
                 if (pendingFeedAdvance) {
                     pendingFeedAdvance = false
                     navigateFeed(1)
+                } else if (state.value.feedMode) {
+                    prefetchFollowingFeedItem(state.value.feedIndex)
                 }
             } catch (e: CancellationException) {
                 throw e
             } catch (e: Exception) {
+                pendingFeedAdvance = false
                 if (version == requestId) mutable.update { it.copy(moreLoading = false,
                     error = errorText("加载更多", e)) }
             }
@@ -563,6 +590,7 @@ class DramaViewModel(application: Application) : AndroidViewModel(application) {
         pendingFeedAdvance = false
         mutable.update { it.copy(feedIndex = index) }
         open(selected, resumeEp = 1, feed = true)
+        prefetchFollowingFeedItem(index)
         if (index + 2 >= s.items.size && s.hasMore) more()
     }
 
@@ -575,6 +603,7 @@ class DramaViewModel(application: Application) : AndroidViewModel(application) {
             pendingFeedAdvance = false
             mutable.update { it.copy(feedIndex = index) }
             open(target, resumeEp = 1, feed = true)
+            prefetchFollowingFeedItem(index)
             if (index + 2 >= s.items.size && s.hasMore) more()
         } else if (direction > 0 && s.hasMore && !s.moreLoading) {
             pendingFeedAdvance = true
@@ -607,7 +636,9 @@ class DramaViewModel(application: Application) : AndroidViewModel(application) {
         detailJob = viewModelScope.launch {
             val started = System.nanoTime()
             try {
-                val result = api?.detail(drama.id) ?: nativeSource.detail(drama.id)
+                val result = api?.detail(drama.id)
+                    ?: prefetchedFeedDetails.remove(drama.id)
+                    ?: nativeSource.detail(drama.id)
                 if (version != detailId) return@launch
                 val resolved = result.copy(drama = result.drama.copy(
                     title = result.drama.title.ifBlank { drama.title },
@@ -704,6 +735,11 @@ class DramaViewModel(application: Application) : AndroidViewModel(application) {
         if (expired) {
             mutable.update { it.copy(sleepTimerLabel = "关闭") }
             diagnostics.record("TIMER", "EXPIRED")
+        } else {
+            val label = sleepTimer.label()
+            if (state.value.sleepTimerLabel != label) {
+                mutable.update { it.copy(sleepTimerLabel = label) }
+            }
         }
         return expired
     }
@@ -780,6 +816,8 @@ class DramaViewModel(application: Application) : AndroidViewModel(application) {
 
     fun closePlayer() {
         pendingFeedAdvance = false
+        feedPrefetchJob?.cancel()
+        prefetchedFeedDetails.clear()
         ++relatedGeneration
         relatedJob?.cancel()
         clearSocial()

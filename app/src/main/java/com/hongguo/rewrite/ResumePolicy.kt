@@ -9,5 +9,5 @@ internal object ResumePolicy {
     }
 
     fun persistable(positionMs: Long, durationMs: Long): Boolean =
-        durationMs > 10_000L && positionMs in 1L until durationMs
+        durationMs > 15_000L && positionMs in 1L until (durationMs - 10_000L)
 }

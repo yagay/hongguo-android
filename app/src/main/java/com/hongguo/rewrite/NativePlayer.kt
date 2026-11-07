@@ -168,7 +168,13 @@ internal fun NativePlayer(state: AppState, model: DramaViewModel) {
         pendingDownloadVid = null
         if (uri != null && vid != null) model.downloadNative(vid, uri)
     }
-    BackHandler { model.closePlayer() }
+    fun flushThenClose() {
+        selected?.let { model.savePlaybackPosition(
+            it.vid, playback.positionMs, playback.durationMs
+        ) }
+        model.closePlayer()
+    }
+    BackHandler { flushThenClose() }
 
     LaunchedEffect(pagerState, detail.drama.id, state.feedMode, state.feedIndex) {
         snapshotFlow { pagerState.settledPage }
@@ -358,7 +364,7 @@ internal fun NativePlayer(state: AppState, model: DramaViewModel) {
             onSleepMinutes = model::sleepAfterMinutes,
             onSleepEpisodes = model::sleepAfterEpisodes,
             onToggleFillVideo = { fillVideo = !fillVideo },
-            onBack = model::closePlayer,
+            onBack = ::flushThenClose,
             onFavorite = model::favorite,
             onLike = model::toggleLocalLike,
             onComments = { showComments = true },

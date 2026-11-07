@@ -16,5 +16,6 @@ class ResumePolicyTest {
         assertFalse(ResumePolicy.persistable(0, 90_000))
         assertFalse(ResumePolicy.persistable(85_000, -1))
         assertTrue(ResumePolicy.persistable(30_000, 90_000))
+        assertFalse(ResumePolicy.persistable(86_000, 90_000))
     }
 }
