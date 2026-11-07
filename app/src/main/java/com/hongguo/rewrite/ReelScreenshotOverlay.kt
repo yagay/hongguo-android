@@ -27,6 +27,7 @@ import androidx.compose.material.icons.outlined.Share
 import androidx.compose.material.icons.outlined.Star
 import androidx.compose.material.icons.outlined.StarBorder
 import androidx.compose.material.icons.outlined.Subtitles
+import androidx.compose.material.icons.outlined.Visibility
 import androidx.compose.material3.Icon
 import androidx.compose.material3.IconButton
 import androidx.compose.material3.Slider
@@ -139,6 +140,16 @@ internal fun ReelScreenshotOverlay(
                     ?: if (state.socialStatsLoading) "…" else null,
                 scope = likeMetric?.second?.takeIf { it == "全剧" },
             )
+            // The provider's series_play_cnt is a series-wide view metric.
+            // It is display-only and must not behave like a clickable action
+            // or be inflated from local playback history.
+            ReferenceMetric(
+                icon = Icons.Outlined.Visibility,
+                label = "全剧播放量",
+                count = social?.playCount?.let(SocialCountFormatter::format)
+                    ?: if (state.socialStatsLoading) "…" else null,
+                tag = "reel_play_count",
+            )
             ReferenceAction(Icons.Outlined.Share, "分享", "reel_share", onShare)
         }
 
@@ -189,14 +200,6 @@ internal fun ReelScreenshotOverlay(
                     modifier = Modifier.weight(1f).testTag("reel_drama_title"))
                 Icon(Icons.Outlined.KeyboardArrowRight, "展开简介",
                     tint = white, modifier = Modifier.size(20.dp))
-            }
-            Row(horizontalArrangement = Arrangement.spacedBy(6.dp)) {
-                val count = detail.episodes.size
-                if (count > 0) ReferenceChip("全 " + count + " 集")
-                if (episode != null) ReferenceChip("第 " + episode.index + " 集")
-            }
-            social?.playCount?.let { count ->
-                ReferenceChip("播放 " + SocialCountFormatter.format(count))
             }
             if (detail.drama.synopsis.isNotBlank()) {
                 Text(detail.drama.synopsis, color = muted, fontSize = 12.sp,
@@ -317,13 +320,36 @@ private fun ReferenceAction(
     }
 }
 
+/** Read-only counter beside the other reel icons; no false click target. */
 @Composable
-private fun ReferenceChip(label: String) {
-    Text(
-        label, fontSize = 11.sp, color = Color.White,
-        modifier = Modifier.background(
-            Color(0xFF6E6E72).copy(alpha = 0.68f),
-            RoundedCornerShape(6.dp),
-        ).padding(horizontal = 7.dp, vertical = 5.dp),
-    )
+private fun ReferenceMetric(
+    icon: ImageVector,
+    label: String,
+    count: String?,
+    tag: String,
+) {
+    Column(
+        modifier = Modifier.width(63.dp).testTag(tag),
+        horizontalAlignment = Alignment.CenterHorizontally,
+        verticalArrangement = Arrangement.spacedBy(1.dp),
+    ) {
+        Box(
+            Modifier.size(47.dp),
+            contentAlignment = Alignment.Center,
+        ) {
+            Icon(
+                icon,
+                contentDescription = label,
+                tint = Color.White,
+                modifier = Modifier.size(32.dp),
+            )
+        }
+        Text(
+            count ?: "播放",
+            fontSize = 12.sp,
+            color = Color.White,
+            fontWeight = FontWeight.Medium,
+            maxLines = 1,
+        )
+    }
 }
