@@ -141,6 +141,7 @@ public final class AppSource {
                         renewal = e;
                     }
                 }
+                lastStatus = 0;
                 lastRoute = (i == 0 ? "tab_primary" : i == 1 ? "post_primary" :
                         i == 2 ? "tab_renewed" : "post_alternate");
                 attempted++;
