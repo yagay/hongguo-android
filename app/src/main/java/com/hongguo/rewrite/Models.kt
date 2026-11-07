@@ -47,6 +47,9 @@ data class DownloadTask(
 data class AppState(
     val section: Section = Section.RECOMMEND,
     val search: String = "",
+    val suggestions: List<String> = emptyList(),
+    val suggestionsLoading: Boolean = false,
+    val recentSearches: List<String> = emptyList(),
     val genre: String = "short_play",
     val board: String = "all",
     val filters: List<FilterGroup> = emptyList(),

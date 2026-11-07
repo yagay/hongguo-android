@@ -78,6 +78,11 @@ class NativeHongguoSource(
         }
     }
 
+    /** Official website autocomplete; no login or device registration. */
+    suspend fun suggestions(prefix: String): List<String> = withContext(Dispatchers.IO) {
+        repository.searchSuggestions(prefix.trim().take(80))
+    }
+
     suspend fun list(
         section: Section, offset: Int, genre: String, board: String,
         query: String, filters: Map<String, String>,

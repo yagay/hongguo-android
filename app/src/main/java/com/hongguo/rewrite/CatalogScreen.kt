@@ -17,6 +17,7 @@ import androidx.compose.foundation.layout.height
 import androidx.compose.foundation.layout.heightIn
 import androidx.compose.foundation.layout.padding
 import androidx.compose.foundation.layout.size
+import androidx.compose.foundation.layout.heightIn
 import androidx.compose.foundation.layout.width
 import androidx.compose.foundation.lazy.grid.GridCells
 import androidx.compose.foundation.lazy.grid.GridItemSpan
@@ -56,6 +57,7 @@ import androidx.compose.runtime.mutableStateOf
 import androidx.compose.runtime.remember
 import androidx.compose.runtime.saveable.rememberSaveable
 import androidx.compose.runtime.setValue
+import androidx.compose.ui.focus.onFocusChanged
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.draw.clip
@@ -158,6 +160,7 @@ internal fun CatalogScreen(state: AppState, model: DramaViewModel) {
 
 @Composable
 private fun CatalogHeader(state: AppState, model: DramaViewModel) {
+    var searchFocused by remember { mutableStateOf(false) }
     Column(Modifier.fillMaxWidth().background(HongguoColors.surface)) {
         Row(Modifier.fillMaxWidth().height(54.dp).padding(start = 15.dp, end = 5.dp),
             verticalAlignment = Alignment.CenterVertically) {
@@ -180,7 +183,9 @@ private fun CatalogHeader(state: AppState, model: DramaViewModel) {
             OutlinedTextField(
                 value = state.search,
                 onValueChange = model::setSearch,
-                modifier = Modifier.fillMaxWidth().height(53.dp).testTag("search_input"),
+                modifier = Modifier.fillMaxWidth().height(53.dp)
+                    .onFocusChanged { searchFocused = it.isFocused }
+                    .testTag("search_input"),
                 placeholder = { Text("搜索剧名、演员或关键词", fontSize = 13.sp,
                     color = HongguoColors.muted) },
                 shape = RoundedCornerShape(16.dp),
@@ -196,6 +201,39 @@ private fun CatalogHeader(state: AppState, model: DramaViewModel) {
                 keyboardOptions = KeyboardOptions(imeAction = ImeAction.Search),
                 keyboardActions = KeyboardActions(onSearch = { model.search() }),
             )
+        }
+        if (searchFocused && (state.suggestions.isNotEmpty() ||
+                state.suggestionsLoading ||
+                (state.search.isBlank() && state.recentSearches.isNotEmpty()))) {
+            Column(
+                Modifier.fillMaxWidth().heightIn(max = 164.dp)
+                    .padding(horizontal = 15.dp, vertical = 3.dp),
+                verticalArrangement = Arrangement.spacedBy(3.dp)
+            ) {
+                val rows = if (state.search.isBlank()) state.recentSearches else state.suggestions
+                if (state.search.isBlank()) Row(
+                    modifier = Modifier.fillMaxWidth(),
+                    verticalAlignment = Alignment.CenterVertically
+                ) {
+                    Text("最近搜索", color = HongguoColors.muted, fontSize = 11.sp,
+                        modifier = Modifier.weight(1f))
+                    TextButton(onClick = model::clearSearchHistory) {
+                        Text("清空", fontSize = 11.sp)
+                    }
+                }
+                if (state.suggestionsLoading) {
+                    Text("正在获取联想…", color = HongguoColors.muted, fontSize = 11.sp)
+                }
+                rows.take(if (state.search.isBlank()) 2 else 4).forEach { text ->
+                    Text(
+                        text, modifier = Modifier.fillMaxWidth()
+                            .clickable { model.chooseSuggestion(text) }
+                            .padding(vertical = 4.dp, horizontal = 6.dp),
+                        maxLines = 1, overflow = TextOverflow.Ellipsis,
+                        fontSize = 13.sp, color = HongguoColors.ink
+                    )
+                }
+            }
         }
         Row(Modifier.fillMaxWidth().height(44.dp),
             horizontalArrangement = Arrangement.SpaceEvenly) {

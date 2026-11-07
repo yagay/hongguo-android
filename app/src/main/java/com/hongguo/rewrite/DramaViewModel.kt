@@ -6,6 +6,8 @@ import com.hongguotv.core.RemoteVideo
 import java.io.File
 import java.io.IOException
 import java.io.EOFException
+import org.json.JSONArray
+import kotlinx.coroutines.delay
 import kotlinx.coroutines.ensureActive
 import kotlinx.coroutines.currentCoroutineContext
 import kotlinx.coroutines.Dispatchers
@@ -36,6 +38,27 @@ class DramaViewModel(application: Application) : AndroidViewModel(application) {
         activeNativeVideo = null
         activeNativeVid = null
     }
+    private var searchJob: Job? = null
+    private var suggestionVersion = 0L
+    private fun recentQueries(): List<String> {
+        val data = runCatching {
+            JSONArray(prefs.getString("recent_queries", "[]"))
+        }.getOrElse { JSONArray() }
+        return (0 until data.length()).map { data.optString(it) }
+            .filter { it.isNotBlank() && it.length <= 80 }.distinct().take(12)
+    }
+    private fun rememberQuery(value: String) {
+        val clean = value.trim().take(80)
+        if (clean.isEmpty()) return
+        val values = (listOf(clean) + recentQueries()).distinct().take(12)
+        prefs.edit().putString("recent_queries",
+            JSONArray().apply { values.forEach(::put) }.toString()).apply()
+        mutable.update { it.copy(recentSearches = values) }
+    }
+    fun clearSearchHistory() {
+        prefs.edit().remove("recent_queries").apply()
+        mutable.update { it.copy(recentSearches = emptyList()) }
+    }
     private var pageJob: Job? = null
     private var detailJob: Job? = null
     private var downloadJob: Job? = null
@@ -57,6 +80,7 @@ class DramaViewModel(application: Application) : AndroidViewModel(application) {
         AppState(backend = prefs.getString("backend", "").orEmpty(),
             library = library.list(false), favorites = library.list(true),
             likedDramaIds = prefs.getStringSet("local_liked_dramas", emptySet())?.toSet().orEmpty(),
+            recentSearches = recentQueries(),
             logEnabled = diagnostics.enabled,
             danmakuEnabled = prefs.getBoolean("danmaku_enabled", false))
     )
@@ -71,7 +95,36 @@ class DramaViewModel(application: Application) : AndroidViewModel(application) {
         refresh()
     }
 
-    fun setSearch(value: String) = mutable.update { it.copy(search = value) }
+    /** Debounced autocomplete, canceled for every edit or navigation. */
+    fun setSearch(value: String) {
+        val keyword = value.take(80)
+        val version = ++suggestionVersion
+        searchJob?.cancel()
+        mutable.update { it.copy(search = keyword, suggestions = emptyList(),
+            suggestionsLoading = keyword.trim().length >= 2 && source == null) }
+        if (keyword.trim().length < 2 || source != null) return
+        searchJob = viewModelScope.launch {
+            delay(300)
+            try {
+                val rows = nativeSource.suggestions(keyword)
+                if (version == suggestionVersion && state.value.search == keyword) {
+                    mutable.update { it.copy(suggestions = rows, suggestionsLoading = false) }
+                }
+            } catch (e: CancellationException) {
+                throw e
+            } catch (e: Exception) {
+                diagnostics.record("SEARCH", "SUGGEST_UNAVAILABLE")
+                if (version == suggestionVersion) {
+                    mutable.update { it.copy(suggestions = emptyList(), suggestionsLoading = false) }
+                }
+            }
+        }
+    }
+
+    fun chooseSuggestion(value: String) {
+        setSearch(value)
+        search()
+    }
 
     fun section(section: Section) {
         if (section == Section.SEARCH && state.value.search.isBlank()) {
@@ -94,8 +147,13 @@ class DramaViewModel(application: Application) : AndroidViewModel(application) {
     }
 
     fun search() {
-        if (state.value.search.isBlank()) return
-        mutable.update { it.copy(section = Section.SEARCH) }
+        val term = state.value.search.trim()
+        if (term.isBlank()) return
+        suggestionVersion++
+        searchJob?.cancel()
+        rememberQuery(term)
+        mutable.update { it.copy(section = Section.SEARCH, search = term,
+            suggestions = emptyList(), suggestionsLoading = false) }
         refresh()
     }
 
