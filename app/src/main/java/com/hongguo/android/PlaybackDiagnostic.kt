@@ -22,6 +22,7 @@ data class PlaybackDiagnostic(
     val responseBytes: Int? = null,
     val primaryTransportFailure: String? = null,
     val fallbackTransportFailure: String? = null,
+    val alternateTransportFailure: String? = null,
 ) {
     /** A privacy-safe support report. No episode, account, signature or provider data. */
     fun safeReport(): String = buildString {
@@ -38,6 +39,9 @@ data class PlaybackDiagnostic(
         }
         fallbackTransportFailure?.takeIf { codePattern.matches(it) }?.let {
             append("fallback_transport=").append(it).append('\n')
+        }
+        alternateTransportFailure?.takeIf { codePattern.matches(it) }?.let {
+            append("alternate_transport=").append(it).append('\n')
         }
     }
 
@@ -132,6 +136,8 @@ data class PlaybackDiagnostic(
                 "DEVICE_REGISTER_UNREACHABLE" -> "当前网络无法到达注册服务，请尝试其他网络。"
                 "DEVICE_REGISTER_EOF" -> "注册服务提前关闭连接，请尝试其他网络或稍后重试。"
                 "DEVICE_REGISTER_PROTOCOL_FAILED" -> "注册服务传输协议不兼容，请稍后重试。"
+                "DEVICE_REGISTER_ALTERNATE_FAILED" -> "原注册服务无法连接，备用注册服务也未能完成请求。请检查当前网络或代理设置。"
+                "DEVICE_REGISTER_ALTERNATE_HTTP" -> "原注册服务无法连接，备用注册服务返回 HTTP ${status ?: "错误"}。"
                 else -> "播放设备初始化失败，请稍后重试。"
             }
             return PlaybackDiagnostic(
@@ -142,7 +148,8 @@ data class PlaybackDiagnostic(
                 httpStatus = status,
                 responseBytes = bytes,
                 primaryTransportFailure = error.primaryTransportFailure,
-                fallbackTransportFailure = error.fallbackTransportFailure
+                fallbackTransportFailure = error.fallbackTransportFailure,
+                alternateTransportFailure = error.alternateTransportFailure
             )
         }
 
