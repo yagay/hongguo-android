@@ -13,6 +13,12 @@ import androidx.compose.ui.platform.LocalContext
 import androidx.activity.compose.BackHandler
 import androidx.compose.foundation.background
 import androidx.compose.foundation.clickable
+import androidx.compose.foundation.ExperimentalFoundationApi
+import androidx.compose.foundation.combinedClickable
+import androidx.compose.foundation.layout.aspectRatio
+import androidx.compose.foundation.layout.height
+import androidx.compose.foundation.layout.width
+import androidx.compose.ui.text.style.TextAlign
 import androidx.compose.foundation.layout.*
 import androidx.compose.foundation.lazy.LazyColumn
 import androidx.compose.foundation.lazy.items
@@ -109,9 +115,7 @@ internal fun AccountScreen(model: DramaViewModel) {
                 }
                 Text("我的账号", fontSize = 24.sp, fontWeight = FontWeight.Bold,
                     modifier = Modifier.weight(1f))
-                if (account.profile != null)
-                    TextButton(onClick = { model.account.refresh() },
-                        enabled = !account.busy) { Text("刷新") }
+
             }
         },
     ) { padding ->
@@ -122,14 +126,11 @@ internal fun AccountScreen(model: DramaViewModel) {
         ) {
             webError?.let { error -> item { Text(error, color = HongguoColors.accent,
                 fontSize = 13.sp, modifier = Modifier.testTag("account_web_error")) } }
-            item {
+            if (account.profile == null || account.busy || account.checking ||
+                account.message.contains("失败")) item {
                 Surface(color = HongguoColors.surface, shape = RoundedCornerShape(12.dp)) {
                     Column(Modifier.fillMaxWidth().padding(13.dp),
                         verticalArrangement = Arrangement.spacedBy(5.dp)) {
-                        Text(
-                            account.profile?.nickname?.let { "已登录 · " + it } ?: "未登录",
-                            color = HongguoColors.ink, fontWeight = FontWeight.SemiBold,
-                        )
                         Text(account.message, fontSize = 12.sp,
                             color = HongguoColors.muted,
                             modifier = Modifier.testTag("account_message"))
@@ -362,198 +363,191 @@ internal fun AccountScreen(model: DramaViewModel) {
                 }
             } else {
                 item {
-                    Row(Modifier.fillMaxWidth(), verticalAlignment = Alignment.CenterVertically,
-                        horizontalArrangement = Arrangement.spacedBy(12.dp)) {
-                        Box(Modifier.size(56.dp).clip(CircleShape).background(HongguoColors.accentSoft),
+                    Row(
+                        Modifier.fillMaxWidth().padding(top = 18.dp, bottom = 6.dp),
+                        verticalAlignment = Alignment.CenterVertically,
+                        horizontalArrangement = Arrangement.spacedBy(13.dp),
+                    ) {
+                        // The current cloud profile has no avatar URL. Show a stable fallback.
+                        Box(Modifier.size(58.dp).clip(CircleShape)
+                            .background(HongguoColors.accentSoft),
                             contentAlignment = Alignment.Center) {
-                            Icon(Icons.Outlined.PersonOutline, null, Modifier.size(30.dp),
+                            Icon(Icons.Outlined.PersonOutline, null, Modifier.size(33.dp),
                                 tint = HongguoColors.accent)
                         }
-                        Column(Modifier.weight(1f)) {
+                        Column(Modifier.weight(1f), verticalArrangement = Arrangement.spacedBy(4.dp)) {
                             Text(account.profile?.nickname.orEmpty().ifBlank { "红果用户" },
                                 color = HongguoColors.ink, fontSize = 20.sp,
-                                fontWeight = FontWeight.SemiBold,
+                                maxLines = 1, overflow = TextOverflow.Ellipsis,
+                                fontWeight = FontWeight.Medium,
                                 modifier = Modifier.testTag("account_profile"))
                             Text("红果号 ${account.profile?.id.orEmpty()}",
-                                color = HongguoColors.muted, fontSize = 12.sp)
+                                color = HongguoColors.muted, fontSize = 12.sp,
+                                maxLines = 1, overflow = TextOverflow.Ellipsis)
                         }
                         Box {
                             IconButton(onClick = { accountMenu = true },
                                 modifier = Modifier.testTag("account_menu")) {
-                                Icon(Icons.Outlined.MoreVert, "账号操作", tint = HongguoColors.ink)
+                                Icon(Icons.Outlined.MoreVert, "账号操作",
+                                    tint = HongguoColors.ink)
                             }
-                            DropdownMenu(expanded = accountMenu, onDismissRequest = { accountMenu = false }) {
-                                DropdownMenuItem(text = { Text("同步此后观看进度") },
-                                    trailingIcon = { Checkbox(checked = account.syncEnabled, onCheckedChange = null) },
+                            DropdownMenu(expanded = accountMenu,
+                                onDismissRequest = { accountMenu = false }) {
+                                DropdownMenuItem(text = { Text("账号推荐") },
+                                    trailingIcon = { Checkbox(
+                                        checked = account.accountRecommendations, onCheckedChange = null) },
+                                    onClick = {
+                                        accountMenu = false
+                                        model.account.setAccountRecommendations(!account.accountRecommendations)
+                                    })
+                                DropdownMenuItem(text = { Text("自动同步观看进度") },
+                                    trailingIcon = { Checkbox(
+                                        checked = account.syncEnabled, onCheckedChange = null) },
                                     onClick = {
                                         accountMenu = false
                                         model.account.setProgressSync(!account.syncEnabled)
                                     }, modifier = Modifier.testTag("account_sync_switch"))
-                                DropdownMenuItem(text = { Text("刷新账号资料") }, onClick = {
-                                    accountMenu = false
-                                    model.account.refresh()
-                                })
-                                DropdownMenuItem(text = { Text("退出账号") }, onClick = {
-                                    accountMenu = false
-                                    confirmLogout = true
-                                }, modifier = Modifier.testTag("account_logout_menu"))
+                                DropdownMenuItem(text = { Text("刷新账号资料") },
+                                    onClick = { accountMenu = false; model.account.refresh() })
+                                HorizontalDivider()
+                                DropdownMenuItem(text = { Text("退出账号") },
+                                    onClick = { accountMenu = false; confirmLogout = true },
+                                    modifier = Modifier.testTag("account_logout_menu"))
                             }
                         }
                     }
                 }
                 item {
-                    Surface(color = HongguoColors.surface,
-                        shape = RoundedCornerShape(10.dp)) {
-                        Row(Modifier.fillMaxWidth().padding(12.dp),
-                            verticalAlignment = Alignment.CenterVertically) {
-                            Column(Modifier.weight(1f)) {
-                                Text("启用账号推荐", fontWeight = FontWeight.SemiBold,
-                                    color = HongguoColors.ink)
-                                Text("默认关闭。启用后将账号会话用于官方推荐接口；不保证与官方 App 的个性化结果完全一致。",
-                                    fontSize = 11.sp, color = HongguoColors.muted)
+                    Surface(shape = RoundedCornerShape(16.dp),
+                        color = HongguoColors.surface,
+                        modifier = Modifier.fillMaxWidth().testTag("account_stats")) {
+                        Row(Modifier.fillMaxWidth().padding(vertical = 15.dp)) {
+                            listOf("关注", "粉丝", "获赞").forEach { label ->
+                                Column(Modifier.weight(1f),
+                                    horizontalAlignment = Alignment.CenterHorizontally,
+                                    verticalArrangement = Arrangement.spacedBy(4.dp)) {
+                                    Text("—", color = HongguoColors.ink,
+                                        fontSize = 20.sp, fontWeight = FontWeight.Medium)
+                                    Text(label, color = HongguoColors.muted, fontSize = 13.sp)
+                                }
                             }
-                            Switch(
-                                checked = account.accountRecommendations,
-                                onCheckedChange = model.account::setAccountRecommendations,
-                                modifier = Modifier.testTag("account_recommendations"),
-                            )
                         }
                     }
                 }
                 item {
-                    Surface(color = HongguoColors.surface,
-                        shape = RoundedCornerShape(10.dp)) {
-                        Row(Modifier.fillMaxWidth().padding(12.dp),
-                            verticalAlignment = Alignment.CenterVertically) {
-                            Column(Modifier.weight(1f)) {
-                                Text("自动同步播放进度", fontWeight = FontWeight.SemiBold,
-                                    color = HongguoColors.ink)
-                                Text("默认关闭。开启后观看时约每 30 秒上传一次，不覆盖本机记录。",
-                                    fontSize = 11.sp, color = HongguoColors.muted)
-                            }
-                            Switch(
-                                checked = account.syncEnabled,
-                                onCheckedChange = model.account::setProgressSync,
-                                modifier = Modifier.testTag("cloud_progress_sync"),
-                            )
+                    Row(
+                        Modifier.fillMaxWidth().padding(top = 12.dp, bottom = 2.dp),
+                        verticalAlignment = Alignment.CenterVertically,
+                    ) {
+                        Text("账号片单", color = HongguoColors.ink,
+                            fontSize = 19.sp, fontWeight = FontWeight.Medium,
+                            modifier = Modifier.weight(1f))
+                        TextButton(onClick = {
+                            model.account.refresh()
+                            if (tab == 3) model.account.loadReservations()
+                        }, enabled = !account.busy,
+                            modifier = Modifier.testTag("account_library_refresh")) {
+                            Text("刷新", color = HongguoColors.accent, fontSize = 14.sp)
                         }
                     }
                 }
                 item {
-                    Column(Modifier.fillMaxWidth(), verticalArrangement = Arrangement.spacedBy(9.dp)) {
-                        Text("我的云端片单", fontSize = 18.sp, fontWeight = FontWeight.SemiBold,
-                            color = HongguoColors.ink)
-                        Row(Modifier.fillMaxWidth(), horizontalArrangement = Arrangement.spacedBy(8.dp)) {
-                            listOf(
-                                "看过" to (if (account.historyLoaded) account.history.size.toString() else "—"),
-                                "追剧" to (if (account.favoritesLoaded) account.favorites.size.toString() else "—"),
-                                "预约" to (if (account.reservationsLoaded)
-                                    (account.upcoming.size + account.online.size).toString() else "—"),
-                            ).forEachIndexed { index, pair ->
-                                FilterChip(
-                                    selected = tab == index,
-                                    onClick = {
-                                        tab = index
-                                        if (index == 2 && !account.reservationsLoaded) model.account.loadReservations()
-                                    },
-                                    label = { Text("${pair.first} ${pair.second}", fontSize = 12.sp) },
-                                    modifier = Modifier.weight(1f).testTag("account_library_tab_$index"),
-                                )
+                    Row(Modifier.fillMaxWidth().testTag("account_library_tabs")) {
+                        listOf("历史", "收藏", "点赞", "预约").forEachIndexed { index, title ->
+                            Column(Modifier.weight(1f).clickable {
+                                tab = index
+                                if (index == 3 && !account.reservationsLoaded)
+                                    model.account.loadReservations()
+                            }.testTag("account_library_tab_$index"),
+                                horizontalAlignment = Alignment.CenterHorizontally) {
+                                Text(title, color = if (tab == index)
+                                    HongguoColors.accent else HongguoColors.muted,
+                                    fontSize = 16.sp,
+                                    fontWeight = if (tab == index)
+                                        FontWeight.Medium else FontWeight.Normal,
+                                    modifier = Modifier.padding(vertical = 12.dp))
+                                Box(Modifier.fillMaxWidth().height(3.dp)
+                                    .background(if (tab == index) HongguoColors.accent
+                                        else Color.Transparent))
                             }
                         }
-                        Text(
-                            when (tab) {
-                                0 -> "最近观看 · 最多 50 部 · 点击封面继续观看"
-                                1 -> "账号追剧 · 收藏修改由云端确认后更新"
-                                else -> "官方预约 · 待上线不能播放"
-                            }, fontSize = 12.sp, color = HongguoColors.muted,
+                    }
+                    HorizontalDivider(color = HongguoColors.divider)
+                }
+
+                val gallery: List<AccountGalleryEntry> = when (tab) {
+                    0 -> account.history.map { progress ->
+                        val saved = account.favorites.any {
+                            it.series.id == progress.series.id
+                        }
+                        AccountGalleryEntry(
+                            progress.series,
+                            "第 ${progress.episodeIndex + 1} 集 · " +
+                                PlaybackTimeFormatter.format(progress.position),
+                            onOpen = { model.openCloudProgress(progress) },
+                            saved = if (account.favoritesLoaded) saved else null,
+                            onSave = if (account.favoritesLoaded) ({
+                                model.account.cloudFavorite(progress.series.id, !saved)
+                            }) else null,
                         )
-                        Text("拇指为本机点赞，不会上传官方账号；爱心为真实云端追剧，修改后读取云端确认。",
-                            fontSize = 11.sp, color = HongguoColors.muted)
                     }
-                }
-                if (tab == 0) {
-                    if (account.history.isEmpty()) item {
-                        Text(if (account.historyLoaded) "云端暂无观看历史" else "云端历史尚未成功读取",
-                            color = HongguoColors.muted)
+                    1 -> account.favorites.map { favorite ->
+                        AccountGalleryEntry(favorite.series, favorite.series.badge,
+                            onOpen = { model.openCloudDrama(favorite.series) },
+                            saved = true,
+                            onSave = {
+                                model.account.cloudFavorite(favorite.series.id, false)
+                            })
                     }
-                    items(account.history.chunked(2)) { pair ->
-                        Row(Modifier.fillMaxWidth(), horizontalArrangement = Arrangement.spacedBy(12.dp),
-                            verticalAlignment = Alignment.Top) {
-                            pair.forEach { progress ->
-                                val saved = account.favorites.any { it.series.id == progress.series.id }
-                                AccountPoster(
-                                    series = progress.series,
-                                    subtitle = "第 ${progress.episodeIndex + 1} 集 · " +
-                                        PlaybackTimeFormatter.format(progress.position),
-                                    action = "继续观看",
-                                    onOpen = { model.openCloudProgress(progress) },
-                                    saved = if (account.favoritesLoaded) saved else null,
-                                    onSave = if (account.favoritesLoaded) ({
-                                        model.account.cloudFavorite(progress.series.id, !saved)
-                                    }) else null,
-                                    liked = progress.series.id in libraryState.likedDramaIds,
-                                    onLike = { model.toggleLocalLikeForDrama(progress.series.id) },
-                                    modifier = Modifier.weight(1f),
-                                )
-                            }
-                            if (pair.size == 1) Spacer(Modifier.weight(1f))
+                    2 -> (account.history.map { it.series } +
+                        account.favorites.map { it.series })
+                        .distinctBy { it.id }
+                        .filter { it.id in libraryState.likedDramaIds }
+                        .map { series ->
+                            AccountGalleryEntry(series, "本机点赞",
+                                onOpen = { model.openCloudDrama(series) },
+                                saved = null, onSave = null)
                         }
-                    }
-                }
-                if (tab == 1) {
-                    if (account.favorites.isEmpty()) item {
-                        Text(if (account.favoritesLoaded) "还没有云端追剧" else "云端收藏尚未成功读取",
-                            color = HongguoColors.muted)
-                    }
-                    items(account.favorites.chunked(2)) { pair ->
-                        Row(Modifier.fillMaxWidth(), horizontalArrangement = Arrangement.spacedBy(12.dp),
-                            verticalAlignment = Alignment.Top) {
-                            pair.forEach { favorite ->
-                                AccountPoster(series = favorite.series,
-                                    subtitle = favorite.series.badge,
-                                    action = "观看",
-                                    onOpen = { model.openCloudDrama(favorite.series) },
-                                    saved = true,
-                                    onSave = { model.account.cloudFavorite(favorite.series.id, false) },
-                                    liked = favorite.series.id in libraryState.likedDramaIds,
-                                    onLike = { model.toggleLocalLikeForDrama(favorite.series.id) },
-                                    modifier = Modifier.weight(1f))
-                            }
-                            if (pair.size == 1) Spacer(Modifier.weight(1f))
+                    else -> (account.upcoming.map { it to false } +
+                        account.online.map { it to true })
+                        .map { (reservation, online) ->
+                            AccountGalleryEntry(reservation.series,
+                                if (online) "已上线" else
+                                    reservation.publishText.ifBlank { "待上线" },
+                                onOpen = if (online) ({
+                                    model.openCloudDrama(reservation.series)
+                                }) else null, saved = null, onSave = null)
                         }
+                }
+                if (gallery.isEmpty()) item {
+                    Box(Modifier.fillMaxWidth().height(190.dp),
+                        contentAlignment = Alignment.Center) {
+                        Text(when (tab) {
+                            0 -> if (account.historyLoaded) "还没有观看历史"
+                                else "历史暂未加载成功，点击刷新重试"
+                            1 -> if (account.favoritesLoaded) "还没有收藏的短剧"
+                                else "收藏暂未加载成功，点击刷新重试"
+                            2 -> "暂无已加载作品的本机点赞"
+                            else -> if (account.reservationsLoaded) "暂无预约短剧"
+                                else "预约尚未加载，点击刷新重试"
+                        }, color = HongguoColors.muted, fontSize = 13.sp)
                     }
                 }
-                if (tab == 2) {
-                    val reservations = account.upcoming.map { it to false } +
-                        account.online.map { it to true }
-                    if (reservations.isEmpty()) item {
-                        Text(if (account.reservationsLoaded) "暂无云端预约" else "预约尚未成功读取",
-                            color = HongguoColors.muted)
-                    }
-                    items(reservations.chunked(2)) { pair ->
-                        Row(Modifier.fillMaxWidth(), horizontalArrangement = Arrangement.spacedBy(12.dp),
-                            verticalAlignment = Alignment.Top) {
-                            pair.forEach { (reservation, online) ->
-                                AccountPoster(series = reservation.series,
-                                    subtitle = if (online) "已上线" else reservation.publishText.ifBlank { "待上线" },
-                                    action = if (online) "观看" else "待上线",
-                                    onOpen = if (online) ({ model.openCloudDrama(reservation.series) }) else null,
-                                    saved = null, onSave = null,
-                                    liked = reservation.series.id in libraryState.likedDramaIds,
-                                    onLike = { model.toggleLocalLikeForDrama(reservation.series.id) },
-                                    modifier = Modifier.weight(1f))
-                            }
-                            if (pair.size == 1) Spacer(Modifier.weight(1f))
+                items(gallery.chunked(3)) { line ->
+                    Row(Modifier.fillMaxWidth(), horizontalArrangement = Arrangement.spacedBy(9.dp),
+                        verticalAlignment = Alignment.Top) {
+                        line.forEach { item ->
+                            AccountPoster(
+                                series = item.series, subtitle = item.subtitle,
+                                onOpen = item.onOpen, saved = item.saved,
+                                onSave = item.onSave,
+                                liked = item.series.id in libraryState.likedDramaIds,
+                                onLike = {
+                                    model.toggleLocalLikeForDrama(item.series.id)
+                                }, modifier = Modifier.weight(1f))
                         }
+                        repeat(3 - line.size) { Spacer(Modifier.weight(1f)) }
                     }
-                }
-                item {
-                    HorizontalDivider()
-                    OutlinedButton(
-                        onClick = { confirmLogout = true },
-                        modifier = Modifier.fillMaxWidth().testTag("account_logout"),
-                    ) { Text("退出红果账号", color = HongguoColors.accent) }
                 }
             }
         }
@@ -573,6 +567,14 @@ internal fun AccountScreen(model: DramaViewModel) {
         },
     )
 }
+
+private data class AccountGalleryEntry(
+    val series: Series,
+    val subtitle: String,
+    val onOpen: (() -> Unit)?,
+    val saved: Boolean?,
+    val onSave: (() -> Unit)?,
+)
 
 @Composable
 private fun AccountRow(
@@ -602,11 +604,11 @@ private fun AccountRow(
     }
 }
 
+@OptIn(ExperimentalFoundationApi::class)
 @Composable
 private fun AccountPoster(
     series: Series,
     subtitle: String,
-    action: String,
     onOpen: (() -> Unit)?,
     saved: Boolean?,
     onSave: (() -> Unit)?,
@@ -614,53 +616,50 @@ private fun AccountPoster(
     onLike: () -> Unit,
     modifier: Modifier = Modifier,
 ) {
-    Surface(modifier = modifier, color = HongguoColors.surface,
-        shape = RoundedCornerShape(14.dp)) {
-        Column(Modifier.fillMaxWidth().padding(9.dp),
-            verticalArrangement = Arrangement.spacedBy(6.dp)) {
-            Box(Modifier.fillMaxWidth().aspectRatio(0.75f)
-                .clip(RoundedCornerShape(9.dp))
-                .background(HongguoColors.accentSoft)) {
-                if (series.cover.isNotBlank()) AsyncImage(
-                    model = series.cover, contentDescription = series.title,
-                    contentScale = ContentScale.Crop, modifier = Modifier.fillMaxSize()
-                        .then(if (onOpen != null) Modifier.clickable(onClick = onOpen) else Modifier),
-                )
-                else Icon(Icons.Outlined.PersonOutline, contentDescription = null,
-                    tint = HongguoColors.muted, modifier = Modifier.align(Alignment.Center).size(32.dp))
+    var menuOpen by remember { mutableStateOf(false) }
+    Column(modifier, verticalArrangement = Arrangement.spacedBy(4.dp)) {
+        Box {
+            Box(
+                Modifier.fillMaxWidth().aspectRatio(0.75f)
+                    .clip(RoundedCornerShape(11.dp))
+                    .background(HongguoColors.accentSoft)
+                    .combinedClickable(
+                        enabled = onOpen != null || onSave != null,
+                        onClick = { onOpen?.invoke() },
+                        onLongClick = { menuOpen = true }
+                    ).testTag("account_poster_${series.id}"),
+            ) {
+                if (series.cover.isNotBlank()) {
+                    AsyncImage(
+                        model = series.cover,
+                        contentDescription = series.title,
+                        contentScale = ContentScale.Crop,
+                        modifier = Modifier.fillMaxSize(),
+                    )
+                } else Icon(Icons.Outlined.PersonOutline, contentDescription = null,
+                    tint = HongguoColors.muted,
+                    modifier = Modifier.align(Alignment.Center).size(28.dp))
             }
-            Text(series.title.ifBlank { "未命名短剧" }, maxLines = 2,
-                overflow = TextOverflow.Ellipsis, fontSize = 14.sp,
-                color = HongguoColors.ink, fontWeight = FontWeight.SemiBold)
-            if (subtitle.isNotBlank()) Text(subtitle, maxLines = 1,
-                overflow = TextOverflow.Ellipsis, fontSize = 11.sp,
-                color = HongguoColors.muted)
-            Row(Modifier.fillMaxWidth(), verticalAlignment = Alignment.CenterVertically,
-                horizontalArrangement = Arrangement.spacedBy(2.dp)) {
-                TextButton(onClick = { onOpen?.invoke() }, enabled = onOpen != null,
-                    modifier = Modifier.weight(1f)) {
-                    Text(action, fontSize = 12.sp, maxLines = 1)
-                }
-                IconButton(onClick = onLike,
-                    modifier = Modifier.size(38.dp).testTag("account_local_like_${series.id}")) {
-                    Icon(Icons.Outlined.ThumbUp,
-                        contentDescription = if (liked) "取消本机点赞" else "本机点赞",
-                        tint = if (liked) HongguoColors.accent else HongguoColors.muted,
-                        modifier = Modifier.size(18.dp))
-                }
-                if (saved != null && onSave != null) {
-                    IconButton(onClick = onSave,
-                        modifier = Modifier.size(40.dp)
-                            .testTag("account_cloud_favorite_${series.id}")) {
-                        Icon(
-                            if (saved) Icons.Filled.Favorite else Icons.Outlined.FavoriteBorder,
-                            contentDescription = if (saved) "取消云收藏" else "加入云收藏",
-                            tint = if (saved) HongguoColors.accent else HongguoColors.muted,
-                            modifier = Modifier.size(19.dp),
-                        )
-                    }
-                }
+            DropdownMenu(expanded = menuOpen, onDismissRequest = { menuOpen = false }) {
+                if (onOpen != null) DropdownMenuItem(
+                    text = { Text("继续观看") },
+                    onClick = { menuOpen = false; onOpen() })
+                if (saved != null && onSave != null) DropdownMenuItem(
+                    text = { Text(if (saved) "取消云端收藏" else "加入云端收藏") },
+                    onClick = { menuOpen = false; onSave() })
+                DropdownMenuItem(
+                    text = { Text(if (liked) "取消本机点赞" else "本机点赞") },
+                    onClick = { menuOpen = false; onLike() })
             }
         }
+        Text(series.title.ifBlank { "未命名短剧" },
+            maxLines = 2, minLines = 1, overflow = TextOverflow.Ellipsis,
+            color = HongguoColors.ink, fontSize = 13.sp,
+            lineHeight = 18.sp, fontWeight = FontWeight.Medium,
+            modifier = Modifier.fillMaxWidth().clickable { onOpen?.invoke() })
+        if (subtitle.isNotBlank()) Text(
+            subtitle, maxLines = 1, overflow = TextOverflow.Ellipsis,
+            color = HongguoColors.muted, fontSize = 11.sp,
+            modifier = Modifier.fillMaxWidth())
     }
 }
