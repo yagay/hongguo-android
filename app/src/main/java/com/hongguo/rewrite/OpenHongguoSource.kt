@@ -105,11 +105,27 @@ internal class OpenHongguoSource(context: Context) {
         }
     }
 
+    /** Discovery/search pagers are bounded by the caller's page size. */
+    fun discoverAll(options: DiscoverOptions = DiscoverOptions(), maxPages: Int = 5) =
+        client.discoverAll(options, maxPages.coerceIn(1, 50))
+    fun searchAll(query: String, options: SearchOptions = SearchOptions(),
+        maxPages: Int = 5) =
+        client.searchAll(query.take(120), options, maxPages.coerceIn(1, 50))
+
+    /** Read-only episode metadata; existing player remains authoritative. */
+    suspend fun episodes(id: String): dev.openhongguo.Page<dev.openhongguo.Episode> =
+        client.listEpisodes(checkedId(id))
+    /** Playback model is only exposed to compatibility diagnostics; no DRM bypass. */
+    suspend fun playbackModel(episodeId: String): dev.openhongguo.PlaybackResult =
+        client.resolvePlayback(checkedId(episodeId))
+    /** Explicit maintenance action; never called from autoplay or retry loops. */
+    suspend fun resetAnonymousDeviceExplicitly() = client.resetDevice()
+
     suspend fun details(id: String): OpenHongguoMetadata =
         mapSeries(client.getSeries(checkedId(id)))
 
     suspend fun batchDetails(ids: List<String>): List<OpenHongguoMetadata> =
-        client.getSeriesBatch(ids.distinct().take(10).map(::checkedId))
+        client.getSeriesBatch(ids.distinct().map(::checkedId))
             .mapNotNull { it.series?.let(::mapSeries) }
 
     suspend fun seasons(id: String): List<Drama> =
@@ -137,7 +153,7 @@ internal class OpenHongguoSource(context: Context) {
         client.shortRank(query)
     suspend fun rankGroups(): List<RankList> = client.rankGroups()
     suspend fun rankRows(cellId: String, offset: Int = 0): Ranking =
-        client.rankRows(checkedId(cellId), offset)
+        client.rankRows(cellId, offset)
     suspend fun ranking(activityId: String, rankListId: String): Ranking =
         client.ranking(activityId, rankListId)
     suspend fun filterPanel(genre: String): List<FilterRow> =
@@ -145,9 +161,72 @@ internal class OpenHongguoSource(context: Context) {
     suspend fun filter(query: ShortFilterQuery = ShortFilterQuery()): ShortFilterPage =
         client.shortFilter(query)
     suspend fun categories(categoryId: String): CategoryPage =
-        client.categories(checkedId(categoryId))
+        client.categories(categoryId.trim().also { require(it.isNotEmpty()) })
     suspend fun categoryLanding(categoryId: String, options: LandingOptions = LandingOptions()):
-        CategoryPage = client.categoryLanding(checkedId(categoryId), options)
+        CategoryPage = client.categoryLanding(
+            categoryId.trim().also { require(it.isNotEmpty()) }, options)
+
+    /**
+     * Reusable generic SDK explorer for real API results. Book categories/rank
+     * rows are deliberately not relabeled as short dramas.
+     */
+    suspend fun browseExtended(
+        surface: String, query: String, cursor: String = "",
+    ): OpenHongguoBrowsePage {
+        val next = cursor.takeIf(String::isNotBlank)
+        return when (surface) {
+            "discover" -> {
+                val page = discover(DiscoverOptions(channel = query.takeIf(String::isNotBlank),
+                    cursor = next))
+                OpenHongguoBrowsePage(page.items.map {
+                    OpenHongguoBrowseItem(it.id, it.title, it.coverUrl,
+                        it.description, it.episodeCount)
+                }, page.cursor, page.hasMore)
+            }
+            "search" -> {
+                require(query.isNotBlank()) { "请输入搜索关键词" }
+                val page = search(query, SearchOptions(cursor = next))
+                OpenHongguoBrowsePage(page.items.map {
+                    OpenHongguoBrowseItem(it.id, it.title, it.coverUrl,
+                        it.description, it.episodeCount)
+                }, page.cursor, page.hasMore)
+            }
+            "calendar" -> {
+                require(query.matches(Regex("[0-9]{8}")))
+                val page = newReleases(NewReleaseQuery(date = query, cursor = next))
+                OpenHongguoBrowsePage(page.items.map {
+                    OpenHongguoBrowseItem(it.seriesId, it.title, it.coverUrl,
+                        it.note.ifBlank { it.heat }, it.episodeCount,
+                        playable = it.online)
+                }, page.cursor, page.hasMore)
+            }
+            "rankGroups" -> {
+                OpenHongguoBrowsePage(rankGroups().map {
+                    OpenHongguoBrowseItem(it.id, it.name,
+                        subtitle = "书城榜单 · ${it.size} 项", playable = false)
+                }, "", false)
+            }
+            "rankRows" -> {
+                val offset = cursor.toIntOrNull() ?: 0
+                val page = rankRows(query, offset)
+                OpenHongguoBrowsePage(page.items.map {
+                    OpenHongguoBrowseItem(it.seriesId, it.title,
+                        it.coverUrl, it.score, it.episodeCount,
+                        playable = false)
+                }, if (page.hasMore && page.nextOffset > offset)
+                    page.nextOffset.toString() else "", page.hasMore)
+            }
+            "category" -> {
+                val page = categoryLanding(query, LandingOptions(cursor = next))
+                OpenHongguoBrowsePage(page.items.map {
+                    OpenHongguoBrowseItem(it.id, it.title, it.coverUrl,
+                        it.category, it.episodeCount, playable = false)
+                }, if (page.hasMore && page.nextOffset > 0)
+                    page.nextOffset.toString() else "", page.hasMore)
+            }
+            else -> throw IllegalArgumentException("Unknown SDK surface: $surface")
+        }
+    }
 
     private fun checkedId(id: String): String {
         require(id.matches(Regex("[1-9][0-9]{0,29}"))) { "Invalid public content ID" }
