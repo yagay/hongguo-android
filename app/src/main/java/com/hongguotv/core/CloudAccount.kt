@@ -46,7 +46,7 @@ internal object AccountCredentialsParser {
     fun parseHeader(value: String) = AccountCredentials(value)
 }
 
-data class CloudProfile(val id: String, val nickname: String)
+data class CloudProfile(val id: String, val nickname: String, val avatarUrl: String? = null)
 
 /**
  * 会话有效，但这个手机号还没有红果阅读业务账号（`biz_user_id` 为空）。
@@ -182,7 +182,12 @@ class CloudAccountClient(private val http: OkHttpClient) {
                 ?: throw IOException("账号资料为空")
         val id = data.str("biz_user_id")
         if (id.isBlank()) throw AccountNotProvisionedException()
-        return CloudProfile(id, data.str("user_name").ifBlank { "红果用户" })
+        // Read-only optional avatar. Older accounts and API responses may omit it.
+        val avatar = listOf("avatar_url", "avatar_uri", "user_avatar",
+            "avatar", "avatar_thumb").asSequence()
+            .map { data.optString(it).trim() }
+            .firstOrNull { it.startsWith("https://") && it.length < 2048 }
+        return CloudProfile(id, data.str("user_name").ifBlank { "红果用户" }, avatar)
     }
 
     fun history(credentials: AccountCredentials): List<CloudProgress> {
