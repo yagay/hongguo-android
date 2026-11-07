@@ -374,6 +374,15 @@ internal fun AccountScreen(model: DramaViewModel) {
                             contentAlignment = Alignment.Center) {
                             Icon(Icons.Outlined.PersonOutline, null, Modifier.size(33.dp),
                                 tint = HongguoColors.accent)
+                            account.profile?.avatarUrl?.let { avatar ->
+                                AsyncImage(
+                                    model = avatar,
+                                    contentDescription = "红果账号头像",
+                                    contentScale = ContentScale.Crop,
+                                    modifier = Modifier.fillMaxSize().clip(CircleShape)
+                                        .testTag("account_avatar"),
+                                )
+                            }
                         }
                         Column(Modifier.weight(1f), verticalArrangement = Arrangement.spacedBy(4.dp)) {
                             Text(account.profile?.nickname.orEmpty().ifBlank { "红果用户" },
