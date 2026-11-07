@@ -43,7 +43,10 @@ internal class OpenHongguoSource(context: Context) {
      * Curated read-only discovery surfaces from the same published SDK.
      * Server cursor and actor identity remain source-defined; no fake ranks.
      */
-    suspend fun browse(tab: String, cursor: String = ""): OpenHongguoBrowsePage {
+    suspend fun browse(
+        tab: String, cursor: String = "",
+        selectedFilters: Map<String, List<String>> = emptyMap(),
+    ): OpenHongguoBrowsePage {
         fun useCursor(value: String) = value.takeIf(String::isNotBlank)
         return when (tab) {
             "new" -> {
@@ -91,11 +94,16 @@ internal class OpenHongguoSource(context: Context) {
                         it.heat, it.episodeCount)
                 }.filter { it.id.isNotBlank() }, "", false)
             }
-            "filter" -> {
+            "filter", "filterComic", "filterAI" -> {
+                val genre = when (tab) {
+                    "filterComic" -> "comic_series"
+                    "filterAI" -> "ai_series"
+                    else -> "short_play"
+                }
+                val selections = selectedFilters + ("genre" to listOf(genre))
+                // The SDK checks that the cursor continues this exact filter.
                 val p = filter(ShortFilterQuery(
-                    selections = if (cursor.isBlank()) mapOf(
-                        "genre" to listOf("short_play")) else null,
-                    cursor = useCursor(cursor)))
+                    selections = selections, cursor = useCursor(cursor)))
                 OpenHongguoBrowsePage(p.items.map {
                     OpenHongguoBrowseItem(it.id, it.title, it.coverUrl,
                         it.category, it.episodeCount)
