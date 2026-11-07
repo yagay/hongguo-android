@@ -2,6 +2,7 @@ package com.hongguo.rewrite
 
 import android.app.Application
 import android.net.Uri
+import android.content.Intent
 import android.os.Build
 import android.Manifest
 import android.content.pm.PackageManager
@@ -34,6 +35,74 @@ class DramaViewModel(application: Application) : AndroidViewModel(application) {
     internal val account = AccountManager(application, viewModelScope)
     private val prefs = application.getSharedPreferences("web_rewrite_settings", 0)
     private var source: WebContractClient? = null
+
+    private fun readOfflineEpisodes(): List<OfflineEpisode> {
+        val data = runCatching { JSONArray(prefs.getString("offline_episodes_v1", "[]")) }
+            .getOrElse { JSONArray() }
+        return (0 until minOf(data.length(), 200)).mapNotNull { i ->
+            val row = data.optJSONObject(i) ?: return@mapNotNull null
+            val id = row.optString("id")
+            val vid = row.optString("vid")
+            val uri = row.optString("uri")
+            if (!id.matches(Regex("[0-9]{1,30}")) ||
+                !vid.matches(Regex("[0-9]{1,30}")) || !uri.startsWith("content://")) {
+                return@mapNotNull null
+            }
+            OfflineEpisode(id, row.optString("title").take(200), row.optString("cover").take(2048),
+                row.optInt("episode", 1).coerceAtLeast(1), vid, uri,
+                row.optLong("savedAt"))
+        }.distinctBy { it.documentUri }
+    }
+
+    private fun saveOfflineEpisodes(rows: List<OfflineEpisode>) {
+        val data = JSONArray()
+        rows.distinctBy { it.documentUri }.take(200).forEach { row ->
+            data.put(org.json.JSONObject().put("id", row.seriesId)
+                .put("title", row.title).put("cover", row.cover)
+                .put("episode", row.episode).put("vid", row.vid)
+                .put("uri", row.documentUri).put("savedAt", row.savedAt))
+        }
+        prefs.edit().putString("offline_episodes_v1", data.toString()).apply()
+        mutable.update { it.copy(offlineEpisodes = rows.distinctBy { row -> row.documentUri }.take(200)) }
+    }
+
+    fun removeOfflineEpisode(documentUri: String) {
+        saveOfflineEpisodes(state.value.offlineEpisodes.filterNot { it.documentUri == documentUri })
+    }
+
+    fun openOfflineEpisode(episode: OfflineEpisode) {
+        if (episode !in state.value.offlineEpisodes) return
+        viewModelScope.launch {
+            val uri = runCatching { Uri.parse(episode.documentUri) }.getOrNull() ?: return@launch
+            val accessible = withContext(Dispatchers.IO) {
+                runCatching { getApplication<Application>().contentResolver
+                    .openFileDescriptor(uri, "r")?.use { true } ?: false }
+                    .getOrDefault(false)
+            }
+            if (!accessible) {
+                mutable.update { it.copy(settingsMessage = "离线文件无法读取，请检查保存位置") }
+                return@launch
+            }
+            ++detailId
+            detailJob?.cancel()
+            clearPreloadedNext()
+            closeNativeVideo()
+            clearSocial()
+            clearEngagement()
+            firstFrameFor = null
+            mutable.update { it.copy(
+                detail = DramaDetail(
+                    Drama(episode.seriesId, episode.title, episode.cover, episode.episode),
+                    listOf(Episode(episode.episode, episode.vid))),
+                episodeIndex = 0, offlinePlaybackUri = episode.documentUri,
+                playbackUrl = episode.documentUri, playing = true,
+                feedMode = false, preparingDetail = false, playbackError = null,
+                resumePositionMs = library.checkpoint(episode.seriesId, episode.vid),
+                relatedSeries = null, relatedWorks = emptyList())
+            }
+        }
+    }
+
     private fun readWatchLater(): List<Drama> {
         val rows = runCatching { JSONArray(prefs.getString("watch_later_v1", "[]")) }
             .getOrElse { JSONArray() }
@@ -409,6 +478,7 @@ class DramaViewModel(application: Application) : AndroidViewModel(application) {
             library = library.list(false), favorites = library.list(true),
             likedDramaIds = prefs.getStringSet("local_liked_dramas", emptySet())?.toSet().orEmpty(),
             watchLater = readWatchLater(),
+            offlineEpisodes = readOfflineEpisodes(),
             favoriteGroups = library.favoriteGroups(),
             completedDramaIds = prefs.getStringSet("completed_drama_ids_v1", emptySet())?.toSet().orEmpty(),
             hiddenRecommendationIds = prefs.getStringSet("hidden_recommendations_v1", emptySet())?.toSet().orEmpty(),
@@ -1042,7 +1112,7 @@ class DramaViewModel(application: Application) : AndroidViewModel(application) {
         firstFrameFor = null
         clearPreloadedNext()
         startEpisodeHint = resumeEp
-        mutable.update { it.copy(detail = null, preparingDetail = true,
+        mutable.update { it.copy(offlinePlaybackUri = null, detail = null, preparingDetail = true,
             feedMode = feed, relatedWorks = emptyList(), relatedSeries = null,
             relatedLoading = false, relatedError = null,
             playbackError = null, playbackUrl = null, playing = false) }
@@ -1090,6 +1160,11 @@ class DramaViewModel(application: Application) : AndroidViewModel(application) {
     fun play(index: Int) {
         val detail = state.value.detail ?: return
         if (index !in detail.episodes.indices) return
+        if (state.value.offlinePlaybackUri != null) {
+            mutable.update { it.copy(episodeIndex = index,
+                playbackUrl = it.offlinePlaybackUri, playing = true) }
+            return
+        }
         clearEngagement()
         val api = source
         val version = ++detailId
@@ -1215,7 +1290,7 @@ class DramaViewModel(application: Application) : AndroidViewModel(application) {
         if (episode.vid != expectedVid || firstFrameFor != expectedVid) return
         library.saveCheckpoint(s.detail.drama.id, expectedVid, episode.index,
             positionMs, durationMs)
-        if (source == null) account.uploadProgress(
+        if (source == null && s.offlinePlaybackUri == null) account.uploadProgress(
             Series(s.detail.drama.id, s.detail.drama.title, s.detail.drama.cover),
             expectedVid, s.episodeIndex, positionMs, durationMs,
             s.detail.episodes.size,
@@ -1271,6 +1346,7 @@ class DramaViewModel(application: Application) : AndroidViewModel(application) {
         clearPreloadedNext()
         firstFrameFor = null
         mutable.update { it.copy(detail = null, playbackUrl = null,
+            offlinePlaybackUri = null,
             feedMode = false, relatedSeries = null, relatedWorks = emptyList(),
             relatedLoading = false, relatedError = null,
             resumePositionMs = 0L, playbackError = null,
