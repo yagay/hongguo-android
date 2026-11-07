@@ -78,7 +78,12 @@ data class AppState(
     val detail: DramaDetail? = null,
     /** Separate one-video-per-series feed from full-series episode paging. */
     val feedMode: Boolean = false,
+    /** A separate, live official swipe stream; never use the three-card home catalog as its pager. */
+    val feedItems: List<Drama> = emptyList(),
     val feedIndex: Int = 0,
+    val feedLoading: Boolean = false,
+    val feedHasMore: Boolean = false,
+    val feedError: String? = null,
     val episodeIndex: Int = 0,
     val preparingDetail: Boolean = false,
     val relatedSeries: String? = null,
