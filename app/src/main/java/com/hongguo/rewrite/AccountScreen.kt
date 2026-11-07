@@ -77,6 +77,11 @@ internal fun AccountScreen(model: DramaViewModel) {
     var confirmLogout by remember { mutableStateOf(false) }
     var loginMethod by rememberSaveable { mutableIntStateOf(0) }
     var accountMenu by remember { mutableStateOf(false) }
+    // Like main: entering the QR method prepares one QR automatically, never auto-retries an expired one.
+    LaunchedEffect(loginMethod) {
+        if (loginMethod == 2 && account.profile == null && !account.busy &&
+            account.qrImage == null) model.account.qrLogin()
+    }
     var advancedOpen by rememberSaveable { mutableStateOf(false) }
     var importedCookie by remember { mutableStateOf("") }
     BackHandler { model.closeAccount() }
