@@ -538,7 +538,7 @@ class HongguoViewModel(application: Application) : AndroidViewModel(application)
         mutableState.update {
             it.copy(episodePosition = position, preparing = true, video = null,
                 preparationStage = "正在获取片源", preparationDone = 0, preparationTotal = 0,
-                playbackError = null, playbackStatus = "", firstFrameRendered = false, resumePositionMs = savedPosition, playerOpen = true)
+                playbackError = null, playbackDiagnostic = null, playbackStatus = "", firstFrameRendered = false, resumePositionMs = savedPosition, playerOpen = true)
         }
         releaseVideo(current.video)
         mediaJob = viewModelScope.launch {
@@ -556,8 +556,12 @@ class HongguoViewModel(application: Application) : AndroidViewModel(application)
             } catch (error: CancellationException) {
                 throw error
             } catch (error: Exception) {
-                if (version == mediaVersion) mutableState.update {
-                    it.copy(preparing = false, playbackError = readableFailure(error, "准备播放"), playbackStatus = "")
+                if (version == mediaVersion) {
+                    val diagnostic = PlaybackDiagnostic.fromPreparationFailure(error)
+                    mutableState.update {
+                        it.copy(preparing = false, playbackError = diagnostic.message,
+                            playbackDiagnostic = diagnostic, playbackStatus = "")
+                    }
                 }
             }
         }
@@ -568,7 +572,7 @@ class HongguoViewModel(application: Application) : AndroidViewModel(application)
         mediaJob?.cancel()
         resumePreparationOnForeground = false
         takePrefetch(null)
-        mutableState.update { it.copy(preparing = false, preparationStage = "", playbackStatus = "已取消，可重新选择剧集") }
+        mutableState.update { it.copy(preparing = false, preparationStage = "", playbackDiagnostic = null, playbackStatus = "已取消，可重新选择剧集") }
     }
 
     fun retryPlayback() {
@@ -590,7 +594,7 @@ class HongguoViewModel(application: Application) : AndroidViewModel(application)
         takePrefetch(null)
         resumePreparationOnForeground = false
         mutableState.update { it.copy(playerOpen = false, video = null, preparing = false,
-            preparationStage = "", playbackError = null, playbackStatus = "", firstFrameRendered = false) }
+            preparationStage = "", playbackError = null, playbackDiagnostic = null, playbackStatus = "", firstFrameRendered = false) }
         releaseVideo(previous)
     }
 
@@ -687,7 +691,7 @@ class HongguoViewModel(application: Application) : AndroidViewModel(application)
     fun onFirstFrame(episodeId: String, requestId: Long) {
         if (!isCurrentVideo(episodeId, requestId)) return
         val alreadyRendered = state.value.firstFrameRendered
-        mutableState.update { it.copy(firstFrameRendered = true) }
+        mutableState.update { it.copy(firstFrameRendered = true, playbackDiagnostic = null) }
         accountPlaybacks[requestId]?.takeIf { it.entry.episodeId == episodeId }?.rendered = true
         if (!alreadyRendered) resumeTargets[episodeId]?.let { target ->
             library.recordPlayback(target.card, episodeId, target.index, state.value.resumePositionMs)
@@ -698,6 +702,7 @@ class HongguoViewModel(application: Application) : AndroidViewModel(application)
     fun onPlaybackError(episodeId: String, requestId: Long, unsupported: Boolean) {
         if (isCurrentVideo(episodeId, requestId)) mutableState.update {
             it.copy(playbackError = if (unsupported) "当前设备无法解码这集视频，可重试或选择其他集。" else "视频播放失败，可重试或选择其他集。",
+                playbackDiagnostic = PlaybackDiagnostic.playerFailure(unsupported),
                 playbackStatus = "播放失败")
         }
     }

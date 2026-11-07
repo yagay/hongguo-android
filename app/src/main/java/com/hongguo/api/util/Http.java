@@ -10,6 +10,9 @@ import java.net.URLConnection;
 import java.net.URLEncoder;
 import java.net.URLDecoder;
 import java.net.SocketTimeoutException;
+import java.net.ConnectException;
+import java.net.UnknownHostException;
+import javax.net.ssl.SSLException;
 import java.io.InterruptedIOException;
 import java.nio.charset.StandardCharsets;
 import java.util.ArrayList;
@@ -131,6 +134,12 @@ public final class Http {
             return new Resp(status, data, conn.getHeaderFields());
         } catch (SocketTimeoutException ignored) {
             throw new SocketTimeoutException("网络请求超时");
+        } catch (UnknownHostException ignored) {
+            throw new UnknownHostException("域名解析失败");
+        } catch (ConnectException ignored) {
+            throw new ConnectException("网络连接失败");
+        } catch (SSLException ignored) {
+            throw new SSLException("安全连接失败");
         } catch (InterruptedIOException ignored) {
             throw new InterruptedIOException("请求已取消或超时");
         } catch (IOException ignored) {

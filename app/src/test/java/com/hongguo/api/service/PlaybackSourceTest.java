@@ -226,6 +226,23 @@ public class PlaybackSourceTest {
         expectRegistrationFailure();
     }
 
+    @Test public void incompleteModelContinuesToNextSignedRoute() throws Exception {
+        java.util.concurrent.atomic.AtomicInteger postCalls = new java.util.concurrent.atomic.AtomicInteger();
+        AppSource.setPlaybackTabForTest((vid, identity) ->
+            Json.parseObject("{\"code\":0,\"data\":{}}"));
+        AppSource.setPlaybackPostForTest((body, identity, host) -> {
+            postCalls.incrementAndGet();
+            throw new IllegalStateException("POST_ROUTE_REACHED");
+        });
+        try {
+            AppSource.fetch("7000000000000000001", "auto");
+            fail("Expected POST route fixture to fail");
+        } catch (IllegalStateException expected) {
+            assertEquals("POST_ROUTE_REACHED", expected.getMessage());
+        }
+        assertEquals(1, postCalls.get());
+    }
+
     // ==================== 签名播放请求 ====================
 
     @Test public void playbackRequestIsSignedWithTheRegisteredIdentityAndCookie() throws Exception {

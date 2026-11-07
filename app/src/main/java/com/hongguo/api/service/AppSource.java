@@ -143,7 +143,15 @@ public final class AppSource {
                 failure = e;
                 continue;
             }
-            if (j != null) return parseModel(vid, j, quality);
+            if (j != null) {
+                try {
+                    return parseModel(vid, j, quality);
+                } catch (PlaybackModelUnavailableException incompleteModel) {
+                    // Missing model/episode fields can vary by playback route. Other
+                    // failures (business rejection, codec, key, URL) are not retried.
+                    failure = incompleteModel;
+                }
+            }
         }
         if (failure != null) throw failure;
         EmptyPlaybackResponseException empty = new EmptyPlaybackResponseException();
@@ -187,6 +195,11 @@ public final class AppSource {
         EmptyPlaybackResponseException() {
             super("App 接口返回空响应，疑似播放设备身份被拒，请稍后重试");
         }
+    }
+
+    /** A returned JSON envelope without the requested episode's usable model. */
+    static final class PlaybackModelUnavailableException extends IllegalStateException {
+        PlaybackModelUnavailableException(String message) { super(message); }
     }
 
     /** 可替换的播放请求（JVM 测试注入）；生产实现见 {@link #postPlayback}. */
@@ -235,11 +248,11 @@ public final class AppSource {
         Map<String, Object> data = Json.optObj(j.get("data"));
         Map<String, Object> entry = data == null ? null : Json.optObj(data.get(vid));
         if (entry == null || entry.isEmpty()) {
-            throw new IllegalStateException("App 接口未返回所选分集");
+            throw new PlaybackModelUnavailableException("App 接口未返回所选分集");
         }
         Map<String, Object> model = asObject(entry.get("video_model"));
         if (model.isEmpty()) {
-            throw new IllegalStateException("App 接口未返回 video_model");
+            throw new PlaybackModelUnavailableException("App 接口未返回 video_model");
         }
 
         // ---- 2. 片源模型：新版直接内联 video_list，旧版跟随 fallback_api 二次请求 ----
