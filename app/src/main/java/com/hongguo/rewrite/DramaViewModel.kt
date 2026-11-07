@@ -594,6 +594,10 @@ class DramaViewModel(application: Application) : AndroidViewModel(application) {
                     prefetchedFeedDetails.remove(prefetchedFeedDetails.keys.first())
                 diagnostics.record("FEED", "NEXT_DETAIL_PREFETCHED")
                 if (!state.value.preloadNext || detail.episodes.isEmpty()) return@launch
+                // Do not compete with current video startup. Prepare the next
+                // byte range only after Media3 has rendered the active first frame.
+                val active = state.value.detail?.episodes?.getOrNull(state.value.episodeIndex)
+                if (active == null || firstFrameFor != active.vid) return@launch
                 val first = detail.episodes.first().vid
                 val quality = state.value.qualityLimit
                 warming = nativeSource.openVideo(first, qualityLimit = quality)
@@ -1445,6 +1449,8 @@ class DramaViewModel(application: Application) : AndroidViewModel(application) {
     }
 
     fun setQualityLimit(value: Int, positionMs: Long, durationMs: Long) {
+        feedPrefetchJob?.cancel()
+        clearReelWarmVideo()
         if (value !in setOf(0, 360, 480, 720, 1080)) return
         prefs.edit().putInt("quality_limit", value).apply()
         val s = state.value
@@ -1474,7 +1480,8 @@ class DramaViewModel(application: Application) : AndroidViewModel(application) {
         diagnostics.record("MEDIA", "FIRST_FRAME")
         library.record(s.detail.drama, ep.index)
         updateLibrary()
-        preloadFollowingEpisode()
+        if (s.feedMode) prefetchFollowingFeedItem(s.feedIndex)
+        else preloadFollowingEpisode()
     }
 
 
