@@ -4,9 +4,6 @@ import android.content.Intent
 import androidx.activity.compose.BackHandler
 import androidx.activity.compose.rememberLauncherForActivityResult
 import androidx.activity.result.contract.ActivityResultContracts
-import androidx.compose.animation.core.LinearEasing
-import androidx.compose.animation.core.animateFloatAsState
-import androidx.compose.animation.core.tween
 import androidx.compose.foundation.background
 import androidx.compose.foundation.clickable
 import androidx.compose.foundation.rememberScrollState
@@ -62,6 +59,8 @@ import androidx.compose.material3.Text
 import androidx.compose.material3.TextButton
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.DisposableEffect
+import androidx.compose.runtime.derivedStateOf
+import androidx.compose.runtime.withFrameNanos
 import androidx.compose.runtime.LaunchedEffect
 import androidx.compose.runtime.getValue
 import androidx.compose.runtime.key
@@ -366,7 +365,7 @@ internal fun NativePlayer(state: AppState, model: DramaViewModel) {
         if (state.danmakuEnabled && selected != null && !showComments && !showEpisodes) {
             TimedDanmakuOverlay(
                 items = state.danmakuItems,
-                currentMs = playback.positionMs,
+                playback = playback,
                 speedPreset = state.danmakuSpeed,
                 tracks = state.danmakuDensity,
                 fontSizeSp = state.danmakuFontSize,
@@ -625,7 +624,7 @@ private fun CommentsSheet(state: AppState, model: DramaViewModel) {
 @Composable
 private fun TimedDanmakuOverlay(
     items: List<DanmakuEntry>,
-    currentMs: Long,
+    playback: ReelPlaybackControls,
     speedPreset: Int,
     tracks: Int,
     fontSizeSp: Int,
@@ -633,16 +632,48 @@ private fun TimedDanmakuOverlay(
 ) {
     val flightMs = DanmakuLayout.flightForSpeed(speedPreset)
     val lanes = tracks.coerceIn(1, 5)
-    // Stable lane allocations prevent comments jumping to a different row
-    // when one of their neighbors disappears.
     val placed = remember(items, lanes, flightMs) {
         DanmakuLayout.arrange(items, lanes, flightMs)
     }
-    val visible = remember(placed, currentMs / 250L) {
-        placed.filter { line ->
-            currentMs >= line.startMs &&
-                currentMs < line.startMs + flightMs
-        }.take(lanes)
+
+    // The ordinary player controls update every 250 ms for progress labels.
+    // That sampling rate must NOT drive scrolling text. The old 205-ms tween
+    // left 45 ms of idle time between updates ("move, stop, move").
+    //
+    // Read the actual ExoPlayer playback clock on each display frame instead.
+    // This follows pause, buffering, playback speed and seeking naturally.
+    // Keep this frame state local to the overlay: the rest of the player UI
+    // must not be recomposed at 60 fps.
+    val player = playback.player
+    var framePositionMs by remember(player) {
+        mutableLongStateOf(
+            player?.currentPosition?.coerceAtLeast(0L) ?: playback.positionMs
+        )
+    }
+    LaunchedEffect(player) {
+        while (isActive) {
+            if (player?.isPlaying == true) {
+                withFrameNanos { }
+            } else {
+                // When paused, do not render idle frames. Still observe
+                // seeks and media readiness without a perceptible delay.
+                delay(50)
+            }
+            val time = player?.currentPosition?.coerceAtLeast(0L)
+                ?: playback.positionMs
+            if (framePositionMs != time) framePositionMs = time
+        }
+    }
+
+    // This state changes only when a danmaku enters/leaves; movement below
+    // reads the current clock inside the placement lambda. Compose therefore
+    // only repositions the active texts, not the entire video overlay.
+    val visible by remember(placed, flightMs, lanes) {
+        derivedStateOf {
+            val now = framePositionMs
+            placed.filter { it.startMs <= now && now < it.startMs + flightMs }
+                .take(lanes)
+        }
     }
     if (visible.isEmpty()) return
 
@@ -653,43 +684,44 @@ private fun TimedDanmakuOverlay(
         fontWeight = FontWeight.Medium,
         shadow = Shadow(Color.Black, Offset(1f, 2f), 4f),
     )
-    BoxWithConstraints(modifier.height((lanes * 34 + 12).dp).clipToBounds()
-        .testTag("timed_danmaku_overlay")) {
+    BoxWithConstraints(
+        modifier.height((lanes * 34 + 12).dp).clipToBounds()
+            .testTag("timed_danmaku_overlay")
+    ) {
         val density = LocalDensity.current
         val widthPx = with(density) { maxWidth.toPx() }
         val laneHeightPx = with(density) { 34.dp.toPx() }
-        val paddingPx = with(density) { 12.dp.toPx() }
+        val shadowPaddingPx = with(density) { 5.dp.toPx() }
+
         visible.forEach { line ->
             key(line.id) {
-                // Use the actual composed text width, not a fraction of the
-                // screen width. Each line fully enters AND leaves the frame.
                 val content = line.text.take(44)
-                val measuredWidth = textMeasurer.measure(
-                    text = AnnotatedString(content), style = style,
-                    maxLines = 1, softWrap = false,
-                ).size.width.toFloat() + paddingPx
-                val progress = DanmakuLayout.progress(currentMs, line.startMs, flightMs)
-                val targetPx = DanmakuLayout.xPosition(
-                    widthPx, measuredWidth, progress
-                )
-                val xPx by animateFloatAsState(
-                    targetValue = targetPx,
-                    animationSpec = tween(205, easing = LinearEasing),
-                    label = "danmaku_" + line.id.take(8),
-                )
+                val measuredWidth = remember(
+                    content, style, textMeasurer, density.density, density.fontScale
+                ) {
+                    textMeasurer.measure(
+                        text = AnnotatedString(content), style = style,
+                        maxLines = 1, softWrap = false,
+                    ).size.width.toFloat() + shadowPaddingPx
+                }
+
                 Text(
                     text = content,
                     style = style,
                     maxLines = 1,
                     softWrap = false,
-                    modifier = Modifier
-                        .offset {
-                            IntOffset(xPx.roundToInt(),
-                                (line.lane * laneHeightPx).roundToInt())
-                        }
-                        .background(Color.Black.copy(alpha = 0.23f),
-                            RoundedCornerShape(5.dp))
-                        .padding(horizontal = 5.dp, vertical = 2.dp),
+                    modifier = Modifier.offset {
+                        val progress = DanmakuLayout.progress(
+                            framePositionMs, line.startMs, flightMs
+                        )
+                        val xPx = DanmakuLayout.xPosition(
+                            widthPx, measuredWidth, progress
+                        )
+                        IntOffset(
+                            xPx.roundToInt(),
+                            (line.lane * laneHeightPx).roundToInt(),
+                        )
+                    },
                 )
             }
         }
