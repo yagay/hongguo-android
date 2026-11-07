@@ -134,6 +134,8 @@ data class AppState(
     val danmakuSpeed: Int = 1,
     val danmakuDensity: Int = 4,
     val danmakuFontSize: Int = 14,
+    /** Optional anonymous App detail enrichment, never required for playback. */
+    val openHongguoMetadata: OpenHongguoMetadata? = null,
     val socialForSeries: String? = null,
     val socialStats: SocialStats? = null,
     val socialStatsLoading: Boolean = false,
