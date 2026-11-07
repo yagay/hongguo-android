@@ -264,6 +264,71 @@ class DramaViewModel(application: Application) : AndroidViewModel(application) {
         prefs.getBoolean("diagnostic_enabled", true))
     private val publicWebsite = NativeWebsiteSource(diagnostics = diagnostics)
     private val nativeSource = NativeHongguoSource(diagnostics = diagnostics)
+    /** Independent, lazy, read-only SDK; never used by Media3, account auth or reel paging. */
+    private val openHongguo = OpenHongguoSource(application)
+    private var sdkDetailJob: Job? = null
+    private var sdkDetailGeneration = 0L
+
+    private fun loadSdkDetails(seriesId: String) {
+        sdkDetailJob?.cancel()
+        val generation = ++sdkDetailGeneration
+        mutable.update { it.copy(openHongguoLoading = true) }
+        sdkDetailJob = viewModelScope.launch {
+            try {
+                val meta = openHongguo.details(seriesId)
+                if (generation != sdkDetailGeneration ||
+                    state.value.detail?.drama?.id != seriesId ||
+                    !state.value.detailPageVisible) return@launch
+                mutable.update { current ->
+                    val d = current.detail
+                    if (d?.drama?.id != seriesId) current
+                    else current.copy(
+                        openHongguoMetadata = OpenHongguoMetadataParser.merge(
+                            current.openHongguoMetadata, meta),
+                        detail = d.copy(drama = d.drama.copy(
+                            actors = (d.drama.actors + meta.actors).distinct().take(20),
+                            categories = (d.drama.categories + meta.tags).distinct().take(16),
+                        )),
+                    )
+                }
+                diagnostics.record("SDK", "SERIES_INFO_READY")
+                // Resolve a multi-season album only when the verified metadata
+                // says it exists. Do not generate season IDs from names.
+                if (meta.albumId != null) {
+                    runCatching { openHongguo.seasons(seriesId) }
+                        .onSuccess { seasons ->
+                            if (generation == sdkDetailGeneration &&
+                                state.value.detail?.drama?.id == seriesId) {
+                                mutable.update { it.copy(
+                                    openHongguoSeasons = seasons.distinctBy(Drama::id)
+                                        .filter { row -> row.id != seriesId }.take(30),
+                                ) }
+                                diagnostics.record("SDK", "SEASONS_READY")
+                            }
+                        }
+                }
+                if (state.value.relatedWorks.isEmpty()) {
+                    runCatching { openHongguo.related(seriesId) }
+                        .onSuccess { related ->
+                            if (generation == sdkDetailGeneration &&
+                                state.value.detail?.drama?.id == seriesId &&
+                                state.value.relatedWorks.isEmpty() &&
+                                !state.value.relatedLoading) {
+                                mutable.update { it.copy(relatedWorks =
+                                    related.filter { row -> row.id != seriesId }
+                                        .map { row -> RelatedDrama(row, "", false) }) }
+                                diagnostics.record("SDK", "RELATED_FALLBACK_READY")
+                            }
+                        }
+                }
+            } catch (e: CancellationException) { throw e }
+            catch (_: Exception) { diagnostics.record("SDK", "SERIES_INFO_UNAVAILABLE") }
+            finally {
+                if (generation == sdkDetailGeneration)
+                    mutable.update { it.copy(openHongguoLoading = false) }
+            }
+        }
+    }
     private val sleepTimer = SleepTimer { android.os.SystemClock.elapsedRealtime() }
     @Volatile private var activeNativeVideo: RemoteVideo? = null
     @Volatile private var activeNativeVid: String? = null
@@ -862,7 +927,8 @@ class DramaViewModel(application: Application) : AndroidViewModel(application) {
         socialJob?.cancel()
         mutable.update {
             it.copy(socialForSeries = null, socialStats = null,
-                openHongguoMetadata = null, socialStatsLoading = false)
+                openHongguoMetadata = null, openHongguoSeasons = emptyList(),
+                socialStatsLoading = false)
         }
     }
 
@@ -931,7 +997,9 @@ class DramaViewModel(application: Application) : AndroidViewModel(application) {
                                     val d = current.detail
                                     if (d?.drama?.id != seriesId) current
                                     else current.copy(
-                                        openHongguoMetadata = metadata,
+                                        openHongguoMetadata =
+                                            OpenHongguoMetadataParser.merge(
+                                                current.openHongguoMetadata, metadata),
                                         detail = d.copy(drama = d.drama.copy(
                                             categories = (d.drama.categories + metadata.tags)
                                                 .distinct().take(16),
@@ -1582,6 +1650,7 @@ class DramaViewModel(application: Application) : AndroidViewModel(application) {
     fun showDramaDetails() {
         val s = state.value
         if (s.detail == null || s.detailPageVisible) return
+        loadSdkDetails(s.detail.drama.id)
         ++detailId
         detailJob?.cancel()
         closeNativeVideo()
@@ -1592,6 +1661,8 @@ class DramaViewModel(application: Application) : AndroidViewModel(application) {
 
     /** Back from details resumes the same drama and selected episode. */
     fun backFromDramaDetails() {
+        sdkDetailGeneration++
+        sdkDetailJob?.cancel()
         val s = state.value
         if (!s.detailPageVisible) return
         if (s.detailEntryEnabled && s.detail != null) {
@@ -1603,6 +1674,8 @@ class DramaViewModel(application: Application) : AndroidViewModel(application) {
     fun backFromPlayer() = closePlayer()
 
     fun closePlayer() {
+        sdkDetailGeneration++
+        sdkDetailJob?.cancel()
         homeFeedExcludedIds = emptySet()
         pendingFeedAdvance = false
         officialFeedJob?.cancel()
@@ -1627,6 +1700,8 @@ class DramaViewModel(application: Application) : AndroidViewModel(application) {
             feedHasMore = false, feedError = null,
             relatedSeries = null, relatedWorks = emptyList(),
             relatedLoading = false, relatedError = null,
+            openHongguoMetadata = null, openHongguoSeasons = emptyList(),
+            openHongguoLoading = false,
             resumePositionMs = 0L, playbackError = null,
             preparingDetail = false, playing = false) }
     }
