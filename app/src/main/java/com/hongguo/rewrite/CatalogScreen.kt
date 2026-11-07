@@ -100,6 +100,7 @@ internal fun CatalogScreen(state: AppState, model: DramaViewModel) {
                 loading = state.loading, moreLoading = state.moreLoading,
                 hasMore = state.hasMore, hasError = state.error != null,
                 itemCount = state.items.size,
+                hasScrolled = grid.firstVisibleItemIndex > 0,
                 lastVisible = layout.visibleItemsInfo.lastOrNull()?.index ?: -1,
                 layoutItems = layout.totalItemsCount,
             )

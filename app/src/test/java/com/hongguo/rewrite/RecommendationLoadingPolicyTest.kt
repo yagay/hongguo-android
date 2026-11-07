@@ -5,33 +5,29 @@ import org.junit.Assert.assertTrue
 import org.junit.Test
 
 class RecommendationLoadingPolicyTest {
-    @Test fun initialThreeCardsMustKeepLoadingWithinBound() {
-        assertTrue(RecommendationLoadingPolicy.shouldPrefill(
-            true, Section.RECOMMEND, false, 3, true, 1, 3))
-        assertTrue(RecommendationLoadingPolicy.shouldPrefill(
-            true, Section.RECOMMEND, false, 9, true, 4, 3))
-        assertFalse(RecommendationLoadingPolicy.shouldPrefill(
-            true, Section.RECOMMEND, false, 12, true, 4, 3))
-        assertFalse(RecommendationLoadingPolicy.shouldPrefill(
-            true, Section.RECOMMEND, false, 3, true, 8, 3))
-        assertFalse(RecommendationLoadingPolicy.shouldPrefill(
-            true, Section.RECOMMEND, false, 3, true, 3, 0))
-        assertFalse(RecommendationLoadingPolicy.shouldPrefill(
-            true, Section.RECOMMEND, true, 3, true, 3, 3))
-        assertFalse(RecommendationLoadingPolicy.shouldPrefill(
-            false, Section.RECOMMEND, false, 3, true, 3, 3))
+    private fun nearEnd(
+        loaded: Int = 12, scrolled: Boolean = true,
+        lastVisible: Int = 13, count: Int = 14,
+        loading: Boolean = false, moreLoading: Boolean = false,
+        hasError: Boolean = false,
+    ) = RecommendationLoadingPolicy.nearEnd(
+        native = true, section = Section.RECOMMEND,
+        loading = loading, moreLoading = moreLoading, hasMore = true,
+        hasError = hasError, itemCount = loaded, hasScrolled = scrolled,
+        lastVisible = lastVisible, layoutItems = count,
+    )
+
+    @Test fun batchesHaveTwelveDramaTargets() {
+        assertTrue(RecommendationLoadingPolicy.BATCH_SIZE == 12)
     }
 
-    @Test fun autoScrollLoadsOnlyWhenReadyAndNearEnd() {
-        assertTrue(RecommendationLoadingPolicy.nearEnd(
-            true, Section.RECOMMEND, false, false, true, false, 3, 4, 5))
-        assertFalse(RecommendationLoadingPolicy.nearEnd(
-            true, Section.RECOMMEND, true, false, true, false, 3, 4, 5))
-        assertFalse(RecommendationLoadingPolicy.nearEnd(
-            true, Section.RECOMMEND, false, true, true, false, 3, 4, 5))
-        assertFalse(RecommendationLoadingPolicy.nearEnd(
-            true, Section.RECOMMEND, false, false, true, true, 3, 4, 5))
-        assertFalse(RecommendationLoadingPolicy.nearEnd(
-            true, Section.RECOMMEND, false, false, true, false, 24, 4, 30))
+    @Test fun onlyScrollToLastRowLoadsNext() {
+        assertTrue(nearEnd())
+        assertFalse(nearEnd(scrolled = false))
+        assertFalse(nearEnd(lastVisible = 8))
+        assertFalse(nearEnd(loaded = 3))
+        assertFalse(nearEnd(loading = true))
+        assertFalse(nearEnd(moreLoading = true))
+        assertFalse(nearEnd(hasError = true))
     }
 }

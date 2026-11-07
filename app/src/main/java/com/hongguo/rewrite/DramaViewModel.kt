@@ -61,7 +61,6 @@ class DramaViewModel(application: Application) : AndroidViewModel(application) {
         prefs.edit().remove("recent_queries").apply()
         mutable.update { it.copy(recentSearches = emptyList()) }
     }
-    private var recommendationPrefillBatches = 0
     private var pageJob: Job? = null
     private var detailJob: Job? = null
     private var downloadJob: Job? = null
@@ -202,7 +201,6 @@ class DramaViewModel(application: Application) : AndroidViewModel(application) {
 
     fun refresh() {
         pageJob?.cancel()
-        recommendationPrefillBatches = 0
         val version = ++requestId
         val s = state.value
         mutable.update { it.copy(items = emptyList(), loading = true, moreLoading = false,
@@ -219,17 +217,6 @@ class DramaViewModel(application: Application) : AndroidViewModel(application) {
                 mutable.update { it.copy(items = result.items, nextOffset = result.nextOffset,
                     hasMore = result.hasMore, loading = false) }
                 diagnostics.record("CATALOG", "SUCCESS", elapsed(started))
-                if (api == null && s.section == Section.RECOMMEND) {
-                    recommendationPrefillBatches = 1
-                    if (RecommendationLoadingPolicy.shouldPrefill(
-                            native = true, section = s.section,
-                            feedMode = state.value.feedMode,
-                            total = state.value.items.size,
-                            hasMore = state.value.hasMore,
-                            fetchedBatches = recommendationPrefillBatches,
-                            newItems = result.items.size,
-                        )) more()
-                }
             } catch (e: CancellationException) {
                 throw e
             } catch (e: Exception) {
@@ -280,14 +267,6 @@ class DramaViewModel(application: Application) : AndroidViewModel(application) {
                     navigateFeed(1)
                 } else if (state.value.feedMode) {
                     prefetchFollowingFeedItem(state.value.feedIndex)
-                } else if (source == null && s.section == Section.RECOMMEND) {
-                    recommendationPrefillBatches++
-                    if (RecommendationLoadingPolicy.shouldPrefill(
-                            native = true, section = s.section, feedMode = false,
-                            total = merged.size, hasMore = continued,
-                            fetchedBatches = recommendationPrefillBatches,
-                            newItems = added,
-                        )) more()
                 }
             } catch (e: CancellationException) {
                 throw e
