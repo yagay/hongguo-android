@@ -50,6 +50,7 @@ import androidx.lifecycle.viewmodel.compose.viewModel
 
 class MainActivity : ComponentActivity() {
     override fun onCreate(savedInstanceState: Bundle?) {
+        CrashCapture.install(applicationContext)
         super.onCreate(savedInstanceState)
         enableEdgeToEdge()
         setContent { HongguoApp() }
