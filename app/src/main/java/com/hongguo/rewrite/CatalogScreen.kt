@@ -30,6 +30,7 @@ import androidx.compose.foundation.text.KeyboardOptions
 import androidx.compose.material.icons.Icons
 import androidx.compose.material.icons.outlined.Download
 import androidx.compose.material.icons.outlined.History
+import androidx.compose.material.icons.outlined.PersonOutline
 import androidx.compose.material.icons.outlined.Search
 import androidx.compose.material.icons.outlined.Settings
 import androidx.compose.material.icons.outlined.Share
@@ -76,7 +77,7 @@ import coil.compose.AsyncImage
  * UI-only: paging, search and filters continue to use the existing ViewModel.
  */
 @Composable
-internal fun CatalogScreen(state: AppState, model: DramaViewModel) {
+internal fun CatalogScreen(state: AppState, model: DramaViewModel, onMine: () -> Unit = {}) {
     var filtersOpen by rememberSaveable { mutableStateOf(false) }
     val grid = rememberLazyGridState()
     LaunchedEffect(state.section, state.board, state.genre) {
@@ -88,7 +89,7 @@ internal fun CatalogScreen(state: AppState, model: DramaViewModel) {
     Scaffold(
         contentWindowInsets = WindowInsets(0, 0, 0, 0),
         containerColor = HongguoColors.background,
-        topBar = { CatalogHeader(state, model) },
+        topBar = { CatalogHeader(state, model, onMine) },
     ) { insets ->
         LazyVerticalGrid(
             columns = GridCells.Adaptive(minSize = 100.dp),
@@ -160,7 +161,7 @@ internal fun CatalogScreen(state: AppState, model: DramaViewModel) {
 }
 
 @Composable
-private fun CatalogHeader(state: AppState, model: DramaViewModel) {
+private fun CatalogHeader(state: AppState, model: DramaViewModel, onMine: () -> Unit) {
     var searchFocused by remember { mutableStateOf(false) }
     Column(Modifier.fillMaxWidth().background(HongguoColors.surface)) {
         Row(Modifier.fillMaxWidth().height(54.dp).padding(start = 15.dp, end = 5.dp),
@@ -170,6 +171,7 @@ private fun CatalogHeader(state: AppState, model: DramaViewModel) {
                     color = HongguoColors.accent)
                 Text("发现好故事", fontSize = 10.sp, color = HongguoColors.muted)
             }
+            HeaderIcon(Icons.Outlined.PersonOutline, "我的") { onMine() }
             HeaderIcon(Icons.Outlined.History, "播放历史") { model.show(Modal.HISTORY) }
             HeaderIcon(Icons.Outlined.StarBorder, "收藏") { model.show(Modal.FAVORITES) }
             HeaderIcon(Icons.Outlined.Download, "下载") {
