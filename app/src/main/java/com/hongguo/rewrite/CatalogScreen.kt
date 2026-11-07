@@ -82,10 +82,15 @@ import coil.compose.AsyncImage
 @Composable
 internal fun CatalogScreen(state: AppState, model: DramaViewModel, onMine: () -> Unit = {}) {
     var filtersOpen by rememberSaveable { mutableStateOf(false) }
+    var openSourceExplore by rememberSaveable { mutableStateOf(false) }
     val grid = rememberLazyGridState()
     LaunchedEffect(state.section, state.board, state.genre) {
         grid.scrollToItem(0)
         filtersOpen = false
+    }
+    if (openSourceExplore) {
+        OpenHongguoExploreScreen(model, onClose = { openSourceExplore = false })
+        return
     }
     // Recommendation pagination is intentionally manual.
     // The user taps the existing "加载更多" button to fetch the next three.
@@ -150,6 +155,15 @@ internal fun CatalogScreen(state: AppState, model: DramaViewModel, onMine: () ->
             }
             item(span = { GridItemSpan(maxLineSpan) }) {
                 CatalogSectionTools(state, model, onFilters = { filtersOpen = true })
+            }
+            if (state.section == Section.RECOMMEND || state.section == Section.RANK) {
+                item(span = { GridItemSpan(maxLineSpan) }) {
+                    TextButton(onClick = { openSourceExplore = true },
+                        modifier = Modifier.testTag("openhongguo_discovery_entry")) {
+                        Text("发现更多 · 上新 / 真人榜 / 演员榜 / 漫剧 / 热搜",
+                            color = HongguoColors.accent, fontSize = 12.sp)
+                    }
+                }
             }
             if (state.loading && state.items.isEmpty()) {
                 item(span = { GridItemSpan(maxLineSpan) }) {
