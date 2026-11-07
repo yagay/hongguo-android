@@ -136,6 +136,8 @@ data class AppState(
     val danmakuFontSize: Int = 14,
     /** Optional anonymous App detail enrichment, never required for playback. */
     val openHongguoMetadata: OpenHongguoMetadata? = null,
+    val openHongguoSeasons: List<Drama> = emptyList(),
+    val openHongguoLoading: Boolean = false,
     val socialForSeries: String? = null,
     val socialStats: SocialStats? = null,
     val socialStatsLoading: Boolean = false,
