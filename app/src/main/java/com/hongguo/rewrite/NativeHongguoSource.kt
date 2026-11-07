@@ -204,6 +204,13 @@ class NativeHongguoSource(
         SocialStatsParser.application(repository.socialDetail(id), id)
     }
 
+    /** Signed first-party related-work cells; upcoming seasons never playable. */
+    suspend fun related(id: String): List<RelatedDrama> = withContext(Dispatchers.IO) {
+        repository.related(id).map {
+            RelatedDrama(it.series.toDrama(), it.label, it.upcoming)
+        }
+    }
+
     suspend fun detail(id: String): DramaDetail = withContext(Dispatchers.IO) {
         val detail = repository.detail(id)
         DramaDetail(detail.series.toDrama(), detail.episodes.mapIndexed { i, vid ->

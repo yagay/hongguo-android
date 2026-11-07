@@ -412,6 +412,46 @@ internal fun NativePlayer(state: AppState, model: DramaViewModel) {
                     }
                 }
             }
+            if (state.relatedSeries == detail.drama.id) {
+                Row(Modifier.fillMaxWidth(), verticalAlignment = Alignment.CenterVertically) {
+                    Text("其他季 / 相关作品", color = Color.White,
+                        fontWeight = FontWeight.Bold, modifier = Modifier.weight(1f))
+                    if (state.relatedLoading) {
+                        CircularProgressIndicator(Modifier.size(18.dp),
+                            strokeWidth = 2.dp, color = Color.White)
+                    } else {
+                        TextButton(onClick = { model.loadRelated(detail.drama.id) }) {
+                            Text("刷新", color = Color.White)
+                        }
+                    }
+                }
+                state.relatedWorks.take(15).forEach { work ->
+                    Row(
+                        Modifier.fillMaxWidth()
+                            .background(Color(0xFF35353A), RoundedCornerShape(10.dp))
+                            .clickable(enabled = !work.upcoming) {
+                                showEpisodes = false
+                                model.open(work.drama)
+                            }
+                            .padding(horizontal = 12.dp, vertical = 10.dp),
+                        verticalAlignment = Alignment.CenterVertically,
+                    ) {
+                        Column(Modifier.weight(1f)) {
+                            Text(work.drama.title, color = Color.White, maxLines = 1,
+                                overflow = TextOverflow.Ellipsis)
+                            Text(work.season, color = Color.LightGray, fontSize = 11.sp)
+                        }
+                        Text(if (work.upcoming) "待上线" else "观看",
+                            color = if (work.upcoming) Color.LightGray
+                                else Color(0xFFFFA37D), fontSize = 12.sp)
+                    }
+                }
+                if (!state.relatedLoading && state.relatedWorks.isEmpty()) {
+                    Text(state.relatedError ?: "暂无官方关联作品",
+                        fontSize = 12.sp, color = Color.LightGray,
+                        maxLines = 3, overflow = TextOverflow.Ellipsis)
+                }
+            }
             Spacer(Modifier.height(22.dp))
         }
     }

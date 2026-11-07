@@ -66,6 +66,8 @@ class DramaViewModel(application: Application) : AndroidViewModel(application) {
     private var downloadJob: Job? = null
     private var commentsJob: Job? = null
     private var socialJob: Job? = null
+    private var relatedJob: Job? = null
+    private var relatedGeneration = 0L
     private var socialGeneration = 0L
     private data class SocialCache(val stats: SocialStats, val savedAt: Long)
     private val socialCache = linkedMapOf<String, SocialCache>()
@@ -515,7 +517,41 @@ class DramaViewModel(application: Application) : AndroidViewModel(application) {
 
     fun cover(image: String): String = source?.coverUrl(image) ?: nativeSource.coverUrl(image)
 
+    fun loadRelated(seriesId: String) {
+        if (!seriesId.matches(Regex("[0-9]{1,30}"))) return
+        relatedJob?.cancel()
+        val generation = ++relatedGeneration
+        mutable.update { it.copy(
+            relatedSeries = seriesId, relatedWorks = emptyList(),
+            relatedLoading = true, relatedError = null,
+        ) }
+        relatedJob = viewModelScope.launch {
+            try {
+                val rows = nativeSource.related(seriesId)
+                if (generation == relatedGeneration &&
+                    state.value.detail?.drama?.id == seriesId) {
+                    mutable.update { it.copy(relatedWorks = rows,
+                        relatedLoading = false, relatedError = null) }
+                    diagnostics.record("RELATED", "SUCCESS")
+                }
+            } catch (e: CancellationException) {
+                throw e
+            } catch (e: Exception) {
+                if (generation == relatedGeneration &&
+                    state.value.detail?.drama?.id == seriesId) {
+                    mutable.update { it.copy(
+                        relatedLoading = false,
+                        relatedError = errorText("相关作品", e)
+                    ) }
+                    diagnostics.record("RELATED", "UNAVAILABLE")
+                }
+            }
+        }
+    }
+
     fun open(drama: Drama, resumeEp: Int? = null) {
+        ++relatedGeneration
+        relatedJob?.cancel()
         clearSocial()
         clearEngagement()
         detailJob?.cancel()
@@ -523,6 +559,8 @@ class DramaViewModel(application: Application) : AndroidViewModel(application) {
         firstFrameFor = null
         startEpisodeHint = resumeEp
         mutable.update { it.copy(detail = null, preparingDetail = true,
+            relatedWorks = emptyList(), relatedSeries = null,
+            relatedLoading = false, relatedError = null,
             playbackError = null, playbackUrl = null, playing = false) }
         val api = source
         diagnostics.record("DETAIL", "START")
@@ -545,6 +583,7 @@ class DramaViewModel(application: Application) : AndroidViewModel(application) {
                     preparingDetail = false) }
                 diagnostics.record("DETAIL", "SUCCESS", elapsed(started))
                 loadSocialStats(resolved.drama.id)
+                loadRelated(resolved.drama.id)
                 play(index)
             } catch (e: CancellationException) {
                 throw e
@@ -696,6 +735,8 @@ class DramaViewModel(application: Application) : AndroidViewModel(application) {
     }
 
     fun closePlayer() {
+        ++relatedGeneration
+        relatedJob?.cancel()
         clearSocial()
         clearEngagement()
         ++detailId
@@ -703,6 +744,8 @@ class DramaViewModel(application: Application) : AndroidViewModel(application) {
         closeNativeVideo()
         firstFrameFor = null
         mutable.update { it.copy(detail = null, playbackUrl = null,
+            relatedSeries = null, relatedWorks = emptyList(),
+            relatedLoading = false, relatedError = null,
             resumePositionMs = 0L, playbackError = null,
             preparingDetail = false, playing = false) }
     }
