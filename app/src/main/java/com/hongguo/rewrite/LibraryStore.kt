@@ -47,7 +47,7 @@ class LibraryStore(context: Context) {
     @Synchronized fun replaceFavoriteGroups(groups: Map<String, String>) {
         require(groups.size <= 200 && groups.all { (id, name) ->
             id.matches(Regex("[0-9]{1,30}")) && name.length in 1..24 &&
-                name.none(Char::isISOControl)
+                name.none { it.isISOControl() }
         })
         val saved = JSONObject()
         groups.forEach { (id, name) -> saved.put(id, name) }
