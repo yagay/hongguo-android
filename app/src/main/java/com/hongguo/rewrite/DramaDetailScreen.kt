@@ -20,6 +20,7 @@ import androidx.compose.foundation.lazy.LazyColumn
 import androidx.compose.foundation.lazy.items
 import androidx.compose.foundation.rememberScrollState
 import androidx.compose.foundation.shape.RoundedCornerShape
+import androidx.compose.foundation.shape.CircleShape
 import androidx.compose.material.icons.Icons
 import androidx.compose.material.icons.automirrored.outlined.ArrowBack
 import androidx.compose.material.icons.outlined.BookmarkBorder
@@ -42,6 +43,7 @@ import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.draw.clip
 import androidx.compose.ui.graphics.Color
+import androidx.compose.ui.graphics.Brush
 import androidx.compose.ui.layout.ContentScale
 import androidx.compose.ui.platform.testTag
 import androidx.compose.ui.text.font.FontWeight
@@ -64,6 +66,9 @@ internal fun DramaDetailScreen(state: AppState, model: DramaViewModel) {
     val localSaved = state.favorites.any { it.drama.id == drama.id }
     val cloudSaved = account.favorites.any { it.series.id == drama.id }
     var expanded by remember(drama.id) { mutableStateOf(false) }
+    val metadata = state.openHongguoMetadata?.takeIf { it.seriesId == drama.id }
+    val tags = (drama.categories + metadata.orEmptyTags()).distinct().take(12)
+    val cast = (drama.actors + metadata.orEmptyActors()).distinct().take(20)
 
     Column(Modifier.fillMaxSize().background(HongguoColors.background)
         .testTag("drama_detail_screen")) {
@@ -80,7 +85,11 @@ internal fun DramaDetailScreen(state: AppState, model: DramaViewModel) {
             contentPadding = PaddingValues(start = 18.dp, end = 18.dp, top = 14.dp, bottom = 20.dp),
             verticalArrangement = Arrangement.spacedBy(20.dp)) {
             item {
-                Row(horizontalArrangement = Arrangement.spacedBy(16.dp)) {
+                Row(Modifier.fillMaxWidth().clip(RoundedCornerShape(18.dp))
+                    .background(Brush.linearGradient(listOf(
+                        HongguoColors.accentSoft, HongguoColors.background)))
+                    .padding(13.dp),
+                    horizontalArrangement = Arrangement.spacedBy(16.dp)) {
                     AsyncImage(model = model.cover(drama.cover), contentDescription = drama.title,
                         contentScale = ContentScale.Crop,
                         modifier = Modifier.width(112.dp).height(158.dp)
@@ -94,6 +103,10 @@ internal fun DramaDetailScreen(state: AppState, model: DramaViewModel) {
                             fontSize = 14.sp)
                         drama.completionStatus?.takeIf(String::isNotBlank)?.let {
                             Text(it, color = HongguoColors.accent, fontSize = 13.sp)
+                        }
+                        metadata?.season?.let {
+                            Text("第 ${it} 季", fontSize = 12.sp,
+                                color = HongguoColors.muted)
                         }
                     }
                 }
@@ -121,6 +134,18 @@ internal fun DramaDetailScreen(state: AppState, model: DramaViewModel) {
                     }
                 }
             }
+            if (tags.isNotEmpty()) item {
+                Row(Modifier.fillMaxWidth().horizontalScroll(rememberScrollState()),
+                    horizontalArrangement = Arrangement.spacedBy(8.dp)) {
+                    tags.forEach { tag ->
+                        Surface(color = HongguoColors.accentSoft,
+                            shape = RoundedCornerShape(8.dp)) {
+                            Text(tag, Modifier.padding(horizontal = 11.dp, vertical = 7.dp),
+                                color = HongguoColors.ink, fontSize = 12.sp)
+                        }
+                    }
+                }
+            }
             if (drama.synopsis.isNotBlank()) item {
                 Column(verticalArrangement = Arrangement.spacedBy(8.dp)) {
                     DetailSectionTitle("故事简介")
@@ -133,6 +158,103 @@ internal fun DramaDetailScreen(state: AppState, model: DramaViewModel) {
                         TextButton(onClick = { expanded = !expanded }) {
                             Text(if (expanded) "收起" else "展开全文",
                                 color = HongguoColors.accent)
+                        }
+                    }
+                }
+            }
+            if (cast.isNotEmpty()) item {
+                Column(verticalArrangement = Arrangement.spacedBy(12.dp)) {
+                    DetailSectionTitle("演员")
+                    Row(Modifier.horizontalScroll(rememberScrollState()),
+                        horizontalArrangement = Arrangement.spacedBy(14.dp)) {
+                        cast.forEach { actor ->
+                            Column(Modifier.width(76.dp),
+                                horizontalAlignment = Alignment.CenterHorizontally,
+                                verticalArrangement = Arrangement.spacedBy(7.dp)) {
+                                // Only actor names are present in the series info row.
+                                // Never invent a portrait or a profile ID.
+                                Box(Modifier.size(62.dp)
+                                    .background(HongguoColors.accentSoft, CircleShape),
+                                    contentAlignment = Alignment.Center) {
+                                    Text(actor.take(1), fontSize = 25.sp,
+                                        color = HongguoColors.accent)
+                                }
+                                Text(actor, color = HongguoColors.ink,
+                                    maxLines = 1, fontSize = 12.sp,
+                                    overflow = TextOverflow.Ellipsis)
+                            }
+                        }
+                    }
+                }
+            }
+            metadata?.score?.let { score -> item {
+                Column(verticalArrangement = Arrangement.spacedBy(10.dp)) {
+                    DetailSectionTitle("剧集评分")
+                    Surface(color = HongguoColors.accentSoft,
+                        shape = RoundedCornerShape(14.dp)) {
+                        Row(Modifier.fillMaxWidth().padding(17.dp),
+                            verticalAlignment = Alignment.CenterVertically,
+                            horizontalArrangement = Arrangement.spacedBy(10.dp)) {
+                            Text(score, fontSize = 30.sp, fontWeight = FontWeight.Bold,
+                                color = HongguoColors.accent)
+                            Text("官方详情评分", fontSize = 13.sp,
+                                color = HongguoColors.muted)
+                        }
+                    }
+                }
+            } }
+            metadata?.novel?.let { novel -> item {
+                Column(verticalArrangement = Arrangement.spacedBy(10.dp)) {
+                    DetailSectionTitle("原著小说")
+                    Surface(color = HongguoColors.surface,
+                        shape = RoundedCornerShape(14.dp)) {
+                        Row(Modifier.fillMaxWidth().padding(12.dp),
+                            horizontalArrangement = Arrangement.spacedBy(12.dp),
+                            verticalAlignment = Alignment.CenterVertically) {
+                            if (novel.cover.isNotBlank())
+                                AsyncImage(model = model.cover(novel.cover),
+                                    contentDescription = novel.title,
+                                    contentScale = ContentScale.Crop,
+                                    modifier = Modifier.width(55.dp).height(75.dp)
+                                        .clip(RoundedCornerShape(9.dp)))
+                            Column(Modifier.weight(1f),
+                                verticalArrangement = Arrangement.spacedBy(5.dp)) {
+                                Text(novel.title.ifBlank { "原著小说" },
+                                    color = HongguoColors.ink,
+                                    fontWeight = FontWeight.SemiBold)
+                                val facts = listOfNotNull(
+                                    novel.status.takeIf(String::isNotBlank),
+                                    novel.reads?.let { "${it} 次阅读" },
+                                    novel.tags.take(2).joinToString(" · ")
+                                        .takeIf(String::isNotBlank),
+                                )
+                                if (facts.isNotEmpty()) Text(facts.joinToString(" · "),
+                                    fontSize = 12.sp, color = HongguoColors.muted)
+                            }
+                        }
+                    }
+                    Text("仅展示已确认的原著关联；暂不使用未验证的小说跳转地址。",
+                        fontSize = 11.sp, color = HongguoColors.muted)
+                }
+            } }
+            if (state.openHongguoSeasons.isNotEmpty()) item {
+                Column(verticalArrangement = Arrangement.spacedBy(10.dp)) {
+                    DetailSectionTitle("系列剧 · 其他季")
+                    Row(Modifier.horizontalScroll(rememberScrollState()),
+                        horizontalArrangement = Arrangement.spacedBy(12.dp)) {
+                        state.openHongguoSeasons.forEach { season ->
+                            Column(Modifier.width(104.dp)
+                                .clickable { model.open(season) },
+                                verticalArrangement = Arrangement.spacedBy(6.dp)) {
+                                AsyncImage(model = model.cover(season.cover),
+                                    contentDescription = season.title,
+                                    contentScale = ContentScale.Crop,
+                                    modifier = Modifier.width(104.dp).height(138.dp)
+                                        .clip(RoundedCornerShape(12.dp)))
+                                Text(season.title, fontSize = 12.sp,
+                                    maxLines = 2, overflow = TextOverflow.Ellipsis,
+                                    color = HongguoColors.ink)
+                            }
                         }
                     }
                 }
@@ -258,3 +380,6 @@ private fun DetailActionTile(
         }
     }
 }
+
+private fun OpenHongguoMetadata?.orEmptyTags(): List<String> = this?.tags.orEmpty()
+private fun OpenHongguoMetadata?.orEmptyActors(): List<String> = this?.actors.orEmpty()
