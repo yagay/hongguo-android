@@ -77,9 +77,11 @@ internal fun PlaybackExperienceSheet(
             PlaybackHeading("播放倍速")
             PlaybackChoices(
                 listOf(0.75f to "0.75×", 1f to "1×", 1.25f to "1.25×",
-                    1.5f to "1.5×", 2f to "2×"),
+                    1.5f to "1.5×", 2f to "2×", 3f to "3×"),
                 speed, onSpeed, "video_speed",
             )
+            Text("当前倍速同时保存为以后播放的默认倍速。",
+                fontSize = 11.sp, color = secondary)
             if (state.backend.isBlank()) {
                 PlaybackHeading("清晰度上限")
                 PlaybackChoices(
@@ -90,6 +92,44 @@ internal fun PlaybackExperienceSheet(
                 Text("实际清晰度取决于接口提供的视频资源与设备解码能力。",
                     fontSize = 11.sp, color = secondary)
             }
+
+            HorizontalDivider(color = Color(0xFF4B4A50))
+            PlaybackHeading("播放行为")
+            PlaybackToggle(
+                title = "自动连播下一集",
+                subtitle = "本集正常播放结束后自动切换下一集",
+                checked = state.autoPlayNext,
+                onCheckedChange = model::setAutoPlayNext,
+                tag = "player_auto_next",
+            )
+            PlaybackToggle(
+                title = "预加载下一集",
+                subtitle = "播放当前集时提前准备下一集媒体，换剧后会释放预热资源",
+                checked = state.preloadNext,
+                onCheckedChange = model::setPreloadNext,
+                tag = "player_preload_next",
+            )
+            PlaybackToggle(
+                title = "播放失败自动重试",
+                subtitle = "网络错误最多重试一次，仍失败可手动重试",
+                checked = state.retryPlaybackAutomatically,
+                onCheckedChange = model::setAutomaticPlaybackRetry,
+                tag = "player_auto_retry",
+            )
+            PlaybackHeading("跳过片头")
+            PlaybackChoices(
+                listOf(0 to "关闭", 10 to "10 秒", 20 to "20 秒",
+                    30 to "30 秒", 60 to "60 秒"),
+                state.skipIntroSeconds, model::setSkipIntroSeconds, "player_skip_intro",
+            )
+            PlaybackHeading("跳过片尾")
+            PlaybackChoices(
+                listOf(0 to "关闭", 5 to "5 秒", 10 to "10 秒",
+                    15 to "15 秒", 30 to "30 秒"),
+                state.skipOutroSeconds, model::setSkipOutroSeconds, "player_skip_outro",
+            )
+            Text("跳过时间按当前播放集计算；片尾只有在获得有效总时长后才生效。",
+                fontSize = 11.sp, color = secondary)
 
             HorizontalDivider(color = Color(0xFF4B4A50))
             PlaybackHeading("弹幕")
@@ -159,6 +199,32 @@ internal fun PlaybackExperienceSheet(
                 modifier = Modifier.fillMaxWidth().testTag("download_current_episode"),
             ) { Text("下载当前剧集", color = white) }
         }
+    }
+}
+
+@Composable
+private fun PlaybackToggle(
+    title: String,
+    subtitle: String,
+    checked: Boolean,
+    onCheckedChange: (Boolean) -> Unit,
+    tag: String,
+) {
+    Row(Modifier.fillMaxWidth(), verticalAlignment = Alignment.CenterVertically) {
+        Column(Modifier.weight(1f), verticalArrangement = Arrangement.spacedBy(3.dp)) {
+            Text(title, color = Color.White, fontSize = 14.sp,
+                fontWeight = FontWeight.SemiBold)
+            Text(subtitle, color = Color(0xFFC5C3C9), fontSize = 11.sp,
+                lineHeight = 16.sp)
+        }
+        Switch(
+            checked = checked, onCheckedChange = onCheckedChange,
+            modifier = Modifier.testTag(tag),
+            colors = SwitchDefaults.colors(
+                checkedTrackColor = HongguoColors.accent,
+                checkedThumbColor = Color.White,
+            ),
+        )
     }
 }
 
