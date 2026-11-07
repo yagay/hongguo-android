@@ -9,6 +9,8 @@ import androidx.compose.animation.core.animateFloatAsState
 import androidx.compose.animation.core.tween
 import androidx.compose.foundation.background
 import androidx.compose.foundation.clickable
+import androidx.compose.foundation.rememberScrollState
+import androidx.compose.foundation.verticalScroll
 import androidx.compose.foundation.gestures.detectTapGestures
 import androidx.compose.ui.input.pointer.pointerInput
 import androidx.compose.foundation.layout.Arrangement
@@ -386,7 +388,9 @@ internal fun NativePlayer(state: AppState, model: DramaViewModel) {
         contentColor = Color.White,
         modifier = Modifier.testTag("reel_episodes_sheet"),
     ) {
-        Column(Modifier.fillMaxWidth().padding(horizontal = 16.dp, vertical = 12.dp),
+        Column(Modifier.fillMaxWidth().heightIn(max = 630.dp)
+                .verticalScroll(rememberScrollState())
+                .padding(horizontal = 16.dp, vertical = 12.dp),
             verticalArrangement = Arrangement.spacedBy(8.dp)) {
             Text("选集 · 共 ${detail.episodes.size} 集",
                 style = MaterialTheme.typography.titleMedium)
