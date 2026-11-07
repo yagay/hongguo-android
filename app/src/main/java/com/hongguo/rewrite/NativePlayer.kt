@@ -563,7 +563,7 @@ private fun CommentsSheet(state: AppState, model: DramaViewModel) {
                             }
                         }
                         Text(comment.content, color = Color.White,
-                            fontSize = fontSizeSp.coerceIn(12, 18).sp, lineHeight = 20.sp)
+                            fontSize = 14.sp, lineHeight = 20.sp)
                         if (comment.created > 0) {
                             val date = remember(comment.created) {
                                 runCatching {
@@ -635,7 +635,7 @@ private fun TimedDanmakuOverlay(
     val textMeasurer = rememberTextMeasurer()
     val style = TextStyle(
         color = Color.White,
-        fontSize = 14.sp,
+        fontSize = fontSizeSp.coerceIn(12, 18).sp,
         fontWeight = FontWeight.Medium,
         shadow = Shadow(Color.Black, Offset(1f, 2f), 4f),
     )
