@@ -476,13 +476,13 @@ class DramaViewModel(application: Application) : AndroidViewModel(application) {
                 val result = nativeSource.officialReelsPage(restart, excluded)
                 if (generation != officialFeedGeneration || !state.value.feedMode) return@launch
                 mutable.update { current ->
-                    val seen = current.feedItems.mapTo(hashSetOf()) { it.id }
-                    val newTitles = result.items.filter { it.id !in seen &&
-                        it.id !in current.hiddenRecommendationIds }
-                    current.copy(feedItems = current.feedItems + newTitles,
+                    val merged = OfficialReelsPolicy.append(
+                        current.feedItems, result.items, current.hiddenRecommendationIds)
+                    current.copy(feedItems = merged,
                         feedHasMore = result.hasMore,
                         feedLoading = false,
-                        feedError = if (newTitles.isEmpty()) "官方暂未推荐新作品，可上滑重试" else null)
+                        feedError = if (merged.size == current.feedItems.size)
+                            "官方暂未推荐新作品，可上滑重试" else null)
                 }
                 diagnostics.record("REELS", "OFFICIAL_BATCH_READY")
                 if (pendingFeedAdvance) {
@@ -1128,12 +1128,9 @@ class DramaViewModel(application: Application) : AndroidViewModel(application) {
     fun navigateFeed(direction: Int) {
         val current = state.value
         if (!current.feedMode || direction !in setOf(-1, 1)) return
-        val candidates = if (direction > 0)
-            (current.feedIndex + 1 until current.feedItems.size)
-        else (current.feedIndex - 1 downTo 0)
-        val index = candidates.firstOrNull {
-            current.feedItems[it].id !in current.hiddenRecommendationIds
-        }
+        val index = OfficialReelsPolicy.nextIndex(
+            current.feedItems, current.feedIndex, direction,
+            current.hiddenRecommendationIds)
         val selected = index?.let(current.feedItems::get)
         if (selected != null && selected.id != current.detail?.drama?.id) {
             pendingFeedAdvance = false
