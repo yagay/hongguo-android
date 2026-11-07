@@ -295,7 +295,7 @@ class DramaViewModel(application: Application) : AndroidViewModel(application) {
 
     private fun preloadFollowingEpisode() {
         val s = state.value
-        if (!s.preloadNext || source != null || s.feedMode) return
+        if (!s.preloadNext || source != null) return
         val next = s.detail?.episodes?.getOrNull(s.episodeIndex + 1)?.vid ?: return
         if (next == preloadedNextVid) return
         clearPreloadedNext()
@@ -1492,7 +1492,10 @@ class DramaViewModel(application: Application) : AndroidViewModel(application) {
         diagnostics.record("MEDIA", "FIRST_FRAME")
         library.record(s.detail.drama, ep.index)
         updateLibrary()
-        if (s.feedMode) prefetchFollowingFeedItem(s.feedIndex)
+        // The next episode is more important than the next drama while the
+        // current series has remaining episodes; avoid competing range requests.
+        if (s.feedMode && s.episodeIndex == (s.detail?.episodes?.lastIndex ?: -1))
+            prefetchFollowingFeedItem(s.feedIndex)
         else preloadFollowingEpisode()
     }
 
@@ -1541,12 +1544,17 @@ class DramaViewModel(application: Application) : AndroidViewModel(application) {
             diagnostics.record("PLAYBACK", "AUTO_NEXT_DISABLED")
             return
         }
-        if (s.feedMode) {
-            navigateFeed(1)
-            return
-        }
+        // An ended episode is NOT a vertical swipe. Continue the same drama
+        // until its last episode; only then advance to the next recommended drama.
         val index = s.episodeIndex + 1
-        if (index < (s.detail?.episodes?.size ?: 0)) play(index)
+        if (index < (s.detail?.episodes?.size ?: 0)) {
+            diagnostics.record("PLAYBACK", if (s.feedMode)
+                "REEL_NEXT_EPISODE" else "NEXT_EPISODE")
+            play(index)
+        } else if (s.feedMode) {
+            diagnostics.record("REELS", "SERIES_FINISHED_NEXT_DRAMA")
+            navigateFeed(1)
+        }
     }
 
     /** The player title is the only default entry to the full details page. */
