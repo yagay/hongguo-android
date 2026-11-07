@@ -103,7 +103,7 @@ grouped below by function, along with the actual call site in our rewrite:
 |---|---|---|
 | `discover`, `discoverAll` | `discover`, `discoverAll`, `browseExtended("discover")` | More discovery > 书城频道 |
 | `search`, `searchAll` | `search`, `searchAll`, `browseExtended("search")` | More discovery > SDK搜索 |
-| `suggest`, `searchCues`, `hotSearch` | Existing source bridge for all three | 热搜; suggestion/cues wrapped for future search UI |
+| `suggest`, `searchCues`, `hotSearch` | `suggest`, `searchCues`, `hotSearch` | 热搜话题可转 SDK 搜索；搜索联想和占位推荐可手动请求 |
 | `newReleases` | `newReleases`, `browse("new")`, `browseExtended("calendar")` | 上新 and 指定日期 |
 | `getSeries`, `getSeriesBatch` | `details`, `batchDetails` | Details; batch adapter |
 | `listEpisodes` | `episodes` | Intentionally not replacing existing episode provider |
@@ -111,8 +111,8 @@ grouped below by function, along with the actual call site in our rewrite:
 | `seriesRecommend` | `related` | Related works fallback |
 | `person`, `personWorks` | `person`, `personWorks` | Actor ranking > profile and works |
 | `shortRank` | `shortRank`, `browse("human"/"comic"/"ai"/"actor")` | Dynamic ranking pages |
-| `shortFilterPanel`, `shortFilter` | `filterPanel`, `filter`, `browse("filter")` | 真人筛选 (default genre; advanced panel still source-only) |
-| `ranking` | `ranking` | Activity board adapter, not yet independently exposed in UI |
+| `shortFilterPanel`, `shortFilter` | `filterPanel`, `filter`, server-selected filter dimensions | 真人/漫剧/AI动态筛选，使用各自游标 |
+| `ranking` | `ranking`, `browseExtended("activity")` | 匿名只读活动榜；未加入投票 |
 | `rankRows`, `rankGroups` | `rankRows`, `rankGroups`, `browseExtended` | Book ranking list and rows |
 | `categories`, `categoryLanding` | `categories`, `categoryLanding`, `browseExtended("category")` | Book classification read-only |
 | `resolvePlayback` | `playbackModel` | Compatibility read only, not wired into Media3 |
@@ -131,3 +131,27 @@ Cursor values are owned by their specific tab/filter/query; never reuse
 between different lists. SDK book search and book ranking results must not
 be offered as episodes, and not-yet-online releases are displayed read-only.
 Actor names from metadata remain unlinked without verified actor user IDs.
+
+## Additional UI and workflow checks
+
+- Browse tabs now include live server-defined filter rows for `short_play`,
+  `comic_series` and `ai_series`, rather than just a constant list.
+  Changing a filter resets its cursor, and the SDK checks continuation
+  selections.
+- Public hot topics with a server-provided search query open the SDK search
+  surface. The search field provides an explicit suggestion/rotating-cue
+  request; no unbounded per-keystroke requests.
+- The readonly activity board uses upstream default event identifiers;
+  votes are displayed only when returned. No voting endpoint is called.
+- Read-only SDK bookstore categories and classic book ranks are not
+  masqueraded as playable drama episodes. They use a separate generic
+  exploration path and require a valid server category/cell identifier.
+- Direct-detail entries now load optional SDK metadata too. For multi-season
+  drama, `seasons(seriesId)` can fall back to `getAlbum(albumId)` when
+  an actual related album ID is present. All cross-series results are checked
+  against the currently selected series ID.
+- The published Android SDK exposes **26 callable methods** (including
+  `discoverAll` and `searchAll`) in `Client.kt`; all 26 have wrapper
+  mappings in `OpenHongguoSource.kt`. Wrapper existence is not the same
+  as active UI usage. `resolvePlayback` and `resetDevice` deliberately
+  remain isolated from automatic playback/retry.
