@@ -20,7 +20,7 @@ class NativeHongguoSource(
     private val repository: ContentRepository = ContentRepository(),
     private val diagnostics: DiagnosticLog? = null,
 ) {
-    private val public = NativeWebsiteSource()
+    private val websiteCovers = NativeWebsiteSource()
     private val discoveryTopics = mutableMapOf<String, List<FilterOption>>()
 
     companion object {
@@ -133,7 +133,17 @@ class NativeHongguoSource(
         throw last ?: IOException("MEDIA_PREPARATION_FAILED")
     }
 
-    fun coverUrl(image: String) = public.coverUrl(image)
+    fun coverUrl(image: String) = websiteCovers.coverUrl(image)
+
+    fun resolveShare(message: String): Pair<String, Int> {
+        // Accept a first-party permalink only. Short links and other domains
+        // require a separate, explicitly verified resolver.
+        val match = Regex(
+            """https?://(?:www\.)?hongguoduanju\.com/(?:player|detail)/([0-9]{1,30})(?:/([0-9]{1,30}))?"""
+        ).find(message) ?: throw IOException("SHARE_LINK_NOT_SUPPORTED")
+        return match.groupValues[1] to
+            (match.groupValues.getOrNull(2)?.toIntOrNull() ?: 1).coerceAtLeast(1)
+    }
 
     private fun com.hongguotv.core.Series.toDrama(): Drama {
         val episodes = Regex("[0-9]+").find(badge)?.value?.toIntOrNull() ?: 0

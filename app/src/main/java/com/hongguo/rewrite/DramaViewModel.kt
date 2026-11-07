@@ -261,8 +261,11 @@ class DramaViewModel(application: Application) : AndroidViewModel(application) {
             } catch (e: CancellationException) {
                 throw e
             } catch (e: Exception) {
-                if (version == detailId) mutable.update { it.copy(preparingDetail = false,
-                    playbackError = errorText("读取剧集列表", e)) }
+                if (version == detailId) {
+                    val message = errorText("读取剧集列表", e)
+                    mutable.update { it.copy(preparingDetail = false,
+                        playbackError = message, error = message) }
+                }
             }
         }
     }

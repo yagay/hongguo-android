@@ -52,6 +52,9 @@ import androidx.media3.common.MediaItem
 import androidx.media3.common.PlaybackException
 import androidx.media3.common.Player
 import androidx.media3.exoplayer.ExoPlayer
+import androidx.media3.exoplayer.source.ProgressiveMediaSource
+import androidx.media3.datasource.DataSource
+import com.hongguotv.core.RemoteVideo
 import androidx.media3.ui.PlayerView
 
 @Composable
@@ -76,7 +79,7 @@ internal fun NativePlayer(state: AppState, model: DramaViewModel) {
         Box(Modifier.fillMaxWidth().weight(1f), contentAlignment = Alignment.Center) {
             val url = state.playbackUrl
             if (url != null) {
-                Media3Player(url, speed,
+                Media3Player(url, speed, model.nativeVideoFor(selectedEpisode?.vid.orEmpty()),
                     onFirstFrame = { model.firstFrame(selectedEpisode?.vid.orEmpty()) },
                     onFinished = { model.nextEpisode(selectedEpisode?.vid.orEmpty()) },
                     onError = { message -> model.mediaError(selectedEpisode?.vid.orEmpty(), message) })
@@ -138,15 +141,16 @@ internal fun NativePlayer(state: AppState, model: DramaViewModel) {
     }
 }
 
+@androidx.annotation.OptIn(androidx.media3.common.util.UnstableApi::class)
 @Composable
 private fun Media3Player(
-    url: String, speed: Float,
+    url: String, speed: Float, nativeVideo: RemoteVideo?,
     onFirstFrame: () -> Unit,
     onFinished: () -> Unit,
     onError: (String) -> Unit,
 ) {
     val context = LocalContext.current
-    val player = remember(url) { ExoPlayer.Builder(context).build() }
+    val player = remember(url, nativeVideo) { ExoPlayer.Builder(context).build() }
     DisposableEffect(player) {
         val listener = object : Player.Listener {
             override fun onRenderedFirstFrame() = onFirstFrame()
@@ -158,12 +162,20 @@ private fun Media3Player(
             }
         }
         player.addListener(listener)
-        player.setMediaItem(MediaItem.fromUri(url))
+        if (nativeVideo != null) {
+            val factory = DataSource.Factory { NativeVideoDataSource(nativeVideo) }
+            val mediaSource = ProgressiveMediaSource.Factory(factory)
+                .createMediaSource(MediaItem.fromUri(url))
+            player.setMediaSource(mediaSource)
+        } else {
+            player.setMediaItem(MediaItem.fromUri(url))
+        }
         player.prepare()
         player.playWhenReady = true
         onDispose {
             player.removeListener(listener)
             player.release()
+            nativeVideo?.close()
         }
     }
     LaunchedEffect(player, speed) { player.setPlaybackSpeed(speed) }
