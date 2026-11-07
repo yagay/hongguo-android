@@ -398,8 +398,7 @@ class DramaViewModel(application: Application) : AndroidViewModel(application) {
                     id.matches(Regex("[0-9]{1,30}")) && group.length in 1..24
                 })
                 // All sections have passed validation before replacing current data.
-                library.importLists(backup)
-                library.replaceFavoriteGroups(groups)
+                library.importLists(backup, groups)
                 prefs.edit().putString("watch_later_v1", JSONArray().apply {
                     later.forEach {
                         put(org.json.JSONObject().put("id", it.id)
