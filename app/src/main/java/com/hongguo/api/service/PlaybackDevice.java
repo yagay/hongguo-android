@@ -2,7 +2,6 @@
 package com.hongguo.api.service;
 
 import com.hongguo.api.util.Crypto;
-import com.hongguo.api.util.Http;
 import com.hongguo.api.util.Json;
 
 import javax.crypto.Cipher;
@@ -78,10 +77,6 @@ public final class PlaybackDevice {
     /** 注册失败后在此时长内直接复用失败结果。 */
     static final long FAILURE_COOLDOWN_MS = 10_000L;
 
-    // Registration is required for any first playback. Allow high-latency connections a single
-    // bounded attempt; repeated failures still use the existing 10-second cooldown.
-    private static final int TIMEOUT_MS = 12_000;
-
     private static final Set<String> ALLOWED_COOKIES =
             new java.util.HashSet<>(Arrays.asList("install_id", "ttreq", "store-region", "store-region-src"));
 
@@ -118,31 +113,48 @@ public final class PlaybackDevice {
         private final String code;
         private final int httpStatus;
         private final int responseBytes;
+        private final String primaryTransportFailure;
+        private final String fallbackTransportFailure;
 
         RegistrationException(Throwable cause) {
-            this(classifyFailure(cause), -1, -1, cause);
+            this(registrationTransportCode(cause), -1, -1, null, null, cause);
         }
 
         RegistrationException(String code, int httpStatus, int responseBytes) {
-            this(code, httpStatus, responseBytes, null);
+            this(code, httpStatus, responseBytes, null, null, null);
         }
 
-        private RegistrationException(String code, int httpStatus, int responseBytes, Throwable cause) {
+        RegistrationException(String code, String primary, String fallback) {
+            this(code, -1, -1, primary, fallback, null);
+        }
+
+        private RegistrationException(String code, int httpStatus, int responseBytes,
+                                      String primary, String fallback, Throwable cause) {
             super("匿名播放设备注册失败，请检查连接状态后重试", cause);
             this.code = code;
             this.httpStatus = httpStatus;
             this.responseBytes = responseBytes;
+            this.primaryTransportFailure = primary;
+            this.fallbackTransportFailure = fallback;
         }
 
         public String getCode() { return code; }
         public int getHttpStatus() { return httpStatus; }
         public int getResponseBytes() { return responseBytes; }
+        public String getPrimaryTransportFailure() { return primaryTransportFailure; }
+        public String getFallbackTransportFailure() { return fallbackTransportFailure; }
     }
 
-    private static String classifyFailure(Throwable error) {
+    /** Class-only allowlist: never expose the transport exception message or URL. */
+    static String registrationTransportCode(Throwable error) {
         if (error instanceof java.net.UnknownHostException) return "DEVICE_REGISTER_DNS_FAILED";
         if (error instanceof java.net.SocketTimeoutException) return "DEVICE_REGISTER_TIMEOUT";
         if (error instanceof javax.net.ssl.SSLException) return "DEVICE_REGISTER_TLS_FAILED";
+        if (error instanceof java.net.NoRouteToHostException) return "DEVICE_REGISTER_UNREACHABLE";
+        if (error instanceof java.net.ConnectException) return "DEVICE_REGISTER_CONNECT_FAILED";
+        if (error instanceof java.net.SocketException) return "DEVICE_REGISTER_SOCKET_FAILED";
+        if (error instanceof java.io.EOFException) return "DEVICE_REGISTER_EOF";
+        if (error instanceof java.net.ProtocolException) return "DEVICE_REGISTER_PROTOCOL_FAILED";
         if (error instanceof IOException) return "DEVICE_REGISTER_NETWORK_FAILED";
         return "DEVICE_REGISTER_FAILED";
     }
@@ -398,16 +410,7 @@ public final class PlaybackDevice {
 
     private static Reply httpRegister(String url, Map<String, String> headers, byte[] body)
             throws IOException {
-        Http.Req req = new Http.Req(url).method("POST").timeout(TIMEOUT_MS);
-        req.followRedirect = false;
-        for (Map.Entry<String, String> e : headers.entrySet()) req.header(e.getKey(), e.getValue());
-        req.body(body);
-        Http.Resp res = Http.send(req);
-        List<String> setCookies = new java.util.ArrayList<>();
-        for (Map.Entry<String, List<String>> e : res.headers.entrySet()) {
-            if ("Set-Cookie".equalsIgnoreCase(e.getKey())) setCookies.addAll(e.getValue());
-        }
-        return new Reply(res.status, decodeRegistrationResponse(res.body, res.header("Content-Encoding")), setCookies);
+        return RegistrationHttp.post(url, headers, body);
     }
 
     /**
