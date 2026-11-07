@@ -77,6 +77,8 @@ data class AppState(
     val modal: Modal = Modal.NONE,
     val detail: DramaDetail? = null,
     /** Separate one-video-per-series feed from full-series episode paging. */
+    /** Official swipe feed: all recommendations or strictly real-person dramas. */
+    val reelsMode: String = "all",
     val feedMode: Boolean = false,
     /** A separate, live official swipe stream; never use the three-card home catalog as its pager. */
     val feedItems: List<Drama> = emptyList(),
