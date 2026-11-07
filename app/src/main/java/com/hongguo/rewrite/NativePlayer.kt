@@ -224,7 +224,7 @@ internal fun NativePlayer(state: AppState, model: DramaViewModel) {
         selected?.let { model.savePlaybackPosition(
             it.vid, playback.positionMs, playback.durationMs
         ) }
-        model.closePlayer()
+        model.backFromPlayer()
     }
     BackHandler(enabled = !showPlaybackSettings && !showComments && !showEpisodes) {
         flushThenClose()
