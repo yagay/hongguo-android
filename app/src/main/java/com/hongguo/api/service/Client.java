@@ -145,7 +145,7 @@ public final class Client {
         GENRES.put("short_play", new String[]{"default", "short_play"});
         GENRES.put("comic_series", new String[]{"comic_series", "comic_series"});
         GENRES.put("ai_series", new String[]{"ai_series", "ai_series"});
-        GENRE_NAMES.put("short_play", "短剧");
+        GENRE_NAMES.put("short_play", "真人");
         GENRE_NAMES.put("comic_series", "漫剧");
         GENRE_NAMES.put("ai_series", "AI短剧");
     }

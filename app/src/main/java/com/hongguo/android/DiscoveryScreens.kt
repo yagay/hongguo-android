@@ -215,7 +215,7 @@ internal fun CategoryScreen(state: HongguoUiState, model: HongguoViewModel) {
             }
             item(key = "category_genres", span = { GridItemSpan(maxLineSpan) }) {
                 Row(Modifier.fillMaxWidth().horizontalScroll(rememberScrollState()), horizontalArrangement = Arrangement.spacedBy(10.dp)) {
-                    listOf("short_play" to "短剧", "comic_series" to "漫剧", "ai_series" to "AI 剧").forEach { (genre, label) ->
+                    listOf("short_play" to "真人", "comic_series" to "漫剧", "ai_series" to "AI 剧").forEach { (genre, label) ->
                         SelectorChip(label, state.browseDraft.genre == genre, "genre_$genre") { model.changeGenre(genre) }
                     }
                 }

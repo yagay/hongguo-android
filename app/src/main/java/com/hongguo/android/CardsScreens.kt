@@ -232,7 +232,7 @@ internal fun CardsDiscover(state: HongguoUiState, model: HongguoViewModel) {
             val tabs = rememberTabIndicator()
             Row(Modifier.fillMaxWidth().clip(RoundedCornerShape(12.dp)).background(CardSurface).padding(4.dp)
                 .slidingPill(tabs, state.browseDraft.genre, Ink, corner = 9.dp)) {
-                listOf("short_play" to "短剧", "comic_series" to "漫剧", "ai_series" to "AI 剧").forEach { (genre, label) ->
+                listOf("short_play" to "真人", "comic_series" to "漫剧", "ai_series" to "AI 剧").forEach { (genre, label) ->
                     val selected = state.browseDraft.genre == genre
                     val color by animatedTabColor(selected, Canvas, Muted)
                     Box(Modifier.weight(1f).tabAnchor(tabs, genre).clip(RoundedCornerShape(9.dp))

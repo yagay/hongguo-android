@@ -317,7 +317,7 @@ internal fun ImmersiveTheater(state: HongguoUiState, model: HongguoViewModel) {
                 val tabs = rememberTabIndicator()
                 Row(Modifier.weight(1f).slidingIndicator(tabs, state.browseDraft.genre, Orange, width = 14.dp),
                     horizontalArrangement = Arrangement.spacedBy(18.dp), verticalAlignment = Alignment.Bottom) {
-                    listOf("short_play" to "短剧", "comic_series" to "漫剧", "ai_series" to "AI 剧").forEach { (genre, label) ->
+                    listOf("short_play" to "真人", "comic_series" to "漫剧", "ai_series" to "AI 剧").forEach { (genre, label) ->
                         val selected = state.browseDraft.genre == genre
                         val color by animatedTabColor(selected, Ink, Muted)
                         Text(label, color = color, fontSize = animatedTabSize(selected, 24.sp, 17.sp),
