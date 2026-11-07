@@ -1568,7 +1568,11 @@ class DramaViewModel(application: Application) : AndroidViewModel(application) {
             } finally {
                 video?.close()
                 if (acquired) localDownloadSlots.release()
-                synchronized(localDownloadJobs) { localDownloadJobs.remove(taskId) }
+                synchronized(localDownloadJobs) {
+                    if (localDownloadJobs[taskId] === currentCoroutineContext()[Job]) {
+                        localDownloadJobs.remove(taskId)
+                    }
+                }
             }
         }
         synchronized(localDownloadJobs) { localDownloadJobs[taskId] = job }
