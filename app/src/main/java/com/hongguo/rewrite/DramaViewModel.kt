@@ -131,6 +131,24 @@ class DramaViewModel(application: Application) : AndroidViewModel(application) {
         mutable.update { it.copy(autoPlayNext = enabled) }
     }
 
+    fun setThemeStyle(value: String) {
+        if (value !in setOf("warm", "immersive", "cards")) return
+        prefs.edit().putString("theme_style", value).apply()
+        mutable.update { it.copy(themeStyle = value) }
+    }
+
+    fun setThemeMode(value: String) {
+        if (value !in setOf("system", "light", "dark")) return
+        prefs.edit().putString("theme_mode", value).apply()
+        mutable.update { it.copy(themeMode = value) }
+    }
+
+    fun setNavigationStyle(value: String) {
+        if (value !in setOf("classic", "glass")) return
+        prefs.edit().putString("navigation_style", value).apply()
+        mutable.update { it.copy(navigationStyle = value) }
+    }
+
     fun setDefaultPlaybackSpeed(value: Float) {
         if (value !in setOf(0.75f, 1f, 1.25f, 1.5f, 2f, 3f)) return
         prefs.edit().putFloat("default_playback_speed", value).apply()
@@ -348,6 +366,9 @@ class DramaViewModel(application: Application) : AndroidViewModel(application) {
             favoriteGroups = library.favoriteGroups(),
             completedDramaIds = prefs.getStringSet("completed_drama_ids_v1", emptySet())?.toSet().orEmpty(),
             hiddenRecommendationIds = prefs.getStringSet("hidden_recommendations_v1", emptySet())?.toSet().orEmpty(),
+            themeStyle = prefs.getString("theme_style", "warm")?.takeIf { it in setOf("warm", "immersive", "cards") } ?: "warm",
+            themeMode = prefs.getString("theme_mode", "light")?.takeIf { it in setOf("system", "light", "dark") } ?: "light",
+            navigationStyle = prefs.getString("navigation_style", "classic")?.takeIf { it in setOf("classic", "glass") } ?: "classic",
             autoPlayNext = prefs.getBoolean("auto_play_next", true),
             episodeUpdateNotificationsEnabled = prefs.getBoolean("episode_update_notifications", false),
             skipIntroSeconds = prefs.getInt("skip_intro_seconds", 0).coerceIn(0, 120),
