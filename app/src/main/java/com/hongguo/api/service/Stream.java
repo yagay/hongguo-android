@@ -66,6 +66,10 @@ public final class Stream {
         return AppSource.fetch(vid, quality);
     }
 
+    public static VideoTrack videoTrack(String vid, String quality, Progress progress) throws Exception {
+        return AppSource.fetch(vid, quality, progress);
+    }
+
     private static Path cacheDir() {
         String root = Config.str("runtime.data_dir", null);
         if (root == null || root.trim().isEmpty()) {
@@ -189,7 +193,7 @@ public final class Stream {
             checkCancelled(progress);
             pruneCache(null);
             update(progress, "resolving", 0, -1);
-            VideoTrack track = videoTrack(vid, q);
+            VideoTrack track = videoTrack(vid, q, progress);
             checkCancelled(progress);
             if (track == null || track.url == null || track.url.isEmpty()) {
                 throw new IOException("暂时无法获取本集播放信息");

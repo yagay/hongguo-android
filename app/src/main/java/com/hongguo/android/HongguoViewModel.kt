@@ -42,6 +42,8 @@ class HongguoViewModel(application: Application) : AndroidViewModel(application)
     private var searchJob: Job? = null
     private var detailJob: Job? = null
     private var mediaJob: Job? = null
+    private var startupTrace: PlaybackStartupTrace? = null
+    private var startupPendingDetail = false
     private var prefetchJob: Job? = null
     private class WarmSlot(val episodeId: String) {
         var video: PreparedVideo? = null
@@ -476,6 +478,8 @@ class HongguoViewModel(application: Application) : AndroidViewModel(application)
         pendingAutoPlay = autoPlay
         cancelSearch()
         cancelDetailAndMedia()
+        startupPendingDetail = autoPlay || resume != null
+        startupTrace = if (startupPendingDetail) PlaybackStartupTrace() else null
         val version = ++detailVersion
         mutableState.update {
             it.copy(selectedCard = card, detail = null, loadingDetail = true, detailError = null, related = emptyList(),
@@ -494,6 +498,7 @@ class HongguoViewModel(application: Application) : AndroidViewModel(application)
             try {
                 val detail = repository.details(card)
                 if (version != detailVersion || !currentCoroutineContext().isActive) return@launch
+                startupTrace?.mark("detail_ready")
                 val lastId = resume?.episodeId?.takeIf { it.isNotBlank() } ?: preferences.getString("${card.id}.episode", "")
                 val lastIndex = resume?.episodeIndex?.takeIf { it > 0 } ?: preferences.getInt("${card.id}.index", -1)
                 val selected = detail.episodes.indexOfFirst { it.id == lastId }.takeIf { it >= 0 }
@@ -522,6 +527,9 @@ class HongguoViewModel(application: Application) : AndroidViewModel(application)
         val detail = current.detail ?: return
         val episode = detail.episodes.getOrNull(position) ?: return
         val warmed = takePrefetch(episode.id)
+        if (!startupPendingDetail || startupTrace == null) startupTrace = PlaybackStartupTrace()
+        startupPendingDetail = false
+        startupTrace?.mark("episode_selected")
         ++mediaVersion
         mediaJob?.cancel()
         resumePreparationOnForeground = false
@@ -542,10 +550,14 @@ class HongguoViewModel(application: Application) : AndroidViewModel(application)
         mediaJob = viewModelScope.launch {
             try {
                 val prepared = warmed ?: repository.prepare(episode) { stage, done, total ->
-                    if (version == mediaVersion) mutableState.update {
-                        it.copy(preparationStage = stage, preparationDone = done, preparationTotal = total)
+                    if (version == mediaVersion) {
+                        startupTrace?.mark(stage)
+                        mutableState.update {
+                            it.copy(preparationStage = stage, preparationDone = done, preparationTotal = total)
+                        }
                     }
                 }
+                if (version == mediaVersion) startupTrace?.mark("media_ready")
                 if (version != mediaVersion || !currentCoroutineContext().isActive) {
                     releaseVideo(prepared)
                     return@launch
@@ -555,7 +567,10 @@ class HongguoViewModel(application: Application) : AndroidViewModel(application)
                 throw error
             } catch (error: Exception) {
                 if (version == mediaVersion) {
+                    startupTrace?.mark("failed")
                     val diagnostic = PlaybackDiagnostic.fromPreparationFailure(error)
+                        .copy(startupTimings = startupTrace?.report())
+                    android.util.Log.i("HongguoStartup", diagnostic.startupTimings.orEmpty())
                     mutableState.update {
                         it.copy(preparing = false, playbackError = diagnostic.message,
                             playbackDiagnostic = diagnostic, playbackStatus = "")
@@ -680,12 +695,19 @@ class HongguoViewModel(application: Application) : AndroidViewModel(application)
     }
 
     fun onPlaybackStatus(episodeId: String, requestId: Long, status: String) {
-        if (isCurrentVideo(episodeId, requestId)) mutableState.update { it.copy(playbackStatus = status) }
+        if (!isCurrentVideo(episodeId, requestId)) return
+        if (status == "正在缓冲") startupTrace?.mark("player_buffering")
+        if (status == "正在播放" || status == "已暂停") startupTrace?.mark("player_ready")
+        mutableState.update { it.copy(playbackStatus = status) }
     }
 
     fun onFirstFrame(episodeId: String, requestId: Long) {
         if (!isCurrentVideo(episodeId, requestId)) return
         val alreadyRendered = state.value.firstFrameRendered
+        if (!alreadyRendered) {
+            startupTrace?.mark("first_frame")
+            startupTrace?.report()?.let { android.util.Log.i("HongguoStartup", it) }
+        }
         mutableState.update { it.copy(firstFrameRendered = true, playbackDiagnostic = null) }
         accountPlaybacks[requestId]?.takeIf { it.entry.episodeId == episodeId }?.rendered = true
         if (!alreadyRendered) resumeTargets[episodeId]?.let { target ->
@@ -697,7 +719,8 @@ class HongguoViewModel(application: Application) : AndroidViewModel(application)
     fun onPlaybackError(episodeId: String, requestId: Long, unsupported: Boolean) {
         if (isCurrentVideo(episodeId, requestId)) mutableState.update {
             it.copy(playbackError = if (unsupported) "当前设备无法解码这集视频，可重试或选择其他集。" else "视频播放失败，可重试或选择其他集。",
-                playbackDiagnostic = PlaybackDiagnostic.playerFailure(unsupported),
+                playbackDiagnostic = PlaybackDiagnostic.playerFailure(unsupported).copy(
+                    startupTimings = startupTrace?.apply { mark("failed") }?.report()),
                 playbackStatus = "播放失败")
         }
     }
@@ -763,6 +786,8 @@ class HongguoViewModel(application: Application) : AndroidViewModel(application)
     }
 
     private fun cancelDetailAndMedia() {
+        startupTrace = null
+        startupPendingDetail = false
         ++detailVersion
         ++mediaVersion
         detailJob?.cancel()

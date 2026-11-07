@@ -59,7 +59,7 @@ public final class ProgressiveMedia {
         if (vid == null || !vid.matches("[0-9]{1,30}")) throw new IllegalArgumentException("分集编号无效");
         checkOpening(progress);
         emit(progress, "resolving", 0, -1);
-        Stream.VideoTrack track = Stream.videoTrack(vid, quality);
+        Stream.VideoTrack track = Stream.videoTrack(vid, quality, progress);
         checkOpening(progress);
         String root = Config.str("runtime.data_dir", null);
         if (root == null || root.trim().isEmpty()) throw new IOException("媒体存储尚未初始化");

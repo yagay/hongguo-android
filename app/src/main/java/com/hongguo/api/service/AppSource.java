@@ -109,6 +109,11 @@ public final class AppSource {
      * @return 可播放轨道；任何一步失败都抛异常，由调用方决定是否回落老路
      */
     public static Stream.VideoTrack fetch(String vid, String quality) throws Exception {
+        return fetch(vid, quality, null);
+    }
+
+    /** Timing events contain only fixed stage labels; never return a signed URL or cookie. */
+    public static Stream.VideoTrack fetch(String vid, String quality, Stream.Progress progress) throws Exception {
         if (vid == null || !vid.matches("\\d{1,30}")) {
             throw new IllegalArgumentException("分集编号无效");
         }
@@ -118,7 +123,9 @@ public final class AppSource {
         // own timeouts; the deadline prevents launching further routes once time is exhausted.
         final long deadline = System.nanoTime() + java.util.concurrent.TimeUnit.MILLISECONDS.toNanos(PLAYBACK_BUDGET_MS);
         byte[] body = Json.stringify(payload(vid)).getBytes(StandardCharsets.UTF_8);
+        if (progress != null) progress.update("device_register", 0, -1);
         PlaybackDevice.Identity identity = PlaybackDevice.fresh();
+        if (progress != null) progress.update("video_model", 0, -1);
         Exception failure = null;
         IOException renewal = null;
         String lastRoute = "none";
@@ -135,7 +142,9 @@ public final class AppSource {
                 if (route.renewsIdentity) {
                     if (deadline - System.nanoTime() < java.util.concurrent.TimeUnit.SECONDS.toNanos(3)) continue;
                     try {
+                        if (progress != null) progress.update("device_register", 0, -1);
                         identity = PlaybackDevice.fresh();
+                        if (progress != null) progress.update("video_model", 0, -1);
                     } catch (IOException e) {
                         if (Thread.currentThread().isInterrupted()) throw e;
                         renewal = e;

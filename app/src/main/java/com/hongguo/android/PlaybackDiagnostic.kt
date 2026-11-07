@@ -20,6 +20,8 @@ data class PlaybackDiagnostic(
     val lastRoute: String? = null,
     val lastReason: String? = null,
     val httpStatus: Int = 0,
+    /** Fixed stage labels and elapsed milliseconds only: no URLs, IDs or tokens. */
+    val startupTimings: String? = null,
 ) {
     fun safeReport(): String = buildString {
         append("Hongguo Android playback diagnostic\ncode=").append(code)
@@ -28,6 +30,7 @@ data class PlaybackDiagnostic(
         if (lastRoute != null) append("\nlast_route=").append(lastRoute)
         if (lastReason != null) append("\nlast_reason=").append(lastReason)
         if (httpStatus in 100..599) append("\nhttp_status=").append(httpStatus)
+        if (startupTimings != null) append("\n").append(startupTimings)
     }
 
     companion object {

@@ -619,6 +619,10 @@ private fun playerTime(positionMs: Long): String {
 }
 
 internal fun preparationLabel(stage: String): String = when {
+    stage == "reused" -> "正在恢复已缓存的画面"
+    stage == "device_register" -> "正在连接播放服务"
+    stage == "video_model" -> "正在获取播放地址"
+    stage == "index" -> "正在准备媒体索引"
     stage.contains("download", true) || stage.contains("下载") -> "正在缓冲本集视频"
     stage.contains("decrypt", true) || stage == "processing" || stage.contains("解密") -> "正在准备画面"
     stage.contains("remux", true) || stage.contains("strip", true) || stage.contains("封装") -> "即将开始播放"
