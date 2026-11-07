@@ -230,15 +230,26 @@ internal fun NativePlayer(state: AppState, model: DramaViewModel) {
         flushThenClose()
     }
 
-    LaunchedEffect(pagerState, detail.drama.id, state.feedMode, state.feedIndex) {
-        snapshotFlow { pagerState.settledPage }
+    // A programmatic pager correction is not a user swipe. Only dispatch a reel
+    // transition after the user has actually scrolled and the page has settled.
+    // This mirrors main's settled-page interaction model and avoids duplicate
+    // transitions as a 2/3-page reel window recenters between dramas.
+    val latestActivePage by rememberUpdatedState(activePage)
+    LaunchedEffect(pagerState, detail.drama.id, state.feedMode) {
+        var userScrollArmed = false
+        snapshotFlow { pagerState.isScrollInProgress to pagerState.settledPage }
             .distinctUntilChanged()
-            .collect { index ->
-                if (state.feedMode) {
-                    if (index != activePage) {
-                        model.navigateFeed(if (index > activePage) 1 else -1)
-                    }
-                } else model.playIfDifferent(index)
+            .collect { (scrolling, settled) ->
+                if (scrolling) {
+                    userScrollArmed = true
+                } else if (userScrollArmed) {
+                    userScrollArmed = false
+                    if (state.feedMode) {
+                        if (settled != latestActivePage) {
+                            model.navigateFeed(if (settled > latestActivePage) 1 else -1)
+                        }
+                    } else model.playIfDifferent(settled)
+                }
             }
     }
     LaunchedEffect(state.episodeIndex) {
