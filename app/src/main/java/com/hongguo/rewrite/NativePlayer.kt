@@ -8,8 +8,8 @@ import androidx.compose.animation.core.LinearEasing
 import androidx.compose.animation.core.animateFloatAsState
 import androidx.compose.animation.core.tween
 import androidx.compose.foundation.background
-import androidx.compose.foundation.clickable
-import androidx.compose.foundation.interaction.MutableInteractionSource
+import androidx.compose.foundation.gestures.detectTapGestures
+import androidx.compose.ui.input.pointer.pointerInput
 import androidx.compose.foundation.layout.Arrangement
 import androidx.compose.foundation.layout.Box
 import androidx.compose.foundation.layout.BoxWithConstraints
@@ -92,6 +92,9 @@ import androidx.media3.exoplayer.source.ProgressiveMediaSource
 import androidx.media3.datasource.DataSource
 import androidx.media3.ui.PlayerView
 import androidx.media3.ui.AspectRatioFrameLayout
+import androidx.lifecycle.Lifecycle
+import androidx.lifecycle.LifecycleEventObserver
+import androidx.lifecycle.compose.LocalLifecycleOwner
 import com.hongguotv.core.RemoteVideo
 import kotlinx.coroutines.delay
 import kotlinx.coroutines.flow.distinctUntilChanged
@@ -128,6 +131,13 @@ internal fun NativePlayer(state: AppState, model: DramaViewModel) {
     var speed by remember { mutableFloatStateOf(1f) }
     var showComments by remember { mutableStateOf(false) }
     var showEpisodes by remember { mutableStateOf(false) }
+    var showHeart by remember { mutableStateOf(false) }
+    var longHolding by remember { mutableStateOf(false) }
+    var speedBeforeHold by remember { mutableFloatStateOf(1f) }
+    val favoriteNow by rememberUpdatedState(
+        state.favorites.any { it.drama.id == detail.drama.id }
+    )
+    val currentSpeed by rememberUpdatedState(speed)
     var pendingDownloadVid by rememberSaveable { mutableStateOf<String?>(null) }
     val downloader = rememberLauncherForActivityResult(
         ActivityResultContracts.CreateDocument("video/mp4")
@@ -152,6 +162,12 @@ internal fun NativePlayer(state: AppState, model: DramaViewModel) {
     }
     LaunchedEffect(showComments, state.episodeIndex) {
         if (showComments) model.loadComments()
+    }
+    LaunchedEffect(showHeart) {
+        if (showHeart) {
+            delay(650)
+            showHeart = false
+        }
     }
     LaunchedEffect(state.danmakuEnabled, state.episodeIndex, playback.durationMs) {
         if (state.danmakuEnabled) {
@@ -184,11 +200,37 @@ internal fun NativePlayer(state: AppState, model: DramaViewModel) {
                             onError = { model.mediaError(episode.vid, it) },
                         )
                         Box(
-                            Modifier.fillMaxSize().clickable(
-                                interactionSource = remember { MutableInteractionSource() },
-                                indication = null,
-                            ) { playback.toggle() },
+                            Modifier.fillMaxSize()
+                                .pointerInput(detail.drama.id, state.episodeIndex) {
+                                    detectTapGestures(
+                                        onTap = { playback.toggle() },
+                                        onDoubleTap = {
+                                            if (!favoriteNow) model.favorite()
+                                            showHeart = true
+                                        },
+                                        onLongPress = {
+                                            if (!longHolding) {
+                                                speedBeforeHold = currentSpeed
+                                                longHolding = true
+                                                speed = 2f
+                                            }
+                                        },
+                                        onPress = {
+                                            tryAwaitRelease()
+                                            if (longHolding) {
+                                                speed = speedBeforeHold
+                                                longHolding = false
+                                            }
+                                        },
+                                    )
+                                },
                         )
+                        if (showHeart) {
+                            Icon(Icons.Outlined.Favorite,
+                                contentDescription = "已收藏",
+                                tint = Color(0xFFFF6D6D),
+                                modifier = Modifier.size(92.dp))
+                        }
                         if (!playback.isPlaying && playback.positionMs > 0) {
                             Icon(Icons.Outlined.PlayArrow, "继续播放",
                                 tint = Color.White.copy(alpha = 0.88f),
@@ -326,7 +368,8 @@ internal fun NativePlayer(state: AppState, model: DramaViewModel) {
                     Text("/ " + formatClock(duration), color = Color.LightGray, fontSize = 11.sp)
                 }
             } else {
-                Text("上滑下一集 · 下滑上一集", color = Color.LightGray, fontSize = 11.sp)
+                Text("上滑下一集 · 下滑上一集 · 双击收藏 · 长按2×",
+                    color = Color.LightGray, fontSize = 11.sp)
             }
             state.danmakuError?.let {
                 Text(it, color = Color(0xFFFFD0C7), fontSize = 11.sp, maxLines = 1)
@@ -531,6 +574,7 @@ private fun Media3Reel(
     onError: (String) -> Unit,
 ) {
     val context = LocalContext.current
+    val lifecycleOwner = LocalLifecycleOwner.current
     val first by rememberUpdatedState(onFirstFrame)
     val end by rememberUpdatedState(onFinished)
     val fail by rememberUpdatedState(onError)
@@ -565,6 +609,28 @@ private fun Media3Reel(
             player.release()
             nativeVideo?.close()
         }
+    }
+    // App backgrounding must not keep playing sound offscreen. Preserve an
+    // intentional manual pause when the activity returns to foreground.
+    DisposableEffect(player, lifecycleOwner) {
+        var resumeOnForeground = false
+        val observer = LifecycleEventObserver { _, event ->
+            when (event) {
+                Lifecycle.Event.ON_STOP -> {
+                    resumeOnForeground = player.isPlaying
+                    player.pause()
+                }
+                Lifecycle.Event.ON_START -> {
+                    if (resumeOnForeground) {
+                        resumeOnForeground = false
+                        player.play()
+                    }
+                }
+                else -> Unit
+            }
+        }
+        lifecycleOwner.lifecycle.addObserver(observer)
+        onDispose { lifecycleOwner.lifecycle.removeObserver(observer) }
     }
     LaunchedEffect(player, speed) { player.setPlaybackSpeed(speed) }
     LaunchedEffect(player) {
