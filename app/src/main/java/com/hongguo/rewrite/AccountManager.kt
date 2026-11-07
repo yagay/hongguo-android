@@ -20,6 +20,7 @@ data class AccountUiState(
     val qrExpires: Int = 0,
     val waitingQr: Boolean = false,
     val smsSent: Boolean = false,
+    val smsRetrySeconds: Int = 0,
     val maskedPhone: String = "",
     val message: String = "读取加密登录状态…",
     val history: List<CloudProgress> = emptyList(),
@@ -54,7 +55,19 @@ internal class AccountManager(app: Application, private val scope: CoroutineScop
     private var lastUploadTimeMs = 0L
     private var epoch = 0L
 
+    private fun smsRemainingSeconds(): Int =
+        ((prefs.getLong("account_sms_retry_at", 0L) - System.currentTimeMillis() + 999) / 1000)
+            .coerceIn(0, 3600).toInt()
+
     init {
+        scope.launch {
+            while (isActive) {
+                val seconds = smsRemainingSeconds()
+                if (mutable.value.smsRetrySeconds != seconds)
+                    mutable.update { it.copy(smsRetrySeconds = seconds) }
+                delay(if (seconds > 0) 1_000L else 5_000L)
+            }
+        }
         scope.launch {
             val saved = runCatching { withContext(Dispatchers.IO) { store.read() } }
             if (saved.isFailure) {
@@ -140,23 +153,33 @@ internal class AccountManager(app: Application, private val scope: CoroutineScop
 
     fun sendCode(phoneInput: String) {
         if (state.value.busy) return
-        val phone = phoneInput.trim()
-        if (!phone.matches(Regex("^\\+[0-9][0-9 ()-]{5,23}$"))) {
-            mutable.update { it.copy(message = "请输入国际区号和手机号，例如 +86 13800138000") }
+        if (smsRemainingSeconds() > 0) {
+            mutable.update { it.copy(smsRetrySeconds = smsRemainingSeconds(), message = "请等待倒计时结束后再获取验证码") }
             return
         }
+        val phone = try { PhoneLogin.parse(phoneInput) }
+            catch (e: IllegalArgumentException) {
+                mutable.update { it.copy(message = e.message ?: "请输入有效手机号") }
+                return
+            }
+        // Persist the cooldown before sending: a timeout or process restart must not auto-resend.
+        prefs.edit().putLong("account_sms_retry_at", System.currentTimeMillis() + 60_000L).commit()
         resetLogin()
         val token = epoch
         val session = PhoneLogin(http)
         phoneLogin = session
         mutable.update { it.copy(busy = true, smsSent = false,
-            message = "正在申请验证码…") }
+            smsRetrySeconds = smsRemainingSeconds(), message = "正在申请验证码…") }
         authJob = scope.launch {
             try {
-                val sent = withContext(Dispatchers.IO) { session.send(PhoneLogin.parse(phone)) }
+                val sent = withContext(Dispatchers.IO) { session.send(phone) }
+                prefs.edit().putLong("account_sms_retry_at",
+                    maxOf(prefs.getLong("account_sms_retry_at", 0L),
+                        System.currentTimeMillis() + sent.retrySeconds.coerceIn(1, 3600) * 1000L)).apply()
                 if (token == epoch) mutable.update { it.copy(
                     busy = false, smsSent = true,
                     maskedPhone = sent.maskedMobile.take(50),
+                    smsRetrySeconds = smsRemainingSeconds(),
                     message = "验证码已发送，请查看手机短信",
                 ) }
             } catch (e: CancellationException) { throw e }
