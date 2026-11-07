@@ -153,6 +153,7 @@ internal fun NativePlayer(state: AppState, model: DramaViewModel) {
     var fillVideo by rememberSaveable { mutableStateOf(false) }
     var showComments by remember { mutableStateOf(false) }
     var showEpisodes by remember { mutableStateOf(false) }
+    var showPlaybackSettings by remember { mutableStateOf(false) }
     var showHeart by remember { mutableStateOf(false) }
     var longHolding by remember { mutableStateOf(false) }
     var speedBeforeHold by remember { mutableFloatStateOf(1f) }
@@ -168,13 +169,28 @@ internal fun NativePlayer(state: AppState, model: DramaViewModel) {
         pendingDownloadVid = null
         if (uri != null && vid != null) model.downloadNative(vid, uri)
     }
+    val downloadSelected: () -> Unit = {
+        selected?.let { ep ->
+            if (state.backend.isBlank()) {
+                pendingDownloadVid = ep.vid
+                val safeTitle = detail.drama.title.replace(
+                    Regex("""[^\p{L}\p{N}_-]"""), "_"
+                ).take(35).ifBlank { "Hongguo" }
+                downloader.launch(safeTitle + "-EP" + ep.index + ".mp4")
+            } else {
+                model.download(ep.index, ep.index)
+            }
+        }
+    }
     fun flushThenClose() {
         selected?.let { model.savePlaybackPosition(
             it.vid, playback.positionMs, playback.durationMs
         ) }
         model.closePlayer()
     }
-    BackHandler { flushThenClose() }
+    BackHandler(enabled = !showPlaybackSettings && !showComments && !showEpisodes) {
+        flushThenClose()
+    }
 
     LaunchedEffect(pagerState, detail.drama.id, state.feedMode, state.feedIndex) {
         snapshotFlow { pagerState.settledPage }
@@ -193,6 +209,7 @@ internal fun NativePlayer(state: AppState, model: DramaViewModel) {
         }
         showComments = false
         showEpisodes = false
+        showPlaybackSettings = false
     }
     LaunchedEffect(showComments, state.episodeIndex) {
         if (showComments) model.ensureCommentsLoaded()
@@ -236,7 +253,7 @@ internal fun NativePlayer(state: AppState, model: DramaViewModel) {
         VerticalPager(
             state = pagerState,
             beyondViewportPageCount = 1,
-            userScrollEnabled = !showComments && !showEpisodes,
+            userScrollEnabled = !showComments && !showEpisodes && !showPlaybackSettings,
             modifier = Modifier.fillMaxSize().testTag("episode_vertical_pager"),
         ) { page ->
             val episode = detail.episodes.getOrNull(
@@ -362,20 +379,12 @@ internal fun NativePlayer(state: AppState, model: DramaViewModel) {
             state = state,
             detail = detail,
             episode = selected,
-            speed = speed,
-            fillVideo = fillVideo,
-            qualityLimit = state.qualityLimit,
-            sleepTimerLabel = state.sleepTimerLabel,
-            onQuality = { model.setQualityLimit(it, playback.positionMs, playback.durationMs) },
-            onSleepMinutes = model::sleepAfterMinutes,
-            onSleepEpisodes = model::sleepAfterEpisodes,
-            onToggleFillVideo = { fillVideo = !fillVideo },
+            onPlaybackSettings = { showPlaybackSettings = true },
             onBack = ::flushThenClose,
             onFavorite = model::favorite,
             onLike = model::toggleLocalLike,
             onComments = { showComments = true },
             onDanmaku = { model.setDanmaku(!state.danmakuEnabled) },
-            onSpeed = { speed = it },
             onShare = {
                 val vid = selected?.vid.orEmpty()
                 val link = "https://hongguoduanju.com/player/${detail.drama.id}/$vid"
@@ -385,19 +394,7 @@ internal fun NativePlayer(state: AppState, model: DramaViewModel) {
                 }
                 context.startActivity(Intent.createChooser(intent, "分享剧集"))
             },
-            onDownload = {
-                selected?.let { ep ->
-                    if (state.backend.isBlank()) {
-                        pendingDownloadVid = ep.vid
-                        val safeTitle = detail.drama.title.replace(
-                            Regex("""[^\p{L}\p{N}_-]"""), "_"
-                        ).take(35).ifBlank { "Hongguo" }
-                        downloader.launch(safeTitle + "-EP" + ep.index + ".mp4")
-                    } else {
-                        model.download(ep.index, ep.index)
-                    }
-                }
-            },
+
         )
         }
         ReelBottomDock(
@@ -405,6 +402,23 @@ internal fun NativePlayer(state: AppState, model: DramaViewModel) {
             episode = selected,
             playback = playback,
             onEpisodes = { showEpisodes = true },
+        )
+    }
+
+    if (showPlaybackSettings) {
+        PlaybackExperienceSheet(
+            state = state,
+            model = model,
+            speed = speed,
+            fillVideo = fillVideo,
+            onDismiss = { showPlaybackSettings = false },
+            onSpeed = { speed = it },
+            onFillVideo = { fillVideo = it },
+            onQuality = {
+                model.setQualityLimit(it, playback.positionMs, playback.durationMs)
+                showPlaybackSettings = false
+            },
+            onDownload = downloadSelected,
         )
     }
 
