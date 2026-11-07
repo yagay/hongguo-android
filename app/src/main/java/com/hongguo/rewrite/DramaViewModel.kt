@@ -295,7 +295,7 @@ class DramaViewModel(application: Application) : AndroidViewModel(application) {
 
     private fun preloadFollowingEpisode() {
         val s = state.value
-        if (!s.preloadNext || source != null) return
+        if (!s.preloadNext || (source != null && !s.feedMode)) return
         val next = s.detail?.episodes?.getOrNull(s.episodeIndex + 1)?.vid ?: return
         if (next == preloadedNextVid) return
         clearPreloadedNext()
