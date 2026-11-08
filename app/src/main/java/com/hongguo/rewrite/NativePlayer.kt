@@ -834,7 +834,6 @@ internal fun NativePlayer(
         HongguoPlayerPanel(
             title = "选集 · 共 ${detail.episodes.size} 集",
             modifier = Modifier.heightIn(max = 630.dp).verticalScroll(rememberScrollState()),
-            icon = Icons.Outlined.FormatListNumbered,
             subtitle = "点击集数切换播放 · 当前第 ${detail.episodes.getOrNull(state.episodeIndex)?.index ?: 1} 集",
             actions = {
                 if (state.backend.isBlank()) {
