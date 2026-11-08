@@ -197,7 +197,13 @@ private fun HongguoApp(model: DramaViewModel = viewModel()) {
     val darkPlayer = activeRoute in setOf(
         PlaybackDestination.FEED, PlaybackDestination.SERIES) &&
         state.modal == Modal.NONE
-    val showMini = MiniPlayerPresentation.show(state)
+    val swipeDetailsOverlay = state.detail != null &&
+        state.navigation.origin == PlaybackOrigin.SWIPE_FEED &&
+        state.navigation.detailsParent != PlaybackDestination.CATALOG &&
+        activeRoute == PlaybackDestination.DETAILS
+    // Never attach two PlayerViews to one ExoPlayer while the slide-over
+    // details page is open. The same full-size SurfaceView stays below it.
+    val showMini = MiniPlayerPresentation.show(state) && !swipeDetailsOverlay
     val showCatalogBottomNav =
         MiniPlayerPresentation.catalogNavigationVisible(state, searchLandingOpen)
     val systemDark = isSystemInDarkTheme()
@@ -303,13 +309,16 @@ private fun HongguoApp(model: DramaViewModel = viewModel()) {
                             }
                         }
                     }
+                Box(Modifier.fillMaxSize()) {
                 when {
                     state.modal == Modal.SETTINGS -> SettingsScreen(state, model)
                     state.modal == Modal.ACCOUNT -> AccountScreen(model)
                     activeRoute == PlaybackDestination.DETAILS &&
-                        state.detail != null -> DramaDetailScreen(state, model)
-                    activeRoute in setOf(PlaybackDestination.FEED,
-                        PlaybackDestination.SERIES) && state.detail != null ->
+                        state.detail != null && !swipeDetailsOverlay ->
+                        DramaDetailScreen(state, model)
+                    (activeRoute in setOf(PlaybackDestination.FEED,
+                        PlaybackDestination.SERIES) || swipeDetailsOverlay) &&
+                        state.detail != null ->
                         // UI mode changes do not destroy the active Media3 item.
                         key(state.detail?.drama?.id) {
                             NativePlayer(state, model,
@@ -355,6 +364,20 @@ private fun HongguoApp(model: DramaViewModel = viewModel()) {
                             onSearchOpen = { searchLandingOpen = true })
                     }
                     }
+                    // Keep the player below the animated detail route. Closing
+                    // the page slides it back to the right without disposing the
+                    // playing video, reloading Media3, or showing the old Home.
+                    if (state.navigation.origin == PlaybackOrigin.SWIPE_FEED &&
+                        state.navigation.detailsParent != PlaybackDestination.CATALOG &&
+                        state.detail != null) {
+                        RightSlidePage(
+                            visible = swipeDetailsOverlay && state.modal == Modal.NONE,
+                            tag = "drama_detail_slide_page",
+                        ) {
+                            DramaDetailScreen(state, model)
+                        }
+                    }
+                }
                     LibrarySheets(state, model)
                 }
                 // One stable composition slot for the mini PlayerView across
