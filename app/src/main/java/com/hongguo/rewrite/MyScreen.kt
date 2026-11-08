@@ -82,13 +82,15 @@ internal fun MyScreen(state: AppState, model: DramaViewModel, onBack: () -> Unit
     var accountOperationsOpen by remember { mutableStateOf(false) }
     var confirmAccountLogout by remember { mutableStateOf(false) }
     LazyColumn(
-        Modifier.fillMaxSize().testTag("my_screen").padding(horizontal = 20.dp),
-        contentPadding = PaddingValues(top = 16.dp, bottom = 32.dp),
+        Modifier.fillMaxSize().testTag("my_screen")
+            .padding(horizontal = HongguoUi.pagePadding),
+        contentPadding = PaddingValues(top = 8.dp, bottom = 28.dp),
         verticalArrangement = Arrangement.spacedBy(12.dp),
     ) {
         item {
-            Row(Modifier.fillMaxWidth(), verticalAlignment = Alignment.CenterVertically) {
-                Text("我的", fontSize = 26.sp, fontWeight = FontWeight.Bold,
+            Row(Modifier.fillMaxWidth().height(HongguoUi.pageTopBarHeight),
+                verticalAlignment = Alignment.CenterVertically) {
+                Text("我的", fontSize = HongguoUi.pageTitleSize, fontWeight = FontWeight.Bold,
                     color = HongguoColors.ink, modifier = Modifier.weight(1f))
                 Box {
                     Icon(
