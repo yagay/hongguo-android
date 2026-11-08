@@ -212,7 +212,20 @@ private fun HongguoApp(model: DramaViewModel = viewModel()) {
         enabled = darkPlayer && !systemPictureInPicture &&
             state.detail != null && !state.miniPlayerVisible,
         percent = state.videoBrightnessPercent,
+        onDiagnostic = model::recordDisplayState,
     )
+    LaunchedEffect(activity, darkPlayer) {
+        if (darkPlayer && activity != null) {
+            val display = if (Build.VERSION.SDK_INT >= 30) activity.display
+                else @Suppress("DEPRECATION") activity.windowManager.defaultDisplay
+            val types = display?.hdrCapabilities?.supportedHdrTypes.orEmpty()
+            model.recordDisplayHdrSupport(
+                hdr10 = android.view.Display.HdrCapabilities.HDR_TYPE_HDR10 in types,
+                hlg = android.view.Display.HdrCapabilities.HDR_TYPE_HLG in types,
+                dolbyVision = android.view.Display.HdrCapabilities.HDR_TYPE_DOLBY_VISION in types,
+            )
+        }
+    }
     SideEffect {
         val selectedVid = state.detail?.episodes
             ?.getOrNull(state.episodeIndex)?.vid
