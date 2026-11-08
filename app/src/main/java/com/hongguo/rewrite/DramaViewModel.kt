@@ -892,7 +892,10 @@ class DramaViewModel(application: Application) : AndroidViewModel(application) {
             source = runCatching { WebContractClient(state.value.backend,
                 diagnostics = diagnostics) }.getOrNull()
         }
-        refresh()
+        // Start directly in the real one-drama-per-swipe stream. Home catalog
+        // remains available only through explicit navigation; it must not gate
+        // the first video behind a three-card homepage request.
+        startFeed()
     }
 
     /** Debounced autocomplete, canceled for every edit or navigation. */
@@ -1705,7 +1708,6 @@ class DramaViewModel(application: Application) : AndroidViewModel(application) {
      */
     fun startFeed(drama: Drama? = null) {
         val current = state.value
-        if (current.section != Section.RECOMMEND) return
         if (drama != null && drama.id in current.hiddenRecommendationIds) return
         officialFeedJob?.cancel()
         officialFeedGeneration++
@@ -1719,7 +1721,8 @@ class DramaViewModel(application: Application) : AndroidViewModel(application) {
         nativeSource.setAccountRecommendations(feedAccount)
         // Official App feed is separate from "为你推荐". Never show its already-loaded
         // home cards as the first swipe queue, even when the server repeats them.
-        homeFeedExcludedIds = current.items.mapTo(linkedSetOf()) { it.id }
+        homeFeedExcludedIds = if (current.section == Section.RECOMMEND)
+            current.items.mapTo(linkedSetOf()) { it.id } else emptySet()
         mutable.update { it.copy(
             miniPlayerVisible = false,
             detailPageVisible = false,
@@ -1738,6 +1741,35 @@ class DramaViewModel(application: Application) : AndroidViewModel(application) {
             open(drama, resumeEp = 1, feed = true)
         }
         loadOfficialReels(restart = true)
+    }
+
+    /** A deliberate selection made inside the swipe drawer/search overlay
+     * enters series playback, but its Back button returns to a swipe feed that
+     * includes the selected work. No catalog navigation is required.
+     */
+    fun openFromFeedSelection(drama: Drama) {
+        val snapshot = state.value
+        if (!snapshot.feedMode) {
+            open(drama)
+            return
+        }
+        if (snapshot.detail?.drama?.id == drama.id) {
+            exitFeedToEpisode(snapshot.episodeIndex)
+            return
+        }
+        val queue = if (snapshot.feedItems.any { it.id == drama.id })
+            snapshot.feedItems
+        else snapshot.feedItems + drama
+        val selected = queue.indexOfFirst { it.id == drama.id }
+        officialFeedJob?.cancel()
+        officialFeedGeneration++
+        pendingFeedAdvance = false
+        mutable.update { it.copy(feedItems = queue, feedIndex = selected,
+            feedLoading = false) }
+        open(drama)
+        mutable.update { it.copy(returnToFeed = true, feedItems = queue,
+            feedIndex = selected, feedHasMore = snapshot.feedHasMore) }
+        diagnostics.record("REELS", "OPEN_DRAWER_OR_SEARCH_SERIES")
     }
 
     /** Both manual vertical swipe and natural episode end use the live official queue. */
