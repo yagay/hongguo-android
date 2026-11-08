@@ -65,6 +65,8 @@ class MainActivity : ComponentActivity() {
 private fun HongguoApp(model: DramaViewModel = viewModel()) {
     val state by model.state.collectAsStateWithLifecycle()
     var mineOpen by rememberSaveable { mutableStateOf(false) }
+    val detailImmersive = state.detailPageVisible && state.detail != null &&
+        state.modal == Modal.NONE
     val darkPlayer = state.detail != null && !state.detailPageVisible &&
         state.modal != Modal.SETTINGS
     val systemDark = isSystemInDarkTheme()
@@ -78,8 +80,8 @@ private fun HongguoApp(model: DramaViewModel = viewModel()) {
         HongguoColors.applyTheme(state.themeStyle, state.themeMode, systemDark)
         activity?.let {
             val bars = WindowCompat.getInsetsController(it.window, it.window.decorView)
-            bars.isAppearanceLightStatusBars = !darkPlayer && !darkTheme
-            bars.isAppearanceLightNavigationBars = !darkPlayer && !darkTheme
+            bars.isAppearanceLightStatusBars = !darkPlayer && !detailImmersive && !darkTheme
+            bars.isAppearanceLightNavigationBars = !darkPlayer && !detailImmersive && !darkTheme
         }
     }
     val palette = (if (darkTheme) darkColorScheme(
@@ -100,7 +102,8 @@ private fun HongguoApp(model: DramaViewModel = viewModel()) {
     MaterialTheme(colorScheme = palette) {
         Box(
             Modifier.fillMaxSize().background(
-                if (darkPlayer) HongguoColors.playerBackground
+                if (detailImmersive) Color(0xFF6A4939)
+                else if (darkPlayer) HongguoColors.playerBackground
                 else HongguoColors.background
             )
         ) {
