@@ -105,6 +105,8 @@ import androidx.compose.ui.unit.sp
 import androidx.compose.ui.viewinterop.AndroidView
 import androidx.lifecycle.compose.collectAsStateWithLifecycle
 import androidx.media3.exoplayer.ExoPlayer
+import androidx.media3.common.Player
+import androidx.media3.common.VideoSize
 import androidx.media3.ui.PlayerView
 import androidx.media3.ui.AspectRatioFrameLayout
 import kotlinx.coroutines.delay
@@ -168,6 +170,21 @@ internal fun NativePlayer(
     var showComments by remember { mutableStateOf(false) }
     var showEpisodes by remember { mutableStateOf(false) }
     var showPlaybackSettings by remember { mutableStateOf(false) }
+    // Observe the actual decoded stream dimensions. Only portrait videos
+    // use the measured-size layout; landscape videos retain normal FIT.
+    val activeMediaPlayer by BackgroundPlaybackService.playerFlow.collectAsStateWithLifecycle()
+    var activeVideoSize by remember { mutableStateOf(VideoSize.UNKNOWN) }
+    DisposableEffect(activeMediaPlayer) {
+        val p = activeMediaPlayer
+        activeVideoSize = p?.videoSize ?: VideoSize.UNKNOWN
+        val listener = object : Player.Listener {
+            override fun onVideoSizeChanged(videoSize: VideoSize) {
+                activeVideoSize = videoSize
+            }
+        }
+        p?.addListener(listener)
+        onDispose { p?.removeListener(listener) }
+    }
     // Search uses the exact landing page shared with the home search action.
     // Keep the Media3 surface and current feed mounted behind the sliding page.
     var searchOverlayOpen by remember { mutableStateOf(false) }
@@ -377,8 +394,27 @@ internal fun NativePlayer(
         },
     ) {
     Box(Modifier.fillMaxSize()) {
-    Column(Modifier.fillMaxSize().background(Color.Black).testTag("reels_player")) {
-        Box(Modifier.fillMaxWidth().weight(1f).testTag("reel_video_viewport")) {
+    BoxWithConstraints(Modifier.fillMaxSize().testTag("reels_player")) {
+        val rotated = activeVideoSize.unappliedRotationDegrees % 180 != 0
+        val frameWidth = if (rotated) activeVideoSize.height else activeVideoSize.width
+        val frameHeight = if (rotated) activeVideoSize.width else activeVideoSize.height
+        val pixelRatio = activeVideoSize.pixelWidthHeightRatio
+        val portraitVideo = frameWidth > 0 && frameHeight > 0 &&
+            pixelRatio > 0f && frameWidth * pixelRatio < frameHeight
+        val desiredHeight = if (portraitVideo)
+            maxWidth * (frameHeight.toFloat() / (frameWidth * pixelRatio))
+        else 0.dp
+        // The seek/episode dock is 40dp and remains outside the frame.
+        // Use the stream's actual dimensions only if the uncropped frame
+        // fits. When it cannot fit, preserve FIT without resizing or cropping.
+        val measuredPortraitHeight = desiredHeight.takeIf {
+            portraitVideo && it > 0.dp && it <= maxHeight - 40.dp
+        }
+        Column(Modifier.fillMaxSize().background(Color(0xFF232325))) {
+        Box((if (measuredPortraitHeight != null)
+                Modifier.fillMaxWidth().height(measuredPortraitHeight)
+            else Modifier.fillMaxWidth().weight(1f))
+            .testTag("reel_video_viewport")) {
         // A single stable SurfaceView lives under the pager. When switching
         // from one reel-per-drama to the episode pager, pager page positions
         // change but the actual Media3 video surface is never removed.
@@ -588,6 +624,10 @@ internal fun NativePlayer(
                 else showEpisodes = true
             },
         )
+        // Remaining space is outside the video. Never enlarge the frame to
+        // conceal it: that would require cropping, stretching or letterboxing.
+        if (measuredPortraitHeight != null) Spacer(Modifier.weight(1f))
+        }
     }
     // The search landing slides over (not instead of) the reel video.
     // Its Back arrow dismisses the overlay without navigating away or
