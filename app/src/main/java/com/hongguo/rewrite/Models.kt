@@ -91,6 +91,8 @@ data class AppState(
     val feedMode: Boolean = false,
     /** A series was opened from the swipe feed; Back may restore that queue without seeking. */
     val returnToFeed: Boolean = false,
+    /** One-shot request to show in-player search after a series-detail tag click. */
+    val reelSearchRequest: Long = 0L,
     /** A separate, live official swipe stream; never use the three-card home catalog as its pager. */
     val feedItems: List<Drama> = emptyList(),
     val feedIndex: Int = 0,
