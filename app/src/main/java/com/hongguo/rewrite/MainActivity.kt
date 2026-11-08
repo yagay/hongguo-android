@@ -381,24 +381,29 @@ private fun PictureInPictureVideo(state: AppState, model: DramaViewModel) {
     val player by BackgroundPlaybackService.playerFlow.collectAsStateWithLifecycle()
     val detail = state.detail
     val expectedVid = detail?.episodes?.getOrNull(state.episodeIndex)?.vid
-    val validPlayer = player?.takeIf {
-        expectedVid != null && it.currentMediaItem?.mediaId == expectedVid
-    }
+    val hasCurrentItem = expectedVid != null &&
+        player?.currentMediaItem?.mediaId == expectedVid
+    val showCover = !hasCurrentItem ||
+        player?.playbackState != Player.STATE_READY
     Box(Modifier.fillMaxSize().background(Color.Black),
         contentAlignment = Alignment.Center) {
-        if (validPlayer != null) {
-            AndroidView(
-                factory = { context ->
-                    PlayerView(context).apply {
-                        useController = false
-                        resizeMode = AspectRatioFrameLayout.RESIZE_MODE_FIT
-                        this.player = validPlayer
-                    }
-                },
-                update = { it.player = validPlayer },
-                modifier = Modifier.fillMaxSize(),
-            )
-        } else if (detail?.drama?.cover?.isNotBlank() == true) {
+        // Keep the same PlayerView throughout PiP next-episode transitions:
+        // a temporary media ID mismatch must not destroy its video surface.
+        AndroidView(
+            factory = { context ->
+                PlayerView(context).apply {
+                    useController = false
+                    resizeMode = AspectRatioFrameLayout.RESIZE_MODE_FIT
+                    setKeepContentOnPlayerReset(true)
+                    this.player = player
+                }
+            },
+            update = { view ->
+                if (view.player !== player) view.player = player
+            },
+            modifier = Modifier.fillMaxSize(),
+        )
+        if (showCover && detail?.drama?.cover?.isNotBlank() == true) {
             AsyncImage(
                 model = model.cover(detail.drama.cover),
                 contentDescription = null,
