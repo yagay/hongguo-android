@@ -8,6 +8,7 @@ import android.Manifest
 import android.content.pm.PackageManager
 import androidx.core.content.ContextCompat
 import com.hongguotv.core.RemoteVideo
+import com.hongguotv.core.FeedAccount
 import com.hongguotv.core.CloudProgress
 import com.hongguotv.core.Series
 import com.hongguotv.core.SleepTimer
@@ -26,6 +27,7 @@ import kotlinx.coroutines.Job
 import kotlinx.coroutines.flow.MutableStateFlow
 import kotlinx.coroutines.flow.filterNotNull
 import kotlinx.coroutines.flow.first
+import kotlinx.coroutines.flow.collect
 import kotlinx.coroutines.withTimeout
 import kotlinx.coroutines.flow.asStateFlow
 import kotlinx.coroutines.flow.update
@@ -698,14 +700,17 @@ class DramaViewModel(application: Application) : AndroidViewModel(application) {
      * drama while new items arrive. Never leak credentials to diagnostics.
      */
     fun setAccountRecommendations(enabled: Boolean) {
-        val before = account.recommendationAccount() != null
         account.setAccountRecommendations(enabled)
+        applyRecommendationAccountIfChanged()
+    }
+
+    private fun applyRecommendationAccountIfChanged() {
         val session = account.recommendationAccount()
-        val after = session != null
-        if (before == after) return
+        if (session == appliedRecommendationSession) return
+        appliedRecommendationSession = session
         nativeSource.setAccountRecommendations(session)
         diagnostics.record("REELS",
-            if (after) "ACCOUNT_OPTED_IN" else "ACCOUNT_OPTED_OUT")
+            if (session != null) "ACCOUNT_CONTEXT_ENABLED" else "ACCOUNT_CONTEXT_DISABLED")
         if (state.value.feedMode) {
             officialFeedJob?.cancel()
             officialFeedGeneration++
@@ -838,6 +843,7 @@ class DramaViewModel(application: Application) : AndroidViewModel(application) {
             danmakuFontSize = prefs.getInt("danmaku_font_size", 14).coerceIn(12, 18))
     )
     val state = mutable.asStateFlow()
+    private var appliedRecommendationSession: FeedAccount? = null
 
     init {
         if (state.value.episodeUpdateNotificationsEnabled) {
@@ -845,6 +851,15 @@ class DramaViewModel(application: Application) : AndroidViewModel(application) {
                 .onFailure { diagnostics.record("TRACKING", "STARTUP_SCHEDULER_UNAVAILABLE") }
         }
         diagnostics.record("APP", "START")
+        // The saved login is verified asynchronously after homepage init.
+        // If account recommendations were previously opted in, a late
+        // profile verification must refresh the anonymous starter feed.
+        // Log-out and account switches must likewise invalidate that cursor.
+        viewModelScope.launch {
+            account.state.collect {
+                applyRecommendationAccountIfChanged()
+            }
+        }
         if (state.value.backend.isNotBlank()) {
             source = runCatching { WebContractClient(state.value.backend,
                 diagnostics = diagnostics) }.getOrNull()
@@ -934,7 +949,9 @@ class DramaViewModel(application: Application) : AndroidViewModel(application) {
     }
 
     fun refresh() {
-        nativeSource.setAccountRecommendations(account.recommendationAccount())
+        val feedAccount = account.recommendationAccount()
+        appliedRecommendationSession = feedAccount
+        nativeSource.setAccountRecommendations(feedAccount)
         pageJob?.cancel()
         val version = ++requestId
         val s = state.value
@@ -1490,7 +1507,9 @@ class DramaViewModel(application: Application) : AndroidViewModel(application) {
         feedPrefetchJob?.cancel()
         clearReelWarmVideo()
         prefetchedFeedDetails.clear()
-        nativeSource.setAccountRecommendations(account.recommendationAccount())
+        val feedAccount = account.recommendationAccount()
+        appliedRecommendationSession = feedAccount
+        nativeSource.setAccountRecommendations(feedAccount)
         // Official App feed is separate from "为你推荐". Never show its already-loaded
         // home cards as the first swipe queue, even when the server repeats them.
         homeFeedExcludedIds = current.items.mapTo(linkedSetOf()) { it.id }
