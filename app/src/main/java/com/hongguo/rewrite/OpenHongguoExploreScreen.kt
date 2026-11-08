@@ -212,7 +212,7 @@ internal fun OpenHongguoExploreScreen(
         .testTag("openhongguo_explore")) {
         Row(Modifier.fillMaxWidth().height(54.dp),
             verticalAlignment = Alignment.CenterVertically) {
-            IconButton(onClick = {
+            HongguoIconAction(onClick = {
                 when {
                     actorId.isNotBlank() -> actorId = ""
                     rankCell.isNotBlank() -> {
