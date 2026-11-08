@@ -10,6 +10,8 @@ import android.os.Looper
 import androidx.annotation.OptIn
 import androidx.media3.common.MediaItem
 import androidx.media3.common.MediaMetadata
+import androidx.media3.common.C
+import androidx.media3.common.Tracks
 import androidx.media3.common.PlaybackException
 import androidx.media3.common.Player
 import androidx.media3.common.util.UnstableApi
@@ -192,6 +194,26 @@ class BackgroundPlaybackService : MediaSessionService() {
             }
 
             override fun onRenderedFirstFrame() { onFirstFrame?.invoke() }
+
+            // Log declared video transfer characteristics to distinguish a
+            // dark SDR master from possible device HDR-to-SDR tone mapping.
+            // Only coarse labels are recorded, never DRM/data-source metadata.
+            override fun onTracksChanged(tracks: Tracks) {
+                for (group in tracks.groups) {
+                    if (group.type != C.TRACK_TYPE_VIDEO) continue
+                    for (i in 0 until group.length) {
+                        if (!group.isTrackSelected(i)) continue
+                        val transfer = group.getTrackFormat(i).colorInfo?.colorTransfer
+                        diagnostics.record("VIDEO_COLOR", when (transfer) {
+                            C.COLOR_TRANSFER_ST2084 -> "HDR_PQ"
+                            C.COLOR_TRANSFER_HLG -> "HDR_HLG"
+                            C.COLOR_TRANSFER_SDR -> "SDR"
+                            else -> "UNKNOWN_TRANSFER"
+                        })
+                        return
+                    }
+                }
+            }
 
             override fun onPlaybackStateChanged(state: Int) {
                 if (previousPlaybackState != state) {
