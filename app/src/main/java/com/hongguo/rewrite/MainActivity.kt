@@ -89,7 +89,13 @@ class MainActivity : ComponentActivity() {
         autoPictureInPictureEligible = enabled &&
             packageManager.hasSystemFeature(PackageManager.FEATURE_PICTURE_IN_PICTURE)
         if (!videoInPictureInPicture) {
-            setPictureInPictureParams(videoPiPParams(autoPictureInPictureEligible))
+            // PiP can be disabled per app by the user, and OEM framework
+            // implementations may reject window parameter updates. Never
+            // crash the foreground playback UI because of that restriction.
+            runCatching {
+                setPictureInPictureParams(
+                    videoPiPParams(autoPictureInPictureEligible))
+            }
         }
     }
 
