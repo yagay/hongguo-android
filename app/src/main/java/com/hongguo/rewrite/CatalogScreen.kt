@@ -120,59 +120,10 @@ internal fun CatalogScreen(
             columns = GridCells.Fixed(2),
             state = grid,
             modifier = Modifier.fillMaxSize().padding(insets).testTag("web_catalog"),
-            contentPadding = PaddingValues(start = 12.dp, top = 14.dp, end = 12.dp, bottom = 28.dp),
+            contentPadding = PaddingValues(start = 12.dp, top = 10.dp, end = 12.dp, bottom = 28.dp),
             horizontalArrangement = Arrangement.spacedBy(10.dp),
-            verticalArrangement = Arrangement.spacedBy(15.dp),
+            verticalArrangement = Arrangement.spacedBy(10.dp),
         ) {
-            // Continue-watching is a theater feature, not a RECOMMEND-only
-            // widget. Use the saved cloud checkpoint when it is available,
-            // otherwise open the local history entry at its recorded episode.
-            val cloudRecent = account.history.firstOrNull()
-            val localRecent = state.library.firstOrNull()
-            if (cloudRecent != null || localRecent != null) {
-                item(span = { GridItemSpan(maxLineSpan) }) {
-                    val cloud = cloudRecent
-                    val local = localRecent
-                    val drama = if (cloud != null)
-                        Drama(cloud.series.id, cloud.series.title, cloud.series.cover)
-                    else local!!.drama
-                    Surface(
-                        shape = RoundedCornerShape(13.dp),
-                        color = HongguoColors.surface,
-                    ) {
-                        Row(Modifier.fillMaxWidth().clickable {
-                            if (cloud != null) model.openCloudProgress(cloud)
-                            else if (local != null) model.open(
-                                local.drama, resumeEp = local.episode)
-                        }.padding(11.dp).testTag("theater_continue_watching"),
-                            horizontalArrangement = Arrangement.spacedBy(11.dp),
-                            verticalAlignment = Alignment.CenterVertically) {
-                            AsyncImage(model = model.cover(drama.cover),
-                                contentDescription = drama.title,
-                                contentScale = ContentScale.Crop,
-                                modifier = Modifier.width(65.dp).aspectRatio(2f / 3f)
-                                    .clip(RoundedCornerShape(8.dp)))
-                            Column(Modifier.weight(1f),
-                                verticalArrangement = Arrangement.spacedBy(5.dp)) {
-                                Text("继续播放", color = HongguoColors.accent,
-                                    fontSize = 12.sp, fontWeight = FontWeight.SemiBold)
-                                Text(drama.title, color = HongguoColors.ink,
-                                    fontSize = 15.sp, fontWeight = FontWeight.SemiBold,
-                                    maxLines = 2, overflow = TextOverflow.Ellipsis)
-                                Text(if (cloud != null)
-                                    "第${cloud.episodeIndex + 1}集 · " +
-                                        PlaybackTimeFormatter.format(cloud.position)
-                                    else "看到第${local?.episode ?: 1}集",
-                                    color = HongguoColors.muted, fontSize = 12.sp)
-                            }
-                            Icon(Icons.Outlined.ChevronRight,
-                                contentDescription = "继续观看",
-                                tint = HongguoColors.accent,
-                                modifier = Modifier.size(22.dp))
-                        }
-                    }
-                }
-            }
             if (state.section == Section.RECOMMEND && state.trackedEpisodeUpdates.isNotEmpty()) {
                 item(span = { GridItemSpan(maxLineSpan) }) {
                     Column(verticalArrangement = Arrangement.spacedBy(8.dp)) {
@@ -196,6 +147,55 @@ internal fun CatalogScreen(
             }
             item(span = { GridItemSpan(maxLineSpan) }) {
                 CatalogSectionTools(state, model, onFilters = { filtersOpen = true })
+            }
+            // Continue-watching is a theater feature, not a RECOMMEND-only
+            // widget. Use the saved cloud checkpoint when it is available,
+            // otherwise open the local history entry at its recorded episode.
+            val cloudRecent = account.history.firstOrNull()
+            val localRecent = state.library.firstOrNull()
+            if (cloudRecent != null || localRecent != null) {
+                item(span = { GridItemSpan(maxLineSpan) }) {
+                    val cloud = cloudRecent
+                    val local = localRecent
+                    val drama = if (cloud != null)
+                        Drama(cloud.series.id, cloud.series.title, cloud.series.cover)
+                    else local!!.drama
+                    Surface(
+                        shape = RoundedCornerShape(13.dp),
+                        color = HongguoColors.surface,
+                    ) {
+                        Row(Modifier.fillMaxWidth().clickable {
+                            if (cloud != null) model.openCloudProgress(cloud)
+                            else if (local != null) model.open(
+                                local.drama, resumeEp = local.episode)
+                        }.padding(9.dp).testTag("theater_continue_watching"),
+                            horizontalArrangement = Arrangement.spacedBy(11.dp),
+                            verticalAlignment = Alignment.CenterVertically) {
+                            AsyncImage(model = model.cover(drama.cover),
+                                contentDescription = drama.title,
+                                contentScale = ContentScale.Crop,
+                                modifier = Modifier.width(48.dp).aspectRatio(2f / 3f)
+                                    .clip(RoundedCornerShape(8.dp)))
+                            Column(Modifier.weight(1f),
+                                verticalArrangement = Arrangement.spacedBy(5.dp)) {
+                                Text("继续播放", color = HongguoColors.accent,
+                                    fontSize = 12.sp, fontWeight = FontWeight.SemiBold)
+                                Text(drama.title, color = HongguoColors.ink,
+                                    fontSize = 14.sp, fontWeight = FontWeight.SemiBold,
+                                    maxLines = 1, overflow = TextOverflow.Ellipsis)
+                                Text(if (cloud != null)
+                                    "第${cloud.episodeIndex + 1}集 · " +
+                                        PlaybackTimeFormatter.format(cloud.position)
+                                    else "看到第${local?.episode ?: 1}集",
+                                    color = HongguoColors.muted, fontSize = 12.sp)
+                            }
+                            Icon(Icons.Outlined.ChevronRight,
+                                contentDescription = "继续观看",
+                                tint = HongguoColors.accent,
+                                modifier = Modifier.size(22.dp))
+                        }
+                    }
+                }
             }
             if (state.section == Section.RECOMMEND || state.section == Section.RANK) {
                 item(span = { GridItemSpan(maxLineSpan) }) {
@@ -282,9 +282,8 @@ private fun CatalogHeader(state: AppState, model: DramaViewModel,
     onFilters: () -> Unit,
     onReservations: () -> Unit,
     hasReservations: Boolean) {
-    var selectedCategory by rememberSaveable { mutableStateOf(0) }
     Column(Modifier.fillMaxWidth().background(HongguoColors.surface),
-        verticalArrangement = Arrangement.spacedBy(8.dp)) {
+        verticalArrangement = Arrangement.spacedBy(3.dp)) {
         // Search is a single entrypoint. Category selection remains within
         // the theater; it never replaces or restarts the swipe-feed player.
         Surface(
@@ -293,7 +292,7 @@ private fun CatalogHeader(state: AppState, model: DramaViewModel,
             shape = RoundedCornerShape(12.dp),
             color = HongguoColors.background,
         ) {
-            Row(Modifier.fillMaxWidth().padding(horizontal = 14.dp, vertical = 12.dp),
+            Row(Modifier.fillMaxWidth().padding(horizontal = 12.dp, vertical = 9.dp),
                 verticalAlignment = Alignment.CenterVertically,
                 horizontalArrangement = Arrangement.spacedBy(9.dp)) {
                 Icon(Icons.Outlined.Search, contentDescription = null,
@@ -302,53 +301,37 @@ private fun CatalogHeader(state: AppState, model: DramaViewModel,
                     fontSize = 14.sp, modifier = Modifier.weight(1f))
             }
         }
-        Row(Modifier.fillMaxWidth().horizontalScroll(rememberScrollState())
-                .padding(horizontal = 12.dp),
-            horizontalArrangement = Arrangement.spacedBy(19.dp),
-            verticalAlignment = Alignment.CenterVertically) {
+        // A single category navigation; no duplicated quick-action row.
+        // Genre chips and the filter action live with the content section.
+        Row(
+            Modifier.fillMaxWidth().padding(horizontal = 12.dp),
+            horizontalArrangement = Arrangement.spacedBy(25.dp),
+            verticalAlignment = Alignment.CenterVertically,
+        ) {
             listOf(
-                Triple("找剧", Section.BROWSE, "short_play"),
-                Triple("真人剧", Section.BROWSE, "short_play"),
-                Triple("漫剧", Section.BROWSE, "comic_series"),
-                Triple("AI剧", Section.BROWSE, "ai_series"),
-                Triple("排行榜", Section.RANK, ""),
-                Triple("上新", Section.LATEST, ""),
-            ).forEachIndexed { index, (title, section, genre) ->
-                val selected = if (section == Section.BROWSE)
-                    state.section == Section.BROWSE && selectedCategory == index
-                else state.section == section
-                Text(title,
+                "找剧" to Section.BROWSE,
+                "排行榜" to Section.RANK,
+                "上新" to Section.LATEST,
+            ).forEachIndexed { index, (title, section) ->
+                val selected = state.section == section
+                Text(
+                    title,
                     color = if (selected) HongguoColors.ink else HongguoColors.muted,
-                    fontSize = 16.sp,
+                    fontSize = 15.sp,
                     fontWeight = if (selected) FontWeight.Bold else FontWeight.Normal,
                     modifier = Modifier.clickable {
-                        selectedCategory = index
-                        if (state.section != section) model.section(section)
-                        if (genre.isNotBlank() && state.genre != genre) model.genre(genre)
-                    }.padding(vertical = 6.dp).testTag("theater_category_$index"))
+                        if (!selected) model.section(section)
+                    }.padding(vertical = 8.dp).testTag("theater_category_$index"),
+                )
             }
-        }
-        Row(Modifier.fillMaxWidth().padding(horizontal = 12.dp),
-            horizontalArrangement = Arrangement.spacedBy(8.dp)) {
-            (listOf("筛选", "排行榜", "新剧") +
-                if (hasReservations) listOf("预约") else emptyList())
-                .forEachIndexed { index, title ->
-                Surface(
-                    modifier = Modifier.weight(1f).clickable {
-                        when (index) {
-                            0 -> { selectedCategory = 0; onFilters() }
-                            1 -> model.section(Section.RANK)
-                            2 -> model.section(Section.LATEST)
-                            else -> onReservations()
-                        }
-                    }.testTag("theater_quick_$index"),
-                    shape = RoundedCornerShape(12.dp),
-                    color = HongguoColors.background,
-                ) {
-                    Text(title, modifier = Modifier.padding(vertical = 11.dp),
-                        color = HongguoColors.ink, fontSize = 14.sp,
-                        fontWeight = FontWeight.Medium, textAlign = androidx.compose.ui.text.style.TextAlign.Center)
-                }
+            if (hasReservations) {
+                Text(
+                    "预约",
+                    fontSize = 14.sp,
+                    color = HongguoColors.muted,
+                    modifier = Modifier.clickable(onClick = onReservations)
+                        .padding(vertical = 8.dp).testTag("theater_reservations"),
+                )
             }
         }
         HorizontalDivider(thickness = 1.dp, color = HongguoColors.divider)
@@ -370,7 +353,7 @@ private fun HeaderIcon(
 @Composable
 private fun CatalogSectionTools(state: AppState, model: DramaViewModel,
                                 onFilters: () -> Unit) {
-    Column(verticalArrangement = Arrangement.spacedBy(9.dp)) {
+    Column(verticalArrangement = Arrangement.spacedBy(5.dp)) {
         Row(Modifier.fillMaxWidth(), verticalAlignment = Alignment.CenterVertically) {
             Text(
                 when (state.section) {
@@ -380,7 +363,7 @@ private fun CatalogSectionTools(state: AppState, model: DramaViewModel,
                     Section.BROWSE -> "发现短剧"
                     Section.SEARCH -> "搜索结果"
                 },
-                fontSize = 20.sp, fontWeight = FontWeight.Bold, color = HongguoColors.ink,
+                fontSize = 18.sp, fontWeight = FontWeight.Bold, color = HongguoColors.ink,
                 modifier = Modifier.weight(1f),
             )
             if (state.section == Section.RECOMMEND) {
@@ -392,7 +375,16 @@ private fun CatalogSectionTools(state: AppState, model: DramaViewModel,
                         fontWeight = FontWeight.SemiBold)
                 }
             }
-            if (state.items.isNotEmpty()) {
+            if (state.section == Section.BROWSE) {
+                TextButton(onClick = onFilters,
+                    modifier = Modifier.testTag("open_filters")) {
+                    Icon(Icons.Outlined.Tune, null, modifier = Modifier.size(16.dp))
+                    Spacer(Modifier.width(4.dp))
+                    Text(if (state.activeFilters.isEmpty()) "筛选"
+                         else "筛选 · " + state.activeFilters.size,
+                         fontSize = 12.sp, color = HongguoColors.accent)
+                }
+            } else if (state.items.isNotEmpty()) {
                 Text("已加载 " + state.items.size + " 部", fontSize = 11.sp,
                     color = HongguoColors.muted)
             }
@@ -424,20 +416,6 @@ private fun CatalogSectionTools(state: AppState, model: DramaViewModel,
                     "ai_series" to "AI 剧"),
                 selected = state.genre, onSelect = model::genre,
             )
-        }
-        if (state.section == Section.BROWSE) {
-            Row(Modifier.fillMaxWidth(), verticalAlignment = Alignment.CenterVertically) {
-                Text("按题材、背景、状态等筛选",
-                    color = HongguoColors.muted, fontSize = 12.sp,
-                    modifier = Modifier.weight(1f))
-                OutlinedButton(onClick = onFilters, modifier = Modifier.testTag("open_filters")) {
-                    Icon(Icons.Outlined.Tune, null, modifier = Modifier.size(17.dp))
-                    Spacer(Modifier.width(5.dp))
-                    Text(if (state.activeFilters.isEmpty()) "筛选条件"
-                         else "筛选 · " + state.activeFilters.size,
-                         fontSize = 12.sp)
-                }
-            }
         }
     }
 }
