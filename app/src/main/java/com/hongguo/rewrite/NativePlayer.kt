@@ -438,7 +438,10 @@ internal fun NativePlayer(state: AppState, model: DramaViewModel) {
 
         if (state.danmakuEnabled && selected != null && !showComments && !showEpisodes) {
             TimedDanmakuOverlay(
-                items = state.danmakuItems,
+                items = state.danmakuItems.takeIf {
+                    state.danmakuForVid == selected.vid
+                }.orEmpty(),
+                expectedVid = selected.vid,
                 playback = playback,
                 speedPreset = state.danmakuSpeed,
                 tracks = state.danmakuDensity,
@@ -716,6 +719,7 @@ private fun CommentsSheet(state: AppState, model: DramaViewModel) {
 @Composable
 private fun TimedDanmakuOverlay(
     items: List<DanmakuEntry>,
+    expectedVid: String,
     playback: ReelPlaybackControls,
     speedPreset: Int,
     tracks: Int,
@@ -736,23 +740,25 @@ private fun TimedDanmakuOverlay(
     // This follows pause, buffering, playback speed and seeking naturally.
     // Keep this frame state local to the overlay: the rest of the player UI
     // must not be recomposed at 60 fps.
-    val player = playback.player
-    var framePositionMs by remember(player) {
-        mutableLongStateOf(
-            player?.currentPosition?.coerceAtLeast(0L) ?: playback.positionMs
-        )
+    // Never animate the preceding episode's comments against the new one's
+    // clock. The service intentionally reuses the same ExoPlayer instance, so
+    // item identity and the controls object must participate in effect keys.
+    val player = playback.player?.takeIf {
+        it.currentMediaItem?.mediaId == expectedVid
     }
-    LaunchedEffect(player) {
+    var framePositionMs by remember(player, expectedVid) {
+        mutableLongStateOf(player?.currentPosition?.coerceAtLeast(0L) ?: 0L)
+    }
+    LaunchedEffect(player, playback, expectedVid) {
         while (isActive) {
             if (player?.isPlaying == true) {
                 withFrameNanos { }
             } else {
-                // When paused, do not render idle frames. Still observe
-                // seeks and media readiness without a perceptible delay.
                 delay(50)
             }
-            val time = player?.currentPosition?.coerceAtLeast(0L)
-                ?: playback.positionMs
+            val time = player?.takeIf {
+                it.currentMediaItem?.mediaId == expectedVid
+            }?.currentPosition?.coerceAtLeast(0L) ?: playback.positionMs
             if (framePositionMs != time) framePositionMs = time
         }
     }
