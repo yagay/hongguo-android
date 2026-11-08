@@ -2233,6 +2233,20 @@ class DramaViewModel(application: Application) : AndroidViewModel(application) {
         } else closePlayer()
     }
 
+    /** Explicit episode selection from details opens fullscreen, unlike
+     * automatic next-episode playback which stays in the mini player.
+     */
+    fun playFromDetails(index: Int) {
+        val snapshot = state.value
+        val episode = snapshot.detail?.episodes?.getOrNull(index) ?: return
+        val alreadyActive = index == snapshot.episodeIndex &&
+            snapshot.playbackUrl != null &&
+            BackgroundPlaybackService.playerFlow.value?.currentMediaItem?.mediaId ==
+                episode.vid
+        restorePlayer()
+        if (!alreadyActive) play(index)
+    }
+
     /** The player's back button minimizes; only mini close explicitly stops. */
     fun backFromPlayer() = minimizePlayer()
 
