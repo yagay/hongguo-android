@@ -28,12 +28,13 @@ object PlaybackProblem {
      * must fail explicitly instead of hammering upstream endpoints.
      */
     fun isTransientTransport(failure: Throwable): Boolean {
-        val chain = generateSequence(failure) { it.cause }.take(8).toList()
-        return chain.none {
-            it is ContentHttpException ||
-                it is EmptyPlaybackResponseException ||
-                it is UnsupportedOperationException
-        } && chain.any { it is IOException }
+        // Reuse the existing detailed classification, including HTTP status
+        // and CODEC_NOT_SUPPORTED carried as IOException messages.
+        // Otherwise a bad codec or rejected request might be retried as IO.
+        return describe("播放模型", failure).substringBefore(" · ") in setOf(
+            "NETWORK_DNS", "NETWORK_TIMEOUT", "NETWORK_CONNECT",
+            "NETWORK_EOF", "NETWORK_IO",
+        )
     }
 
     fun describe(stage: String, failure: Throwable): String {
