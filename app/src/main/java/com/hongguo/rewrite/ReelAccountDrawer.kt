@@ -29,6 +29,7 @@ import androidx.compose.material.icons.outlined.PrivacyTip
 import androidx.compose.material.icons.outlined.Settings
 import androidx.compose.material.icons.outlined.Share
 import androidx.compose.material.icons.outlined.FolderOpen
+import androidx.compose.material.icons.outlined.Home
 import androidx.compose.material3.Card
 import androidx.compose.material3.Icon
 import androidx.compose.material3.MaterialTheme
@@ -66,6 +67,7 @@ internal fun ReelAccountDrawer(
     onDownloads: () -> Unit,
     onShare: () -> Unit,
     onSettings: () -> Unit,
+    onBrowseHome: () -> Unit,
     onOfflineEpisode: (OfflineEpisode) -> Unit,
 ) {
     val account by model.account.state.collectAsStateWithLifecycle()
@@ -279,6 +281,10 @@ internal fun ReelAccountDrawer(
                         onShare, "drawer_share")
                     DrawerAction("账号与隐私", Icons.Outlined.PrivacyTip,
                         onAccount, "drawer_privacy")
+                    // Home is a deliberate action; never the default landing
+                    // destination when closing account, settings, or search.
+                    DrawerAction("浏览主页", Icons.Outlined.Home,
+                        onBrowseHome, "drawer_browse_home")
                 }
             }
         }
