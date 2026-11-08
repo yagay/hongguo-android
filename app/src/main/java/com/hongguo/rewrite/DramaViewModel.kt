@@ -29,6 +29,7 @@ import kotlinx.coroutines.flow.filterNotNull
 import kotlinx.coroutines.flow.first
 import kotlinx.coroutines.flow.collect
 import kotlinx.coroutines.withTimeout
+import kotlinx.coroutines.TimeoutCancellationException
 import kotlinx.coroutines.flow.asStateFlow
 import kotlinx.coroutines.flow.update
 import kotlinx.coroutines.launch
@@ -653,10 +654,15 @@ class DramaViewModel(application: Application) : AndroidViewModel(application) {
         mutable.update { it.copy(feedLoading = true, feedError = null) }
         officialFeedJob = viewModelScope.launch {
             try {
-                val result = nativeSource.officialReelsPage(restart, excluded,
-                    realOnly = snapshot.reelsMode == "real",
-                    comicOnly = snapshot.reelsMode == "comic",
-                    firstItemOnly = needsFirstDrama)
+                // The recommendation endpoint may retry several official
+                // categories in sequence. Bound the entire request so the
+                // startup screen cannot spin indefinitely on a stalled host.
+                val result = withTimeout(if (needsFirstDrama) 22_000L else 18_000L) {
+                    nativeSource.officialReelsPage(restart, excluded,
+                        realOnly = snapshot.reelsMode == "real",
+                        comicOnly = snapshot.reelsMode == "comic",
+                        firstItemOnly = needsFirstDrama)
+                }
                 if (generation != officialFeedGeneration || !state.value.feedMode) return@launch
                 mutable.update { current ->
                     val merged = OfficialReelsPolicy.append(
@@ -694,6 +700,14 @@ class DramaViewModel(application: Application) : AndroidViewModel(application) {
                     latest.feedItems.size > snapshot.feedItems.size) {
                     // One request ahead, bounded by the page's new visible items.
                     loadOfficialReels()
+                }
+            } catch (timeout: TimeoutCancellationException) {
+                if (generation == officialFeedGeneration && state.value.feedMode) {
+                    pendingFeedAdvance = false
+                    mutable.update { it.copy(feedLoading = false,
+                        preparingDetail = if (needsFirstDrama) false else it.preparingDetail,
+                        feedError = "获取官方推荐超时，请点击重新获取") }
+                    diagnostics.record("REELS", "OFFICIAL_TIMEOUT")
                 }
             } catch (cancel: CancellationException) {
                 throw cancel
@@ -771,13 +785,21 @@ class DramaViewModel(application: Application) : AndroidViewModel(application) {
 
     /** Explicit retry after a temporary upstream failure; never silently change to a fixed list. */
     fun retryOfficialReels() {
-        if (!state.value.feedMode || state.value.feedLoading) return
+        if (!state.value.feedMode) return
+        // If the current upstream call is stuck, the visible retry must be
+        // actionable. Invalidate its generation first so its completion
+        // cannot overwrite the replacement request.
+        if (state.value.feedLoading) {
+            officialFeedGeneration++
+            officialFeedJob?.cancel()
+            mutable.update { it.copy(feedLoading = false) }
+            diagnostics.record("REELS", "MANUAL_CANCEL_AND_RETRY")
+        }
         if (state.value.feedItems.isEmpty()) {
             mutable.update { it.copy(preparingDetail = true) }
         }
-        // A manual retry starts a fresh official/category cursor. Reusing a
-        // cursor already exhausted by duplicate-only pages can never recover.
-        // Keep any currently playing reel and all valid queue entries.
+        // A manual retry starts new upstream cursors but does not discard
+        // any already playing item or valid part of the swipe queue.
         loadOfficialReels(restart = true)
     }
     private val prefetchedFeedDetails = linkedMapOf<String, DramaDetail>()
