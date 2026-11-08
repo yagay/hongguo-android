@@ -17,7 +17,7 @@ enum class PlaybackDestination { FEED, SERIES, DETAILS, CATALOG }
 data class PlaybackNavigation(
     val origin: PlaybackOrigin = PlaybackOrigin.SWIPE_FEED,
     val destination: PlaybackDestination = PlaybackDestination.FEED,
-    /** The surface immediately below the details page (FEED or SERIES). */
+    /** The surface immediately below details (feed, series or explicit catalog). */
     val detailsParent: PlaybackDestination = PlaybackDestination.SERIES,
 ) {
     fun toFeed(): PlaybackNavigation =
@@ -27,8 +27,8 @@ data class PlaybackNavigation(
         PlaybackNavigation(origin, PlaybackDestination.SERIES)
 
     fun toDetails(): PlaybackNavigation = copy(
-        detailsParent = if (destination == PlaybackDestination.FEED)
-            PlaybackDestination.FEED else PlaybackDestination.SERIES,
+        detailsParent = if (destination == PlaybackDestination.DETAILS)
+            detailsParent else destination,
         destination = PlaybackDestination.DETAILS)
 
     fun fromDetails(): PlaybackNavigation = copy(destination = detailsParent)
@@ -38,6 +38,11 @@ data class PlaybackNavigation(
     fun restorePlayer(feedMode: Boolean): PlaybackNavigation =
         copy(destination = if (feedMode) PlaybackDestination.FEED
             else PlaybackDestination.SERIES)
+
+    val isExplicitCatalog: Boolean
+        get() = destination == PlaybackDestination.CATALOG ||
+            (destination == PlaybackDestination.DETAILS &&
+                detailsParent == PlaybackDestination.CATALOG)
 
     val returnsToFeed: Boolean
         get() = origin == PlaybackOrigin.SWIPE_FEED &&
