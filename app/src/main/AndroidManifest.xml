@@ -3,6 +3,8 @@
     <uses-permission android:name="android.permission.INTERNET" />
     <uses-permission android:name="android.permission.ACCESS_NETWORK_STATE" />
     <uses-permission android:name="android.permission.POST_NOTIFICATIONS" />
+    <uses-permission android:name="android.permission.FOREGROUND_SERVICE" />
+    <uses-permission android:name="android.permission.FOREGROUND_SERVICE_MEDIA_PLAYBACK" />
     <application android:label="红果短剧 · 新版" android:theme="@style/Theme.Hongguo"
         android:usesCleartextTraffic="true" android:allowBackup="false">
         <activity android:name=".OfficialLoginActivity"
@@ -11,6 +13,13 @@
             android:process=":official_login"
             android:configChanges="orientation|screenSize|keyboardHidden"
             android:windowSoftInputMode="adjustResize" />
+        <service android:name=".BackgroundPlaybackService"
+            android:exported="true"
+            android:foregroundServiceType="mediaPlayback">
+            <intent-filter>
+                <action android:name="androidx.media3.session.MediaSessionService" />
+            </intent-filter>
+        </service>
         <activity android:name=".MainActivity" android:exported="true"
             android:configChanges="keyboardHidden|orientation|screenSize">
             <intent-filter>
