@@ -33,6 +33,7 @@ import androidx.compose.material3.Icon
 import androidx.compose.material3.Surface
 import androidx.compose.material3.Text
 import androidx.compose.material3.TextButton
+import androidx.compose.material3.OutlinedTextField
 import androidx.compose.material3.CircularProgressIndicator
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.getValue
@@ -66,6 +67,9 @@ internal fun MyScreen(state: AppState, model: DramaViewModel, onBack: () -> Unit
     var offlineOpen by remember { mutableStateOf(false) }
     var libraryTab by rememberSaveable { mutableStateOf(0) }
     var watchFilter by rememberSaveable { mutableStateOf(0) }
+    var gallerySearchOpen by rememberSaveable { mutableStateOf(false) }
+    var galleryQuery by rememberSaveable { mutableStateOf("") }
+    var localHistoryEdit by rememberSaveable { mutableStateOf(false) }
     LazyColumn(
         Modifier.fillMaxSize().testTag("my_screen").padding(horizontal = 20.dp),
         contentPadding = PaddingValues(top = 16.dp, bottom = 32.dp),
@@ -122,7 +126,8 @@ internal fun MyScreen(state: AppState, model: DramaViewModel, onBack: () -> Unit
         // remain separate. Cloud items never overwrite local checkpoints.
         item {
             Row(Modifier.fillMaxWidth(),
-                horizontalArrangement = Arrangement.SpaceBetween) {
+                horizontalArrangement = Arrangement.SpaceBetween,
+                verticalAlignment = Alignment.CenterVertically) {
                 listOf("历史", "收藏", "点赞", "预约").forEachIndexed { index, label ->
                     Column(
                         modifier = Modifier.clickable {
@@ -146,7 +151,22 @@ internal fun MyScreen(state: AppState, model: DramaViewModel, onBack: () -> Unit
                                 HongguoColors.accent else Color.Transparent))
                     }
                 }
+                Text(if (gallerySearchOpen) "关闭" else "搜索",
+                    color = HongguoColors.accent, fontSize = 12.sp,
+                    modifier = Modifier.clickable {
+                        gallerySearchOpen = !gallerySearchOpen
+                        if (!gallerySearchOpen) galleryQuery = ""
+                    }.padding(5.dp).testTag("my_gallery_search_toggle"))
             }
+        }
+        if (gallerySearchOpen) item {
+            OutlinedTextField(
+                value = galleryQuery,
+                onValueChange = { galleryQuery = it.take(80) },
+                modifier = Modifier.fillMaxWidth().testTag("my_gallery_search_input"),
+                singleLine = true,
+                placeholder = { Text("搜索当前片单的剧名") },
+            )
         }
         if (libraryTab == 0) item {
             Row(horizontalArrangement = Arrangement.spacedBy(8.dp)) {
@@ -183,7 +203,7 @@ internal fun MyScreen(state: AppState, model: DramaViewModel, onBack: () -> Unit
                     else -> true
                 }
             }
-        val gallery = when (libraryTab) {
+        val gallerySource = when (libraryTab) {
             0 -> history
             1 -> (state.favorites.map { it.drama } +
                 account.favorites.map { Drama(it.series.id, it.series.title, it.series.cover) })
@@ -195,6 +215,20 @@ internal fun MyScreen(state: AppState, model: DramaViewModel, onBack: () -> Unit
             else -> (account.online + account.upcoming)
                 .map { Drama(it.series.id, it.series.title, it.series.cover) }
                 .distinctBy { it.id }
+        }
+        val gallery = gallerySource.filter {
+            galleryQuery.isBlank() || it.title.contains(galleryQuery.trim(),
+                ignoreCase = true)
+        }
+        if (libraryTab == 0 && !gallerySearchOpen) item {
+            Row(Modifier.fillMaxWidth(), horizontalArrangement = Arrangement.End,
+                verticalAlignment = Alignment.CenterVertically) {
+                Text(if (localHistoryEdit) "完成编辑" else "编辑本机历史",
+                    color = HongguoColors.accent, fontSize = 12.sp,
+                    modifier = Modifier.clickable { localHistoryEdit = !localHistoryEdit }
+                        .padding(horizontal = 8.dp, vertical = 4.dp)
+                        .testTag("my_history_edit_toggle"))
+            }
         }
         if (gallery.isEmpty()) item {
             Text(when (libraryTab) {
@@ -259,6 +293,16 @@ internal fun MyScreen(state: AppState, model: DramaViewModel, onBack: () -> Unit
                             Text(progressText, color = HongguoColors.muted,
                                 fontSize = 11.sp, maxLines = 1,
                                 overflow = TextOverflow.Ellipsis)
+                            if (localHistoryEdit && entry != null) {
+                                Text(if (drama.id in state.completedDramaIds)
+                                        "标为未看完" else "标为已看完",
+                                    color = HongguoColors.accent, fontSize = 11.sp,
+                                    modifier = Modifier.clickable {
+                                        model.setDramaCompleted(drama.id,
+                                            drama.id !in state.completedDramaIds)
+                                    }.padding(vertical = 4.dp)
+                                        .testTag("my_history_complete_" + drama.id))
+                            }
                         }
                     }
                 }
