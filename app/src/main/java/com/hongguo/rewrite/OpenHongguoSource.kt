@@ -140,7 +140,7 @@ internal class OpenHongguoSource(context: Context) {
         mapSeries(client.getSeries(checkedId(id)))
 
     suspend fun batchDetails(ids: List<String>): List<OpenHongguoMetadata> =
-        client.getSeriesBatch(ids.distinct().map(::checkedId))
+        client.getSeriesBatch(ids.distinct().take(10).map(::checkedId))
             .mapNotNull { it.series?.let(::mapSeries) }
 
     suspend fun seasons(id: String): List<Drama> =
@@ -216,7 +216,16 @@ internal class OpenHongguoSource(context: Context) {
                 }, page.cursor, page.hasMore)
             }
             "activity" -> {
-                val ranking = ranking("", "")
+                // Empty IDs preserve the SDK's optional default event path.
+                // For a specific activity, require both source-provided IDs.
+                val ids = query.trim().split(':', limit = 2)
+                val board = if (query.isBlank()) "" to "" else {
+                    require(ids.size == 2 && ids.all(String::isNotBlank)) {
+                        "请输入 活动ID:榜单ID"
+                    }
+                    ids[0].trim() to ids[1].trim()
+                }
+                val ranking = ranking(board.first, board.second)
                 OpenHongguoBrowsePage(ranking.items.map { it2 ->
                     OpenHongguoBrowseItem(
                         id = it2.seriesId.ifBlank { "activity:${it2.rank}" },
