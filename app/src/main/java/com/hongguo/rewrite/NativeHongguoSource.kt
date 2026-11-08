@@ -54,6 +54,10 @@ class NativeHongguoSource(
     private var reelsCursor = RecommendationCursor()
     private var reelsFeed = RecommendationFeed(repository.http, cursor = reelsCursor)
     private var reelsPageNumber = 1
+    // A saturated official tab should not spend another 30-50 seconds
+    // rediscovering the same duplicate pages on every restart.
+    private var mainReelsExhausted = false
+    private var mainReelsNoNewAtMs = 0L
     private var realReelsCursor = RecommendationCursor()
     private var realReelsFeed = RecommendationFeed(repository.http, cursor = realReelsCursor,
         category = DramaCategory.REAL)
@@ -64,6 +68,14 @@ class NativeHongguoSource(
         cursor = comicReelsCursor, category = DramaCategory.COMIC)
     private var comicReelsPageNumber = 1
     private var comicReelsEnd = false
+
+    private fun comicCategoryPage(): com.hongguotv.core.CatalogPage {
+        if (comicReelsEnd) throw NoNewRecommendationsException()
+        val page = comicReelsFeed.page(comicReelsPageNumber)
+        comicReelsPageNumber++
+        if (!page.hasMore) comicReelsEnd = true
+        return page
+    }
 
     /** Classifies only explicit official type tokens; genre themes and titles are not evidence. */
     internal fun isExplicitReal(series: Series): Boolean =
@@ -95,6 +107,11 @@ class NativeHongguoSource(
                     account = accountForSession,
                     cursor = reelsCursor)
                 reelsPageNumber = 1
+                val nowMs = System.nanoTime() / 1_000_000L
+                mainReelsExhausted = mainReelsNoNewAtMs != 0L &&
+                    nowMs - mainReelsNoNewAtMs in 0L..90_000L
+                if (mainReelsExhausted)
+                    diagnostics?.record("REELS", "MAIN_RECENT_NO_NEW_CATEGORY_FIRST")
                 realReelsCursor = RecommendationCursor()
                 realReelsFeed = RecommendationFeed(repository.http,
                     account = accountForSession,
@@ -137,13 +154,13 @@ class NativeHongguoSource(
                     if (comicItems.size >= (if (firstItemOnly) 1 else 5) ||
                         comicReelsEnd) return@repeat
                     try {
-                        val page = comicReelsFeed.page(comicReelsPageNumber++)
-                        if (!page.hasMore) comicReelsEnd = true
+                        val page = comicCategoryPage()
                         comicItems += page.items.filter { it.id !in excluded }
                     } catch (cancel: kotlinx.coroutines.CancellationException) {
                         throw cancel
                     } catch (error: Exception) {
                         failure = error
+                        if (error is NoNewRecommendationsException) comicReelsEnd = true
                         diagnostics?.record("REELS",
                             "COMIC_" + OfficialReelsFailure.code(error))
                         return@repeat
@@ -158,7 +175,7 @@ class NativeHongguoSource(
             }
             // Always try dynamic official recommendations first, including in real-only mode.
             // In real-only mode, admit exclusively explicit server-typed real dramas.
-            repeat(if (firstItemOnly) 1 else if (realOnly) 2 else 3) {
+            repeat(if (mainReelsExhausted) 0 else if (firstItemOnly) 1 else if (realOnly) 2 else 3) {
                 if (candidates.size >= (if (firstItemOnly) 1 else 5) ||
                     !upstreamMore) return@repeat
                 try {
@@ -172,11 +189,16 @@ class NativeHongguoSource(
                 } catch (failure: Exception) {
                     officialFailure = failure
                     diagnostics?.record("REELS", "MAIN_" + OfficialReelsFailure.code(failure))
+                    if (failure is NoNewRecommendationsException) {
+                        mainReelsExhausted = true
+                        mainReelsNoNewAtMs = System.nanoTime() / 1_000_000L
+                    }
                     upstreamMore = false
                 }
             }
             var realCategoryFailure: Exception? = null
-            if (realOnly && candidates.size < 5 && !realReelsEnd) {
+            if (realOnly &&
+                candidates.size < (if (firstItemOnly) 1 else 5) && !realReelsEnd) {
                 // Official genre selector is authoritative when general recommendation
                 // cards omit their content type. It also has its own changing cursor.
                 repeat(if (firstItemOnly) 1 else 2) {
@@ -190,21 +212,61 @@ class NativeHongguoSource(
                         throw cancel
                     } catch (failure: Exception) {
                         realCategoryFailure = failure
+                        if (failure is NoNewRecommendationsException) realReelsEnd = true
                         diagnostics?.record("REELS", "REAL_" + OfficialReelsFailure.code(failure))
                         // Keep the same cursor for manual retry; no invented fixed list.
                         return@repeat
                     }
                 }
             }
-            val unique = candidates.distinctBy { it.id }
-            if (unique.isEmpty()) {
-                throw realCategoryFailure ?: officialFailure ?: NoNewRecommendationsException()
+            // The official general tab can saturate after returning the same
+            // video IDs across its hosts. Continue the SAME live swipe session
+            // using independent first-party real/comic category cursors.
+            // This does not substitute the homepage's sorted public catalog.
+            var categoryFailure: Exception? = null
+            if (!realOnly && candidates.isEmpty()) {
+                for (type in listOf(DramaCategory.REAL, DramaCategory.COMIC)) {
+                    if (firstItemOnly && candidates.isNotEmpty()) break
+                    if (type == DramaCategory.REAL && realReelsEnd) continue
+                    if (type == DramaCategory.COMIC && comicReelsEnd) continue
+                    try {
+                        val page = if (type == DramaCategory.REAL) realCategoryPage()
+                            else comicCategoryPage()
+                        candidates += page.items.filter { it.id !in excluded }
+                        diagnostics?.record("REELS",
+                            if (type == DramaCategory.REAL)
+                                "GENERAL_REAL_FALLBACK" else "GENERAL_COMIC_FALLBACK")
+                    } catch (cancel: kotlinx.coroutines.CancellationException) {
+                        throw cancel
+                    } catch (failure: Exception) {
+                        categoryFailure = failure
+                        if (failure is NoNewRecommendationsException) {
+                            if (type == DramaCategory.REAL) realReelsEnd = true
+                            else comicReelsEnd = true
+                        }
+                        diagnostics?.record("REELS",
+                            if (type == DramaCategory.REAL)
+                                "GENERAL_REAL_" + OfficialReelsFailure.code(failure)
+                            else "GENERAL_COMIC_" + OfficialReelsFailure.code(failure))
+                    }
+                }
             }
+            val unique = candidates.distinctBy { it.id }
+            if (unique.isEmpty())
+                throw categoryFailure ?: realCategoryFailure ?: officialFailure
+                    ?: NoNewRecommendationsException()
             diagnostics?.record("REELS",
-                if (realOnly) "REAL_DYNAMIC_BATCH" else "OFFICIAL_DYNAMIC_BATCH")
+                when {
+                    realOnly -> "REAL_DYNAMIC_BATCH"
+                    mainReelsExhausted -> "GENERAL_CATEGORY_DYNAMIC_BATCH"
+                    else -> "OFFICIAL_DYNAMIC_BATCH"
+                })
             CatalogPage(unique.map { it.toDrama() },
-                hasMore = if (realOnly) (upstreamMore || !realReelsEnd) else upstreamMore,
-                nextOffset = reelsPageNumber)
+                hasMore = when {
+                    realOnly -> (!mainReelsExhausted && upstreamMore) || !realReelsEnd
+                    mainReelsExhausted -> !realReelsEnd || !comicReelsEnd
+                    else -> upstreamMore || !realReelsEnd || !comicReelsEnd
+                }, nextOffset = reelsPageNumber)
         }
     }
 
