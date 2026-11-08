@@ -105,3 +105,17 @@ The user reports **both** loss of background audio and removal of the OS media c
 - The Activity observes `ON_RESUME` and asks the ViewModel to recover **only** if it still has an active playback screen and source, its playback intent is true, and **both** `BackgroundPlaybackService.active` and `playerFlow` are absent. It waits 600 ms for an in-flight bind before doing a **single** re-open of the current episode through the existing source API. Intentional pauses, detail pages and explicit player close do not trigger recovery.
 - This is a foreground repair, **not** guaranteed autonomous process-death continuation. A force-stop, restricted background execution, hardware decoder crash or Android/OxygenOS process kill may require a fresh activity/process initialization. Persistent full-session reconstruction across process death is a separate feature and requires robust saved-state/authorization design.
 - On-device test matrix: play 2+ min locked; screen off + audio focus interruptions; task removed; app returns with same process vs cold start; verify no duplicate media session, no repeated restart after deliberate pause, and exported events after service destruction. Confirm Debug build before claiming success.
+
+## 2026-11-08 08:49:51 background service foreground-registration finding
+
+Observed trace:
+- 08:47:33.250 UTC: `READY_AUDIO_FOCUS_LOST`; audio explicitly resumed 08:47:44.316 via `PLAYING`.
+- 08:49:12.713 UTC: `DESTROYED_WHILE_PLAYING` — media service destroyed while its ExoPlayer was reporting playback active. There was no preceding `STOP_*` or `TASK_REMOVED` event in this trace.
+- 08:49:35.835 UTC: `FOREGROUND_SERVICE_MISSING`; 08:49:36.436 `FOREGROUND_RECONNECT`; by 08:49:41.374 `PLAYING` resumed in a newly created session.
+- 08:49:45.759 UTC: `STOP_CLOSE_PLAYER`, after the reconnect, is an explicit close and **not** the cause of the original 08:49:12 destroy.
+
+Root cause candidate found by comparing source to **AndroidX Media3 1.8.0** `MediaSessionService.addSession` source: this app constructs the `MediaSession` in `onCreate` but does not create a bound `MediaController`; therefore `onGetSession` is not necessarily invoked and the service may never register the session with its own notification manager, even though the Android media carousel shows the session. Without a registered media session, Media3 cannot reliably promote ongoing playback to a media foreground service.
+
+Fix: after `MediaSession.Builder(...).build()`, explicitly call `addSession(session)` **once**, before playback begins. Let the default `onUpdateNotification` implementation manage foreground promotion. Add diagnostic events for foreground requested/active transitions and verify `isSessionAdded` / `isPlaybackOngoing` during teardown. This avoids indefinite restart loops or a competing manually managed foreground notification. A session returned by `onGetSession` remains safe because Media3 `addSession` treats re-registering the same object as idempotent.
+
+Validation required: After starting playback, exported log must show `MEDIA_SESSION_REGISTERED`, `FOREGROUND_REQUESTED` and `FOREGROUND_ACTIVE`; test 5+ minutes in background/locked state without `DESTROYED_WHILE_PLAYING`. If service still dies with `DESTROYED_FOREGROUND_ACTIVE`, inspect Android process/FGS policy and OxygenOS battery management rather than assuming the registration fix is sufficient. CI and device result unverified.
