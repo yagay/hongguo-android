@@ -1583,7 +1583,7 @@ class DramaViewModel(application: Application) : AndroidViewModel(application) {
         url: String,
         remote: RemoteVideo?,
         resumeMs: Long,
-        expectedGeneration: Int,
+        expectedGeneration: Long,
     ) {
         withTimeout(8_000) {
             BackgroundPlaybackService.playerFlow.filterNotNull().first()
