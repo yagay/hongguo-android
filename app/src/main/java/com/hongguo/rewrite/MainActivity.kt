@@ -89,7 +89,12 @@ private fun HongguoApp(model: DramaViewModel = viewModel()) {
     val detailImmersive = state.detailPageVisible && state.detail != null &&
         state.modal == Modal.NONE
     val darkPlayer = state.detail != null && !state.detailPageVisible &&
-        state.modal != Modal.SETTINGS
+        !state.miniPlayerVisible && state.modal != Modal.SETTINGS
+    val showMini = state.miniPlayerVisible && state.detail != null &&
+        !state.preparingDetail
+    val miniInCatalog = showMini && state.modal != Modal.SETTINGS &&
+        state.modal != Modal.ACCOUNT && !state.detailPageVisible &&
+        !searchLandingOpen
     val systemDark = isSystemInDarkTheme()
     val darkTheme = when (state.themeMode) {
         "dark" -> true
@@ -133,27 +138,34 @@ private fun HongguoApp(model: DramaViewModel = viewModel()) {
                 else HongguoColors.background
             )
         ) {
-            Box(Modifier.fillMaxSize().safeDrawingPadding().imePadding()) {
-                BackHandler(
-                    enabled = state.detail != null || state.preparingDetail ||
-                        state.feedMode || state.modal != Modal.NONE || mineOpen ||
-                        searchLandingOpen,
-                ) {
-                    if (state.modal == Modal.ACCOUNT) model.closeAccount()
-                    else if (state.modal != Modal.NONE) model.closeModal()
-                    else if (state.detail != null || state.preparingDetail || state.feedMode) {
-                        if (state.detailPageVisible) model.backFromDramaDetails()
-                        else model.backFromPlayer()
+            Column(Modifier.fillMaxSize().safeDrawingPadding().imePadding()) {
+                Box(Modifier.weight(1f)) {
+                    BackHandler(
+                        enabled = state.modal != Modal.NONE ||
+                            state.detailPageVisible || state.preparingDetail ||
+                            (!state.miniPlayerVisible && (state.detail != null || state.feedMode)) ||
+                            mineOpen || searchLandingOpen,
+                    ) {
+                        if (state.modal == Modal.ACCOUNT) model.closeAccount()
+                        else if (state.modal != Modal.NONE) model.closeModal()
+                        else if (state.detailPageVisible) model.backFromDramaDetails()
+                        else if (state.miniPlayerVisible) {
+                            // Navigate within the catalog without stopping the
+                            // mini video; root Back falls through to Android.
+                            if (searchLandingOpen) searchLandingOpen = false
+                            else if (mineOpen) mineOpen = false
+                        } else if (state.detail != null || state.preparingDetail || state.feedMode)
+                            model.backFromPlayer()
+                        else if (searchLandingOpen) searchLandingOpen = false
+                        else mineOpen = false
                     }
-                    else if (searchLandingOpen) searchLandingOpen = false
-                    else mineOpen = false
-                }
                 when {
                     state.modal == Modal.SETTINGS -> SettingsScreen(state, model)
                     state.modal == Modal.ACCOUNT -> AccountScreen(model)
                     state.detailPageVisible && state.detail != null ->
                         DramaDetailScreen(state, model)
-                    state.detail != null -> key(state.detail?.drama?.id, state.feedMode) {
+                    state.detail != null && !state.miniPlayerVisible ->
+                        key(state.detail?.drama?.id, state.feedMode) {
                         NativePlayer(state, model)
                     }
                     state.preparingDetail -> {
@@ -202,7 +214,9 @@ private fun HongguoApp(model: DramaViewModel = viewModel()) {
                         containerColor = HongguoColors.background,
                         contentWindowInsets = WindowInsets(0, 0, 0, 0),
                         bottomBar = {
-                            Surface(
+                            Column {
+                                if (miniInCatalog) InAppMiniPlayer(state, model)
+                                Surface(
                                 modifier = if (state.navigationStyle == "glass")
                                     Modifier.padding(horizontal = 14.dp, vertical = 7.dp)
                                 else Modifier,
@@ -222,6 +236,7 @@ private fun HongguoApp(model: DramaViewModel = viewModel()) {
                                         label = { Text("我的") })
                                 }
                             }
+                            }
                         },
                     ) { insets ->
                         Box(Modifier.fillMaxSize().padding(insets)) {
@@ -231,7 +246,11 @@ private fun HongguoApp(model: DramaViewModel = viewModel()) {
                         }
                     }
                 }
-                LibrarySheets(state, model)
+                    LibrarySheets(state, model)
+                }
+                // Settings, account, search and drama details have no catalog
+                // NavigationBar; their mini player stays fixed at the bottom.
+                if (showMini && !miniInCatalog) InAppMiniPlayer(state, model)
             }
         }
     }
