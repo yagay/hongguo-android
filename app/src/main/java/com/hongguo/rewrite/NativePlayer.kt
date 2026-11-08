@@ -820,19 +820,15 @@ internal fun NativePlayer(
         )
     }
 
-    if (showComments) ModalBottomSheet(
+    if (showComments) HongguoPlayerSheet(
         onDismissRequest = { showComments = false },
-        containerColor = HongguoColors.playerSheet,
-        contentColor = Color.White,
         modifier = Modifier.testTag("reel_comments_sheet"),
     ) {
         CommentsSheet(state, model)
     }
 
-    if (showEpisodes) ModalBottomSheet(
+    if (showEpisodes) HongguoPlayerSheet(
         onDismissRequest = { showEpisodes = false },
-        containerColor = HongguoColors.playerSheet,
-        contentColor = Color.White,
         modifier = Modifier.testTag("reel_episodes_sheet"),
     ) {
         Column(Modifier.fillMaxWidth().heightIn(max = 630.dp)
