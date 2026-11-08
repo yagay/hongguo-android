@@ -93,7 +93,6 @@ internal fun ReelScreenshotOverlay(
     val muted = Color(0xFFD5D5D5)
     val saved = state.favorites.any { it.drama.id == detail.drama.id }
     val liked = detail.drama.id in state.likedDramaIds
-    val inHistory = state.library.any { it.drama.id == detail.drama.id }
     val aiAuthorStatement = state.openHongguoMetadata
         ?.takeIf { it.seriesId == detail.drama.id }?.authorAiStatement
     val social = state.socialStats?.takeIf {
@@ -279,13 +278,13 @@ internal fun ReelScreenshotOverlay(
                     modifier = Modifier.background(
                         Color.Black.copy(alpha = 0.54f), RoundedCornerShape(9.dp))
                         .clickable(onClick = onDanmaku)
-                        .padding(horizontal = 9.dp, vertical = 7.dp)
+                        .padding(horizontal = 6.dp, vertical = 3.dp)
                         .testTag("reel_danmaku"),
                     verticalAlignment = Alignment.CenterVertically,
-                    horizontalArrangement = Arrangement.spacedBy(4.dp),
+                    horizontalArrangement = Arrangement.spacedBy(3.dp),
                 ) {
                     Icon(Icons.Outlined.Subtitles, contentDescription = null,
-                        tint = white, modifier = Modifier.size(15.dp))
+                        tint = white, modifier = Modifier.size(14.dp))
                     Text(
                         when {
                             !state.danmakuEnabled -> "弹 · 关"
@@ -312,16 +311,7 @@ internal fun ReelScreenshotOverlay(
                             .testTag("reel_danmaku_retry"),
                     )
                 }
-                if (inHistory) {
-                    Text(
-                        "◉ 最近在看",
-                        color = white, fontSize = 11.sp,
-                        modifier = Modifier
-                            .background(Color.Black.copy(alpha = 0.54f),
-                                RoundedCornerShape(9.dp))
-                            .padding(horizontal = 9.dp, vertical = 7.dp),
-                    )
-                }
+
             }
             Row(
                 Modifier.fillMaxWidth()
