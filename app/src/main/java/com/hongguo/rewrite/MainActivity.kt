@@ -514,7 +514,6 @@ private fun HongguoApp(model: DramaViewModel = viewModel()) {
                 if (showPrimaryNavigation) {
                     HongguoPrimaryNavigation(
                         selectedTab = primaryTab,
-                        playingVideo = darkPlayer,
                         onSelect = ::selectPrimaryTab,
                     )
                 }
