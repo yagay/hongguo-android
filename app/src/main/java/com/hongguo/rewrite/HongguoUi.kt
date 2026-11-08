@@ -412,3 +412,32 @@ internal fun HongguoEmptyState(message: String, modifier: Modifier = Modifier) {
         Text(message, color = HongguoColors.muted, fontSize = 13.sp)
     }
 }
+
+/** Shared sheet title/toolbar. Kept independent of sheet state and dismissal. */
+@Composable
+internal fun HongguoSheetHeader(
+    title: String,
+    modifier: Modifier = Modifier,
+    icon: ImageVector? = null,
+    dark: Boolean = false,
+    actions: @Composable RowScope.() -> Unit = {},
+) {
+    val foreground = if (dark) Color.White else HongguoColors.ink
+    Row(
+        modifier = modifier.fillMaxWidth().heightIn(min = 44.dp),
+        verticalAlignment = Alignment.CenterVertically,
+        horizontalArrangement = Arrangement.spacedBy(8.dp),
+    ) {
+        if (icon != null) {
+            Icon(icon, contentDescription = null,
+                tint = if (dark) foreground else HongguoColors.accent,
+                modifier = Modifier.size(20.dp))
+        }
+        Text(
+            title, modifier = Modifier.weight(1f),
+            fontSize = HongguoUi.sectionTitleSize,
+            fontWeight = FontWeight.SemiBold, color = foreground,
+        )
+        actions()
+    }
+}
