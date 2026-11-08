@@ -85,8 +85,8 @@ internal fun PlaybackExperienceSheet(
     val account by model.account.state.collectAsStateWithLifecycle()
     val focused = initialSection
 
-    val white = Color.White
-    val secondary = Color(0xFFC5C3C9)
+    val foreground = HongguoColors.ink
+    val secondary = HongguoColors.muted
     val qualityAvailable = state.backend.isBlank()
     val qualityLabel = if (state.qualityLimit == 0) "自动"
         else "${state.qualityLimit}P"
@@ -115,7 +115,7 @@ internal fun PlaybackExperienceSheet(
         ) {
                 Column(
                     Modifier.fillMaxWidth()
-                        .background(Color(0xFF302E35),
+                        .background(HongguoColors.background,
                             RoundedCornerShape(HongguoUi.controlRadius))
                         .padding(horizontal = 11.dp, vertical = 7.dp),
                     verticalArrangement = Arrangement.spacedBy(5.dp),
@@ -135,28 +135,14 @@ internal fun PlaybackExperienceSheet(
                                 listOf(false to "适应画面", true to "铺满画面"),
                                 fillVideo, onFillVideo, "video_frame_mode",
                             )
-                            HorizontalDivider(color = Color(0xFF4B4A50))
-                            Row(
-                                Modifier.fillMaxWidth(),
-                                verticalAlignment = Alignment.CenterVertically,
-                            ) {
-                                Column(Modifier.weight(1f)) {
-                                    Text("应用外悬浮播放", fontSize = 13.sp,
-                                        fontWeight = FontWeight.Medium)
-                                    Text("离开应用时自动画中画，也控制播放器上的画中画入口",
-                                        color = secondary, fontSize = 11.sp,
-                                        lineHeight = 15.sp)
-                                }
-                                Switch(
-                                    checked = externalPipEnabled,
-                                    onCheckedChange = onExternalPipEnabled,
-                                    modifier = Modifier.testTag("player_external_pip_enabled"),
-                                    colors = SwitchDefaults.colors(
-                                        checkedTrackColor = HongguoColors.accent,
-                                        checkedThumbColor = Color.White,
-                                    ),
-                                )
-                            }
+                            HorizontalDivider(color = HongguoColors.divider)
+                            HongguoToggleRow(
+                                title = "应用外悬浮播放",
+                                checked = externalPipEnabled,
+                                onCheckedChange = onExternalPipEnabled,
+                                tag = "player_external_pip_enabled",
+                                description = "离开应用时自动画中画，也控制播放器上的画中画入口",
+                            )
                             PlaybackHeading("屏幕亮度")
                             PlaybackChoices(
                                 listOf(-1 to "系统", 65 to "65%", 80 to "80%",
@@ -182,20 +168,12 @@ internal fun PlaybackExperienceSheet(
                             )
                         }
                         PlaybackQuickSetting.DANMAKU -> {
-                            Row(Modifier.fillMaxWidth(),
-                                verticalAlignment = Alignment.CenterVertically) {
-                                PlaybackHeading("弹幕设置")
-                                Spacer(Modifier.weight(1f))
-                                Switch(
-                                    checked = state.danmakuEnabled,
-                                    onCheckedChange = model::setDanmaku,
-                                    modifier = Modifier.testTag("player_danmaku_enabled"),
-                                    colors = SwitchDefaults.colors(
-                                        checkedTrackColor = HongguoColors.accent,
-                                        checkedThumbColor = Color.White,
-                                    ),
-                                )
-                            }
+                            HongguoToggleRow(
+                                title = "弹幕设置",
+                                checked = state.danmakuEnabled,
+                                onCheckedChange = model::setDanmaku,
+                                tag = "player_danmaku_enabled",
+                            )
                             PlaybackHeading("移动速度")
                             PlaybackChoices(
                                 listOf(0 to "慢", 1 to "标准", 2 to "快"),
@@ -223,7 +201,7 @@ internal fun PlaybackExperienceSheet(
                             state.reelsMode, model::setReelsMode, "official_reels_mode",
                         )
                     }
-                    HorizontalDivider(color = Color(0xFF4B4A50))
+                    HorizontalDivider(color = HongguoColors.divider)
                     PlaybackToggle("自动连播下一集", state.autoPlayNext,
                         model::setAutoPlayNext, "player_auto_next")
                     PlaybackToggle("预加载下一集", state.preloadNext,
@@ -247,26 +225,20 @@ internal fun PlaybackExperienceSheet(
                     )
 
                     if (account.profile != null && state.detail != null) {
-                        HorizontalDivider(color = Color(0xFF4B4A50))
+                        HorizontalDivider(color = HongguoColors.divider)
                         val currentId = state.detail.drama.id
                         val inCloud = account.favorites.any {
                             it.series.id == currentId
                         }
-                        OutlinedButton(
+                        HongguoAction(
+                            label = if (inCloud) "从云收藏移除" else "加入云收藏",
                             enabled = !account.busy,
                             onClick = {
                                 model.account.cloudFavorite(currentId, !inCloud)
                             },
                             modifier = Modifier.fillMaxWidth()
-                                .height(40.dp)
                                 .testTag("player_cloud_favorite"),
-                            colors = ButtonDefaults.outlinedButtonColors(
-                                contentColor = white,
-                            ),
-                        ) {
-                            Text(if (inCloud) "从云收藏移除" else "加入云收藏",
-                                fontSize = 13.sp)
-                        }
+                        )
                         if (account.message.isNotBlank()) {
                             Text(account.message, color = secondary, fontSize = 11.sp)
                         }
@@ -286,12 +258,12 @@ internal fun PlaybackExperienceSheet(
                                 if (state.sleepTimerLabel == "关闭") 0 else -1,
                                 model::sleepAfterMinutes, "sleep_timer",
                             )
-                            TextButton(
+                            HongguoAction(
+                                label = "播完本集后停止",
                                 onClick = { model.sleepAfterEpisodes(1) },
                                 modifier = Modifier.testTag("sleep_after_episode"),
-                            ) {
-                                Text("播完本集后停止", color = white, fontSize = 12.sp)
-                            }
+                                style = HongguoActionStyle.QUIET,
+                            )
                         }
                         null -> Unit
                     }
@@ -306,12 +278,12 @@ private fun PlaybackToggle(
     checked: Boolean,
     onCheckedChange: (Boolean) -> Unit,
     tag: String,
-) = HongguoToggleRow(title, checked, onCheckedChange, tag, dark = true)
+) = HongguoToggleRow(title, checked, onCheckedChange, tag)
 
 @Composable
 private fun PlaybackHeading(title: String) {
     Text(title, fontSize = 13.sp, fontWeight = FontWeight.SemiBold,
-        color = Color.White)
+        color = HongguoColors.ink)
 }
 
 @Composable
@@ -325,5 +297,4 @@ private fun <T> PlaybackChoices(
     selected = selected,
     onSelect = onSelect,
     tag = tag,
-    dark = true,
-)
+ )
