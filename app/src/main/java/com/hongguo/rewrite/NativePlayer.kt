@@ -831,28 +831,39 @@ internal fun NativePlayer(
         onDismissRequest = { showEpisodes = false },
         modifier = Modifier.testTag("reel_episodes_sheet"),
     ) {
-        Column(Modifier.fillMaxWidth().heightIn(max = 630.dp)
+        Column(
+            Modifier.fillMaxWidth().heightIn(max = 630.dp)
                 .verticalScroll(rememberScrollState())
-                .padding(horizontal = 16.dp, vertical = 12.dp),
-            verticalArrangement = Arrangement.spacedBy(8.dp)) {
-            Row(Modifier.fillMaxWidth(), verticalAlignment = Alignment.CenterVertically) {
-                Text("选集 · 共 ${detail.episodes.size} 集",
-                    style = MaterialTheme.typography.titleMedium,
-                    modifier = Modifier.weight(1f))
+                .padding(horizontal = HongguoUi.pagePadding, vertical = 12.dp),
+            verticalArrangement = Arrangement.spacedBy(HongguoUi.pageSectionGap),
+        ) {
+            HongguoSheetHeader(
+                title = "选集 · 共 ${detail.episodes.size} 集",
+                icon = Icons.Outlined.FormatListNumbered,
+                dark = true,
+            ) {
                 if (state.backend.isBlank()) {
-                    TextButton(onClick = { downloadBatch(5) },
-                        modifier = Modifier.testTag("batch_download_5")) {
-                        Text("下载当前起5集")
-                    }
+                    HongguoPlayerSheetAction(
+                        label = "下载5集",
+                        onClick = { downloadBatch(5) },
+                        modifier = Modifier.testTag("batch_download_5"),
+                    )
                 } else {
-                    TextButton(onClick = {
-                        model.download(detail.episodes[state.episodeIndex].index,
-                            detail.episodes.drop(state.episodeIndex).take(5)
-                                .lastOrNull()?.index ?: detail.episodes[state.episodeIndex].index)
-                        showEpisodes = false
-                    }) { Text("下载5集") }
+                    HongguoPlayerSheetAction(
+                        label = "下载5集",
+                        onClick = {
+                            model.download(detail.episodes[state.episodeIndex].index,
+                                detail.episodes.drop(state.episodeIndex).take(5)
+                                    .lastOrNull()?.index ?: detail.episodes[state.episodeIndex].index)
+                            showEpisodes = false
+                        },
+                    )
                 }
             }
+            Text(
+                "点击集数切换播放 · 当前第 ${detail.episodes.getOrNull(state.episodeIndex)?.index ?: 1} 集",
+                fontSize = 12.sp, color = HongguoColors.playerChromeMuted,
+            )
             LazyVerticalGrid(
                 columns = GridCells.Fixed(5),
                 modifier = Modifier.fillMaxWidth().heightIn(max = 460.dp),
@@ -860,42 +871,38 @@ internal fun NativePlayer(
             ) {
                 itemsIndexed(detail.episodes) { index, episode ->
                     val active = index == state.episodeIndex
-                    Box(
-                        Modifier.fillMaxWidth().height(44.dp)
-                            .clip(RoundedCornerShape(10.dp))
-                            .background(if (active) HongguoColors.accent
-                                        else Color(0xFF36363B))
-                            .clickable {
-                                if (state.feedMode) model.exitFeedToEpisode(index)
-                                else model.play(index)
-                                showEpisodes = false
-                            }
-                            .testTag("episode_" + index),
-                        contentAlignment = Alignment.Center,
-                    ) {
-                        Text(episode.index.toString(), fontSize = 13.sp,
-                            color = Color.White,
-                            fontWeight = if (active) FontWeight.Bold else FontWeight.Medium)
-                    }
+                    HongguoEpisodeCell(
+                        label = episode.index.toString(),
+                        selected = active,
+                        onClick = {
+                            if (state.feedMode) model.exitFeedToEpisode(index)
+                            else model.play(index)
+                            showEpisodes = false
+                        },
+                        modifier = Modifier.fillMaxWidth().testTag("episode_" + index),
+                    )
                 }
             }
             if (state.relatedSeries == detail.drama.id) {
-                Row(Modifier.fillMaxWidth(), verticalAlignment = Alignment.CenterVertically) {
-                    Text("其他季 / 相关作品", color = Color.White,
-                        fontWeight = FontWeight.Bold, modifier = Modifier.weight(1f))
+                HongguoMenuSeparator()
+                HongguoSheetHeader(title = "其他季 / 相关作品", dark = true) {
                     if (state.relatedLoading) {
                         CircularProgressIndicator(Modifier.size(18.dp),
                             strokeWidth = 2.dp, color = Color.White)
                     } else {
-                        TextButton(onClick = { model.loadRelated(detail.drama.id) }) {
-                            Text("刷新", color = Color.White)
+                        HongguoIconAction(onClick = {
+                            model.loadRelated(detail.drama.id)
+                        }) {
+                            Icon(Icons.Outlined.Refresh, contentDescription = "刷新相关作品",
+                                tint = Color.White)
                         }
                     }
                 }
                 state.relatedWorks.take(15).forEach { work ->
                     Row(
                         Modifier.fillMaxWidth()
-                            .background(Color(0xFF35353A), RoundedCornerShape(10.dp))
+                            .background(Color(0xFF343239),
+                                RoundedCornerShape(HongguoUi.controlRadius))
                             .clickable(enabled = !work.upcoming) {
                                 showEpisodes = false
                                 model.openRelatedDrama(work.drama)
@@ -906,17 +913,19 @@ internal fun NativePlayer(
                         Column(Modifier.weight(1f)) {
                             Text(work.drama.title, color = Color.White, maxLines = 1,
                                 overflow = TextOverflow.Ellipsis)
-                            Text(work.season, color = Color.LightGray, fontSize = 11.sp)
+                            Text(work.season, color = HongguoColors.playerChromeMuted,
+                                fontSize = 12.sp)
                         }
                         Text(if (work.upcoming) "待上线" else "观看",
-                            color = if (work.upcoming) Color.LightGray
-                                else Color(0xFFFFA37D), fontSize = 12.sp)
+                            color = if (work.upcoming) HongguoColors.playerChromeMuted
+                                else HongguoColors.accent, fontSize = 12.sp)
                     }
                 }
                 if (!state.relatedLoading && state.relatedWorks.isEmpty()) {
                     Text(state.relatedError ?: "暂无官方关联作品",
-                        fontSize = 12.sp, color = Color.LightGray,
-                        maxLines = 3, overflow = TextOverflow.Ellipsis)
+                        fontSize = 12.sp, color = HongguoColors.playerChromeMuted,
+                        maxLines = 3, overflow = TextOverflow.Ellipsis,
+                        modifier = Modifier.fillMaxWidth().padding(vertical = 16.dp))
                 }
             }
             Spacer(Modifier.height(22.dp))
