@@ -576,11 +576,6 @@ internal fun NativePlayer(
             onRetryDanmaku = {
                 model.retryDanmaku(playback.positionMs, playback.durationMs)
             },
-            onFollowing = {
-                // The account screen overlays the reel, rather than
-                // unexpectedly sending the user to the home catalog.
-                model.show(Modal.ACCOUNT)
-            },
             onComic = { model.setReelsMode("comic") },
             onReal = { model.setReelsMode("real") },
             onRecommend = { model.setReelsMode("all") },
