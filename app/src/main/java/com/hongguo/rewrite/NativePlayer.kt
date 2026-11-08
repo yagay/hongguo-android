@@ -161,11 +161,10 @@ internal fun NativePlayer(
         !pagerState.isScrollInProgress
     val playback = remember(state.episodeIndex) { ReelPlaybackControls() }
     var speed by remember(detail.drama.id) { mutableFloatStateOf(state.defaultPlaybackSpeed) }
-    // Portrait reels default to center-crop (ZOOM) so the Media3 viewport
-    // has no side letterboxing after reserving the outside-video seek dock
-    // and bottom navigation. FIT remains available from player settings
-    // when the user wants every pixel of a differently-shaped video.
-    var fillVideo by rememberSaveable { mutableStateOf(true) }
+    // Preserve the complete encoded frame by default. Never crop or
+    // stretch video just to hide aspect-ratio letterboxing. The external
+    // seek dock and bottom tabs remain independent of the video Surface.
+    var fillVideo by rememberSaveable { mutableStateOf(false) }
     var showComments by remember { mutableStateOf(false) }
     var showEpisodes by remember { mutableStateOf(false) }
     var showPlaybackSettings by remember { mutableStateOf(false) }
