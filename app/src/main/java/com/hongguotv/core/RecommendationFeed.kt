@@ -147,7 +147,9 @@ internal constructor(
 class NoNewRecommendationsException(val rememberedCount: Int = 0) : IOException("推荐接口未返回新作品，请稍后再试")
 
 /** Official App feed, not the public website's sorted category list. No behavior reporting. */
-/** This rewrite only uses anonymous feed access; account sessions remain isolated. */
+/** Optional read-only account context, passed only after explicit user opt-in.
+ * Do not persist the cookie in recommendation cursors, UI state or diagnostics.
+ */
 data class FeedAccount(val cookie: String, val device: Map<String, String> = emptyMap())
 
 class RecommendationFeed(
