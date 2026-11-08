@@ -84,13 +84,12 @@ data class AppState(
     val detailPageVisible: Boolean = false,
     /** Keeps the service-owned video running while browsing other in-app pages. */
     val miniPlayerVisible: Boolean = false,
-    val detailEntryEnabled: Boolean = false,
+    /** Authoritative Back destination and origin, independent of player surface size. */
+    val navigation: PlaybackNavigation = PlaybackNavigation(),
     /** Separate one-video-per-series feed from full-series episode paging. */
     /** Official swipe feed: all recommendations or strictly real-person dramas. */
     val reelsMode: String = "all",
     val feedMode: Boolean = false,
-    /** A series was opened from the swipe feed; Back may restore that queue without seeking. */
-    val returnToFeed: Boolean = false,
     /** One-shot request to show in-player search after a series-detail tag click. */
     val reelSearchRequest: Long = 0L,
     /** A separate, live official swipe stream; never use the three-card home catalog as its pager. */
