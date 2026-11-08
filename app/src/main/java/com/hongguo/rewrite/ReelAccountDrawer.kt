@@ -109,7 +109,7 @@ internal fun ReelAccountDrawer(
                 }
                 if (drawerPage == "watch_later") {
                     if (state.watchLater.isEmpty()) item {
-                        Text("还没有稍后看的短剧", color = HongguoColors.muted, fontSize = 13.sp)
+                        HongguoEmptyState("还没有稍后看的短剧")
                     }
                     items(state.watchLater, key = { "later_" + it.id }) { drama ->
                         HongguoCard() {
@@ -142,7 +142,7 @@ internal fun ReelAccountDrawer(
                         item { Text(notice, color = HongguoColors.accent, fontSize = 12.sp) }
                     }
                     if (state.offlineEpisodes.isEmpty()) item {
-                        Text("还没有保存到本机的离线视频", color = HongguoColors.muted, fontSize = 13.sp)
+                        HongguoEmptyState("还没有保存到本机的离线视频")
                     }
                     items(state.offlineEpisodes,
                         key = { "offline_" + it.documentUri }) { episode ->
@@ -221,7 +221,7 @@ internal fun ReelAccountDrawer(
                         }
                     }
                     if (recentlyWatched.isEmpty()) {
-                        Text("还没有观看记录", color = HongguoColors.muted, fontSize = 13.sp)
+                        HongguoEmptyState("还没有观看记录")
                     } else if (!recentExpanded) {
                         // One horizontal row contains ALL watched dramas. The next
                         // poster remains partially visible to indicate swiping.
