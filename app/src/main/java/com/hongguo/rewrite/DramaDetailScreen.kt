@@ -87,6 +87,7 @@ internal fun DramaDetailScreen(state: AppState, model: DramaViewModel) {
     val tags = (drama.categories + metadata?.tags.orEmpty()).distinct().take(12)
     var expanded by remember(drama.id) { mutableStateOf(false) }
     var showEpisodes by remember(drama.id) { mutableStateOf(false) }
+    var showAllReviews by remember(drama.id) { mutableStateOf(false) }
     var showMenu by remember(drama.id) { mutableStateOf(false) }
 
     val shareDrama: () -> Unit = {
@@ -264,7 +265,9 @@ internal fun DramaDetailScreen(state: AppState, model: DramaViewModel) {
                         verticalAlignment = Alignment.CenterVertically) {
                         DetailHeader("剧评" + (verified?.reviewCount?.let { " · $it" } ?: ""))
                         Spacer(Modifier.weight(1f))
-                        Text("全部剧评 ›", color = DetailMuted, fontSize = 12.sp)
+                        Text(if (showAllReviews) "收起剧评 ‹" else "全部剧评 ›",
+                            modifier = Modifier.clickable { showAllReviews = !showAllReviews },
+                            color = DetailMuted, fontSize = 12.sp)
                     }
                     Surface(shape = RoundedCornerShape(14.dp),
                         color = DetailCard) {
@@ -306,7 +309,8 @@ internal fun DramaDetailScreen(state: AppState, model: DramaViewModel) {
                     if (verified?.reviews?.isNotEmpty() == true) {
                         Row(Modifier.fillMaxWidth().horizontalScroll(rememberScrollState()),
                             horizontalArrangement = Arrangement.spacedBy(11.dp)) {
-                            verified.reviews.take(10).forEach { review ->
+                            verified.reviews.take(if (showAllReviews) 30 else 10)
+                                .forEach { review ->
                                 Surface(
                                     modifier = Modifier.width(282.dp).heightIn(min = 123.dp),
                                     color = DetailCard,
