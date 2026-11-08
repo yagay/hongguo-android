@@ -784,6 +784,19 @@ class DramaViewModel(application: Application) : AndroidViewModel(application) {
         search()
     }
 
+    /** Navigate from verified detail labels to the existing native search results.
+     * The catalog owns the search request; don't show an inert tag or a fake tag page.
+     */
+    fun openTagResults(label: String) {
+        val term = label.trim().take(80)
+        if (term.isBlank() || state.value.detail == null ||
+            !state.value.detailPageVisible) return
+        closePlayer()
+        setSearch(term)
+        search()
+        diagnostics.record("DETAIL", "TAG_SEARCH")
+    }
+
     fun section(section: Section) {
         if (section == Section.SEARCH && state.value.search.isBlank()) {
             mutable.update { it.copy(section = section, items = emptyList(), error = null) }
