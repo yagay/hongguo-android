@@ -627,6 +627,90 @@ internal fun HongguoEpisodeCell(
     }
 }
 
+/**
+ * Unified layout for all player sheets: equal horizontal gutters,
+ * a consistent heading/action row and the same supporting-text treatment.
+ *
+ * Content owns its own scrolling; the layout never creates another scroll
+ * container around LazyColumn/LazyVerticalGrid.
+ */
+@Composable
+internal fun HongguoPlayerPanel(
+    title: String,
+    modifier: Modifier = Modifier,
+    icon: ImageVector? = null,
+    subtitle: String? = null,
+    actions: @Composable RowScope.() -> Unit = {},
+    content: @Composable ColumnScope.() -> Unit,
+) {
+    Column(
+        modifier = modifier.fillMaxWidth()
+            .padding(horizontal = HongguoUi.pagePadding, vertical = 12.dp),
+        verticalArrangement = Arrangement.spacedBy(HongguoUi.pageSectionGap),
+    ) {
+        HongguoSheetHeader(
+            title = title,
+            icon = icon,
+            dark = true,
+            actions = actions,
+        )
+        if (!subtitle.isNullOrBlank()) {
+            Text(
+                subtitle,
+                fontSize = HongguoUi.rowDescriptionSize,
+                color = HongguoColors.playerChromeMuted,
+            )
+        }
+        content()
+    }
+}
+
+/** The player episode entry is a control, not part of the read-only time. */
+@Composable
+internal fun HongguoPlayerEpisodeEntry(
+    label: String,
+    onClick: () -> Unit,
+    modifier: Modifier = Modifier,
+) {
+    Row(
+        modifier = modifier.heightIn(min = HongguoUi.playbackDockRowHeight)
+            .clickable(onClick = onClick)
+            .padding(start = HongguoUi.pagePadding, end = 8.dp),
+        verticalAlignment = Alignment.CenterVertically,
+        horizontalArrangement = Arrangement.spacedBy(5.dp),
+    ) {
+        Text(
+            label,
+            fontSize = HongguoUi.playbackDockTitleSize,
+            fontWeight = FontWeight.Medium,
+            color = Color.White,
+            maxLines = 1,
+        )
+        Icon(
+            Icons.Outlined.ChevronRight,
+            contentDescription = "打开选集",
+            modifier = Modifier.size(18.dp),
+            tint = Color.White,
+        )
+    }
+}
+
+@Composable
+internal fun HongguoPlayerTimeLabel(
+    positionMs: Long,
+    durationMs: Long,
+    modifier: Modifier = Modifier,
+) {
+    Text(
+        PlaybackTimeFormatter.label(positionMs, durationMs),
+        modifier = modifier,
+        color = HongguoColors.playerChromeMuted,
+        fontSize = HongguoUi.playbackDockTimeSize,
+        fontWeight = FontWeight.Medium,
+        maxLines = 1,
+    )
+}
+
 /** The only ordinary settings group: one title + theme card + consistent spacing. */
 @Composable
 internal fun HongguoSettingsSection(
