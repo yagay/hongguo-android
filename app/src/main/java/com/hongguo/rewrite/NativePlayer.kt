@@ -54,6 +54,10 @@ import androidx.compose.material3.Icon
 import androidx.compose.material3.IconButton
 import androidx.compose.material3.MaterialTheme
 import androidx.compose.material3.ModalBottomSheet
+import androidx.compose.material3.ModalNavigationDrawer
+import androidx.compose.material3.ModalDrawerSheet
+import androidx.compose.material3.DrawerValue
+import androidx.compose.material3.rememberDrawerState
 import androidx.compose.material3.OutlinedButton
 import androidx.compose.material3.Slider
 import androidx.compose.material3.Text
@@ -70,6 +74,7 @@ import androidx.compose.runtime.mutableLongStateOf
 import androidx.compose.runtime.mutableStateOf
 import androidx.compose.runtime.remember
 import androidx.compose.runtime.rememberUpdatedState
+import androidx.compose.runtime.rememberCoroutineScope
 import androidx.compose.runtime.saveable.rememberSaveable
 import androidx.compose.runtime.setValue
 import androidx.compose.runtime.snapshotFlow
@@ -82,6 +87,7 @@ import coil.compose.AsyncImage
 import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.geometry.Offset
 import androidx.compose.ui.platform.LocalContext
+import androidx.compose.ui.platform.LocalConfiguration
 import androidx.compose.ui.platform.LocalDensity
 import androidx.compose.ui.platform.testTag
 import androidx.compose.ui.text.font.FontWeight
@@ -99,6 +105,7 @@ import androidx.media3.exoplayer.ExoPlayer
 import androidx.media3.ui.PlayerView
 import androidx.media3.ui.AspectRatioFrameLayout
 import kotlinx.coroutines.delay
+import kotlinx.coroutines.launch
 import kotlinx.coroutines.flow.distinctUntilChanged
 import kotlinx.coroutines.isActive
 import kotlin.math.roundToInt
@@ -152,6 +159,8 @@ internal fun NativePlayer(
     var showComments by remember { mutableStateOf(false) }
     var showEpisodes by remember { mutableStateOf(false) }
     var showPlaybackSettings by remember { mutableStateOf(false) }
+    val accountDrawerState = rememberDrawerState(DrawerValue.Closed)
+    val accountDrawerScope = rememberCoroutineScope()
     var showHeart by remember { mutableStateOf(false) }
     var longHolding by remember { mutableStateOf(false) }
     var speedBeforeHold by remember { mutableFloatStateOf(1f) }
@@ -221,7 +230,11 @@ internal fun NativePlayer(
         ) }
         model.backFromPlayer()
     }
-    BackHandler(enabled = !showPlaybackSettings && !showComments && !showEpisodes) {
+    BackHandler(enabled = accountDrawerState.isOpen) {
+        accountDrawerScope.launch { accountDrawerState.close() }
+    }
+    BackHandler(enabled = accountDrawerState.isClosed &&
+        !showPlaybackSettings && !showComments && !showEpisodes) {
         flushThenClose()
     }
 
@@ -281,6 +294,41 @@ internal fun NativePlayer(
         }
     }
 
+    ModalNavigationDrawer(
+        drawerState = accountDrawerState,
+        gesturesEnabled = state.feedMode,
+        drawerContent = {
+            ModalDrawerSheet(
+                modifier = Modifier.width((LocalConfiguration.current.screenWidthDp * 0.80f).dp),
+                drawerContainerColor = Color(0xFFF8F8F8),
+            ) {
+                ReelAccountDrawer(
+                    state = state,
+                    model = model,
+                    onAccount = {
+                        accountDrawerScope.launch { accountDrawerState.close() }
+                        model.minimizePlayer()
+                        model.show(Modal.ACCOUNT)
+                    },
+                    onHistoryItem = { drama ->
+                        accountDrawerScope.launch { accountDrawerState.close() }
+                        model.open(drama)
+                    },
+                    onReservations = {
+                        accountDrawerScope.launch { accountDrawerState.close() }
+                        model.minimizePlayer()
+                        model.show(Modal.ACCOUNT)
+                    },
+                    onDownloads = {
+                        accountDrawerScope.launch { accountDrawerState.close() }
+                        model.minimizePlayer()
+                        model.updateDownloads()
+                        model.show(Modal.DOWNLOAD)
+                    },
+                )
+            }
+        },
+    ) {
     Column(Modifier.fillMaxSize().background(Color.Black).testTag("reels_player")) {
         Box(Modifier.fillMaxWidth().weight(1f).testTag("reel_video_viewport")) {
         VerticalPager(
@@ -446,6 +494,9 @@ internal fun NativePlayer(
             detail = detail,
             episode = selected,
             onPlaybackSettings = { showPlaybackSettings = true },
+            onOpenAccountDrawer = {
+                accountDrawerScope.launch { accountDrawerState.open() }
+            },
             onPictureInPicture = {
                 selected?.vid?.let { vid ->
                     (context as? MainActivity)?.enterVideoPictureInPicture(vid)
@@ -484,6 +535,7 @@ internal fun NativePlayer(
             onEpisodes = { showEpisodes = true },
         )
     }
+    } // ModalNavigationDrawer content
 
     if (showPlaybackSettings) {
         PlaybackExperienceSheet(
