@@ -303,7 +303,7 @@ internal fun NativePlayer(
     BackHandler(enabled = state.navigation.destination != PlaybackDestination.DETAILS &&
         !searchOverlayOpen && accountDrawerState.isClosed && clearScreenEnabled &&
         !showPlaybackSettings && !showComments && !showEpisodes) {
-        clearScreenEnabled = false
+        setHiddenChromeMask(0)
     }
     BackHandler(enabled = state.navigation.destination != PlaybackDestination.DETAILS &&
         !searchOverlayOpen && accountDrawerState.isClosed && !clearScreenEnabled &&
