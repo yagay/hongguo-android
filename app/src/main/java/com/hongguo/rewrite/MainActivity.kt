@@ -197,13 +197,14 @@ private fun HongguoApp(model: DramaViewModel = viewModel()) {
     val darkPlayer = activeRoute in setOf(
         PlaybackDestination.FEED, PlaybackDestination.SERIES) &&
         state.modal == Modal.NONE
-    val swipeDetailsOverlay = state.detail != null &&
-        state.navigation.origin == PlaybackOrigin.SWIPE_FEED &&
-        state.navigation.detailsParent != PlaybackDestination.CATALOG &&
-        activeRoute == PlaybackDestination.DETAILS
-    // Never attach two PlayerViews to one ExoPlayer while the slide-over
-    // details page is open. The same full-size SurfaceView stays below it.
-    val showMini = MiniPlayerPresentation.show(state) && !swipeDetailsOverlay
+    val playerDetailsOverlay = state.detail != null &&
+        activeRoute == PlaybackDestination.DETAILS &&
+        state.navigation.detailsParent in setOf(
+            PlaybackDestination.FEED, PlaybackDestination.SERIES)
+    // A details page opened over full-screen playback must not attach a
+    // second PlayerView to the same ExoPlayer (which would steal its Surface).
+    // Explicit catalog details keep the existing mini player.
+    val showMini = MiniPlayerPresentation.show(state) && !playerDetailsOverlay
     val showCatalogBottomNav =
         MiniPlayerPresentation.catalogNavigationVisible(state, searchLandingOpen)
     val systemDark = isSystemInDarkTheme()
@@ -314,10 +315,14 @@ private fun HongguoApp(model: DramaViewModel = viewModel()) {
                     state.modal == Modal.SETTINGS -> SettingsScreen(state, model)
                     state.modal == Modal.ACCOUNT -> AccountScreen(model)
                     activeRoute == PlaybackDestination.DETAILS &&
-                        state.detail != null && !swipeDetailsOverlay ->
-                        DramaDetailScreen(state, model)
+                        state.detail != null && !playerDetailsOverlay ->
+                        // Details opened from the old catalog slide over the
+                        // catalog, preserving its already-visible mini player.
+                        if (mineOpen) MyScreen(state, model, onBack = { mineOpen = false })
+                        else CatalogScreen(state, model, onMine = { mineOpen = true },
+                            onSearchOpen = { searchLandingOpen = true })
                     (activeRoute in setOf(PlaybackDestination.FEED,
-                        PlaybackDestination.SERIES) || swipeDetailsOverlay) &&
+                        PlaybackDestination.SERIES) || playerDetailsOverlay) &&
                         state.detail != null ->
                         // UI mode changes do not destroy the active Media3 item.
                         key(state.detail?.drama?.id) {
@@ -367,11 +372,10 @@ private fun HongguoApp(model: DramaViewModel = viewModel()) {
                     // Keep the player below the animated detail route. Closing
                     // the page slides it back to the right without disposing the
                     // playing video, reloading Media3, or showing the old Home.
-                    if (state.navigation.origin == PlaybackOrigin.SWIPE_FEED &&
-                        state.navigation.detailsParent != PlaybackDestination.CATALOG &&
-                        state.detail != null) {
+                    if (state.detail != null) {
                         RightSlidePage(
-                            visible = swipeDetailsOverlay && state.modal == Modal.NONE,
+                            visible = activeRoute == PlaybackDestination.DETAILS &&
+                                state.modal == Modal.NONE,
                             tag = "drama_detail_slide_page",
                         ) {
                             DramaDetailScreen(state, model)
