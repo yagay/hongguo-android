@@ -276,7 +276,7 @@ class DramaViewModel(application: Application) : AndroidViewModel(application) {
         mutable.update { it.copy(openHongguoLoading = true) }
         sdkDetailJob = viewModelScope.launch {
             try {
-                val meta = openHongguo.details(seriesId)
+                val meta = withContext(Dispatchers.IO) { openHongguo.details(seriesId) }
                 if (generation != sdkDetailGeneration ||
                     state.value.detail?.drama?.id != seriesId ||
                     !state.value.detailPageVisible) return@launch
@@ -297,8 +297,8 @@ class DramaViewModel(application: Application) : AndroidViewModel(application) {
                 // says it exists. Do not generate season IDs from names.
                 if (meta.albumId != null) {
                     val seasons = try {
-                        openHongguo.seasons(seriesId).ifEmpty {
-                            openHongguo.album(meta.albumId).seasons.map {
+                        withContext(Dispatchers.IO) { openHongguo.seasons(seriesId) }.ifEmpty {
+                            withContext(Dispatchers.IO) { openHongguo.album(meta.albumId) }.seasons.map {
                                 Drama(it.seriesId, it.title, it.coverUrl, it.episodeCount)
                             }
                         }
@@ -306,7 +306,7 @@ class DramaViewModel(application: Application) : AndroidViewModel(application) {
                         throw e
                     } catch (_: Exception) {
                         try {
-                            openHongguo.album(meta.albumId).seasons.map {
+                            withContext(Dispatchers.IO) { openHongguo.album(meta.albumId) }.seasons.map {
                                 Drama(it.seriesId, it.title, it.coverUrl, it.episodeCount)
                             }
                         } catch (e: CancellationException) { throw e }
@@ -322,7 +322,8 @@ class DramaViewModel(application: Application) : AndroidViewModel(application) {
                     }
                 }
                 if (state.value.relatedWorks.isEmpty()) {
-                    runCatching { openHongguo.related(seriesId) }
+                    runCatching { withContext(Dispatchers.IO) { openHongguo.related(seriesId) } }
+                        .onFailure { if (it is CancellationException) throw it }
                         .onSuccess { related ->
                             if (generation == sdkDetailGeneration &&
                                 state.value.detail?.drama?.id == seriesId &&
