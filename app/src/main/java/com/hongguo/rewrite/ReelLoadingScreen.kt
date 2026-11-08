@@ -166,10 +166,11 @@ internal fun ReelLoadingScreen(
                     fontWeight = FontWeight.SemiBold, fontSize = 15.sp,
                 )
             }
-            TextButton(onClick = onExit,
-                modifier = Modifier.testTag("reel_loading_exit")) {
-                Text(exitLabel, color = muted, fontSize = 14.sp)
-            }
+            HongguoAction(
+                label = exitLabel, onClick = onExit,
+                modifier = Modifier.testTag("reel_loading_exit"),
+                style = HongguoActionStyle.QUIET,
+            )
         }
         Text(
             "如果持续加载失败，可在设置中导出诊断日志",
