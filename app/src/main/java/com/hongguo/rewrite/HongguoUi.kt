@@ -73,6 +73,12 @@ internal object HongguoUi {
     val pageTitleSize = 22.sp
     val sectionTitleSize = 18.sp
     val pageSectionGap = 12.dp
+    val primaryNavHeight = 40.dp
+    val primaryNavIconSize = 27.dp
+    val playbackSeekTouchHeight = 12.dp
+    val playbackDockRowHeight = 34.dp
+    val playbackDockTimeSize = 12.sp
+    val playbackDockTitleSize = 12.sp
 }
 
 @Composable
@@ -279,10 +285,10 @@ internal fun HongguoPrimaryNavigation(
     // Keep all three primary destinations visually identical. A separate
     // browse-style bar made Theater/My taller and changed the selected colors
     // when navigating away from the reel feed.
-    val height = 40.dp
-    val backgroundColor = Color(0xFF232325)
+    val height = HongguoUi.primaryNavHeight
+    val backgroundColor = HongguoColors.playerChrome
     val activeColor = Color.White
-    val inactiveColor = Color(0xFFB7B7BC)
+    val inactiveColor = HongguoColors.playerChromeMuted
     Surface(color = backgroundColor, shape = RoundedCornerShape(0.dp)) {
         Row(
             modifier = Modifier.fillMaxWidth().height(height),
@@ -303,7 +309,7 @@ internal fun HongguoPrimaryNavigation(
                     Icon(
                         imageVector = icon,
                         contentDescription = label,
-                        modifier = Modifier.size(27.dp),
+                        modifier = Modifier.size(HongguoUi.primaryNavIconSize),
                         tint = if (selectedTab == tab) activeColor else inactiveColor,
                     )
                 }
