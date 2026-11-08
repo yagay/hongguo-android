@@ -343,6 +343,12 @@ internal fun NativePlayer(
                         accountDrawerScope.launch { accountDrawerState.close() }
                         model.show(Modal.SETTINGS)
                     },
+                    onBrowseHome = {
+                        // Explicit navigation is the only route to the old
+                        // catalog home from the default swipe feed.
+                        accountDrawerScope.launch { accountDrawerState.close() }
+                        model.minimizePlayer()
+                    },
                     onOfflineEpisode = { episode ->
                         accountDrawerScope.launch { accountDrawerState.close() }
                         model.openOfflineEpisode(episode)
