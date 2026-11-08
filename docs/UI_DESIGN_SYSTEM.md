@@ -24,6 +24,11 @@ live in `AppDesign.kt`. Do not create parallel screen-local theme palettes.
 | Reusable drama cover | `HongguoPosterCover` |
 | Empty list and search results | `HongguoEmptyState` |
 | Library, filter and video modal title | `HongguoSheetHeader` |
+| All bottom sheets | `HongguoModalSheet` (player alias `HongguoPlayerSheet`) |
+| Player panel section layout | `HongguoPlayerPanel` |
+| Comment and related-drama cards | `HongguoSheetListRow` |
+| Player episode/time controls | `HongguoPlayerEpisodeEntry`, `HongguoPlayerTimeLabel` |
+| Player progress/episode chips | `HongguoPlayerSeekTrack`, `HongguoEpisodeCell` |
 | Home/Theater/My icon-only navigation | `HongguoPrimaryNavigation` |
 
 ## Page rules
@@ -32,7 +37,7 @@ live in `AppDesign.kt`. Do not create parallel screen-local theme palettes.
 - A standard app header is 56dp high; horizontal content gutters are 16dp.
 - Cards use 16dp radius; controls use 10dp radius; icon targets use 40dp.
 - Selected tabs use the same 2dp indicator and text hierarchy on My and Account.
-- All three bottom navigation tabs are one dark 40dp strip, including browse screens.
+- All three bottom navigation tabs use the same 40dp layout and the active `HongguoColors.surface`/`ink`/`muted` palette; never a separate fixed-dark tab style.
 - The bottom navigation has ONE appearance; do not expose unimplemented style options.
 - When UI elements look alike and behave alike, move layout into a shared component.
   Keep state, API calls, loading, media playback and navigation callbacks in screens.
@@ -44,8 +49,13 @@ live in `AppDesign.kt`. Do not create parallel screen-local theme palettes.
 - The video Surface, PiP window, video gestures, episode timeline, subtitles
   and playback overlay require independent sizing and transparent/black layers.
   Video-only top buttons share `HongguoPlayerTopAction`.
-- `PlaybackExperienceSheet` uses a dark sheet, but the shared header and choice
-  components are reused, with a dark styling flag.
+- Player settings, comments, episode selection, Library sheets and theater filters
+  all share one themed modal shape, title hierarchy, actions and drag handle.
+  Sheets follow the app's selected light/dark mode, **not** a permanently dark
+  video palette. Background media continues independently underneath the sheet.
+- Player bottom progress and episode/time chrome use the same themed surface as
+  the primary navigation; the actual video viewport and gesture overlays may
+  remain dark or transparent to preserve readability against moving video.
 - `OfficialLoginActivity` uses native Android views for secure website login.
   Its *outer* chrome reads the saved app theme; the official WebView content
   and verification flow must never be modified merely to restyle it.
