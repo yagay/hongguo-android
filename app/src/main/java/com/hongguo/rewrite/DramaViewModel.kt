@@ -106,6 +106,9 @@ class DramaViewModel(application: Application) : AndroidViewModel(application) {
                 relatedSeries = null, relatedWorks = emptyList(),
                 guessWorks = emptyList(), guessesLoading = false, guessesError = null)
             }
+            // Offline items also require service-owned playback; the UI must
+            // never be the only place that installs media into ExoPlayer.
+            play(0)
         }
     }
 
@@ -1653,8 +1656,21 @@ class DramaViewModel(application: Application) : AndroidViewModel(application) {
         BackgroundPlaybackService.active?.pauseForTransition()
         mutable.update { it.copy(detailPageVisible = false) }
         if (state.value.offlinePlaybackUri != null) {
+            val uri = state.value.offlinePlaybackUri ?: return
+            val resume = state.value.resumePositionMs
+            val currentGeneration = detailId
             mutable.update { it.copy(episodeIndex = index,
-                playbackUrl = it.offlinePlaybackUri, playing = true) }
+                playbackUrl = uri, playing = true) }
+            if (serviceStarted) viewModelScope.launch {
+                try {
+                    launchBackgroundMedia(
+                        detail, index, uri, null, resume, currentGeneration)
+                } catch (e: CancellationException) { throw e }
+                catch (e: Exception) {
+                    mutable.update { it.copy(playbackError = errorText("离线播放", e),
+                        playing = false) }
+                }
+            }
             return
         }
         clearEngagement()
