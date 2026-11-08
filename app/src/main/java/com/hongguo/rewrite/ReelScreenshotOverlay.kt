@@ -186,37 +186,50 @@ internal fun ReelScreenshotOverlay(
                 }
             }
         } else {
-            // Minimal header: no duplicate full-title row over the video.
+            // Three compact controls: the visible circular backgrounds are
+            // only 30dp, while 40dp touch targets preserve usability. Avoid
+            // oversized dark discs taking space from the playing picture.
             Row(
                 Modifier.fillMaxWidth()
-                    .padding(start = 8.dp, end = 8.dp, top = 6.dp),
+                    .padding(start = 6.dp, end = 6.dp, top = 2.dp),
                 verticalAlignment = Alignment.CenterVertically,
             ) {
-                IconButton(onClick = onBack,
-                    modifier = Modifier.size(38.dp)
-                        .background(Color.Black.copy(alpha = 0.25f), CircleShape)) {
-                    Icon(Icons.AutoMirrored.Outlined.ArrowBack, "返回",
-                        tint = white, modifier = Modifier.size(26.dp))
+                IconButton(onClick = onBack, modifier = Modifier.size(40.dp)) {
+                    Box(
+                        Modifier.size(30.dp)
+                            .background(Color.Black.copy(alpha = 0.25f), CircleShape),
+                        contentAlignment = Alignment.Center,
+                    ) {
+                        Icon(Icons.AutoMirrored.Outlined.ArrowBack, "返回",
+                            tint = white, modifier = Modifier.size(20.dp))
+                    }
                 }
                 Spacer(Modifier.weight(1f))
                 IconButton(
                     onClick = onPictureInPicture,
-                    modifier = Modifier.size(38.dp)
-                        .background(Color.Black.copy(alpha = 0.25f), CircleShape)
-                        .testTag("reel_system_pip"),
+                    modifier = Modifier.size(40.dp).testTag("reel_system_pip"),
                 ) {
-                    Icon(Icons.Outlined.PictureInPictureAlt, "跨应用画中画",
-                        tint = white, modifier = Modifier.size(25.dp))
+                    Box(
+                        Modifier.size(30.dp)
+                            .background(Color.Black.copy(alpha = 0.25f), CircleShape),
+                        contentAlignment = Alignment.Center,
+                    ) {
+                        Icon(Icons.Outlined.PictureInPictureAlt, "跨应用画中画",
+                            tint = white, modifier = Modifier.size(19.dp))
+                    }
                 }
-                Spacer(Modifier.width(4.dp))
                 IconButton(
                     onClick = onPlaybackSettings,
-                    modifier = Modifier.size(38.dp)
-                        .background(Color.Black.copy(alpha = 0.25f), CircleShape)
-                        .testTag("reel_more"),
+                    modifier = Modifier.size(40.dp).testTag("reel_more"),
                 ) {
-                    Icon(Icons.Outlined.MoreVert, "播放设置",
-                        tint = white, modifier = Modifier.size(25.dp))
+                    Box(
+                        Modifier.size(30.dp)
+                            .background(Color.Black.copy(alpha = 0.25f), CircleShape),
+                        contentAlignment = Alignment.Center,
+                    ) {
+                        Icon(Icons.Outlined.MoreVert, "播放设置",
+                            tint = white, modifier = Modifier.size(20.dp))
+                    }
                 }
             }
         }
