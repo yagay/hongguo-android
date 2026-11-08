@@ -540,9 +540,8 @@ private fun CatalogFiltersSheet(
     onClose: () -> Unit,
 ) {
     var draft by remember(state.genre) { mutableStateOf(state.activeFilters) }
-    ModalBottomSheet(
+    HongguoModalSheet(
         onDismissRequest = onClose,
-        containerColor = HongguoColors.surface,
         modifier = Modifier.testTag("catalog_filter_sheet"),
     ) {
         Column(Modifier.fillMaxWidth().padding(horizontal = HongguoUi.pagePadding),
