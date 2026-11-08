@@ -336,6 +336,20 @@ internal fun NativePlayer(
                         model.updateDownloads()
                         model.show(Modal.DOWNLOAD)
                     },
+                    onShare = {
+                        accountDrawerScope.launch { accountDrawerState.close() }
+                        model.minimizePlayer()
+                        model.show(Modal.SHARE)
+                    },
+                    onSettings = {
+                        accountDrawerScope.launch { accountDrawerState.close() }
+                        model.minimizePlayer()
+                        model.show(Modal.SETTINGS)
+                    },
+                    onOfflineEpisode = { episode ->
+                        accountDrawerScope.launch { accountDrawerState.close() }
+                        model.openOfflineEpisode(episode)
+                    },
                 )
             }
         },
