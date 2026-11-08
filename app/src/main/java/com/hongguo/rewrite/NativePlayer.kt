@@ -51,6 +51,7 @@ import androidx.compose.material.icons.outlined.Share
 import androidx.compose.material.icons.outlined.Subtitles
 import androidx.compose.material3.AlertDialog
 import androidx.compose.material3.Button
+import androidx.compose.material3.Checkbox
 import androidx.compose.material3.CircularProgressIndicator
 import androidx.compose.material3.ExperimentalMaterial3Api
 import androidx.compose.material3.HorizontalDivider
@@ -74,6 +75,7 @@ import androidx.compose.runtime.LaunchedEffect
 import androidx.compose.runtime.getValue
 import androidx.compose.runtime.key
 import androidx.compose.runtime.mutableFloatStateOf
+import androidx.compose.runtime.mutableIntStateOf
 import androidx.compose.runtime.mutableLongStateOf
 import androidx.compose.runtime.mutableStateOf
 import androidx.compose.runtime.remember
@@ -206,7 +208,19 @@ internal fun NativePlayer(
     val accountDrawerState = rememberDrawerState(DrawerValue.Closed)
     val accountDrawerScope = rememberCoroutineScope()
     var showHeart by remember { mutableStateOf(false) }
-    var clearScreenEnabled by rememberSaveable { mutableStateOf(false) }
+    // A persisted, composable bitmask: each overlay section can be
+    // independently hidden, with 63 meaning one-tap full clear screen.
+    val chromePrefs = remember(context) {
+        context.getSharedPreferences("player_clear_screen", Context.MODE_PRIVATE)
+    }
+    var hiddenChromeMask by remember {
+        mutableIntStateOf(chromePrefs.getInt("hidden_chrome_mask_v2", 0) and 63)
+    }
+    fun setHiddenChromeMask(mask: Int) {
+        hiddenChromeMask = mask and 63
+        chromePrefs.edit().putInt("hidden_chrome_mask_v2", hiddenChromeMask).apply()
+    }
+    val clearScreenEnabled = hiddenChromeMask == 63
     var clearScreenMenuOpen by remember { mutableStateOf(false) }
     // Signed seek feedback: negative = rewind, positive = fast-forward.
     // Kept separate from clear-screen chrome, so it remains readable even
@@ -628,7 +642,7 @@ internal fun NativePlayer(
         // Keep the actual video unobscured. Text and buttons provide their own
         // contrast treatment instead of dimming the entire top/bottom frame.
 
-        if (!clearScreenEnabled && state.danmakuEnabled &&
+        if ((hiddenChromeMask and 32) == 0 && state.danmakuEnabled &&
             selected != null && !showComments && !showEpisodes) {
             TimedDanmakuOverlay(
                 items = state.danmakuItems.takeIf {
@@ -647,7 +661,7 @@ internal fun NativePlayer(
         // Exactly one persistent overlay. Its *top navigation* fades
         // between feed and full-series mode; title, sidebar, status and dock
         // remain stable above the unchanged Media3 video SurfaceView.
-        if (!clearScreenEnabled) ReelScreenshotOverlay(
+        ReelScreenshotOverlay(
             state = state,
             detail = detail,
             episode = selected,
@@ -678,6 +692,12 @@ internal fun NativePlayer(
             onReal = { model.setReelsMode("real") },
             onRecommend = { model.setReelsMode("all") },
             onSearch = { searchOverlayOpen = true },
+            showTopButtons = (hiddenChromeMask and 1) == 0,
+            showSideButtons = (hiddenChromeMask and 2) == 0,
+            showTitle = (hiddenChromeMask and 4) == 0,
+            showTags = (hiddenChromeMask and 8) == 0,
+            showDescription = (hiddenChromeMask and 16) == 0,
+            showDanmakuControls = (hiddenChromeMask and 32) == 0,
         )
         }
         ReelBottomDock(
@@ -718,21 +738,57 @@ internal fun NativePlayer(
 
     if (clearScreenMenuOpen) AlertDialog(
         onDismissRequest = { clearScreenMenuOpen = false },
-        title = { Text("清屏模式") },
-        text = { Text(if (clearScreenEnabled)
-            "关闭后恢复视频画面上的文字、按钮和弹幕。"
-            else "开启后只隐藏视频画面上的内容。底部进度条、选集和页面导航保持显示。") },
+        title = { Text("清屏设置") },
+        text = {
+            Column(verticalArrangement = Arrangement.spacedBy(2.dp)) {
+                Text("选择要从视频画面上隐藏的内容",
+                    color = HongguoColors.muted, fontSize = 12.sp)
+                listOf(
+                    Triple(1, "顶部按钮", "推荐分类、返回、画中画和设置"),
+                    Triple(2, "右侧按钮", "收藏、评论、喜欢、播放量"),
+                    Triple(4, "剧名", "剧名和进入详情的入口"),
+                    Triple(8, "演员与标签", "分类、演员及 AI 提示"),
+                    Triple(16, "简介文案", "视频下方的剧情介绍"),
+                    Triple(32, "弹幕", "画面弹幕与弹幕开关"),
+                ).forEach { (bit, label, description) ->
+                    Row(
+                        Modifier.fillMaxWidth()
+                            .clickable {
+                                setHiddenChromeMask(hiddenChromeMask xor bit)
+                            }.padding(vertical = 2.dp)
+                            .testTag("clear_screen_option_$bit"),
+                        verticalAlignment = Alignment.CenterVertically,
+                    ) {
+                        Checkbox(
+                            checked = (hiddenChromeMask and bit) != 0,
+                            onCheckedChange = { hide ->
+                                setHiddenChromeMask(
+                                    if (hide) hiddenChromeMask or bit
+                                    else hiddenChromeMask and bit.inv()
+                                )
+                            },
+                        )
+                        Column(Modifier.weight(1f)) {
+                            Text(label, color = HongguoColors.ink, fontSize = 14.sp)
+                            Text(description, color = HongguoColors.muted,
+                                fontSize = 11.sp, lineHeight = 14.sp)
+                        }
+                    }
+                }
+                Text("进度条、选集、底部导航始终保留。",
+                    color = HongguoColors.muted, fontSize = 11.sp)
+            }
+        },
         confirmButton = {
             TextButton(
-                onClick = {
-                    clearScreenEnabled = !clearScreenEnabled
-                    clearScreenMenuOpen = false
-                },
+                onClick = { clearScreenMenuOpen = false },
                 modifier = Modifier.testTag("player_clear_screen_toggle"),
-            ) { Text(if (clearScreenEnabled) "关闭清屏" else "开启清屏") }
+            ) { Text("完成") }
         },
         dismissButton = {
-            TextButton(onClick = { clearScreenMenuOpen = false }) { Text("取消") }
+            TextButton(onClick = { setHiddenChromeMask(
+                if (hiddenChromeMask == 63) 0 else 63
+            ) }) { Text(if (clearScreenEnabled) "全部显示" else "全部清屏") }
         },
         modifier = Modifier.testTag("player_clear_screen_dialog"),
     )
