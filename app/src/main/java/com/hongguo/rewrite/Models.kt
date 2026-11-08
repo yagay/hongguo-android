@@ -94,6 +94,10 @@ data class AppState(
     val relatedWorks: List<RelatedDrama> = emptyList(),
     val relatedLoading: Boolean = false,
     val relatedError: String? = null,
+    /** Generic recommendation plan (160 / anonymous 401); not the related-work 547 cell. */
+    val guessWorks: List<Drama> = emptyList(),
+    val guessesLoading: Boolean = false,
+    val guessesError: String? = null,
     val playing: Boolean = false,
     val playbackUrl: String? = null,
     val resumePositionMs: Long = 0L,
