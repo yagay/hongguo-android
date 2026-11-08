@@ -56,10 +56,8 @@ import coil.compose.AsyncImage
 @Composable
 internal fun LibrarySheets(state: AppState, model: DramaViewModel) {
     if (state.modal !in setOf(Modal.HISTORY, Modal.FAVORITES, Modal.DOWNLOAD, Modal.SHARE)) return
-    ModalBottomSheet(
+    HongguoModalSheet(
         onDismissRequest = model::closeModal,
-        containerColor = HongguoColors.surface,
-        contentColor = HongguoColors.ink,
         modifier = Modifier.testTag("library_sheet"),
     ) {
         Column(
