@@ -474,22 +474,21 @@ private fun HongguoApp(model: DramaViewModel = viewModel()) {
                                 Triple("mine", "我的", Icons.Outlined.PersonOutline),
                             ).forEach { (tab, label, icon) ->
                                 val selected = primaryTab == tab
-                                Column(
+                                Box(
                                     modifier = Modifier.weight(1f).height(tabHeight)
-                                        .clickable { selectPrimaryTab(tab) },
-                                    horizontalAlignment = Alignment.CenterHorizontally,
-                                    verticalArrangement = Arrangement.Center,
+                                        .clickable { selectPrimaryTab(tab) }
+                                        .testTag("primary_tab_" + tab),
+                                    contentAlignment = Alignment.Center,
                                 ) {
-                                    Icon(icon, contentDescription = label,
-                                        modifier = Modifier.height(if (darkPlayer) 18.dp else 21.dp),
+                                    // Icon-only navigation: retain the full
+                                    // tap target and accessibility label.
+                                    Icon(
+                                        imageVector = icon,
+                                        contentDescription = label,
+                                        modifier = Modifier.size(if (darkPlayer) 27.dp else 29.dp),
                                         tint = if (selected) activeTabColor
-                                            else inactiveTabColor)
-                                    Text(label, fontSize = if (darkPlayer) 10.sp else 11.sp,
-                                        lineHeight = if (darkPlayer) 13.sp else 15.sp,
-                                        fontWeight = if (selected) FontWeight.SemiBold
-                                            else FontWeight.Normal,
-                                        color = if (selected) activeTabColor
-                                            else inactiveTabColor)
+                                            else inactiveTabColor,
+                                    )
                                 }
                             }
                         }
