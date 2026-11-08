@@ -14,10 +14,15 @@ import androidx.activity.compose.BackHandler
 import androidx.activity.compose.setContent
 import androidx.activity.enableEdgeToEdge
 import androidx.compose.foundation.background
+import androidx.compose.foundation.clickable
 import androidx.compose.foundation.layout.Arrangement
 import androidx.compose.foundation.layout.Box
 import androidx.compose.foundation.layout.Column
+import androidx.compose.foundation.layout.Row
+import androidx.compose.foundation.layout.height
+import androidx.compose.foundation.layout.Spacer
 import androidx.compose.foundation.layout.fillMaxSize
+import androidx.compose.foundation.layout.fillMaxWidth
 import androidx.compose.foundation.layout.imePadding
 import androidx.compose.foundation.layout.safeDrawingPadding
 import androidx.compose.foundation.layout.padding
@@ -25,8 +30,6 @@ import androidx.compose.material3.AlertDialog
 import androidx.compose.material3.OutlinedButton
 import androidx.compose.material3.CircularProgressIndicator
 import androidx.compose.material3.MaterialTheme
-import androidx.compose.material3.NavigationBar
-import androidx.compose.material3.NavigationBarItem
 import androidx.compose.material3.Icon
 import androidx.compose.material.icons.Icons
 import androidx.compose.material.icons.outlined.Home
@@ -52,8 +55,10 @@ import androidx.compose.runtime.saveable.rememberSaveable
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.graphics.Color
+import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.platform.LocalContext
 import androidx.compose.ui.unit.dp
+import androidx.compose.ui.unit.sp
 import androidx.compose.ui.viewinterop.AndroidView
 import androidx.media3.ui.AspectRatioFrameLayout
 import androidx.media3.ui.PlayerView
@@ -426,35 +431,41 @@ private fun HongguoApp(model: DramaViewModel = viewModel()) {
                 // Android Surface, briefly blacking out or hiding the video.
                 if (showMini) InAppMiniPlayer(state, model)
                 if (showPrimaryNavigation) {
+                    // NavigationBar's default 80dp min-height and extra glass
+                    // margins shrink the portrait Media3 viewport. Use a
+                    // consistent 50dp compact strip outside system bar insets.
                     Surface(
-                        modifier = if (state.navigationStyle == "glass")
-                            Modifier.padding(horizontal = 14.dp, vertical = 7.dp)
-                        else Modifier,
-                        shape = RoundedCornerShape(
-                            if (state.navigationStyle == "glass") 26.dp else 0.dp),
                         color = HongguoColors.surface,
-                        shadowElevation = if (state.navigationStyle == "glass") 8.dp else 0.dp,
+                        shape = RoundedCornerShape(0.dp),
                     ) {
-                        NavigationBar(containerColor = Color.Transparent) {
-                            NavigationBarItem(
-                                selected = primaryTab == "home",
-                                onClick = { selectPrimaryTab("home") },
-                                icon = { Icon(Icons.Outlined.Home, contentDescription = null) },
-                                label = { Text("首页") },
-                            )
-                            NavigationBarItem(
-                                selected = primaryTab == "theater",
-                                onClick = { selectPrimaryTab("theater") },
-                                icon = { Icon(Icons.Outlined.Theaters, contentDescription = null) },
-                                label = { Text("剧场") },
-                            )
-                            NavigationBarItem(
-                                selected = primaryTab == "mine",
-                                onClick = { selectPrimaryTab("mine") },
-                                icon = { Icon(Icons.Outlined.PersonOutline,
-                                    contentDescription = null) },
-                                label = { Text("我的") },
-                            )
+                        Row(
+                            Modifier.fillMaxWidth().height(50.dp),
+                            horizontalArrangement = Arrangement.SpaceEvenly,
+                            verticalAlignment = Alignment.CenterVertically,
+                        ) {
+                            listOf(
+                                Triple("home", "首页", Icons.Outlined.Home),
+                                Triple("theater", "剧场", Icons.Outlined.Theaters),
+                                Triple("mine", "我的", Icons.Outlined.PersonOutline),
+                            ).forEach { (tab, label, icon) ->
+                                val selected = primaryTab == tab
+                                Column(
+                                    modifier = Modifier.weight(1f).height(50.dp)
+                                        .clickable { selectPrimaryTab(tab) },
+                                    horizontalAlignment = Alignment.CenterHorizontally,
+                                    verticalArrangement = Arrangement.Center,
+                                ) {
+                                    Icon(icon, contentDescription = label,
+                                        modifier = Modifier.height(21.dp),
+                                        tint = if (selected) HongguoColors.accent
+                                            else HongguoColors.muted)
+                                    Text(label, fontSize = 11.sp, lineHeight = 15.sp,
+                                        fontWeight = if (selected) FontWeight.SemiBold
+                                            else FontWeight.Normal,
+                                        color = if (selected) HongguoColors.accent
+                                            else HongguoColors.muted)
+                                }
+                            }
                         }
                     }
                 }
