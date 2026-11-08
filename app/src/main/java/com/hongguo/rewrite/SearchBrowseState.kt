@@ -3,6 +3,7 @@ package com.hongguo.rewrite
 /** Search discovery is independent of the homepage catalog and the live reel queue. */
 internal data class SearchBrowseState(
     val section: Section? = null,
+    val query: String = "",
     val board: String = "all",
     val genre: String = "short_play",
     val activeFilters: Map<String, String> = emptyMap(),
