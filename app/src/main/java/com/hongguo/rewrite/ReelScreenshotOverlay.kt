@@ -199,43 +199,27 @@ internal fun ReelScreenshotOverlay(
                     .padding(start = 6.dp, end = 6.dp, top = 2.dp),
                 verticalAlignment = Alignment.CenterVertically,
             ) {
-                IconButton(onClick = onBack, modifier = Modifier.size(40.dp)) {
-                    Box(
-                        Modifier.size(30.dp)
-                            .background(Color.Black.copy(alpha = 0.25f), CircleShape),
-                        contentAlignment = Alignment.Center,
-                    ) {
-                        Icon(Icons.AutoMirrored.Outlined.ArrowBack, "返回",
-                            tint = white, modifier = Modifier.size(26.dp))
-                    }
-                }
+                HongguoPlayerTopAction(
+                    icon = Icons.AutoMirrored.Outlined.ArrowBack,
+                    label = "返回",
+                    onClick = onBack,
+                    iconSize = 26.dp,
+                )
                 Spacer(Modifier.weight(1f))
-                if (onPictureInPicture != null) IconButton(
-                    onClick = onPictureInPicture,
-                    modifier = Modifier.size(40.dp).testTag("reel_system_pip"),
-                ) {
-                    Box(
-                        Modifier.size(30.dp)
-                            .background(Color.Black.copy(alpha = 0.25f), CircleShape),
-                        contentAlignment = Alignment.Center,
-                    ) {
-                        Icon(Icons.Outlined.PictureInPictureAlt, "跨应用画中画",
-                            tint = white, modifier = Modifier.size(25.dp))
-                    }
+                if (onPictureInPicture != null) {
+                    HongguoPlayerTopAction(
+                        icon = Icons.Outlined.PictureInPictureAlt,
+                        label = "跨应用画中画",
+                        onClick = onPictureInPicture,
+                        modifier = Modifier.testTag("reel_system_pip"),
+                    )
                 }
-                IconButton(
+                HongguoPlayerTopAction(
+                    icon = Icons.Outlined.MoreVert,
+                    label = "播放设置",
                     onClick = onPlaybackSettings,
-                    modifier = Modifier.size(40.dp).testTag("reel_more"),
-                ) {
-                    Box(
-                        Modifier.size(30.dp)
-                            .background(Color.Black.copy(alpha = 0.25f), CircleShape),
-                        contentAlignment = Alignment.Center,
-                    ) {
-                        Icon(Icons.Outlined.MoreVert, "播放设置",
-                            tint = white, modifier = Modifier.size(25.dp))
-                    }
-                }
+                    modifier = Modifier.testTag("reel_more"),
+                )
             }
         }
         } // Header-only fade; the persistent video controls never animate offscreen
