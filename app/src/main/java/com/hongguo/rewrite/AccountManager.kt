@@ -36,6 +36,7 @@ data class AccountUiState(
     val historyLoaded: Boolean = false,
     val favoritesLoaded: Boolean = false,
     val reservationsLoaded: Boolean = false,
+    val reservationsLoading: Boolean = false,
 )
 
 internal class AccountManager(app: Application, private val scope: CoroutineScope) {
@@ -56,6 +57,7 @@ internal class AccountManager(app: Application, private val scope: CoroutineScop
     private var phoneLogin: PhoneLogin? = null
     private var authJob: Job? = null
     private var dataJob: Job? = null
+    private var reservationsJob: Job? = null
     private var likesJob: Job? = null
     private var uploadJob: Job? = null
     private var queuedUpload: Pair<CloudProgress, Int>? = null
@@ -357,12 +359,13 @@ internal class AccountManager(app: Application, private val scope: CoroutineScop
         }
     }
 
+    /** Reservations must not cancel a profile/history/favorites refresh. */
     fun loadReservations() {
         val session = credentials ?: return
         val token = epoch
-        dataJob?.cancel()
-        mutable.update { it.copy(busy = true, message = "读取我的预约…") }
-        dataJob = scope.launch {
+        reservationsJob?.cancel()
+        mutable.update { it.copy(reservationsLoading = true, message = "读取我的预约…") }
+        reservationsJob = scope.launch {
             try {
                 val online = runCatching { withContext(Dispatchers.IO) {
                     cloud.reservations(session, true)
@@ -370,15 +373,23 @@ internal class AccountManager(app: Application, private val scope: CoroutineScop
                 val upcoming = runCatching { withContext(Dispatchers.IO) {
                     cloud.reservations(session, false)
                 } }
-                if (token == epoch) mutable.update { it.copy(
+                if (token == epoch && credentials === session) mutable.update { it.copy(
                     online = online.getOrDefault(emptyList()),
                     upcoming = upcoming.getOrDefault(emptyList()),
                     reservationsLoaded = online.isSuccess && upcoming.isSuccess,
                     message = if (online.isSuccess && upcoming.isSuccess)
                         "预约记录已更新" else "部分预约数据暂不可用",
                 ) }
-            } catch (e: CancellationException) { throw e }
-            finally { if (token == epoch) mutable.update { it.copy(busy = false) } }
+            } catch (e: CancellationException) {
+                throw e
+            } catch (e: Exception) {
+                if (token == epoch && credentials === session) mutable.update {
+                    it.copy(message = "预约读取失败：" + explain(e))
+                }
+            } finally {
+                if (token == epoch && credentials === session)
+                    mutable.update { it.copy(reservationsLoading = false) }
+            }
         }
     }
 
@@ -477,6 +488,7 @@ internal class AccountManager(app: Application, private val scope: CoroutineScop
     fun logout() {
         resetLogin()
         dataJob?.cancel()
+        reservationsJob?.cancel()
         likesJob?.cancel()
         uploadJob?.cancel()
         queuedUpload = null
