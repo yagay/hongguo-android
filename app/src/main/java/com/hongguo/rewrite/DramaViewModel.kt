@@ -1595,6 +1595,9 @@ class DramaViewModel(application: Application) : AndroidViewModel(application) {
         // home cards as the first swipe queue, even when the server repeats them.
         homeFeedExcludedIds = current.items.mapTo(linkedSetOf()) { it.id }
         mutable.update { it.copy(
+            miniPlayerVisible = false,
+            detailPageVisible = false,
+            detail = if (drama == null) null else it.detail,
             feedMode = true,
             feedItems = drama?.let(::listOf).orEmpty(),
             feedIndex = 0,
@@ -1857,7 +1860,8 @@ class DramaViewModel(application: Application) : AndroidViewModel(application) {
         if (serviceRecoveryRequested || BackgroundPlaybackService.active != null ||
             BackgroundPlaybackService.playerFlow.value != null) return
         val snapshot = state.value
-        if (snapshot.detail == null || snapshot.detailPageVisible ||
+        if (snapshot.detail == null ||
+            (snapshot.detailPageVisible && !snapshot.miniPlayerVisible) ||
             snapshot.playbackUrl == null || !snapshot.playing ||
             snapshot.playbackError != null) return
         serviceRecoveryRequested = true
@@ -1868,7 +1872,8 @@ class DramaViewModel(application: Application) : AndroidViewModel(application) {
                 val current = state.value
                 if (BackgroundPlaybackService.active == null &&
                     BackgroundPlaybackService.playerFlow.value == null &&
-                    current.detail != null && !current.detailPageVisible &&
+                    current.detail != null &&
+                    (!current.detailPageVisible || current.miniPlayerVisible) &&
                     current.playbackUrl != null && current.playing &&
                     current.playbackError == null) {
                     // Discard any cached decoder/source from the dead session.
