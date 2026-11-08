@@ -429,18 +429,20 @@ internal fun AccountScreen(model: DramaViewModel) {
                         }
                     }
                 }
-                item {
-                    Surface(shape = RoundedCornerShape(16.dp),
-                        color = HongguoColors.surface,
-                        modifier = Modifier.fillMaxWidth().testTag("account_stats")) {
-                        Row(Modifier.fillMaxWidth().padding(vertical = 15.dp)) {
-                            listOf("关注", "粉丝", "获赞").forEach { label ->
-                                Column(Modifier.weight(1f),
-                                    horizontalAlignment = Alignment.CenterHorizontally,
-                                    verticalArrangement = Arrangement.spacedBy(4.dp)) {
-                                    Text("—", color = HongguoColors.ink,
-                                        fontSize = 20.sp, fontWeight = FontWeight.Medium)
-                                    Text(label, color = HongguoColors.muted, fontSize = 13.sp)
+                // The account profile API currently has no verified social
+                // counters. Don't show permanent "—" placeholders.
+                if (FeatureAvailability.hasApi(RemoteFeature.ACCOUNT_SOCIAL_COUNTS)) {
+                    item {
+                        Surface(shape = RoundedCornerShape(16.dp),
+                            color = HongguoColors.surface,
+                            modifier = Modifier.fillMaxWidth().testTag("account_stats")) {
+                            Row(Modifier.fillMaxWidth().padding(vertical = 15.dp)) {
+                                listOf("关注", "粉丝", "获赞").forEach { label ->
+                                    Column(Modifier.weight(1f),
+                                        horizontalAlignment = Alignment.CenterHorizontally) {
+                                        Text(label, color = HongguoColors.muted,
+                                            fontSize = 13.sp)
+                                    }
                                 }
                             }
                         }
