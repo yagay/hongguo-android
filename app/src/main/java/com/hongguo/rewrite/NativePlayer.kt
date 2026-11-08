@@ -269,11 +269,14 @@ internal fun NativePlayer(
             }
         }
     }
-    LaunchedEffect(state.episodeIndex) {
-        if (pagerState.settledPage != activePage && !pagerState.isScrollInProgress) {
+    // A feed/series mode change can alter the pager's page index without
+    // changing the current episode. Recenter immediately, without simulating
+    // a user swipe or scrolling through all intermediate episodes.
+    LaunchedEffect(state.episodeIndex, state.feedMode, activePage) {
+        if (pagerState.settledPage != activePage) {
             recenteringPager = true
             try {
-                pagerState.animateScrollToPage(activePage)
+                pagerState.scrollToPage(activePage)
             } finally {
                 recenteringPager = false
             }
@@ -366,9 +369,13 @@ internal fun NativePlayer(
                     if (url != null) {
                         Box(
                             Modifier.fillMaxSize()
-                                .pointerInput(detail.drama.id, state.episodeIndex) {
+                                .pointerInput(detail.drama.id, state.episodeIndex, state.feedMode) {
                                     detectTapGestures(
-                                        onTap = { playback.toggle() },
+                                        onTap = {
+                                            if (state.feedMode)
+                                                model.exitFeedToEpisode(state.episodeIndex)
+                                            else playback.toggle()
+                                        },
                                         onDoubleTap = {
                                             if (!likedNow) model.likeIfNotAlready()
                                             showHeart = true
@@ -542,7 +549,10 @@ internal fun NativePlayer(
             detail = detail,
             episode = selected,
             playback = playback,
-            onEpisodes = { showEpisodes = true },
+            onEpisodes = {
+                if (state.feedMode) model.exitFeedToEpisode(state.episodeIndex)
+                else showEpisodes = true
+            },
         )
     }
     // The search landing slides over (not instead of) the reel video.
