@@ -157,7 +157,7 @@ internal fun ReelLoadingScreen(
                     disabledContainerColor = Color(0xFF40332E),
                     disabledContentColor = Color(0xFFC8B7B1),
                 ),
-                shape = RoundedCornerShape(13.dp),
+                shape = RoundedCornerShape(HongguoUi.controlRadius),
                 modifier = Modifier.fillMaxWidth().height(48.dp)
                     .testTag("reel_loading_retry"),
             ) {
