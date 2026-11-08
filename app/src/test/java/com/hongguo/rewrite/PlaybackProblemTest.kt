@@ -29,6 +29,18 @@ class PlaybackProblemTest {
         assertFalse(PlaybackProblem.isEmptyPlaybackModel(IOException("EMPTY_RESPONSE")))
     }
 
+    @Test fun transientTransportCanRetryWithoutRetryingProtocolOrCodecFailures() {
+        assertTrue(PlaybackProblem.isTransientTransport(IOException("network disconnected")))
+        assertTrue(PlaybackProblem.isTransientTransport(SocketTimeoutException()))
+        assertTrue(PlaybackProblem.isTransientTransport(
+            IOException("outer", UnknownHostException("example.com"))))
+        assertFalse(PlaybackProblem.isTransientTransport(EmptyPlaybackResponseException()))
+        assertFalse(PlaybackProblem.isTransientTransport(IOException("CODEC_NOT_SUPPORTED")))
+        assertFalse(PlaybackProblem.isTransientTransport(IOException("HTTP 403")))
+        assertFalse(PlaybackProblem.isTransientTransport(IOException("HTTP 429")))
+        assertFalse(PlaybackProblem.isTransientTransport(UnsupportedOperationException()))
+    }
+
     @Test fun nativeUnsupportedCodecIsDistinct() {
         assertTrue(PlaybackProblem.describe("准备播放",
             IOException("CODEC_NOT_SUPPORTED")).startsWith("CODEC_NOT_SUPPORTED"))
