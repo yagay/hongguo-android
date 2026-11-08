@@ -99,7 +99,6 @@ import androidx.lifecycle.compose.collectAsStateWithLifecycle
 import androidx.media3.exoplayer.ExoPlayer
 import androidx.media3.ui.PlayerView
 import androidx.media3.ui.AspectRatioFrameLayout
-import com.hongguotv.core.RemoteVideo
 import kotlinx.coroutines.delay
 import kotlinx.coroutines.flow.distinctUntilChanged
 import kotlinx.coroutines.isActive
