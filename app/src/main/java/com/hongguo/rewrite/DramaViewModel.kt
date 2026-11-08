@@ -395,7 +395,11 @@ class DramaViewModel(application: Application) : AndroidViewModel(application) {
     fun nativeVideoFor(vid: String): RemoteVideo? =
         if (activeNativeVid == vid) activeNativeVideo else null
     private fun closeNativeVideo() {
-        activeNativeVideo?.close()
+        val video = activeNativeVideo
+        // The service owns the active encrypted stream. Closing it here while
+        // ExoPlayer still references it causes silent stalls after skip/auto-next.
+        if (video != null && BackgroundPlaybackService.active?.ownsVideo(video) != true)
+            video.close()
         activeNativeVideo = null
         activeNativeVid = null
     }
