@@ -61,6 +61,13 @@ class BackgroundPlaybackService : MediaSessionService() {
     private val previousCommand = SessionCommand(PREVIOUS, Bundle.EMPTY)
     private val nextCommand = SessionCommand(NEXT, Bundle.EMPTY)
     private var remoteVideo: RemoteVideo? = null
+    /** One recently replaced prepared stream for a quick reverse swipe. */
+    private var recentVideo: RemoteVideo? = null
+    private var recentVid: String = ""
+    private var recentQuality = 0
+    private var recentSavedAtMs = 0L
+    private var currentQuality = 0
+    private val recentTtlMs = 90_000L
     private var currentKey: String? = null
     private var currentVid: String = ""
     private var previousAllowed = false
@@ -302,12 +309,41 @@ class BackgroundPlaybackService : MediaSessionService() {
         }
     }
 
+    private fun clearRecentVideo() {
+        recentVideo?.close()
+        recentVideo = null
+        recentVid = ""
+        recentQuality = 0
+        recentSavedAtMs = 0L
+    }
+
+    /** Main-thread, one-shot ownership transfer back to the ViewModel.
+     * Do not retain the cached stream beyond 90 seconds or after explicit
+     * stop, and never replay it at another quality.
+     */
+    fun takeRecentVideo(vid: String, quality: Int): RemoteVideo? {
+        val cached = recentVideo ?: return null
+        val fresh = android.os.SystemClock.elapsedRealtime() - recentSavedAtMs <= recentTtlMs
+        if (!fresh) {
+            clearRecentVideo()
+            return null
+        }
+        if (recentVid != vid || recentQuality != quality) return null
+        recentVideo = null
+        recentVid = ""
+        recentQuality = 0
+        recentSavedAtMs = 0L
+        diagnostics.record("BACKGROUND", "RECENT_STREAM_REUSED")
+        return cached
+    }
+
     /** Called on main by the UI after metadata + encrypted media are ready. */
     fun configure(
         key: String,
         vid: String,
         url: String,
         remote: RemoteVideo?,
+        qualityLimit: Int,
         drama: String,
         episode: Int,
         totalEpisodes: Int,
@@ -332,10 +368,13 @@ class BackgroundPlaybackService : MediaSessionService() {
         outroMs = endingMs.coerceAtLeast(0)
         if (currentKey == key) return
         val previousRemote = remoteVideo
+        val previousVid = currentVid
+        val previousQuality = currentQuality
         // Install the replacement media before disposing the prior encrypted
         // stream. A slow network transition keeps the old media session alive.
         engine.stop()
         remoteVideo = remote
+        currentQuality = qualityLimit
         currentKey = key
         diagnostics.record("BACKGROUND", "SOURCE_CONFIGURED")
         currentVid = vid
@@ -377,7 +416,18 @@ class BackgroundPlaybackService : MediaSessionService() {
         engine.playWhenReady = true
         engine.prepare()
         engine.play()
-        previousRemote?.takeIf { it !== remote }?.close()
+        if (previousRemote != null && previousRemote !== remote &&
+            previousVid.isNotBlank()) {
+            // No second decoder or background playback engine. Keep only one
+            // prepared range-stream handle while its future media item is not
+            // active; ExoPlayer has already detached the old data source.
+            clearRecentVideo()
+            recentVideo = previousRemote
+            recentVid = previousVid
+            recentQuality = previousQuality
+            recentSavedAtMs = android.os.SystemClock.elapsedRealtime()
+            diagnostics.record("BACKGROUND", "RECENT_STREAM_STORED")
+        }
         diagnostics.record("BACKGROUND", "NEXT_SOURCE_PLAY_REQUESTED")
     }
 
@@ -450,6 +500,7 @@ class BackgroundPlaybackService : MediaSessionService() {
             engine.clearMediaItems()
         }
         currentKey = null
+        clearRecentVideo()
         remoteVideo?.close()
         remoteVideo = null
         onFirstFrame = null
@@ -526,6 +577,7 @@ class BackgroundPlaybackService : MediaSessionService() {
         if (active === this) active = null
         remoteVideo?.close()
         remoteVideo = null
+        clearRecentVideo()
         if (::session.isInitialized) session.release()
         if (::engine.isInitialized) engine.release()
         super.onDestroy()
