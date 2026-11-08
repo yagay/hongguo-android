@@ -1993,6 +1993,9 @@ class DramaViewModel(application: Application) : AndroidViewModel(application) {
             feedMode = feed,
             navigation = when {
                 showDetails -> it.navigation.toSeries(origin).toDetails()
+                // Auto-next while the user deliberately browses Home must
+                // remain a mini player and never interrupt the catalog page.
+                feed && retainMini -> it.navigation.toCatalog()
                 feed -> it.navigation.toFeed()
                 else -> it.navigation.toSeries(origin)
             },
