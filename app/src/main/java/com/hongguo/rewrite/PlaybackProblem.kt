@@ -22,6 +22,20 @@ object PlaybackProblem {
         generateSequence(failure) { it.cause }.take(8)
             .any { it is EmptyPlaybackResponseException }
 
+    /**
+     * Only transient transport errors may be retried during active playback.
+     * Authorization, rate limits, invalid responses and unsupported codecs
+     * must fail explicitly instead of hammering upstream endpoints.
+     */
+    fun isTransientTransport(failure: Throwable): Boolean {
+        val chain = generateSequence(failure) { it.cause }.take(8).toList()
+        return chain.none {
+            it is ContentHttpException ||
+                it is EmptyPlaybackResponseException ||
+                it is UnsupportedOperationException
+        } && chain.any { it is IOException }
+    }
+
     fun describe(stage: String, failure: Throwable): String {
         val chain = generateSequence(failure) { it.cause }.take(8).toList()
         val messages = chain.mapNotNull { it.message }
