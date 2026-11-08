@@ -139,7 +139,7 @@ internal fun OpenHongguoExploreScreen(
         error = null
         try {
             val page = if (tab in setOf("discover", "search", "calendar",
-                    "category", "rankGroups") || rankCell.isNotBlank()) {
+                    "category", "rankGroups", "activity") || rankCell.isNotBlank()) {
                 withContext(Dispatchers.IO) {
                     source.browseExtended(
                         if (rankCell.isNotBlank()) "rankRows" else tab,
