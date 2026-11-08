@@ -155,6 +155,11 @@ internal fun NativePlayer(
         initialPage = activePage,
         pageCount = { if (state.feedMode) feedPages else detail.episodes.size },
     )
+    // Between the feed's small paging window and the series' full episode
+    // count the old page can exist for one composition before scrollToPage.
+    // Do not draw a black placeholder over the stable video in that frame.
+    val pagerRecenterPending = pagerState.currentPage != activePage &&
+        !pagerState.isScrollInProgress
     val playback = remember(state.episodeIndex) { ReelPlaybackControls() }
     var speed by remember(detail.drama.id) { mutableFloatStateOf(state.defaultPlaybackSpeed) }
     // Full-bleed video as in the reference screenshot; users can switch to
@@ -385,7 +390,7 @@ internal fun NativePlayer(
         VerticalPager(
             state = pagerState,
             beyondViewportPageCount = 1,
-            userScrollEnabled = !searchOverlayOpen &&
+            userScrollEnabled = !pagerRecenterPending && !searchOverlayOpen &&
                 !showComments && !showEpisodes && !showPlaybackSettings,
             modifier = Modifier.fillMaxSize().testTag("episode_vertical_pager"),
         ) { page ->
@@ -394,7 +399,7 @@ internal fun NativePlayer(
             )
             Box(
                 Modifier.fillMaxSize().then(
-                    if (page == activePage) Modifier
+                    if (page == activePage || pagerRecenterPending) Modifier
                     else Modifier.background(Color.Black)
                 ),
                 contentAlignment = Alignment.Center,
@@ -485,7 +490,7 @@ internal fun NativePlayer(
                                 color = Color.LightGray, fontSize = 12.sp)
                         }
                     }
-                } else {
+                } else if (!pagerRecenterPending) {
                     val preview = if (state.feedMode) {
                         if (page < activePage) previousFeedDrama else nextFeedDrama
                     } else null
