@@ -179,9 +179,13 @@ internal fun DramaDetailScreen(state: AppState, model: DramaViewModel) {
                                 color = DetailMuted, fontSize = 13.sp)
                             Row(Modifier.horizontalScroll(rememberScrollState()),
                                 horizontalArrangement = Arrangement.spacedBy(6.dp)) {
-                                tags.take(6).forEach { tag ->
-                                    Surface(shape = RoundedCornerShape(6.dp),
-                                        color = DetailChip) {
+                                tags.forEach { tag ->
+                                    Surface(
+                                        onClick = { model.openTagResults(tag) },
+                                        modifier = Modifier.testTag("detail_tag_${tag}"),
+                                        shape = RoundedCornerShape(6.dp),
+                                        color = DetailChip,
+                                    ) {
                                         Text(tag + " ›", Modifier.padding(
                                             horizontal = 7.dp, vertical = 4.dp),
                                             fontSize = 11.sp, color = DetailMuted,
@@ -255,10 +259,18 @@ internal fun DramaDetailScreen(state: AppState, model: DramaViewModel) {
                                     horizontal = 7.dp, vertical = 2.dp),
                                     color = DetailBackground, fontSize = 11.sp)
                             }
-                            Text(actor.name, color = DetailText, fontSize = 12.sp,
+                            Text(actor.name,
+                                modifier = Modifier.clickable {
+                                    model.openTagResults(actor.name)
+                                }.testTag("detail_actor_${actor.name}"),
+                                color = DetailText, fontSize = 12.sp,
                                 maxLines = 1, overflow = TextOverflow.Ellipsis)
                             if (actor.role.isNotBlank())
-                                Text("饰 ${actor.role}", color = DetailMuted,
+                                Text("饰 ${actor.role}",
+                                    modifier = Modifier.clickable {
+                                        model.openTagResults(actor.role)
+                                    },
+                                    color = DetailMuted,
                                     fontSize = 10.sp, maxLines = 1,
                                     overflow = TextOverflow.Ellipsis)
                         }
