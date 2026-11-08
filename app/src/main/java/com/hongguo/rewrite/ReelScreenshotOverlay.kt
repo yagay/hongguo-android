@@ -103,44 +103,81 @@ internal fun ReelScreenshotOverlay(
     var synopsisExpanded by rememberSaveable(detail.drama.id) { mutableStateOf(false) }
 
     Box(Modifier.fillMaxSize().testTag("reference_video_layout")) {
-        // Official-inspired navigation: only Recommend and Real correspond to
-        // live official reel feeds. Other tabs open real existing collections.
-        Row(
-            Modifier.fillMaxWidth().align(Alignment.TopCenter)
-                .padding(start = 5.dp, end = 5.dp, top = 5.dp),
-            verticalAlignment = Alignment.CenterVertically,
-        ) {
-            IconButton(onClick = onPlaybackSettings,
-                modifier = Modifier.size(36.dp).testTag("reel_menu")) {
-                Icon(Icons.Outlined.Menu, "播放设置", tint = white,
-                    modifier = Modifier.size(25.dp))
-            }
-            val tabs = listOf(
-                Triple("关注", false, onFollowing),
-                Triple("漫剧", state.reelsMode == "comic", onComic),
-                Triple("真人剧", state.reelsMode == "real", onReal),
-                Triple("推荐", state.reelsMode == "all", onRecommend),
-            )
-            tabs.forEach { (label, active, action) ->
-                Column(
-                    modifier = Modifier.weight(1f).clickable(onClick = action)
-                        .testTag("reel_tab_" + label),
-                    horizontalAlignment = Alignment.CenterHorizontally,
-                    verticalArrangement = Arrangement.spacedBy(3.dp),
-                ) {
-                    Text(label, color = if (active) white else Color(0xFFE3E3E3),
-                        fontSize = 16.sp, lineHeight = 19.sp,
-                        fontWeight = if (active) FontWeight.Bold else FontWeight.Medium,
-                        maxLines = 1, overflow = TextOverflow.Clip)
-                    Box(Modifier.width(22.dp).height(3.dp)
-                        .background(if (active) white else Color.Transparent,
-                            RoundedCornerShape(2.dp)))
+        // Feed tabs belong only to the one-drama-per-swipe recommendation stream.
+        // The full-series episode player retains its original Back / PiP / More bar.
+        if (state.feedMode) {
+            // Official-inspired navigation: only Recommend and Real correspond to
+            // live official reel feeds. Other tabs open real existing collections.
+            Row(
+                Modifier.fillMaxWidth().align(Alignment.TopCenter)
+                    .padding(start = 5.dp, end = 5.dp, top = 5.dp),
+                verticalAlignment = Alignment.CenterVertically,
+            ) {
+                IconButton(onClick = onPlaybackSettings,
+                    modifier = Modifier.size(36.dp).testTag("reel_menu")) {
+                    Icon(Icons.Outlined.Menu, "播放设置", tint = white,
+                        modifier = Modifier.size(25.dp))
+                }
+                val tabs = listOf(
+                    Triple("关注", false, onFollowing),
+                    Triple("漫剧", state.reelsMode == "comic", onComic),
+                    Triple("真人剧", state.reelsMode == "real", onReal),
+                    Triple("推荐", state.reelsMode == "all", onRecommend),
+                )
+                tabs.forEach { (label, active, action) ->
+                    Column(
+                        modifier = Modifier.weight(1f).clickable(onClick = action)
+                            .testTag("reel_tab_" + label),
+                        horizontalAlignment = Alignment.CenterHorizontally,
+                        verticalArrangement = Arrangement.spacedBy(3.dp),
+                    ) {
+                        Text(label, color = if (active) white else Color(0xFFE3E3E3),
+                            fontSize = 16.sp, lineHeight = 19.sp,
+                            fontWeight = if (active) FontWeight.Bold else FontWeight.Medium,
+                            maxLines = 1, overflow = TextOverflow.Clip)
+                        Box(Modifier.width(22.dp).height(3.dp)
+                            .background(if (active) white else Color.Transparent,
+                                RoundedCornerShape(2.dp)))
+                    }
+                }
+                IconButton(onClick = onSearch,
+                    modifier = Modifier.size(36.dp).testTag("reel_search")) {
+                    Icon(Icons.Outlined.Search, "搜索短剧", tint = white,
+                        modifier = Modifier.size(27.dp))
                 }
             }
-            IconButton(onClick = onSearch,
-                modifier = Modifier.size(36.dp).testTag("reel_search")) {
-                Icon(Icons.Outlined.Search, "搜索短剧", tint = white,
-                    modifier = Modifier.size(27.dp))
+        } else {
+            // Minimal header: no duplicate full-title row over the video.
+            Row(
+                Modifier.fillMaxWidth().align(Alignment.TopCenter)
+                    .padding(start = 8.dp, end = 8.dp, top = 8.dp),
+                verticalAlignment = Alignment.CenterVertically,
+            ) {
+                IconButton(onClick = onBack,
+                    modifier = Modifier.size(44.dp)
+                        .background(Color.Black.copy(alpha = 0.25f), CircleShape)) {
+                    Icon(Icons.AutoMirrored.Outlined.ArrowBack, "返回",
+                        tint = white, modifier = Modifier.size(24.dp))
+                }
+                Spacer(Modifier.weight(1f))
+                IconButton(
+                    onClick = onPictureInPicture,
+                    modifier = Modifier.size(44.dp)
+                        .background(Color.Black.copy(alpha = 0.25f), CircleShape)
+                        .testTag("reel_system_pip"),
+                ) {
+                    Icon(Icons.Outlined.PictureInPictureAlt, "跨应用画中画",
+                        tint = white, modifier = Modifier.size(23.dp))
+                }
+                IconButton(
+                    onClick = onPlaybackSettings,
+                    modifier = Modifier.size(44.dp)
+                        .background(Color.Black.copy(alpha = 0.25f), CircleShape)
+                        .testTag("reel_more"),
+                ) {
+                    Icon(Icons.Outlined.MoreVert, "播放设置",
+                        tint = white, modifier = Modifier.size(23.dp))
+                }
             }
         }
 
