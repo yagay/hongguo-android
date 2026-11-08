@@ -82,6 +82,17 @@ internal fun PlaybackExperienceSheet(
             Text("适应模式可显示完整画面；铺满模式可能裁切画面边缘和字幕。",
                 fontSize = 11.sp, color = secondary)
 
+            PlaybackHeading("屏幕亮度")
+            PlaybackChoices(
+                listOf(-1 to "跟随系统", 65 to "65%", 80 to "80%",
+                    90 to "90%", 100 to "100%"),
+                state.videoBrightnessPercent, model::setVideoBrightnessPercent,
+                "player_brightness",
+            )
+            Text("只调整本应用全屏播放时的设备屏幕亮度，不修改视频画面像素。" +
+                "退出播放或打开其他页面会恢复原来的屏幕亮度。",
+                fontSize = 11.sp, color = secondary)
+
             PlaybackHeading("播放倍速")
             PlaybackChoices(
                 listOf(0.75f to "0.75×", 1f to "1×", 1.25f to "1.25×",
