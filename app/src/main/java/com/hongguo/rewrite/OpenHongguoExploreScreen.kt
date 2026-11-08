@@ -208,8 +208,8 @@ internal fun OpenHongguoExploreScreen(
         }
     }
 
-    Column(Modifier.fillMaxSize().background(HongguoColors.background)
-        .testTag("openhongguo_explore")) {
+    HongguoPageSurface(Modifier.fillMaxSize().testTag("openhongguo_explore")) {
+        Column(Modifier.fillMaxSize()) {
         Row(Modifier.fillMaxWidth().height(HongguoUi.pageTopBarHeight)
             .padding(end = HongguoUi.pagePadding),
             verticalAlignment = Alignment.CenterVertically) {
@@ -463,6 +463,7 @@ internal fun OpenHongguoExploreScreen(
                 }
             }
         }
+        }
     }
 }
 
@@ -475,10 +476,11 @@ private fun BrowseEntry(
         .padding(horizontal = 16.dp, vertical = 6.dp),
         horizontalArrangement = Arrangement.spacedBy(13.dp),
         verticalAlignment = Alignment.CenterVertically) {
-        if (cover.isNotBlank()) AsyncImage(model = cover,
-            contentDescription = title, contentScale = ContentScale.Crop,
-            modifier = Modifier.width(72.dp).height(102.dp)
-                .clip(RoundedCornerShape(11.dp)))
+        if (cover.isNotBlank()) HongguoPosterCover(
+            cover = cover,
+            title = title,
+            modifier = Modifier.width(72.dp).height(102.dp),
+        )
         Column(Modifier.weight(1f), verticalArrangement = Arrangement.spacedBy(9.dp)) {
             Text(title, fontWeight = FontWeight.SemiBold,
                 fontSize = 15.sp, color = HongguoColors.ink,
