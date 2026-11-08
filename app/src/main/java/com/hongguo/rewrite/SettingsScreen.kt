@@ -3,9 +3,6 @@ package com.hongguo.rewrite
 import android.net.Uri
 import android.Manifest
 import android.os.Build
-import android.content.pm.PackageManager
-import androidx.core.content.ContextCompat
-import androidx.compose.ui.platform.LocalContext
 import androidx.activity.compose.BackHandler
 import androidx.activity.compose.rememberLauncherForActivityResult
 import androidx.activity.result.contract.ActivityResultContracts
@@ -78,11 +75,6 @@ internal fun SettingsScreen(state: AppState, model: DramaViewModel) {
     var pendingRestore by remember { mutableStateOf<Uri?>(null) }
     var showLogPreview by rememberSaveable { mutableStateOf(false) }
     val account by model.account.state.collectAsStateWithLifecycle()
-    val context = LocalContext.current
-    var playbackNotificationsAllowed by remember { mutableStateOf(
-        Build.VERSION.SDK_INT < 33 || ContextCompat.checkSelfPermission(
-            context, Manifest.permission.POST_NOTIFICATIONS) == PackageManager.PERMISSION_GRANTED
-    ) }
     val exporter = rememberLauncherForActivityResult(
         ActivityResultContracts.CreateDocument("text/plain")
     ) { uri -> if (uri != null) model.exportDiagnostics(uri) }
@@ -94,9 +86,6 @@ internal fun SettingsScreen(state: AppState, model: DramaViewModel) {
         ActivityResultContracts.OpenDocument()
     ) { uri -> if (uri != null) pendingRestore = uri }
 
-    val playbackNotificationPermission = rememberLauncherForActivityResult(
-        ActivityResultContracts.RequestPermission()
-    ) { granted -> playbackNotificationsAllowed = granted }
     val notifyPermission = rememberLauncherForActivityResult(
         ActivityResultContracts.RequestPermission()
     ) { granted ->
@@ -188,26 +177,6 @@ internal fun SettingsScreen(state: AppState, model: DramaViewModel) {
                     }
                     Text("首页、搜索页和剧集详情跟随显示模式；播放视频区域始终使用深色背景。",
                         color = HongguoColors.muted, fontSize = 12.sp)
-                }
-            }
-            item {
-                SettingsGroup("后台播放") {
-                    Text("退到后台、锁屏后继续播放，通知媒体卡支持暂停、进度和切集。",
-                        color = HongguoColors.muted, fontSize = 12.sp)
-                    Text(
-                        if (playbackNotificationsAllowed) "通知权限已允许"
-                        else "需要允许通知，才能在普通通知栏看到独立播放进度卡",
-                        color = HongguoColors.ink, fontWeight = FontWeight.SemiBold)
-                    if (!playbackNotificationsAllowed && Build.VERSION.SDK_INT >= 33)
-                        OutlinedButton(
-                            onClick = {
-                                playbackNotificationPermission.launch(
-                                    Manifest.permission.POST_NOTIFICATIONS)
-                            },
-                            modifier = Modifier.testTag("playback_notification_permission"),
-                        ) { Text("允许播放通知") }
-                    Text("Android 13+ 仍会在快捷设置的系统媒体区域显示媒体卡。普通通知栏另提供播放时间和进度显示，通知是否展示受系统权限与 OxygenOS 管理影响。",
-                        color = HongguoColors.muted, fontSize = 11.sp)
                 }
             }
             item {
