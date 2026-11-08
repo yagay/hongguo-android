@@ -218,7 +218,7 @@ private fun HongguoApp(model: DramaViewModel = viewModel()) {
         if (darkPlayer && activity != null) {
             val display = if (Build.VERSION.SDK_INT >= 30) activity.display
                 else @Suppress("DEPRECATION") activity.windowManager.defaultDisplay
-            val types = display?.hdrCapabilities?.supportedHdrTypes.orEmpty()
+            val types = display?.hdrCapabilities?.supportedHdrTypes ?: intArrayOf()
             model.recordDisplayHdrSupport(
                 hdr10 = android.view.Display.HdrCapabilities.HDR_TYPE_HDR10 in types,
                 hlg = android.view.Display.HdrCapabilities.HDR_TYPE_HLG in types,
