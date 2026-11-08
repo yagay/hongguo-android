@@ -1673,6 +1673,10 @@ class DramaViewModel(application: Application) : AndroidViewModel(application) {
 
     fun open(drama: Drama, resumeEp: Int? = null, feed: Boolean = false,
         showDetails: Boolean = false) {
+        // Auto-advancing to the next drama should not unexpectedly expand a
+        // minimized reel. Explicit new selections outside the current feed
+        // still open fullscreen as usual.
+        val retainMini = feed && state.value.feedMode && state.value.miniPlayerVisible
         BackgroundPlaybackService.active?.pauseForTransition()
         sdkDetailGeneration++
         sdkDetailJob?.cancel()
@@ -1721,7 +1725,7 @@ class DramaViewModel(application: Application) : AndroidViewModel(application) {
             preparingDetail = ready == null,
             feedMode = feed,
             detailPageVisible = showDetails,
-            miniPlayerVisible = false,
+            miniPlayerVisible = retainMini,
             detailEntryEnabled = false,
             relatedWorks = emptyList(),
             relatedSeries = null,
