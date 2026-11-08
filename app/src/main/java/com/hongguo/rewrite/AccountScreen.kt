@@ -113,7 +113,7 @@ internal fun AccountScreen(model: DramaViewModel) {
                     .padding(horizontal = 6.dp),
                 verticalAlignment = Alignment.CenterVertically,
             ) {
-                IconButton(onClick = model::closeAccount) {
+                HongguoIconAction(onClick = model::closeAccount) {
                     Icon(Icons.AutoMirrored.Outlined.ArrowBack, "返回")
                 }
                 Text("我的账号", fontSize = 24.sp, fontWeight = FontWeight.Bold,
@@ -131,7 +131,7 @@ internal fun AccountScreen(model: DramaViewModel) {
                 fontSize = 13.sp, modifier = Modifier.testTag("account_web_error")) } }
             if (account.profile == null || account.busy || account.checking ||
                 account.message.contains("失败")) item {
-                Surface(color = HongguoColors.surface, shape = RoundedCornerShape(12.dp)) {
+                Surface(color = HongguoColors.surface, shape = RoundedCornerShape(HongguoUi.controlRadius)) {
                     Column(Modifier.fillMaxWidth().padding(13.dp),
                         verticalArrangement = Arrangement.spacedBy(5.dp)) {
                         Text(account.message, fontSize = 12.sp,
@@ -354,7 +354,7 @@ internal fun AccountScreen(model: DramaViewModel) {
                     }
                 }
                 if (account.message.contains("滑块") || account.message.contains("人工验证")) item {
-                    Surface(color = HongguoColors.accentSoft, shape = RoundedCornerShape(12.dp)) {
+                    Surface(color = HongguoColors.accentSoft, shape = RoundedCornerShape(HongguoUi.controlRadius)) {
                         Row(Modifier.fillMaxWidth().padding(12.dp), verticalAlignment = Alignment.CenterVertically) {
                             Text("需要平台验证，请到官网登录完成", color = HongguoColors.ink,
                                 modifier = Modifier.weight(1f), fontSize = 13.sp)
