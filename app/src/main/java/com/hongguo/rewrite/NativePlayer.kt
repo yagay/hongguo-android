@@ -456,6 +456,11 @@ internal fun NativePlayer(state: AppState, model: DramaViewModel) {
             detail = detail,
             episode = selected,
             onPlaybackSettings = { showPlaybackSettings = true },
+            onPictureInPicture = {
+                selected?.vid?.let { vid ->
+                    (context as? MainActivity)?.enterVideoPictureInPicture(vid)
+                }
+            },
             onBack = ::flushThenClose,
             onDramaDetails = {
                 selected?.let { ep ->
