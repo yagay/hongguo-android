@@ -34,6 +34,12 @@ import androidx.compose.material.icons.outlined.Search
 import androidx.compose.material.icons.outlined.Share
 import androidx.compose.material.icons.outlined.PlayCircleOutline
 import androidx.compose.material.icons.outlined.PictureInPictureAlt
+import androidx.compose.material.icons.outlined.AspectRatio
+import androidx.compose.material.icons.outlined.Speed
+import androidx.compose.material.icons.outlined.VolumeUp
+import androidx.compose.material.icons.outlined.Tune
+import androidx.compose.material.icons.outlined.Timer
+import androidx.compose.material.icons.outlined.Download
 import androidx.compose.material.icons.outlined.Star
 import androidx.compose.material.icons.outlined.StarBorder
 import androidx.compose.material.icons.outlined.Subtitles
@@ -74,7 +80,8 @@ internal fun ReelScreenshotOverlay(
     state: AppState,
     detail: DramaDetail,
     episode: Episode?,
-    onPlaybackSettings: () -> Unit,
+    onPlaybackSettings: (PlaybackQuickSetting) -> Unit,
+    onDownload: () -> Unit,
     onOpenAccountDrawer: () -> Unit,
     onPictureInPicture: (() -> Unit)?,
     onBack: () -> Unit,
@@ -109,6 +116,7 @@ internal fun ReelScreenshotOverlay(
     val commentCount = state.commentsTotal
         ?: episode?.vid?.let { social?.episodes?.get(it)?.comments }
     var synopsisExpanded by rememberSaveable(detail.drama.id) { mutableStateOf(false) }
+    var playerMenuOpen by remember { mutableStateOf(false) }
 
     Box(Modifier.fillMaxSize().testTag("reference_video_layout")) {
         // Feed and full-series navigation are alternative *headers*, not
@@ -214,12 +222,55 @@ internal fun ReelScreenshotOverlay(
                         modifier = Modifier.testTag("reel_system_pip"),
                     )
                 }
-                HongguoPlayerTopAction(
-                    icon = Icons.Outlined.MoreVert,
-                    label = "播放设置",
-                    onClick = onPlaybackSettings,
-                    modifier = Modifier.testTag("reel_more"),
-                )
+                Box {
+                    HongguoPlayerTopAction(
+                        icon = Icons.Outlined.MoreVert,
+                        label = "播放菜单",
+                        onClick = { playerMenuOpen = true },
+                        modifier = Modifier.testTag("reel_more"),
+                    )
+                    HongguoActionMenu(
+                        expanded = playerMenuOpen,
+                        onDismissRequest = { playerMenuOpen = false },
+                    ) {
+                        val sections = listOf(
+                            Triple(PlaybackQuickSetting.VIDEO, "画面设置",
+                                Icons.Outlined.AspectRatio),
+                            Triple(PlaybackQuickSetting.SPEED, "倍速",
+                                Icons.Outlined.Speed),
+                            Triple(PlaybackQuickSetting.AUDIO, "音效",
+                                Icons.Outlined.VolumeUp),
+                            Triple(PlaybackQuickSetting.PREFERENCES, "播放偏好",
+                                Icons.Outlined.Tune),
+                            Triple(PlaybackQuickSetting.DANMAKU, "弹幕",
+                                Icons.Outlined.Subtitles),
+                            Triple(PlaybackQuickSetting.TIMER, "定时停止",
+                                Icons.Outlined.Timer),
+                        )
+                        sections.forEach { (section, title, icon) ->
+                            HongguoMenuAction(
+                                label = title,
+                                icon = icon,
+                                onClick = {
+                                    playerMenuOpen = false
+                                    onPlaybackSettings(section)
+                                },
+                                modifier = Modifier.testTag(
+                                    "player_menu_" + section.name.lowercase()),
+                            )
+                        }
+                        HongguoMenuSeparator()
+                        HongguoMenuAction(
+                            label = "下载当前剧集",
+                            icon = Icons.Outlined.Download,
+                            onClick = {
+                                playerMenuOpen = false
+                                onDownload()
+                            },
+                            modifier = Modifier.testTag("download_current_episode"),
+                        )
+                    }
+                }
             }
         }
         } // Header-only fade; the persistent video controls never animate offscreen
