@@ -107,8 +107,8 @@ internal fun SettingsScreen(state: AppState, model: DramaViewModel) {
     ) { padding ->
         LazyColumn(
             modifier = Modifier.fillMaxSize().padding(padding).testTag("settings_page"),
-            contentPadding = PaddingValues(start = 20.dp, top = 12.dp,
-                end = 20.dp, bottom = 28.dp),
+            contentPadding = PaddingValues(start = HongguoUi.pagePadding,
+                top = 12.dp, end = HongguoUi.pagePadding, bottom = 28.dp),
             verticalArrangement = Arrangement.spacedBy(12.dp),
         ) {
             item {
