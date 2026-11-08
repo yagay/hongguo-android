@@ -59,6 +59,11 @@ class NativeHongguoSource(
         category = DramaCategory.REAL)
     private var realReelsPageNumber = 1
     private var realReelsEnd = false
+    private var comicReelsCursor = RecommendationCursor()
+    private var comicReelsFeed = RecommendationFeed(repository.http,
+        cursor = comicReelsCursor, category = DramaCategory.COMIC)
+    private var comicReelsPageNumber = 1
+    private var comicReelsEnd = false
 
     /** Classifies only explicit official type tokens; genre themes and titles are not evidence. */
     internal fun isExplicitReal(series: Series): Boolean =
@@ -77,6 +82,7 @@ class NativeHongguoSource(
         restart: Boolean = false,
         alreadyShown: Set<String> = emptySet(),
         realOnly: Boolean = false,
+        comicOnly: Boolean = false,
     ): CatalogPage = withContext(Dispatchers.IO) {
         reelsLock.withLock {
             if (restart) {
@@ -96,6 +102,12 @@ class NativeHongguoSource(
                     "ACCOUNT_REQUEST_MODE" else "ANONYMOUS_REQUEST_MODE")
                 realReelsPageNumber = 1
                 realReelsEnd = false
+                comicReelsCursor = RecommendationCursor()
+                comicReelsFeed = RecommendationFeed(repository.http,
+                    account = accountForSession, cursor = comicReelsCursor,
+                    category = DramaCategory.COMIC)
+                comicReelsPageNumber = 1
+                comicReelsEnd = false
             }
             val excluded = alreadyShown.filterTo(linkedSetOf()) {
                 it.matches(Regex("[0-9]{1,30}"))
@@ -113,6 +125,33 @@ class NativeHongguoSource(
             val candidates = mutableListOf<Series>()
             var upstreamMore = true
             var officialFailure: Exception? = null
+            // Comic uses its own official category cursor rather than mixing
+            // ordinary or real-person recommendations into the comic tab.
+            if (comicOnly) {
+                val comicItems = mutableListOf<Series>()
+                var failure: Exception? = null
+                repeat(3) {
+                    if (comicItems.size >= 5 || comicReelsEnd) return@repeat
+                    try {
+                        val page = comicReelsFeed.page(comicReelsPageNumber++)
+                        if (!page.hasMore) comicReelsEnd = true
+                        comicItems += page.items.filter { it.id !in excluded }
+                    } catch (cancel: kotlinx.coroutines.CancellationException) {
+                        throw cancel
+                    } catch (error: Exception) {
+                        failure = error
+                        diagnostics?.record("REELS",
+                            "COMIC_" + OfficialReelsFailure.code(error))
+                        return@repeat
+                    }
+                }
+                val unique = comicItems.distinctBy { it.id }
+                if (unique.isEmpty())
+                    throw failure ?: NoNewRecommendationsException()
+                diagnostics?.record("REELS", "COMIC_DYNAMIC_BATCH")
+                return@withLock CatalogPage(unique.map { it.toDrama() },
+                    hasMore = !comicReelsEnd, nextOffset = comicReelsPageNumber)
+            }
             // Always try dynamic official recommendations first, including in real-only mode.
             // In real-only mode, admit exclusively explicit server-typed real dramas.
             repeat(if (realOnly) 2 else 3) {
