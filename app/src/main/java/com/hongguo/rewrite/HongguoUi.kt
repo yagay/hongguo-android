@@ -575,3 +575,39 @@ internal fun HongguoPlayerSheet(
         content = content,
     )
 }
+
+/** Consistent low-emphasis action in dark player sheets. */
+@Composable
+internal fun HongguoPlayerSheetAction(
+    label: String,
+    onClick: () -> Unit,
+    modifier: Modifier = Modifier,
+    enabled: Boolean = true,
+) {
+    TextButton(onClick = onClick, modifier = modifier, enabled = enabled,
+        shape = RoundedCornerShape(HongguoUi.controlRadius)) {
+        Text(label, color = if (enabled) Color.White else HongguoColors.playerChromeMuted,
+            fontSize = 13.sp)
+    }
+}
+
+/** One active/inactive episode selection control across player episode grids. */
+@Composable
+internal fun HongguoEpisodeCell(
+    label: String,
+    selected: Boolean,
+    onClick: () -> Unit,
+    modifier: Modifier = Modifier,
+) {
+    Box(
+        modifier = modifier.height(44.dp)
+            .clip(RoundedCornerShape(HongguoUi.controlRadius))
+            .background(if (selected) HongguoColors.accent else Color(0xFF343239))
+            .clickable(onClick = onClick),
+        contentAlignment = Alignment.Center,
+    ) {
+        Text(label, color = Color.White, fontSize = 13.sp,
+            fontWeight = if (selected) FontWeight.Bold else FontWeight.Medium,
+            maxLines = 1)
+    }
+}
