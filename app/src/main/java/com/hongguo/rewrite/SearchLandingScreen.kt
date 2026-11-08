@@ -79,6 +79,7 @@ internal fun SearchLandingScreen(
     model: DramaViewModel,
     onClose: () -> Unit,
     onResults: () -> Unit,
+    onOpenDrama: (Drama) -> Unit = model::open,
 ) {
     val systemDark = isSystemInDarkTheme()
     val night = when (state.themeMode) {
@@ -110,9 +111,7 @@ internal fun SearchLandingScreen(
 
     fun submit(text: String) {
         if (text.isBlank()) return
-        model.setSearch(text)
-        model.search()
-        onResults()
+        model.searchBrowseQuery(text)
     }
 
     LazyColumn(
@@ -245,7 +244,7 @@ internal fun SearchLandingScreen(
                     horizontalArrangement = Arrangement.spacedBy(9.dp)) {
                     dramas.forEach { drama ->
                         Column(Modifier.weight(1f)
-                            .clickable { model.open(drama); onClose() }
+                            .clickable { onOpenDrama(drama); onClose() }
                             .testTag("search_browse_drama_" + drama.id),
                             verticalArrangement = Arrangement.spacedBy(6.dp)) {
                             AsyncImage(model = model.cover(drama.cover),
@@ -388,7 +387,7 @@ internal fun SearchLandingScreen(
                     dramas.forEachIndexed { index, drama ->
                         val rank = state.landingRank.indexOfFirst { it.id == drama.id } + 1
                         Column(Modifier.weight(1f).clickable {
-                            model.open(drama)
+                            onOpenDrama(drama)
                             onClose()
                         }, verticalArrangement = Arrangement.spacedBy(7.dp)) {
                             Box(Modifier.fillMaxWidth().height(160.dp)
