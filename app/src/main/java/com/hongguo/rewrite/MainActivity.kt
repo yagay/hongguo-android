@@ -328,12 +328,14 @@ private fun HongguoApp(model: DramaViewModel = viewModel()) {
                             state.modal != Modal.NONE -> model.closeModal()
                             activeRoute == PlaybackDestination.DETAILS ->
                                 model.backFromDramaDetails()
+                            searchLandingOpen -> searchLandingOpen = false
+                            primaryTab != "home" &&
+                                activeRoute != PlaybackDestination.SERIES ->
+                                selectPrimaryTab("home")
                             activeRoute == PlaybackDestination.FEED ->
                                 confirmExitFeed = true
                             activeRoute == PlaybackDestination.SERIES ->
                                 model.backFromPlayer()
-                            searchLandingOpen -> searchLandingOpen = false
-                            primaryTab != "home" -> selectPrimaryTab("home")
                             activeRoute == PlaybackDestination.CATALOG &&
                                 state.navigation.origin == PlaybackOrigin.SWIPE_FEED -> {
                                 if (state.detail != null) model.restorePlayer()
