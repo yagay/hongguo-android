@@ -79,6 +79,8 @@ internal fun ReelScreenshotOverlay(
     val saved = state.favorites.any { it.drama.id == detail.drama.id }
     val liked = detail.drama.id in state.likedDramaIds
     val inHistory = state.library.any { it.drama.id == detail.drama.id }
+    val aiAuthorStatement = state.openHongguoMetadata
+        ?.takeIf { it.seriesId == detail.drama.id }?.authorAiStatement
     val social = state.socialStats?.takeIf {
         it.seriesId == detail.drama.id && state.socialForSeries == detail.drama.id
     }
@@ -225,6 +227,20 @@ internal fun ReelScreenshotOverlay(
                         )
                     }
                 }
+            }
+            aiAuthorStatement?.let { declaration ->
+                Text(
+                    declaration,
+                    color = Color(0xFFF0F0F0),
+                    fontSize = 11.sp,
+                    lineHeight = 15.sp,
+                    maxLines = 2,
+                    modifier = Modifier
+                        .background(Color.Black.copy(alpha = 0.52f),
+                            RoundedCornerShape(5.dp))
+                        .padding(horizontal = 7.dp, vertical = 4.dp)
+                        .testTag("reel_ai_author_statement"),
+                )
             }
             if (detail.drama.synopsis.isNotBlank()) {
                 Text(detail.drama.synopsis, color = muted, fontSize = 12.sp,
