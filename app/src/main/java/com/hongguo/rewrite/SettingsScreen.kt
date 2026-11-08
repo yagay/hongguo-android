@@ -164,17 +164,13 @@ internal fun SettingsScreen(state: AppState, model: DramaViewModel) {
                         fontWeight = FontWeight.SemiBold)
                     Text("白天、夜间和跟随系统。选择后立即应用，重启应用仍会保留。",
                         color = HongguoColors.muted, fontSize = 12.sp)
-                    FlowRow(horizontalArrangement = Arrangement.spacedBy(8.dp)) {
-                        listOf("light" to "白天模式", "dark" to "夜间模式",
-                            "system" to "跟随系统").forEach { (key, title) ->
-                            FilterChip(
-                                selected = state.themeMode == key,
-                                onClick = { model.setThemeMode(key) },
-                                label = { Text(title, fontSize = 13.sp) },
-                                modifier = Modifier.testTag("theme_mode_" + key),
-                            )
-                        }
-                    }
+                    HongguoChoiceGroup(
+                        options = listOf("light" to "白天模式", "dark" to "夜间模式",
+                            "system" to "跟随系统"),
+                        selected = state.themeMode,
+                        onSelect = model::setThemeMode,
+                        tag = "theme_mode",
+                    )
                     Text("底栏样式", color = HongguoColors.ink, fontWeight = FontWeight.SemiBold)
                     FlowRow(horizontalArrangement = Arrangement.spacedBy(8.dp)) {
                         listOf("classic" to "经典", "glass" to "悬浮玻璃").forEach { (key, title) ->
@@ -431,27 +427,7 @@ private fun SettingsNavRow(
     subtitle: String,
     tag: String,
     onClick: () -> Unit,
-) {
-    Row(
-        Modifier.fillMaxWidth().clickable(onClick = onClick).testTag(tag)
-            .padding(vertical = 6.dp),
-        verticalAlignment = Alignment.CenterVertically,
-        horizontalArrangement = Arrangement.spacedBy(12.dp),
-    ) {
-        Surface(color = HongguoColors.accentSoft, shape = RoundedCornerShape(10.dp)) {
-            androidx.compose.foundation.layout.Box(Modifier.size(36.dp), contentAlignment = Alignment.Center) {
-                Icon(icon, contentDescription = null, modifier = Modifier.size(20.dp),
-                    tint = HongguoColors.accent)
-            }
-        }
-        Column(Modifier.weight(1f), verticalArrangement = Arrangement.spacedBy(5.dp)) {
-            Text(title, fontSize = 16.sp, fontWeight = FontWeight.Medium, color = HongguoColors.ink)
-            Text(subtitle, fontSize = 12.sp, lineHeight = 19.sp, color = HongguoColors.muted)
-        }
-        Icon(Icons.Outlined.ChevronRight, contentDescription = null,
-            modifier = Modifier.size(20.dp), tint = HongguoColors.muted)
-    }
-}
+) = HongguoNavigationRow(icon, title, subtitle, tag, onClick)
 
 @Composable
 private fun SettingsGroup(
@@ -464,7 +440,7 @@ private fun SettingsGroup(
         Surface(
             modifier = Modifier.fillMaxWidth(),
             color = HongguoColors.surface,
-            shape = RoundedCornerShape(16.dp),
+            shape = RoundedCornerShape(HongguoUi.cardRadius),
         ) {
             Column(
                 Modifier.fillMaxWidth().padding(16.dp),
