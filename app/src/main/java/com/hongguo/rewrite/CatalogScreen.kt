@@ -120,7 +120,8 @@ internal fun CatalogScreen(
             columns = GridCells.Fixed(2),
             state = grid,
             modifier = Modifier.fillMaxSize().padding(insets).testTag("web_catalog"),
-            contentPadding = PaddingValues(start = 12.dp, top = 10.dp, end = 12.dp, bottom = 28.dp),
+            contentPadding = PaddingValues(start = HongguoUi.pagePadding, top = 10.dp,
+                end = HongguoUi.pagePadding, bottom = 28.dp),
             horizontalArrangement = Arrangement.spacedBy(10.dp),
             verticalArrangement = Arrangement.spacedBy(10.dp),
         ) {
@@ -289,7 +290,7 @@ private fun CatalogHeader(state: AppState, model: DramaViewModel,
         Surface(
             modifier = Modifier.fillMaxWidth().padding(horizontal = 12.dp, vertical = 5.dp)
                 .clickable(onClick = onSearchOpen).testTag("theater_search"),
-            shape = RoundedCornerShape(12.dp),
+            shape = RoundedCornerShape(HongguoUi.controlRadius),
             color = HongguoColors.background,
         ) {
             Row(Modifier.fillMaxWidth().padding(horizontal = 12.dp, vertical = 9.dp),
@@ -363,8 +364,8 @@ private fun CatalogSectionTools(state: AppState, model: DramaViewModel,
                     Section.BROWSE -> "发现短剧"
                     Section.SEARCH -> "搜索结果"
                 },
-                fontSize = 18.sp, fontWeight = FontWeight.Bold, color = HongguoColors.ink,
-                modifier = Modifier.weight(1f),
+                fontSize = HongguoUi.sectionTitleSize, fontWeight = FontWeight.Bold,
+                color = HongguoColors.ink, modifier = Modifier.weight(1f),
             )
             if (state.section == Section.RECOMMEND) {
                 TextButton(
