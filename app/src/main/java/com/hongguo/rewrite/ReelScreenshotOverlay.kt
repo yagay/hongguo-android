@@ -135,13 +135,17 @@ internal fun ReelScreenshotOverlay(
                     Icon(Icons.Outlined.Menu, "打开账号与隐私侧边栏", tint = white,
                         modifier = Modifier.size(25.dp))
                 }
-                // An actual following-reel endpoint has not been verified.
-                // Only render tabs backed by the live official feed API.
-                val tabs = listOf(
-                    Triple("漫剧", state.reelsMode == "comic", onComic),
-                    Triple("真人剧", state.reelsMode == "real", onReal),
-                    Triple("推荐", state.reelsMode == "all", onRecommend),
-                )
+                // Future verified providers can register a real following
+                // feed action. Compose recomposes and exposes the tab without
+                // any additional changes in this screen.
+                val tabs = buildList {
+                    FeatureAvailability.followingAction()?.let { openFollowing ->
+                        add(Triple("关注", false, openFollowing))
+                    }
+                    add(Triple("漫剧", state.reelsMode == "comic", onComic))
+                    add(Triple("真人剧", state.reelsMode == "real", onReal))
+                    add(Triple("推荐", state.reelsMode == "all", onRecommend))
+                }
                 tabs.forEach { (label, active, action) ->
                     Column(
                         modifier = Modifier.weight(1f).clickable(onClick = action)
