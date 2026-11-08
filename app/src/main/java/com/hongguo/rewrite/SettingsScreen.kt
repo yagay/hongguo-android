@@ -98,18 +98,11 @@ internal fun SettingsScreen(state: AppState, model: DramaViewModel) {
         containerColor = HongguoColors.background,
         contentWindowInsets = WindowInsets(0, 0, 0, 0),
         topBar = {
-            Row(
-                Modifier.fillMaxWidth().background(HongguoColors.surface)
-                    .height(60.dp).padding(start = 4.dp, end = 16.dp),
-                verticalAlignment = Alignment.CenterVertically,
-            ) {
-                HongguoIconAction(onClick = model::closeModal) {
-                    Icon(Icons.AutoMirrored.Outlined.ArrowBack, contentDescription = "返回",
-                        tint = HongguoColors.ink)
-                }
-                Text("设置", fontSize = 24.sp, fontWeight = FontWeight.Bold,
-                    color = HongguoColors.ink, modifier = Modifier.weight(1f))
-            }
+            HongguoPageHeader(
+                title = "设置",
+                onBack = model::closeModal,
+                modifier = Modifier.background(HongguoColors.surface),
+            )
         },
     ) { padding ->
         LazyColumn(
