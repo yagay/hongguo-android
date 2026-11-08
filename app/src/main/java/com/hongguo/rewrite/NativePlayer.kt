@@ -7,9 +7,8 @@ import android.provider.DocumentsContract
 import android.content.Intent
 import android.view.SurfaceView
 import android.view.TextureView
-import androidx.compose.animation.AnimatedVisibility
-import androidx.compose.animation.slideInHorizontally
-import androidx.compose.animation.slideOutHorizontally
+import androidx.compose.animation.AnimatedContent
+import androidx.compose.animation.togetherWith
 import androidx.compose.foundation.background
 import androidx.compose.foundation.clickable
 import androidx.compose.foundation.rememberScrollState
@@ -245,13 +244,16 @@ internal fun NativePlayer(
         if (state.feedMode) onExitFeed()
         else model.backFromPlayer()
     }
-    BackHandler(enabled = searchOverlayOpen) {
+    BackHandler(enabled = state.navigation.destination != PlaybackDestination.DETAILS &&
+        searchOverlayOpen) {
         searchOverlayOpen = false
     }
-    BackHandler(enabled = !searchOverlayOpen && accountDrawerState.isOpen) {
+    BackHandler(enabled = state.navigation.destination != PlaybackDestination.DETAILS &&
+        !searchOverlayOpen && accountDrawerState.isOpen) {
         accountDrawerScope.launch { accountDrawerState.close() }
     }
-    BackHandler(enabled = !searchOverlayOpen && accountDrawerState.isClosed &&
+    BackHandler(enabled = state.navigation.destination != PlaybackDestination.DETAILS &&
+        !searchOverlayOpen && accountDrawerState.isClosed &&
         !showPlaybackSettings && !showComments && !showEpisodes) {
         flushThenClose()
     }
@@ -541,8 +543,24 @@ internal fun NativePlayer(
             )
         }
 
+        // Animate only Compose controls, not the service-owned SurfaceView.
+        // Series controls enter from the right; on Back they leave rightward
+        // and the reel controls are revealed underneath without a black flash.
+        AnimatedContent(
+            targetState = state.feedMode,
+            modifier = Modifier.fillMaxSize().testTag("feed_series_slide"),
+            transitionSpec = {
+                if (targetState) {
+                    PlaybackPageSlide.revealFeed() togetherWith PlaybackPageSlide.exit()
+                } else {
+                    PlaybackPageSlide.enter() togetherWith PlaybackPageSlide.hideFeed()
+                }
+            },
+            label = "feed_series_chrome",
+        ) { feedChrome ->
         ReelScreenshotOverlay(
             state = state,
+            feedChrome = feedChrome,
             detail = detail,
             episode = selected,
             onPlaybackSettings = { showPlaybackSettings = true },
@@ -578,6 +596,7 @@ internal fun NativePlayer(
             onRecommend = { model.setReelsMode("all") },
             onSearch = { searchOverlayOpen = true },
         )
+        } // Animated reel/series chrome
         }
         ReelBottomDock(
             detail = detail,
@@ -592,12 +611,10 @@ internal fun NativePlayer(
     // The search landing slides over (not instead of) the reel video.
     // Its Back arrow dismisses the overlay without navigating away or
     // restarting playback. Search submission follows the home search flow.
-    AnimatedVisibility(
+    RightSlidePage(
         visible = searchOverlayOpen && state.feedMode,
-        modifier = Modifier.fillMaxSize().align(Alignment.CenterEnd)
-            .testTag("reel_search_slide_page"),
-        enter = slideInHorizontally(initialOffsetX = { it }),
-        exit = slideOutHorizontally(targetOffsetX = { it }),
+        modifier = Modifier.align(Alignment.CenterEnd),
+        tag = "reel_search_slide_page",
     ) {
         SearchLandingScreen(
             state = state,
