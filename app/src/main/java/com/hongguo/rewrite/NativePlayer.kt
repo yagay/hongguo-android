@@ -884,7 +884,7 @@ internal fun NativePlayer(
                 }
             }
             if (state.relatedSeries == detail.drama.id) {
-                HongguoMenuSeparator()
+                HongguoMenuSeparator(dark = true)
                 HongguoSheetHeader(title = "其他季 / 相关作品", dark = true) {
                     if (state.relatedLoading) {
                         CircularProgressIndicator(Modifier.size(18.dp),
