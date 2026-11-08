@@ -279,8 +279,15 @@ internal fun DramaDetailScreen(state: AppState, model: DramaViewModel) {
                                         fontSize = 21.sp)
                                 }
                             }
-                            // The actor follow endpoint is not verified:
-                            // show name, photo and actor search, not a dead button.
+                            FeatureAvailability.actorFollowAction()?.let { follow ->
+                                Surface(shape = RoundedCornerShape(15.dp),
+                                    color = DetailText,
+                                    onClick = { follow(actor.name) }) {
+                                    Text("+关注", Modifier.padding(
+                                        horizontal = 7.dp, vertical = 2.dp),
+                                        color = DetailBackground, fontSize = 11.sp)
+                                }
+                            }
                             Text(actor.name,
                                 modifier = Modifier.clickable {
                                     model.openTagResults(actor.name)
@@ -566,6 +573,17 @@ internal fun DramaDetailScreen(state: AppState, model: DramaViewModel) {
                 Spacer(Modifier.width(7.dp))
                 Text(if (locallySaved) "已收藏" else "收藏",
                     color = DetailText, fontSize = 15.sp)
+            }
+            FeatureAvailability.reviewComposerAction()?.let { openComposer ->
+                Button(
+                    onClick = { openComposer(drama.id) },
+                    modifier = Modifier.weight(1f).height(42.dp)
+                        .testTag("detail_write_review_button"),
+                    shape = RoundedCornerShape(12.dp),
+                    colors = ButtonDefaults.buttonColors(containerColor = DetailChip),
+                ) {
+                    Text("写剧评", color = DetailText, fontSize = 15.sp)
+                }
             }
         }
     }
