@@ -55,9 +55,9 @@ class BackgroundPlaybackService : MediaSessionService() {
         var active: BackgroundPlaybackService? = null
             private set
 
-        fun stopActive() {
+        fun stopActive(reason: String = "USER_CLOSE") {
             // ViewModel methods and session operations are dispatched on the main thread.
-            active?.stopPlayback()
+            active?.stopPlayback(reason)
         }
     }
 
@@ -99,6 +99,12 @@ class BackgroundPlaybackService : MediaSessionService() {
     private var autoStartPending = false
     private var startRecoveryTried = false
     private var lastNotifiedSecond = -1L
+    private var lastObservedPlayWhenReady: Boolean? = null
+    private var previousPlaybackState: Int = Player.STATE_IDLE
+    private var readySinceMs = 0L
+    private var lastProgressMs = 0L
+    private var lastProgressObservedAtMs = 0L
+    private var stalledRecoveryDone = false
 
     override fun onCreate() {
         super.onCreate()
@@ -161,6 +167,20 @@ class BackgroundPlaybackService : MediaSessionService() {
             ))
             .build()
         engine.addListener(object : Player.Listener {
+            override fun onPlayWhenReadyChanged(playWhenReady: Boolean, reason: Int) {
+                lastObservedPlayWhenReady = playWhenReady
+                diagnostics.record("BACKGROUND", when (reason) {
+                    Player.PLAY_WHEN_READY_CHANGE_REASON_USER_REQUEST ->
+                        if (playWhenReady) "READY_USER_PLAY" else "READY_USER_PAUSE"
+                    Player.PLAY_WHEN_READY_CHANGE_REASON_AUDIO_FOCUS_LOSS ->
+                        "READY_AUDIO_FOCUS_LOST"
+                    Player.PLAY_WHEN_READY_CHANGE_REASON_AUDIO_BECOMING_NOISY ->
+                        "READY_AUDIO_NOISY"
+                    Player.PLAY_WHEN_READY_CHANGE_REASON_REMOTE ->
+                        "READY_REMOTE"
+                    else -> "READY_OTHER"
+                })
+            }
             override fun onIsPlayingChanged(isPlaying: Boolean) {
                 lastNotifiedSecond = -1L
                 if (isPlaying) {
@@ -173,6 +193,21 @@ class BackgroundPlaybackService : MediaSessionService() {
             override fun onRenderedFirstFrame() { onFirstFrame?.invoke() }
 
             override fun onPlaybackStateChanged(state: Int) {
+                if (previousPlaybackState != state) {
+                    diagnostics.record("BACKGROUND", when (state) {
+                        Player.STATE_IDLE -> "STATE_IDLE"
+                        Player.STATE_BUFFERING -> "STATE_BUFFERING"
+                        Player.STATE_READY -> "STATE_READY"
+                        Player.STATE_ENDED -> "STATE_ENDED"
+                        else -> "STATE_OTHER"
+                    })
+                    previousPlaybackState = state
+                }
+                if (state == Player.STATE_READY) {
+                    readySinceMs = android.os.SystemClock.elapsedRealtime()
+                    lastProgressMs = engine.currentPosition.coerceAtLeast(0L)
+                    lastProgressObservedAtMs = readySinceMs
+                }
                 if (state == Player.STATE_READY && autoStartPending &&
                     !engine.playWhenReady && !startRecoveryTried) {
                     startRecoveryTried = true
@@ -245,6 +280,23 @@ class BackgroundPlaybackService : MediaSessionService() {
                     backgroundConfirmed = true
                     onBackgroundProgress?.invoke()
                 }
+                if (engine.playbackState == Player.STATE_READY && engine.isPlaying) {
+                    val position = engine.currentPosition.coerceAtLeast(0L)
+                    val now = android.os.SystemClock.elapsedRealtime()
+                    if (position > lastProgressMs + 100L) {
+                        lastProgressMs = position
+                        lastProgressObservedAtMs = now
+                    } else if (!stalledRecoveryDone && !didFinish &&
+                        lastProgressObservedAtMs != 0L &&
+                        now - lastProgressObservedAtMs >= 12_000L) {
+                        // One bounded resume attempt. If this does not resume,
+                        // retain the media and export a diagnostic event rather
+                        // than entering a prepare/seek loop.
+                        stalledRecoveryDone = true
+                        diagnostics.record("BACKGROUND", "PLAYING_STALLED")
+                        engine.play()
+                    }
+                }
                 if (++tick % 4 == 0 && duration > 0L)
                     onCheckpoint?.invoke(engine.currentPosition.coerceAtLeast(0L), duration)
                 // Only refresh the ordinary notification on a changed second.
@@ -300,6 +352,10 @@ class BackgroundPlaybackService : MediaSessionService() {
         tick = 0
         autoStartPending = true
         startRecoveryTried = false
+        stalledRecoveryDone = false
+        readySinceMs = 0L
+        lastProgressMs = 0L
+        lastProgressObservedAtMs = 0L
         lastNotifiedSecond = -1L
         resumeAtMs = positionMs
         skipIntroMs = introMs
@@ -363,7 +419,7 @@ class BackgroundPlaybackService : MediaSessionService() {
         publishProgressNotification()
     }
 
-    fun stopPlayback() {
+    fun stopPlayback(reason: String = "USER_CLOSE") {
         if (::engine.isInitialized) {
             onCheckpoint?.invoke(
                 engine.currentPosition.coerceAtLeast(0L),
@@ -382,7 +438,7 @@ class BackgroundPlaybackService : MediaSessionService() {
         onTimer = null
         onNavigate = null
         getSystemService(NotificationManager::class.java)?.cancel(NOTIFICATION_ID)
-        diagnostics.record("BACKGROUND", "SERVICE_STOP_REQUESTED")
+        diagnostics.record("BACKGROUND", "STOP_" + DiagnosticLog.token(reason))
         stopSelf()
     }
 
