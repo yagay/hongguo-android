@@ -92,7 +92,9 @@ internal fun CatalogScreen(
     val grid = rememberLazyGridState()
     LaunchedEffect(state.section, state.board, state.genre) {
         grid.scrollToItem(0)
-        filtersOpen = false
+        // Opening the filter shortcut may switch from rank/latest to BROWSE.
+        // Do not close the sheet immediately on that section transition.
+        if (state.section != Section.BROWSE) filtersOpen = false
     }
     if (openSourceExplore) {
         OpenHongguoExploreScreen(model, onClose = { openSourceExplore = false })
