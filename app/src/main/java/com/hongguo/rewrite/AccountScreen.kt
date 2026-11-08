@@ -107,19 +107,11 @@ internal fun AccountScreen(model: DramaViewModel) {
         containerColor = HongguoColors.background,
         contentWindowInsets = WindowInsets(0, 0, 0, 0),
         topBar = {
-            Row(
-                Modifier.fillMaxWidth().height(58.dp)
-                    .background(HongguoColors.surface)
-                    .padding(horizontal = 6.dp),
-                verticalAlignment = Alignment.CenterVertically,
-            ) {
-                HongguoIconAction(onClick = model::closeAccount) {
-                    Icon(Icons.AutoMirrored.Outlined.ArrowBack, "返回")
-                }
-                Text("我的账号", fontSize = 24.sp, fontWeight = FontWeight.Bold,
-                    modifier = Modifier.weight(1f))
-
-            }
+            HongguoPageHeader(
+                title = "我的账号",
+                onBack = model::closeAccount,
+                modifier = Modifier.background(HongguoColors.surface),
+            )
         },
     ) { padding ->
         LazyColumn(
@@ -180,7 +172,7 @@ internal fun AccountScreen(model: DramaViewModel) {
                     }
                 }
                 item {
-                    Surface(color = HongguoColors.surface, shape = RoundedCornerShape(20.dp)) {
+                    Surface(color = HongguoColors.surface, shape = RoundedCornerShape(HongguoUi.cardRadius)) {
                         Row(Modifier.fillMaxWidth().padding(6.dp),
                             horizontalArrangement = Arrangement.spacedBy(8.dp)) {
                             listOf("手机验证码", "官网登录", "扫码登录").forEachIndexed { index, label ->
@@ -205,7 +197,7 @@ internal fun AccountScreen(model: DramaViewModel) {
                     }
                 }
                 if (loginMethod == 2) item {
-                    Surface(shape = RoundedCornerShape(20.dp), color = HongguoColors.surface) {
+                    Surface(shape = RoundedCornerShape(HongguoUi.cardRadius), color = HongguoColors.surface) {
                         Column(Modifier.fillMaxWidth().padding(16.dp),
                             verticalArrangement = Arrangement.spacedBy(12.dp)) {
                     Text("官方扫码登录", fontWeight = FontWeight.Bold,
@@ -261,7 +253,7 @@ internal fun AccountScreen(model: DramaViewModel) {
                     }
                 }
                 if (loginMethod == 1) item {
-                    Surface(shape = RoundedCornerShape(20.dp), color = HongguoColors.surface) {
+                    Surface(shape = RoundedCornerShape(HongguoUi.cardRadius), color = HongguoColors.surface) {
                         Column(Modifier.fillMaxWidth().padding(16.dp),
                             verticalArrangement = Arrangement.spacedBy(12.dp)) {
                             Text("官网登录", fontSize = 18.sp, fontWeight = FontWeight.SemiBold,
@@ -276,7 +268,7 @@ internal fun AccountScreen(model: DramaViewModel) {
                     }
                 }
                 if (loginMethod == 0) item {
-                    Surface(shape = RoundedCornerShape(20.dp), color = HongguoColors.surface) {
+                    Surface(shape = RoundedCornerShape(HongguoUi.cardRadius), color = HongguoColors.surface) {
                         Column(Modifier.fillMaxWidth().padding(16.dp),
                             verticalArrangement = Arrangement.spacedBy(12.dp)) {
                     Text("手机号验证码登录", fontWeight = FontWeight.Bold,
