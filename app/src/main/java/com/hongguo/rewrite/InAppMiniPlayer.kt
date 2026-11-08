@@ -57,7 +57,11 @@ import kotlinx.coroutines.isActive
  */
 @androidx.annotation.OptIn(UnstableApi::class)
 @Composable
-internal fun InAppMiniPlayer(state: AppState, model: DramaViewModel) {
+internal fun InAppMiniPlayer(
+    state: AppState,
+    model: DramaViewModel,
+    onExpand: () -> Unit,
+) {
     val detail = state.detail ?: return
     val selected = detail.episodes.getOrNull(state.episodeIndex) ?: return
     val activity = LocalContext.current as? MainActivity
@@ -86,7 +90,7 @@ internal fun InAppMiniPlayer(state: AppState, model: DramaViewModel) {
         modifier = Modifier.fillMaxWidth()
             .height(94.dp)
             .background(Color(0xFF1D1D20))
-            .clickable(onClick = model::restorePlayer)
+            .clickable(onClick = onExpand)
             .padding(horizontal = 9.dp, vertical = 8.dp)
             .testTag("in_app_mini_player"),
         verticalAlignment = Alignment.CenterVertically,
