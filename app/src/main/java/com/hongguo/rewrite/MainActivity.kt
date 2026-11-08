@@ -45,7 +45,6 @@ import androidx.compose.runtime.SideEffect
 import androidx.compose.runtime.getValue
 import androidx.compose.runtime.mutableStateOf
 import androidx.compose.runtime.key
-import androidx.compose.runtime.mutableStateOf
 import androidx.compose.runtime.setValue
 import androidx.compose.runtime.saveable.rememberSaveable
 import androidx.compose.ui.Alignment
@@ -177,7 +176,7 @@ private fun HongguoApp(model: DramaViewModel = viewModel()) {
         val media = BackgroundPlaybackService.playerFlow.value
         val canEnter = selectedVid != null && state.playbackUrl != null &&
             !state.preparingDetail && media?.currentMediaItem?.mediaId == selectedVid &&
-            media.isPlaying
+            media?.isPlaying == true
         mainActivity?.updateVideoPictureInPictureEligibility(canEnter)
         HongguoColors.applyTheme(state.themeStyle, state.themeMode, systemDark)
         activity?.let {
