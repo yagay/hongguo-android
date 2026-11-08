@@ -453,6 +453,11 @@ internal fun ReelBottomDock(
     val fraction = if (duration > 0L)
         (playback.positionMs.toFloat() / duration.toFloat()).coerceIn(0f, 1f)
     else 0f
+    // While dragging, the timestamp must preview the same position as the
+    // seek line. The actual Media3 seek is still committed only on release.
+    val displayedPositionMs = if (duration > 0L && seeking != null)
+        (duration * seeking!!.coerceIn(0f, 1f)).toLong()
+    else playback.positionMs
 
     Column(
         Modifier.fillMaxWidth().background(HongguoColors.playerChrome)
@@ -532,7 +537,7 @@ internal fun ReelBottomDock(
                 modifier = Modifier.weight(1f).testTag("reel_episode_status"),
             )
             Text(
-                PlaybackTimeFormatter.label(playback.positionMs, duration),
+                PlaybackTimeFormatter.label(displayedPositionMs, duration),
                 color = HongguoColors.playerChromeMuted,
                 fontSize = HongguoUi.playbackDockTimeSize,
                 fontWeight = FontWeight.Medium,
