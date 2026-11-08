@@ -761,6 +761,14 @@ class DramaViewModel(application: Application) : AndroidViewModel(application) {
         loadOfficialReels()
     }
     private val prefetchedFeedDetails = linkedMapOf<String, DramaDetail>()
+    /** Reuse the last few series details on reverse swipes, without refetching. */
+    private val visitedFeedDetails = linkedMapOf<String, DramaDetail>()
+    private fun rememberFeedDetail(detail: DramaDetail) {
+        visitedFeedDetails.remove(detail.drama.id)
+        visitedFeedDetails[detail.drama.id] = detail
+        while (visitedFeedDetails.size > 4)
+            visitedFeedDetails.remove(visitedFeedDetails.keys.first())
+    }
 
     private fun prefetchFollowingFeedItem(index: Int) {
         val current = state.value
@@ -1512,6 +1520,7 @@ class DramaViewModel(application: Application) : AndroidViewModel(application) {
         feedPrefetchJob?.cancel()
         clearReelWarmVideo()
         prefetchedFeedDetails.clear()
+        visitedFeedDetails.clear()
         val feedAccount = account.recommendationAccount()
         appliedRecommendationSession = feedAccount
         nativeSource.setAccountRecommendations(feedAccount)
@@ -1626,6 +1635,7 @@ class DramaViewModel(application: Application) : AndroidViewModel(application) {
             try {
                 val result = api?.detail(drama.id)
                     ?: prefetchedFeedDetails.remove(drama.id)
+                    ?: if (feed) visitedFeedDetails[drama.id] else null
                     ?: nativeSource.detail(drama.id)
                 if (version != detailId) return@launch
                 val resolved = result.copy(drama = result.drama.copy(
@@ -1641,6 +1651,7 @@ class DramaViewModel(application: Application) : AndroidViewModel(application) {
                     .firstOrNull { it.drama.id == drama.id }?.episode
                 val index = resolved.episodes.indexOfFirst { it.index == remembered }
                     .takeIf { it >= 0 } ?: 0
+                if (feed) rememberFeedDetail(resolved)
                 mutable.update { it.copy(detail = resolved, episodeIndex = index,
                     preparingDetail = false) }
                 diagnostics.record("DETAIL", "SUCCESS", elapsed(started))
@@ -1688,6 +1699,7 @@ class DramaViewModel(application: Application) : AndroidViewModel(application) {
             vid = current.vid,
             url = url,
             remote = remote,
+            qualityLimit = currentState.qualityLimit,
             drama = detail.drama.title,
             episode = current.index,
             totalEpisodes = detail.episodes.size,
@@ -1818,7 +1830,10 @@ class DramaViewModel(application: Application) : AndroidViewModel(application) {
         val cachedNative = if (reelCached) reelWarmVideo
             else if (preloadedNextVid == vid &&
                 preloadedNextQuality == state.value.qualityLimit) preloadedNextVideo
-            else null
+            else BackgroundPlaybackService.active?.takeRecentVideo(
+                vid, state.value.qualityLimit)
+        if (cachedNative != null)
+            diagnostics.record("PLAYBACK", "PREPARED_STREAM_REUSED")
         // Transfer the warmed reel's ownership to the active playback request.
         if (reelCached) {
             reelWarmVideo = null
@@ -2124,6 +2139,7 @@ class DramaViewModel(application: Application) : AndroidViewModel(application) {
         feedPrefetchJob?.cancel()
         clearReelWarmVideo()
         prefetchedFeedDetails.clear()
+        visitedFeedDetails.clear()
         ++relatedGeneration
         relatedJob?.cancel()
         ++guessesGeneration
