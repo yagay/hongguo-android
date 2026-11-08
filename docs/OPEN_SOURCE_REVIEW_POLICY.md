@@ -96,3 +96,12 @@ Observed on a device: a media player appeared in the system media area, but not 
 - A restored playback position beyond 3 seconds does not by itself constitute background playback confirmation: the service now requires 3 seconds of newly observed forward progress.
 - Keep the Android/OnePlus notification and MediaSession timeline independent of the UI lifecycle. The real reason for `AUTO_START_RECOVERY` is pending capture by these new diagnostics; do not assume one cause without a new trace.
 - CI run and lock-screen device validation are still pending.
+
+## Media card disappearing + returning to permanently loading player (2026-11-08)
+
+The user reports **both** loss of background audio and removal of the OS media card, then permanent loading/failure on returning to the app. This suggests loss of the player/service itself, not merely ordinary paused playback; it is **not** proof of an OxygenOS kill, because the current diagnostic export does not capture the stop instant.
+
+- Added `TASK_REMOVED` and `DESTROYED_WHILE_PLAYING` / `DESTROYED_NOT_PLAYING` events on `MediaSessionService`, and a final resumable checkpoint before normal service teardown. Abrupt OS process kills cannot reliably run `onDestroy`, so the absence of the event is not definitive.
+- The Activity observes `ON_RESUME` and asks the ViewModel to recover **only** if it still has an active playback screen and source, its playback intent is true, and **both** `BackgroundPlaybackService.active` and `playerFlow` are absent. It waits 600 ms for an in-flight bind before doing a **single** re-open of the current episode through the existing source API. Intentional pauses, detail pages and explicit player close do not trigger recovery.
+- This is a foreground repair, **not** guaranteed autonomous process-death continuation. A force-stop, restricted background execution, hardware decoder crash or Android/OxygenOS process kill may require a fresh activity/process initialization. Persistent full-session reconstruction across process death is a separate feature and requires robust saved-state/authorization design.
+- On-device test matrix: play 2+ min locked; screen off + audio focus interruptions; task removed; app returns with same process vs cold start; verify no duplicate media session, no repeated restart after deliberate pause, and exported events after service destruction. Confirm Debug build before claiming success.
