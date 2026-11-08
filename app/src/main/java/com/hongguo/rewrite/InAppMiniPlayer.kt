@@ -61,22 +61,11 @@ internal fun InAppMiniPlayer(
     state: AppState,
     model: DramaViewModel,
     onExpand: () -> Unit,
+    modifier: Modifier = Modifier,
 ) {
     val detail = state.detail ?: return
     val selected = detail.episodes.getOrNull(state.episodeIndex) ?: return
-    val activity = LocalContext.current as? MainActivity
     val media by BackgroundPlaybackService.playerFlow.collectAsStateWithLifecycle()
-    var currentItemReady by remember(selected.vid) { mutableStateOf(false) }
-    var isPlaying by remember(selected.vid) { mutableStateOf(false) }
-
-    LaunchedEffect(media, selected.vid) {
-        while (isActive) {
-            val matches = media?.currentMediaItem?.mediaId == selected.vid
-            currentItemReady = matches
-            isPlaying = matches && media?.isPlaying == true
-            delay(250)
-        }
-    }
     // A MediaItem transition can briefly invalidate the selected vid, but
     // never unmount the PlayerView: its video surface must survive every
     // automatic episode and reel switch.
@@ -86,108 +75,40 @@ internal fun InAppMiniPlayer(
     val showCover = PlaybackFramePolicy.showCover(selected.vid,
         media?.currentMediaItem?.mediaId)
 
-    Row(
-        modifier = Modifier.fillMaxWidth()
-            .height(94.dp)
-            .background(Color(0xFF1D1D20))
+    // A compact portrait video-only overlay, not a layout-consuming 94dp
+    // control bar. The surrounding page remains full-height and scrollable.
+    Box(
+        modifier = modifier
+            .size(width = 90.dp, height = 160.dp)
+            .clip(RoundedCornerShape(11.dp))
+            .background(Color.Black)
             .clickable(onClick = onExpand)
-            .padding(horizontal = 9.dp, vertical = 8.dp)
             .testTag("in_app_mini_player"),
-        verticalAlignment = Alignment.CenterVertically,
-        horizontalArrangement = Arrangement.spacedBy(8.dp),
+        contentAlignment = Alignment.Center,
     ) {
-        Box(
-            Modifier.size(width = 128.dp, height = 72.dp)
-                .clip(RoundedCornerShape(7.dp))
-                .background(Color.Black),
-            contentAlignment = Alignment.Center,
-        ) {
-            // Always compose ONE persistent view. On playback/episode changes,
-            // Media3 reuses its ExoPlayer; transient mismatches must not dispose
-            // the Android SurfaceView and produce a black frame on reattach.
-            AndroidView(
-                factory = {
-                    PlayerView(it).apply {
-                        useController = false
-                        resizeMode = AspectRatioFrameLayout.RESIZE_MODE_FIT
-                        setKeepContentOnPlayerReset(true)
-                        player = media
-                    }
-                },
-                update = { view ->
-                    if (view.player !== media) view.player = media
-                },
-                modifier = Modifier.fillMaxSize().testTag("mini_video_surface"),
-            )
-            // The outgoing frame stays behind a cover until the new item is
-            // READY; this avoids displaying the previous series by mistake.
-            if (showCover && detail.drama.cover.isNotBlank()) {
-                AsyncImage(
-                    model = model.cover(detail.drama.cover),
-                    contentDescription = null,
-                    contentScale = ContentScale.Crop,
-                    modifier = Modifier.fillMaxSize(),
-                )
-            }
-        }
-        Column(
-            modifier = Modifier.weight(1f),
-            verticalArrangement = Arrangement.Center,
-        ) {
-            Text(
-                detail.drama.title,
-                fontSize = 13.sp,
-                color = Color.White,
-                fontWeight = FontWeight.SemiBold,
-                maxLines = 1,
-                overflow = TextOverflow.Ellipsis,
-            )
-            Spacer(Modifier.height(3.dp))
-            Text(
-                "第${selected.index}集 · " + when {
-                    !currentItemReady -> "准备播放"
-                    isPlaying -> "正在播放"
-                    else -> "已暂停"
-                },
-                fontSize = 11.sp,
-                color = Color(0xFFB7B7BC),
-                maxLines = 1,
-            )
-        }
-        IconButton(
-            onClick = { activity?.enterVideoPictureInPicture(selected.vid) },
-            enabled = currentItemReady,
-            modifier = Modifier.size(36.dp).testTag("mini_system_pip"),
-        ) {
-            Icon(
-                Icons.Outlined.PictureInPictureAlt,
-                contentDescription = "切换到其他应用画中画",
-                tint = if (currentItemReady) Color.White else Color.Gray,
-            )
-        }
-        IconButton(
-            onClick = {
-                val player = media
-                if (player != null &&
-                    player.currentMediaItem?.mediaId == selected.vid) {
-                    if (player.isPlaying) player.pause() else player.play()
+        // Reattach the existing service-owned Media3 player. No new player,
+        // media item, seek or reload is created when expanding the window.
+        AndroidView(
+            factory = {
+                PlayerView(it).apply {
+                    useController = false
+                    resizeMode = AspectRatioFrameLayout.RESIZE_MODE_FIT
+                    setKeepContentOnPlayerReset(true)
+                    player = media
                 }
             },
-            enabled = currentItemReady,
-            modifier = Modifier.size(40.dp).testTag("mini_play_pause"),
-        ) {
-            Icon(
-                if (isPlaying) Icons.Outlined.Pause else Icons.Outlined.PlayArrow,
-                contentDescription = if (isPlaying) "暂停" else "播放",
-                tint = if (currentItemReady) Color.White else Color.Gray,
+            update = { view ->
+                if (view.player !== media) view.player = media
+            },
+            modifier = Modifier.fillMaxSize().testTag("mini_video_surface"),
+        )
+        if (showCover && detail.drama.cover.isNotBlank()) {
+            AsyncImage(
+                model = model.cover(detail.drama.cover),
+                contentDescription = null,
+                contentScale = ContentScale.Crop,
+                modifier = Modifier.fillMaxSize(),
             )
-        }
-        IconButton(
-            onClick = model::closePlayer,
-            modifier = Modifier.size(38.dp).testTag("mini_close"),
-        ) {
-            Icon(Icons.Outlined.Close, contentDescription = "关闭播放",
-                tint = Color(0xFFE9E9EA))
         }
     }
 }
