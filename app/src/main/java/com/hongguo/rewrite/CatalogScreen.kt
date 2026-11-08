@@ -161,7 +161,7 @@ internal fun CatalogScreen(
                         Drama(cloud.series.id, cloud.series.title, cloud.series.cover)
                     else local!!.drama
                     Surface(
-                        shape = RoundedCornerShape(13.dp),
+                        shape = RoundedCornerShape(HongguoUi.cardRadius),
                         color = HongguoColors.surface,
                     ) {
                         Row(Modifier.fillMaxWidth().clickable {
@@ -425,19 +425,12 @@ private fun CompactChoices(
     choices: List<Pair<String, String>>,
     selected: String,
     onSelect: (String) -> Unit,
-) {
-    Row(Modifier.fillMaxWidth().horizontalScroll(rememberScrollState()),
-        horizontalArrangement = Arrangement.spacedBy(8.dp)) {
-        choices.forEach { (key, label) ->
-            FilterChip(
-                selected = selected == key,
-                onClick = { onSelect(key) },
-                label = { Text(label, fontSize = 12.sp) },
-                shape = RoundedCornerShape(10.dp),
-            )
-        }
-    }
-}
+) = HongguoChoiceGroup(
+    options = choices,
+    selected = selected,
+    onSelect = onSelect,
+    tag = "theater_choice",
+)
 
 @Composable
 private fun CatalogPoster(drama: Drama, cover: String,
