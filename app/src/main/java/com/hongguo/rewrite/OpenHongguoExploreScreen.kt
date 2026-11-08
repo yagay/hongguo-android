@@ -210,7 +210,8 @@ internal fun OpenHongguoExploreScreen(
 
     Column(Modifier.fillMaxSize().background(HongguoColors.background)
         .testTag("openhongguo_explore")) {
-        Row(Modifier.fillMaxWidth().height(54.dp),
+        Row(Modifier.fillMaxWidth().height(HongguoUi.pageTopBarHeight)
+            .padding(end = HongguoUi.pagePadding),
             verticalAlignment = Alignment.CenterVertically) {
             HongguoIconAction(onClick = {
                 when {
@@ -225,7 +226,7 @@ internal fun OpenHongguoExploreScreen(
                     tint = HongguoColors.ink)
             }
             Text(if (actorId.isBlank()) "更多发现" else "演员作品",
-                fontSize = 19.sp, fontWeight = FontWeight.Bold,
+                fontSize = HongguoUi.pageTitleSize, fontWeight = FontWeight.Bold,
                 color = HongguoColors.ink)
             Spacer(Modifier.weight(1f))
             if (actorId.isBlank()) TextButton(onClick = { refresh++ },
