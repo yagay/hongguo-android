@@ -122,22 +122,21 @@ private fun LibraryRows(state: AppState, model: DramaViewModel) {
         singleLine = true, label = { Text("搜索本机片单") },
         modifier = Modifier.fillMaxWidth().testTag("local_library_search"))
     if (isFavorites) {
-        Row(Modifier.fillMaxWidth().horizontalScroll(rememberScrollState()),
-            horizontalArrangement = Arrangement.spacedBy(7.dp)) {
-            (listOf("全部", "默认", "追剧中", "待看", "已看完") +
-                state.favoriteGroups.values).distinct().forEach { group ->
-                FilterChip(selected = groupFilter == group,
-                    onClick = { groupFilter = group }, label = { Text(group) })
-            }
-        }
-    }
-    if (!isFavorites) {
-        Row(Modifier.fillMaxWidth(), horizontalArrangement = Arrangement.spacedBy(7.dp)) {
-            listOf("全部", "未看完", "已看完").forEachIndexed { index, label ->
-                FilterChip(selected = completionFilter == index, onClick = { completionFilter = index },
-                    label = { Text(label) }, modifier = Modifier.testTag("history_filter_$index"))
-            }
-        }
+        HongguoChoiceGroup(
+            options = (listOf("全部", "默认", "追剧中", "待看", "已看完") +
+                state.favoriteGroups.values).distinct().map { it to it },
+            selected = groupFilter,
+            onSelect = { groupFilter = it },
+            tag = "favorite_group",
+        )
+    } else {
+        HongguoChoiceGroup(
+            options = listOf("全部", "未看完", "已看完")
+                .mapIndexed { index, label -> index to label },
+            selected = completionFilter,
+            onSelect = { completionFilter = it },
+            tag = "history_filter",
+        )
     }
     if (selecting) {
         Row(Modifier.fillMaxWidth(), verticalAlignment = Alignment.CenterVertically) {
