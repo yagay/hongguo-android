@@ -61,6 +61,7 @@ import kotlinx.coroutines.withContext
 internal fun OpenHongguoExploreScreen(
     model: DramaViewModel,
     onClose: () -> Unit,
+    initialTab: String = "new",
 ) {
     val source = model.openHongguoDiscovery
     val tabs = listOf(
@@ -80,7 +81,9 @@ internal fun OpenHongguoExploreScreen(
         "category" to "书籍分类",
         "calendar" to "指定日期",
     )
-    var tab by remember { mutableStateOf("new") }
+    var tab by remember(initialTab) {
+        mutableStateOf(initialTab.takeIf { id -> tabs.any { it.first == id } } ?: "new")
+    }
     var cursor by remember { mutableStateOf("") }
     var query by remember { mutableStateOf("") }
     var activeQuery by remember { mutableStateOf("") }
