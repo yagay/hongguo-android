@@ -1632,55 +1632,83 @@ class DramaViewModel(application: Application) : AndroidViewModel(application) {
         firstFrameFor = null
         clearPreloadedNext()
         startEpisodeHint = resumeEp
-        mutable.update { it.copy(offlinePlaybackUri = null, detail = null, preparingDetail = true,
-            feedMode = feed, detailPageVisible = showDetails,
-            detailEntryEnabled = false, relatedWorks = emptyList(),
-            relatedSeries = null,
-            relatedLoading = false, relatedError = null,
-            guessWorks = emptyList(), guessesLoading = false, guessesError = null,
-            openHongguoLoading = false, openHongguoSeasons = emptyList(),
-            playbackError = null, playbackUrl = null, playing = false) }
-        // Official swipe recommendations must use their matching native detail API.
+
+        // Reels frequently revisit a prefetched or recently watched series.
+        // Resolve that in this main-thread navigation call, not in a later
+        // coroutine. Otherwise we briefly publish detail=null, and Compose
+        // displays a full-screen "reading episodes" loading page even though
+        // we already have the episodes in memory.
         val api = if (feed) null else source
+        val prefetched = if (api == null) prefetchedFeedDetails.remove(drama.id) else null
+        val cached = if (feed) visitedFeedDetails[drama.id] else null
+        val immediate = prefetched ?: cached
+        fun resolvedDetail(result: DramaDetail) = result.copy(drama = result.drama.copy(
+            title = result.drama.title.ifBlank { drama.title },
+            cover = result.drama.cover.ifBlank { drama.cover },
+            total = result.episodes.size,
+            synopsis = result.drama.synopsis.ifBlank { drama.synopsis },
+            completionStatus = result.drama.completionStatus ?: drama.completionStatus,
+            actors = result.drama.actors.ifEmpty { drama.actors },
+            categories = result.drama.categories.ifEmpty { drama.categories },
+        ))
+        fun episodeIndexFor(result: DramaDetail): Int {
+            val remembered = resumeEp ?: state.value.library
+                .firstOrNull { it.drama.id == drama.id }?.episode
+            return result.episodes.indexOfFirst { it.index == remembered }
+                .takeIf { it >= 0 } ?: 0
+        }
+        val ready = immediate?.let(::resolvedDetail)
+        val readyIndex = ready?.let(::episodeIndexFor)
+        mutable.update { it.copy(
+            offlinePlaybackUri = null,
+            detail = ready,
+            episodeIndex = readyIndex ?: it.episodeIndex,
+            preparingDetail = ready == null,
+            feedMode = feed,
+            detailPageVisible = showDetails,
+            detailEntryEnabled = false,
+            relatedWorks = emptyList(),
+            relatedSeries = null,
+            relatedLoading = false,
+            relatedError = null,
+            guessWorks = emptyList(),
+            guessesLoading = false,
+            guessesError = null,
+            openHongguoLoading = false,
+            openHongguoSeasons = emptyList(),
+            playbackError = null,
+            playbackUrl = null,
+            playing = false,
+        ) }
         diagnostics.record("DETAIL", "START")
+
+        fun displayAndPlay(resolved: DramaDetail, index: Int) {
+            if (version != detailId) return
+            if (feed) rememberFeedDetail(resolved)
+            mutable.update { it.copy(detail = resolved, episodeIndex = index,
+                preparingDetail = false) }
+            loadSocialStats(resolved.drama.id)
+            if (api == null) loadLabels(resolved.drama.id)
+            loadRelated(resolved.drama.id)
+            if (showDetails) {
+                loadSdkDetails(resolved.drama.id)
+                loadGuesses(resolved.drama.id)
+            } else play(index)
+        }
+
+        if (ready != null && readyIndex != null) {
+            diagnostics.record("FEED", if (prefetched != null)
+                "DETAIL_PREFETCH_INSTANT" else "DETAIL_RECENT_INSTANT")
+            displayAndPlay(ready, readyIndex)
+            return
+        }
         detailJob = viewModelScope.launch {
             val started = System.nanoTime()
             try {
-                val cachedDetail = if (feed) visitedFeedDetails[drama.id] else null
-                val prefetchedDetail = prefetchedFeedDetails.remove(drama.id)
-                val result = api?.detail(drama.id)
-                    ?: prefetchedDetail
-                    ?: cachedDetail
-                    ?: nativeSource.detail(drama.id)
-                if (feed && (prefetchedDetail != null || cachedDetail != null))
-                    diagnostics.record("FEED", if (prefetchedDetail != null)
-                        "DETAIL_PREFETCH_HIT" else "DETAIL_RECENT_HIT")
+                val result = api?.detail(drama.id) ?: nativeSource.detail(drama.id)
                 if (version != detailId) return@launch
-                val resolved = result.copy(drama = result.drama.copy(
-                    title = result.drama.title.ifBlank { drama.title },
-                    cover = result.drama.cover.ifBlank { drama.cover },
-                    total = result.episodes.size,
-                    synopsis = result.drama.synopsis.ifBlank { drama.synopsis },
-                    completionStatus = result.drama.completionStatus ?: drama.completionStatus,
-                    actors = result.drama.actors.ifEmpty { drama.actors },
-                    categories = result.drama.categories.ifEmpty { drama.categories },
-                ))
-                val remembered = startEpisodeHint ?: state.value.library
-                    .firstOrNull { it.drama.id == drama.id }?.episode
-                val index = resolved.episodes.indexOfFirst { it.index == remembered }
-                    .takeIf { it >= 0 } ?: 0
-                if (feed) rememberFeedDetail(resolved)
-                mutable.update { it.copy(detail = resolved, episodeIndex = index,
-                    preparingDetail = false) }
+                displayAndPlay(resolvedDetail(result), episodeIndexFor(result))
                 diagnostics.record("DETAIL", "SUCCESS", elapsed(started))
-                loadSocialStats(resolved.drama.id)
-                if (api == null) loadLabels(resolved.drama.id)
-                loadRelated(resolved.drama.id)
-                if (showDetails) {
-                    loadSdkDetails(resolved.drama.id)
-                    loadGuesses(resolved.drama.id)
-                }
-                else play(index)
             } catch (e: CancellationException) {
                 throw e
             } catch (e: Exception) {
