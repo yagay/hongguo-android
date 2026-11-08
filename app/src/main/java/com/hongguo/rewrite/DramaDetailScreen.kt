@@ -452,7 +452,7 @@ internal fun DramaDetailScreen(state: AppState, model: DramaViewModel) {
                         state.relatedWorks.take(18).forEach { work ->
                             Column(Modifier.width(94.dp)
                                 .clickable(enabled = !work.upcoming) {
-                                    model.open(work.drama)
+                                    model.openRelatedDrama(work.drama)
                                 }, verticalArrangement = Arrangement.spacedBy(6.dp)) {
                                 AsyncImage(model = model.cover(work.drama.cover),
                                     contentDescription = work.drama.title,
@@ -479,7 +479,7 @@ internal fun DramaDetailScreen(state: AppState, model: DramaViewModel) {
                     Row(Modifier.fillMaxWidth().horizontalScroll(rememberScrollState()),
                         horizontalArrangement = Arrangement.spacedBy(12.dp)) {
                         state.openHongguoSeasons.forEach { season ->
-                            Column(Modifier.width(94.dp).clickable { model.open(season) },
+                            Column(Modifier.width(94.dp).clickable { model.openRelatedDrama(season) },
                                 verticalArrangement = Arrangement.spacedBy(6.dp)) {
                                 AsyncImage(model = model.cover(season.cover),
                                     contentDescription = season.title,
@@ -506,7 +506,7 @@ internal fun DramaDetailScreen(state: AppState, model: DramaViewModel) {
                     Row(Modifier.horizontalScroll(rememberScrollState()),
                         horizontalArrangement = Arrangement.spacedBy(12.dp)) {
                         state.guessWorks.take(18).forEach { guess ->
-                            Column(Modifier.width(94.dp).clickable { model.open(guess) },
+                            Column(Modifier.width(94.dp).clickable { model.openRelatedDrama(guess) },
                                 verticalArrangement = Arrangement.spacedBy(6.dp)) {
                                 AsyncImage(model = model.cover(guess.cover),
                                     contentDescription = guess.title,
