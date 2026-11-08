@@ -5,6 +5,9 @@ import androidx.activity.compose.rememberLauncherForActivityResult
 import androidx.activity.result.contract.ActivityResultContracts
 import android.provider.DocumentsContract
 import android.content.Intent
+import androidx.compose.animation.AnimatedVisibility
+import androidx.compose.animation.slideInHorizontally
+import androidx.compose.animation.slideOutHorizontally
 import androidx.compose.foundation.background
 import androidx.compose.foundation.clickable
 import androidx.compose.foundation.rememberScrollState
@@ -124,7 +127,6 @@ import java.time.format.DateTimeFormatter
 internal fun NativePlayer(
     state: AppState,
     model: DramaViewModel,
-    onOpenSearch: () -> Unit,
 ) {
     val detail = state.detail ?: return
     if (detail.episodes.isEmpty()) {
@@ -159,6 +161,9 @@ internal fun NativePlayer(
     var showComments by remember { mutableStateOf(false) }
     var showEpisodes by remember { mutableStateOf(false) }
     var showPlaybackSettings by remember { mutableStateOf(false) }
+    // Search uses the exact landing page shared with the home search action.
+    // Keep the Media3 surface and current feed mounted behind the sliding page.
+    var searchOverlayOpen by remember { mutableStateOf(false) }
     val accountDrawerState = rememberDrawerState(DrawerValue.Closed)
     val accountDrawerScope = rememberCoroutineScope()
     var showHeart by remember { mutableStateOf(false) }
@@ -230,10 +235,13 @@ internal fun NativePlayer(
         ) }
         model.backFromPlayer()
     }
-    BackHandler(enabled = accountDrawerState.isOpen) {
+    BackHandler(enabled = searchOverlayOpen) {
+        searchOverlayOpen = false
+    }
+    BackHandler(enabled = !searchOverlayOpen && accountDrawerState.isOpen) {
         accountDrawerScope.launch { accountDrawerState.close() }
     }
-    BackHandler(enabled = accountDrawerState.isClosed &&
+    BackHandler(enabled = !searchOverlayOpen && accountDrawerState.isClosed &&
         !showPlaybackSettings && !showComments && !showEpisodes) {
         flushThenClose()
     }
@@ -296,7 +304,7 @@ internal fun NativePlayer(
 
     ModalNavigationDrawer(
         drawerState = accountDrawerState,
-        gesturesEnabled = state.feedMode,
+        gesturesEnabled = state.feedMode && !searchOverlayOpen,
         drawerContent = {
             ModalDrawerSheet(
                 modifier = Modifier.width((LocalConfiguration.current.screenWidthDp * 0.80f).dp),
@@ -329,12 +337,14 @@ internal fun NativePlayer(
             }
         },
     ) {
+    Box(Modifier.fillMaxSize()) {
     Column(Modifier.fillMaxSize().background(Color.Black).testTag("reels_player")) {
         Box(Modifier.fillMaxWidth().weight(1f).testTag("reel_video_viewport")) {
         VerticalPager(
             state = pagerState,
             beyondViewportPageCount = 1,
-            userScrollEnabled = !showComments && !showEpisodes && !showPlaybackSettings,
+            userScrollEnabled = !searchOverlayOpen &&
+                !showComments && !showEpisodes && !showPlaybackSettings,
             modifier = Modifier.fillMaxSize().testTag("episode_vertical_pager"),
         ) { page ->
             val episode = detail.episodes.getOrNull(
@@ -525,7 +535,7 @@ internal fun NativePlayer(
             onComic = { model.setReelsMode("comic") },
             onReal = { model.setReelsMode("real") },
             onRecommend = { model.setReelsMode("all") },
-            onSearch = onOpenSearch,
+            onSearch = { searchOverlayOpen = true },
         )
         }
         ReelBottomDock(
@@ -535,6 +545,27 @@ internal fun NativePlayer(
             onEpisodes = { showEpisodes = true },
         )
     }
+    // The search landing slides over (not instead of) the reel video.
+    // Its Back arrow dismisses the overlay without navigating away or
+    // restarting playback. Search submission follows the home search flow.
+    AnimatedVisibility(
+        visible = searchOverlayOpen && state.feedMode,
+        modifier = Modifier.fillMaxSize().align(Alignment.CenterEnd)
+            .testTag("reel_search_slide_page"),
+        enter = slideInHorizontally(initialOffsetX = { it }),
+        exit = slideOutHorizontally(targetOffsetX = { it }),
+    ) {
+        SearchLandingScreen(
+            state = state,
+            model = model,
+            onClose = { searchOverlayOpen = false },
+            onResults = {
+                searchOverlayOpen = false
+                model.minimizePlayer()
+            },
+        )
+    }
+    } // Overlay container
     } // ModalNavigationDrawer content
 
     if (showPlaybackSettings) {
