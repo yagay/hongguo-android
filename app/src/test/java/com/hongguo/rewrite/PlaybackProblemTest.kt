@@ -20,6 +20,15 @@ class PlaybackProblemTest {
         assertTrue(PlaybackProblem.describe("取址", error).startsWith("PLAYBACK_EMPTY_RESPONSE"))
     }
 
+    @Test fun retryEligibilityIsLimitedToTypedEmptyPlaybackModel() {
+        assertTrue(PlaybackProblem.isEmptyPlaybackModel(EmptyPlaybackResponseException()))
+        assertTrue(PlaybackProblem.isEmptyPlaybackModel(
+            IOException("wrapper", EmptyPlaybackResponseException())))
+        assertFalse(PlaybackProblem.isEmptyPlaybackModel(SocketTimeoutException()))
+        assertFalse(PlaybackProblem.isEmptyPlaybackModel(IOException("CODEC_NOT_SUPPORTED")))
+        assertFalse(PlaybackProblem.isEmptyPlaybackModel(IOException("EMPTY_RESPONSE")))
+    }
+
     @Test fun nativeUnsupportedCodecIsDistinct() {
         assertTrue(PlaybackProblem.describe("准备播放",
             IOException("CODEC_NOT_SUPPORTED")).startsWith("CODEC_NOT_SUPPORTED"))
