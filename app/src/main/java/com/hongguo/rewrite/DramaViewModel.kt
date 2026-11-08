@@ -1670,8 +1670,6 @@ class DramaViewModel(application: Application) : AndroidViewModel(application) {
 
     fun open(drama: Drama, resumeEp: Int? = null, feed: Boolean = false,
         showDetails: Boolean = false) {
-        detailPlaybackRetained = false
-        detailPlaybackShouldResume = false
         BackgroundPlaybackService.active?.pauseForTransition()
         sdkDetailGeneration++
         sdkDetailJob?.cancel()
@@ -1720,6 +1718,7 @@ class DramaViewModel(application: Application) : AndroidViewModel(application) {
             preparingDetail = ready == null,
             feedMode = feed,
             detailPageVisible = showDetails,
+            miniPlayerVisible = false,
             detailEntryEnabled = false,
             relatedWorks = emptyList(),
             relatedSeries = null,
@@ -1886,8 +1885,6 @@ class DramaViewModel(application: Application) : AndroidViewModel(application) {
     }
 
     fun play(index: Int) {
-        detailPlaybackRetained = false
-        detailPlaybackShouldResume = false
         val detail = state.value.detail ?: return
         if (index !in detail.episodes.indices) return
         // Notification commands run while the Activity is STOPPED. Reuse the
@@ -1899,7 +1896,9 @@ class DramaViewModel(application: Application) : AndroidViewModel(application) {
         }.isSuccess
         if (!serviceStarted) diagnostics.record("PLAYBACK", "SERVICE_START_DENIED")
         BackgroundPlaybackService.active?.pauseForTransition()
-        mutable.update { it.copy(detailPageVisible = false) }
+        // The mini player must survive autoplay while another page is open.
+        if (!state.value.miniPlayerVisible)
+            mutable.update { it.copy(detailPageVisible = false) }
         if (state.value.offlinePlaybackUri != null) {
             val uri = state.value.offlinePlaybackUri ?: return
             val resume = state.value.resumePositionMs
@@ -2176,71 +2175,63 @@ class DramaViewModel(application: Application) : AndroidViewModel(application) {
         }
     }
 
-    private var detailPlaybackRetained = false
-    private var detailPlaybackShouldResume = false
+    /** Switch to the catalog without stopping the service-owned player. */
+    fun minimizePlayer() {
+        val snapshot = state.value
+        if (snapshot.detail == null || snapshot.detailPageVisible) return
+        mutable.update { it.copy(miniPlayerVisible = true, modal = Modal.NONE) }
+        diagnostics.record("PLAYER", "MINI_ENTER")
+    }
 
-    /** Keep the Media3 session and encrypted source while showing details. */
-    fun showDramaDetails() {
-        val s = state.value
-        val detail = s.detail ?: return
-        if (s.detailPageVisible) return
-        val vid = detail.episodes.getOrNull(s.episodeIndex)?.vid
-        val wasPlaying = vid?.let { BackgroundPlaybackService.active?.pauseForDetails(it) }
-        detailPlaybackRetained = wasPlaying != null && s.playbackUrl != null
-        detailPlaybackShouldResume = wasPlaying == true
-        if (!detailPlaybackRetained) {
-            // No reusable live media item; keep the existing reload fallback.
-            BackgroundPlaybackService.stopActive("OPEN_DETAIL_NO_SESSION")
-            closeNativeVideo()
-            clearPreloadedNext()
+    /** The expanded video surface reattaches to the existing ExoPlayer. */
+    fun restorePlayer() {
+        val snapshot = state.value
+        if (snapshot.detail == null) return
+        mutable.update { it.copy(
+            miniPlayerVisible = false,
+            detailPageVisible = false,
+            detailEntryEnabled = false,
+            modal = Modal.NONE,
+        ) }
+        diagnostics.record("PLAYER", "MINI_RESTORE")
+        if (snapshot.playing && snapshot.playbackUrl != null &&
+            BackgroundPlaybackService.active == null) {
+            recoverPlaybackAfterServiceLoss()
         }
+    }
+
+    /** Keep playing the same Media3 item while browsing the series details. */
+    fun showDramaDetails() {
+        val snapshot = state.value
+        val detail = snapshot.detail ?: return
+        if (snapshot.detailPageVisible) return
         loadSdkDetails(detail.drama.id)
         loadGuesses(detail.drama.id)
-        ++detailId
-        detailJob?.cancel()
         mutable.update { it.copy(
             detailPageVisible = true,
             detailEntryEnabled = true,
-            playbackUrl = if (detailPlaybackRetained) it.playbackUrl else null,
-            playing = if (detailPlaybackRetained) detailPlaybackShouldResume else false,
-            playbackError = null,
+            miniPlayerVisible = it.playbackUrl != null,
         ) }
-        diagnostics.record("DETAIL",
-            if (detailPlaybackRetained) "SESSION_RETAINED" else "SESSION_UNAVAILABLE")
+        diagnostics.record("DETAIL", "OPEN_WITH_MINI")
     }
 
-    /** Reattach to the same media item; reload only if its service was lost. */
+    /** Restore the full player without resetting the video or its position. */
     fun backFromDramaDetails() {
         sdkDetailGeneration++
         sdkDetailJob?.cancel()
-        val s = state.value
-        if (!s.detailPageVisible) return
-        val vid = s.detail?.episodes?.getOrNull(s.episodeIndex)?.vid
-        val resumed = detailPlaybackRetained && s.playbackUrl != null &&
-            vid != null && BackgroundPlaybackService.active
-                ?.resumeFromDetails(vid, detailPlaybackShouldResume) == true
-        val shouldPlay = detailPlaybackShouldResume
-        detailPlaybackRetained = false
-        detailPlaybackShouldResume = false
-        if (resumed) {
-            mutable.update { it.copy(
-                detailPageVisible = false,
-                detailEntryEnabled = false,
-                playing = shouldPlay,
-            ) }
-            diagnostics.record("DETAIL", "RETURN_REUSED_PLAYER")
-        } else if (s.detailEntryEnabled && s.detail != null) {
-            diagnostics.record("DETAIL", "RETURN_RELOAD_FALLBACK")
-            play(s.episodeIndex)
+        val snapshot = state.value
+        if (!snapshot.detailPageVisible) return
+        if (snapshot.miniPlayerVisible) restorePlayer()
+        else if (snapshot.detailEntryEnabled && snapshot.detail != null) {
+            diagnostics.record("DETAIL", "RETURN_LOAD_FROM_DETAIL")
+            play(snapshot.episodeIndex)
         } else closePlayer()
     }
 
-    /** Normal player back returns to the catalog, not an automatic detail step. */
-    fun backFromPlayer() = closePlayer()
+    /** The player's back button minimizes; only mini close explicitly stops. */
+    fun backFromPlayer() = minimizePlayer()
 
     fun closePlayer() {
-        detailPlaybackRetained = false
-        detailPlaybackShouldResume = false
         BackgroundPlaybackService.stopActive("CLOSE_PLAYER")
         sdkDetailGeneration++
         sdkDetailJob?.cancel()
@@ -2266,6 +2257,7 @@ class DramaViewModel(application: Application) : AndroidViewModel(application) {
         mutable.update { it.copy(detail = null, playbackUrl = null,
             offlinePlaybackUri = null,
             feedMode = false, detailPageVisible = false,
+            miniPlayerVisible = false,
             detailEntryEnabled = false,
             feedItems = emptyList(), feedLoading = false,
             feedHasMore = false, feedError = null,
