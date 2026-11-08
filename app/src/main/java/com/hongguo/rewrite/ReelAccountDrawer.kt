@@ -14,6 +14,7 @@ import androidx.compose.foundation.layout.padding
 import androidx.compose.foundation.layout.size
 import androidx.compose.foundation.layout.width
 import androidx.compose.foundation.lazy.LazyColumn
+import androidx.compose.foundation.lazy.LazyRow
 import androidx.compose.foundation.lazy.items
 import androidx.compose.foundation.shape.CircleShape
 import androidx.compose.foundation.shape.RoundedCornerShape
@@ -29,6 +30,10 @@ import androidx.compose.material3.MaterialTheme
 import androidx.compose.material3.Text
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.getValue
+import androidx.compose.runtime.mutableStateOf
+import androidx.compose.runtime.remember
+import androidx.compose.runtime.setValue
+import androidx.compose.runtime.saveable.rememberSaveable
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.draw.clip
@@ -53,6 +58,11 @@ internal fun ReelAccountDrawer(
     onDownloads: () -> Unit,
 ) {
     val account by model.account.state.collectAsStateWithLifecycle()
+    // History can include repeat visits; show each drama only once, most recent first.
+    val recentlyWatched = remember(state.library) {
+        state.library.sortedByDescending { it.updated }.distinctBy { it.drama.id }
+    }
+    var recentExpanded by rememberSaveable { mutableStateOf(false) }
     LazyColumn(
         modifier = Modifier.fillMaxSize().background(Color(0xFFF8F8F8))
             .testTag("reel_account_drawer"),
@@ -96,35 +106,60 @@ internal fun ReelAccountDrawer(
         }
         item {
             Card(shape = RoundedCornerShape(18.dp)) {
-                Column(Modifier.fillMaxWidth().padding(14.dp)) {
-                    Text("最近在看", fontWeight = FontWeight.SemiBold,
-                        fontSize = 17.sp, color = Color(0xFF222222))
-                    Spacer(Modifier.height(12.dp))
-                    if (state.library.isEmpty()) {
+                Column(Modifier.fillMaxWidth().padding(14.dp),
+                    verticalArrangement = Arrangement.spacedBy(12.dp)) {
+                    Row(Modifier.fillMaxWidth(), verticalAlignment = Alignment.CenterVertically) {
+                        Text("最近在看", fontWeight = FontWeight.SemiBold,
+                            fontSize = 17.sp, color = Color(0xFF222222),
+                            modifier = Modifier.weight(1f))
+                        if (recentlyWatched.size > 2) {
+                            Text(if (recentExpanded) "收起" else "展开更多 · ${recentlyWatched.size}部",
+                                modifier = Modifier.clickable {
+                                    recentExpanded = !recentExpanded
+                                }.padding(vertical = 7.dp)
+                                    .testTag("drawer_recent_expand"),
+                                color = Color(0xFF8F4E3C), fontSize = 12.sp)
+                        }
+                    }
+                    if (recentlyWatched.isEmpty()) {
                         Text("还没有观看记录", color = Color.Gray, fontSize = 13.sp)
-                    } else {
-                        Row(horizontalArrangement = Arrangement.spacedBy(9.dp)) {
-                            state.library.take(3).forEach { watched ->
-                                Column(
-                                    Modifier.weight(1f).clickable {
-                                        onHistoryItem(watched.drama)
-                                    }.testTag("drawer_recent_" + watched.drama.id),
-                                ) {
-                                    AsyncImage(
-                                        model = model.cover(watched.drama.cover),
-                                        contentDescription = watched.drama.title,
-                                        contentScale = ContentScale.Crop,
-                                        modifier = Modifier.fillMaxWidth().height(112.dp)
-                                            .clip(RoundedCornerShape(10.dp)),
-                                    )
-                                    Text(watched.drama.title, color = Color(0xFF222222),
-                                        maxLines = 1, overflow = TextOverflow.Ellipsis,
-                                        fontSize = 12.sp)
-                                    Text("第${watched.episode}集", color = Color.Gray,
-                                        fontSize = 11.sp)
-                                }
+                    } else if (!recentExpanded) {
+                        // One horizontal row contains ALL watched dramas. The next
+                        // poster remains partially visible to indicate swiping.
+                        LazyRow(
+                            modifier = Modifier.fillMaxWidth()
+                                .testTag("drawer_recent_carousel"),
+                            horizontalArrangement = Arrangement.spacedBy(10.dp),
+                        ) {
+                            items(recentlyWatched, key = { it.drama.id }) { watched ->
+                                RecentWatchTile(watched, model,
+                                    modifier = Modifier.width(100.dp),
+                                    onClick = { onHistoryItem(watched.drama) })
                             }
                         }
+                        if (recentlyWatched.size > 2) {
+                            Text("左右滑动查看更多", color = Color.Gray, fontSize = 11.sp)
+                        }
+                    }
+                }
+            }
+        }
+        if (recentExpanded && recentlyWatched.isNotEmpty()) {
+            // Keep the drawer's outer LazyColumn responsible for vertical
+            // scrolling, including long histories. No nested vertical scroll.
+            items(recentlyWatched.chunked(2),
+                key = { row -> "recent_expanded_" + row.first().drama.id }) { row ->
+                Card(shape = RoundedCornerShape(16.dp),
+                    modifier = Modifier.fillMaxWidth()
+                        .testTag("drawer_recent_expanded_row")) {
+                    Row(Modifier.fillMaxWidth().padding(12.dp),
+                        horizontalArrangement = Arrangement.spacedBy(12.dp)) {
+                        row.forEach { watched ->
+                            RecentWatchTile(watched, model,
+                                modifier = Modifier.weight(1f),
+                                onClick = { onHistoryItem(watched.drama) })
+                        }
+                        if (row.size == 1) Spacer(Modifier.weight(1f))
                     }
                 }
             }
@@ -144,6 +179,34 @@ internal fun ReelAccountDrawer(
                 }
             }
         }
+    }
+}
+
+/** Same clickable history item in the horizontal strip and expanded grid. */
+@Composable
+private fun RecentWatchTile(
+    watched: Watched,
+    model: DramaViewModel,
+    modifier: Modifier = Modifier,
+    onClick: () -> Unit,
+) {
+    Column(
+        modifier.clickable(onClick = onClick)
+            .testTag("drawer_recent_" + watched.drama.id),
+        verticalArrangement = Arrangement.spacedBy(5.dp),
+    ) {
+        AsyncImage(
+            model = model.cover(watched.drama.cover),
+            contentDescription = watched.drama.title,
+            contentScale = ContentScale.Crop,
+            modifier = Modifier.fillMaxWidth().height(128.dp)
+                .clip(RoundedCornerShape(10.dp))
+                .background(Color(0xFFE5E5E5)),
+        )
+        Text(watched.drama.title, color = Color(0xFF222222),
+            maxLines = 2, overflow = TextOverflow.Ellipsis,
+            fontSize = 12.sp, lineHeight = 16.sp)
+        Text("第${watched.episode}集", color = Color.Gray, fontSize = 11.sp)
     }
 }
 
