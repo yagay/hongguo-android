@@ -32,3 +32,11 @@ Before modifying this project, inspect relevant upstream implementations, compar
 The 2026-11-07 user-provided screenshot establishes the target presentation: brown full-screen gradient; poster/title/tags together; compact synopsis; horizontal portrait cast with roles; dedicated series rating and swipeable review cards; verified novel; related works; fixed two-button 收藏 / 写剧评 bar. The native detail screen now follows this hierarchy. Device screenshots are still required to verify exact typography, status bars, layout scale and Insets.
 
 Missing official write protocols are not silently simulated: local 收藏 genuinely changes the on-device favorites list; 写剧评 and 演员关注 explain that a verified official write endpoint is not available. Series review totals are sourced only from `seriesSocialInfo` and never from episode comments.
+
+## Recommendation taxonomy (2026-11-08)
+
+- **相关作品**: from `NativeHongguoSource.related(id)`, which uses the upstream `hongguoTV` `ContentRepository.related` / `RelatedWorks.parse` reading-plan related-work cell `show_type = 547` (or explicit cell name 相关作品). Preserve its season labels and upcoming status; do not replace with generic recommendations.
+- **系列剧 · 其他季**: independently resolved from `openhongguo.seasons` or the related album. Shares a creative collection, not the same list as the official related-work cell.
+- **猜你喜欢**: from `openhongguo.seriesRecommend(id)`, a distinct plan-feed request with `from=select_panel_recommend`, `scene=10`. Its preferred cell is `show_type = 160`; the SDK documents that anonymous users may instead receive a generic changing `show_type = 401` “更多好剧” cell. Label it a recommendation, never claim that generic anonymous results are personalized.
+- Each flow has its own loading state, error, and list. On navigation, cancel outstanding requests, discard stale results, and prevent exact duplicate IDs across recommendation and related-work sections where possible.
+- This distinction is based on inspected source implementations, not a live authenticated capture of every version of the official mobile application.
