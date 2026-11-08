@@ -149,7 +149,8 @@ internal fun SearchLandingScreen(
                         .testTag("search_landing_submit"))
             }
         }
-        if (browse.section == Section.SEARCH && browse.query.isNotBlank()) {
+        if (browse.section == Section.SEARCH && browse.query.isNotBlank() &&
+            state.search.trim() == browse.query) {
             item {
                 Column(Modifier.fillMaxWidth().padding(horizontal = 14.dp),
                     verticalArrangement = Arrangement.spacedBy(10.dp)) {
@@ -159,15 +160,8 @@ internal fun SearchLandingScreen(
                             modifier = Modifier.weight(1f))
                         TextButton(onClick = model::refreshSearchBrowse) { Text("刷新") }
                     }
-                    if (browse.query.isNotBlank() && browse.section != Section.SEARCH) {
-                        Text("按关键词逐页筛选当前范围；继续加载可检查后续作品",
-                            color = SearchMuted, fontSize = 12.sp)
-                    }
-                    Row(Modifier.fillMaxWidth(), verticalAlignment = Alignment.CenterVertically) {
-                        Text(if (browse.query.isBlank()) "浏览当前分类"
-                             else "关键词：${browse.query}",
-                            color = SearchMuted, fontSize = 12.sp)
-                    }
+                    Text("关键词：${browse.query}",
+                        color = SearchMuted, fontSize = 12.sp)
                     if (browse.loading && browse.items.isEmpty())
                         CircularProgressIndicator(Modifier.size(26.dp))
                     browse.error?.let { Text(it, color = SearchMuted, fontSize = 13.sp) }
