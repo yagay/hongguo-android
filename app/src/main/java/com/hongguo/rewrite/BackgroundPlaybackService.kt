@@ -570,7 +570,7 @@ class BackgroundPlaybackService : MediaSessionService() {
                 "FOREGROUND_REQUESTED" else "FOREGROUND_NOT_REQUIRED")
         }
         super.onUpdateNotification(session, startInForegroundRequired)
-        val ongoing = isPlaybackOngoing
+        val ongoing = isPlaybackOngoing()
         if (lastForegroundActive != ongoing) {
             lastForegroundActive = ongoing
             diagnostics.record("BACKGROUND", if (ongoing)
@@ -592,7 +592,7 @@ class BackgroundPlaybackService : MediaSessionService() {
         diagnostics.record("BACKGROUND", if (::engine.isInitialized &&
             engine.isPlaying) "DESTROYED_WHILE_PLAYING" else "DESTROYED_NOT_PLAYING")
         diagnostics.record("BACKGROUND",
-            if (isPlaybackOngoing) "DESTROYED_FOREGROUND_ACTIVE"
+            if (isPlaybackOngoing()) "DESTROYED_FOREGROUND_ACTIVE"
             else "DESTROYED_FOREGROUND_INACTIVE")
         diagnostics.record("BACKGROUND",
             if (::session.isInitialized && isSessionAdded(session))
