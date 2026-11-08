@@ -3,6 +3,8 @@ package com.hongguo.rewrite
 import android.app.Activity
 import android.app.PictureInPictureParams
 import android.content.Context
+import android.graphics.Rect
+import android.view.View
 import android.content.pm.PackageManager
 import android.content.res.Configuration
 import android.os.Build
@@ -86,6 +88,47 @@ class MainActivity : ComponentActivity() {
     var videoInPictureInPicture by mutableStateOf(false)
         private set
     private var autoPictureInPictureEligible = false
+    // Source video coordinates are supplied to Android before PiP animation.
+    // Without this hint, the launcher may animate the app icon/window first.
+    private var pipVideoSourceView: View? = null
+    private var pipSourceRect: Rect? = null
+    private val pipVideoLayoutListener =
+        View.OnLayoutChangeListener { _, _, _, _, _, _, _, _, _ ->
+            updateVideoPipSourceBounds()
+        }
+
+    fun registerVideoPipSourceView(view: View) {
+        if (pipVideoSourceView === view) {
+            updateVideoPipSourceBounds()
+            return
+        }
+        pipVideoSourceView?.removeOnLayoutChangeListener(pipVideoLayoutListener)
+        pipVideoSourceView = view
+        view.addOnLayoutChangeListener(pipVideoLayoutListener)
+        updateVideoPipSourceBounds()
+    }
+
+    fun unregisterVideoPipSourceView(view: View) {
+        if (pipVideoSourceView !== view) return
+        view.removeOnLayoutChangeListener(pipVideoLayoutListener)
+        pipVideoSourceView = null
+        // Keep the most recent valid bounds during the transition.
+    }
+
+    private fun updateVideoPipSourceBounds() {
+        val view = pipVideoSourceView ?: return
+        val bounds = Rect()
+        if (!view.getGlobalVisibleRect(bounds) || bounds.isEmpty) return
+        if (pipSourceRect != bounds) {
+            pipSourceRect = bounds
+            if (!videoInPictureInPicture) {
+                runCatching {
+                    setPictureInPictureParams(
+                        videoPiPParams(autoPictureInPictureEligible))
+                }
+            }
+        }
+    }
 
     private fun videoPiPParams(autoEnter: Boolean): PictureInPictureParams {
         // Aspect ratio is supported from API 26; auto-enter and seamless
@@ -93,6 +136,7 @@ class MainActivity : ComponentActivity() {
         val params = PictureInPictureParams.Builder()
             .setAspectRatio(Rational(
                 VideoPiPPolicy.PORTRAIT_WIDTH, VideoPiPPolicy.PORTRAIT_HEIGHT))
+        pipSourceRect?.let { params.setSourceRectHint(it) }
         if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.S) {
             params.setAutoEnterEnabled(autoEnter)
             params.setSeamlessResizeEnabled(true)
@@ -129,9 +173,11 @@ class MainActivity : ComponentActivity() {
 
     override fun onUserLeaveHint() {
         super.onUserLeaveHint()
-        // Android 12+ normally uses auto-enter for smoother navigation.
-        // A manual fallback also covers OEM builds that skip that transition.
-        if (!videoInPictureInPicture && autoPictureInPictureEligible &&
+        // On Android 12+ the system's auto-enter owns the animation.
+        // A concurrent manual enter can show the launcher icon before video.
+        // Manual fallback is only required on older Android versions.
+        if (Build.VERSION.SDK_INT < Build.VERSION_CODES.S &&
+            !videoInPictureInPicture && autoPictureInPictureEligible &&
             BackgroundPlaybackService.playerFlow.value?.isPlaying == true) {
             runCatching { enterPictureInPictureMode(
                 videoPiPParams(autoEnter = true)) }
