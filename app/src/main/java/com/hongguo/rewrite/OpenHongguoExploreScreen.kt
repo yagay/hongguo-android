@@ -62,6 +62,7 @@ internal fun OpenHongguoExploreScreen(
     model: DramaViewModel,
     onClose: () -> Unit,
     initialTab: String = "new",
+    onOpenDrama: (Drama) -> Unit = { model.open(it) },
 ) {
     val source = model.openHongguoDiscovery
     val tabs = listOf(
@@ -391,7 +392,7 @@ internal fun OpenHongguoExploreScreen(
                                 error = null
                             } else {
                                 onClose()
-                                model.open(Drama(row.id, row.title, row.cover,
+                                onOpenDrama(Drama(row.id, row.title, row.cover,
                                     row.episodes))
                             }
                         },
@@ -405,7 +406,7 @@ internal fun OpenHongguoExploreScreen(
                         enabled = work.seriesId.matches(Regex("[1-9][0-9]{0,29}")),
                         onClick = {
                             onClose()
-                            model.open(Drama(work.seriesId, work.title,
+                            onOpenDrama(Drama(work.seriesId, work.title,
                                 work.coverUrl, work.episodeCount, work.description))
                         },
                     )
