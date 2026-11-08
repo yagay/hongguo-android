@@ -18,6 +18,7 @@ import androidx.compose.material.icons.Icons
 import androidx.compose.material.icons.outlined.Close
 import androidx.compose.material.icons.outlined.Pause
 import androidx.compose.material.icons.outlined.PlayArrow
+import androidx.compose.material.icons.outlined.PictureInPictureAlt
 import androidx.compose.material3.Icon
 import androidx.compose.material3.IconButton
 import androidx.compose.material3.Text
@@ -32,6 +33,7 @@ import androidx.compose.ui.Modifier
 import androidx.compose.ui.draw.clip
 import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.layout.ContentScale
+import androidx.compose.ui.platform.LocalContext
 import androidx.compose.ui.platform.testTag
 import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.text.style.TextOverflow
@@ -58,6 +60,7 @@ import kotlinx.coroutines.isActive
 internal fun InAppMiniPlayer(state: AppState, model: DramaViewModel) {
     val detail = state.detail ?: return
     val selected = detail.episodes.getOrNull(state.episodeIndex) ?: return
+    val activity = LocalContext.current as? MainActivity
     val media by BackgroundPlaybackService.playerFlow.collectAsStateWithLifecycle()
     var currentItemReady by remember(selected.vid) { mutableStateOf(false) }
     var isPlaying by remember(selected.vid) { mutableStateOf(false) }
@@ -131,6 +134,17 @@ internal fun InAppMiniPlayer(state: AppState, model: DramaViewModel) {
                 fontSize = 11.sp,
                 color = Color(0xFFB7B7BC),
                 maxLines = 1,
+            )
+        }
+        IconButton(
+            onClick = { activity?.enterVideoPictureInPicture(selected.vid) },
+            enabled = currentItemReady,
+            modifier = Modifier.size(36.dp).testTag("mini_system_pip"),
+        ) {
+            Icon(
+                Icons.Outlined.PictureInPictureAlt,
+                contentDescription = "切换到其他应用画中画",
+                tint = if (currentItemReady) Color.White else Color.Gray,
             )
         }
         IconButton(
