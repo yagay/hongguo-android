@@ -26,3 +26,9 @@ Before modifying this project, inspect relevant upstream implementations, compar
 - Public cast `celebrity_id` is not necessarily a verified account user ID; never trigger a follow operation from that value without a documented authenticated endpoint.
 - Rating and ratingCount are optional; show a neutral unavailable state instead of fabricating values or drawing them from ranking heat.
 - Native browser/website APIs can fail, change or be rate-limited: detail enrichment never blocks Media3 playback.
+
+## Screenshot fidelity notes
+
+The 2026-11-07 user-provided screenshot establishes the target presentation: brown full-screen gradient; poster/title/tags together; compact synopsis; horizontal portrait cast with roles; dedicated series rating and swipeable review cards; verified novel; related works; fixed two-button 收藏 / 写剧评 bar. The native detail screen now follows this hierarchy. Device screenshots are still required to verify exact typography, status bars, layout scale and Insets.
+
+Missing official write protocols are not silently simulated: local 收藏 genuinely changes the on-device favorites list; 写剧评 and 演员关注 explain that a verified official write endpoint is not available. Series review totals are sourced only from `seriesSocialInfo` and never from episode comments.
