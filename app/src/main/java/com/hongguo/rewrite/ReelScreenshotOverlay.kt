@@ -190,33 +190,34 @@ internal fun ReelScreenshotOverlay(
             // Minimal header: no duplicate full-title row over the video.
             Row(
                 Modifier.fillMaxWidth()
-                    .padding(start = 8.dp, end = 8.dp, top = 8.dp),
+                    .padding(start = 8.dp, end = 8.dp, top = 6.dp),
                 verticalAlignment = Alignment.CenterVertically,
             ) {
                 IconButton(onClick = onBack,
-                    modifier = Modifier.size(44.dp)
+                    modifier = Modifier.size(38.dp)
                         .background(Color.Black.copy(alpha = 0.25f), CircleShape)) {
                     Icon(Icons.AutoMirrored.Outlined.ArrowBack, "返回",
-                        tint = white, modifier = Modifier.size(24.dp))
+                        tint = white, modifier = Modifier.size(26.dp))
                 }
                 Spacer(Modifier.weight(1f))
                 IconButton(
                     onClick = onPictureInPicture,
-                    modifier = Modifier.size(44.dp)
+                    modifier = Modifier.size(38.dp)
                         .background(Color.Black.copy(alpha = 0.25f), CircleShape)
                         .testTag("reel_system_pip"),
                 ) {
                     Icon(Icons.Outlined.PictureInPictureAlt, "跨应用画中画",
-                        tint = white, modifier = Modifier.size(23.dp))
+                        tint = white, modifier = Modifier.size(25.dp))
                 }
+                Spacer(Modifier.width(4.dp))
                 IconButton(
                     onClick = onPlaybackSettings,
-                    modifier = Modifier.size(44.dp)
+                    modifier = Modifier.size(38.dp)
                         .background(Color.Black.copy(alpha = 0.25f), CircleShape)
                         .testTag("reel_more"),
                 ) {
                     Icon(Icons.Outlined.MoreVert, "播放设置",
-                        tint = white, modifier = Modifier.size(23.dp))
+                        tint = white, modifier = Modifier.size(25.dp))
                 }
             }
         }
