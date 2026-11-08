@@ -337,7 +337,29 @@ internal fun NativePlayer(state: AppState, model: DramaViewModel) {
                                 modifier = Modifier.size(68.dp))
                         }
                     } else if (state.playbackError == null) {
-                        CircularProgressIndicator(color = Color.White)
+                        // The next media item may already be prepared. Do not
+                        // flash a spinner while the service swaps its MediaItem.
+                        // Use the destination artwork as a stable frame; only
+                        // show progress after a noticeable loading delay.
+                        if (detail.drama.cover.isNotBlank()) {
+                            AsyncImage(
+                                model = model.cover(detail.drama.cover),
+                                contentDescription = null,
+                                contentScale = ContentScale.Crop,
+                                modifier = Modifier.fillMaxSize(),
+                            )
+                            Box(Modifier.fillMaxSize().background(
+                                Color.Black.copy(alpha = 0.26f)))
+                        }
+                        var showDelayedSpinner by remember(detail.drama.id, state.episodeIndex) {
+                            mutableStateOf(false)
+                        }
+                        LaunchedEffect(detail.drama.id, state.episodeIndex) {
+                            delay(450)
+                            showDelayedSpinner = true
+                        }
+                        if (showDelayedSpinner)
+                            CircularProgressIndicator(color = Color.White)
                     }
                     state.playbackError?.let { error ->
                         Column(
@@ -360,6 +382,20 @@ internal fun NativePlayer(state: AppState, model: DramaViewModel) {
                     val preview = if (state.feedMode) {
                         if (page < activePage) previousFeedDrama else nextFeedDrama
                     } else null
+                    // Adjacent reel pages should show the known target cover,
+                    // not a black "switching drama" placeholder during the
+                    // user's vertical swipe. Never imply the video is actually
+                    // playing until Media3 renders the new item.
+                    if (preview != null && preview.cover.isNotBlank()) {
+                        AsyncImage(
+                            model = model.cover(preview.cover),
+                            contentDescription = null,
+                            contentScale = ContentScale.Crop,
+                            modifier = Modifier.fillMaxSize(),
+                        )
+                        Box(Modifier.fillMaxSize().background(
+                            Color.Black.copy(alpha = 0.44f)))
+                    }
                     Column(horizontalAlignment = Alignment.CenterHorizontally,
                         verticalArrangement = Arrangement.spacedBy(9.dp)) {
                         Text(preview?.title ?: if (state.feedMode) "正在获取官方推荐"
@@ -370,7 +406,7 @@ internal fun NativePlayer(state: AppState, model: DramaViewModel) {
                                     state.feedLoading -> "正在载入新短剧…"
                                     state.feedError != null -> state.feedError
                                     nextFeedDrama == null -> "继续上滑获取推荐"
-                                    else -> "正在切换短剧…"
+                                    else -> "上滑或下滑继续观看"
                                 }
                             } else "第 ${episode?.index ?: page + 1} 集",
                             color = Color.LightGray, fontSize = 13.sp)
