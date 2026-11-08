@@ -240,6 +240,7 @@ internal fun CatalogScreen(
 @Composable
 private fun CatalogHeader(state: AppState, model: DramaViewModel,
     onMine: () -> Unit, onSearchOpen: () -> Unit) {
+    var moreOpen by remember { mutableStateOf(false) }
     Column(Modifier.fillMaxWidth().background(HongguoColors.surface)) {
         Row(Modifier.fillMaxWidth().height(54.dp).padding(start = 15.dp, end = 5.dp),
             verticalAlignment = Alignment.CenterVertically) {
@@ -250,14 +251,30 @@ private fun CatalogHeader(state: AppState, model: DramaViewModel,
             }
             HeaderIcon(Icons.Outlined.Search, "搜索") { onSearchOpen() }
             HeaderIcon(Icons.Outlined.PersonOutline, "我的") { onMine() }
-            HeaderIcon(Icons.Outlined.History, "播放历史") { model.show(Modal.HISTORY) }
-            HeaderIcon(Icons.Outlined.StarBorder, "收藏") { model.show(Modal.FAVORITES) }
-            HeaderIcon(Icons.Outlined.Download, "下载") {
-                model.updateDownloads()
-                model.show(Modal.DOWNLOAD)
-            }
-            HeaderIcon(Icons.Outlined.Share, "分享解析") { model.show(Modal.SHARE) }
             HeaderIcon(Icons.Outlined.Settings, "设置") { model.show(Modal.SETTINGS) }
+            Box {
+                HeaderIcon(Icons.Outlined.MoreVert, "更多操作") { moreOpen = true }
+                DropdownMenu(expanded = moreOpen,
+                    onDismissRequest = { moreOpen = false }) {
+                    DropdownMenuItem(text = { Text("播放历史") }, onClick = {
+                        moreOpen = false
+                        model.show(Modal.HISTORY)
+                    })
+                    DropdownMenuItem(text = { Text("收藏") }, onClick = {
+                        moreOpen = false
+                        model.show(Modal.FAVORITES)
+                    })
+                    DropdownMenuItem(text = { Text("下载") }, onClick = {
+                        moreOpen = false
+                        model.updateDownloads()
+                        model.show(Modal.DOWNLOAD)
+                    })
+                    DropdownMenuItem(text = { Text("分享解析") }, onClick = {
+                        moreOpen = false
+                        model.show(Modal.SHARE)
+                    })
+                }
+            }
         }
         Row(Modifier.fillMaxWidth().height(44.dp),
             horizontalArrangement = Arrangement.SpaceEvenly) {
