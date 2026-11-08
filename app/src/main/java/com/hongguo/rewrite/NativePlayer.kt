@@ -875,46 +875,42 @@ internal fun NativePlayer(
                 }
             }
             if (state.relatedSeries == detail.drama.id) {
-                HongguoMenuSeparator(dark = true)
-                HongguoSheetHeader(title = "其他季 / 相关作品", dark = true) {
+                HongguoMenuSeparator()
+                HongguoSheetHeader(title = "其他季 / 相关作品") {
                     if (state.relatedLoading) {
                         CircularProgressIndicator(Modifier.size(18.dp),
-                            strokeWidth = 2.dp, color = Color.White)
+                            strokeWidth = 2.dp, color = HongguoColors.accent)
                     } else {
                         HongguoIconAction(onClick = {
                             model.loadRelated(detail.drama.id)
                         }) {
                             Icon(Icons.Outlined.Refresh, contentDescription = "刷新相关作品",
-                                tint = Color.White)
+                                tint = HongguoColors.ink)
                         }
                     }
                 }
                 state.relatedWorks.take(15).forEach { work ->
-                    Row(
-                        Modifier.fillMaxWidth()
-                            .background(Color(0xFF343239),
-                                RoundedCornerShape(HongguoUi.controlRadius))
-                            .clickable(enabled = !work.upcoming) {
-                                showEpisodes = false
-                                model.openRelatedDrama(work.drama)
-                            }
-                            .padding(horizontal = 12.dp, vertical = 10.dp),
-                        verticalAlignment = Alignment.CenterVertically,
+                    HongguoSheetListRow(
+                        enabled = !work.upcoming,
+                        onClick = {
+                            showEpisodes = false
+                            model.openRelatedDrama(work.drama)
+                        },
                     ) {
                         Column(Modifier.weight(1f)) {
-                            Text(work.drama.title, color = Color.White, maxLines = 1,
+                            Text(work.drama.title, color = HongguoColors.ink, maxLines = 1,
                                 overflow = TextOverflow.Ellipsis)
-                            Text(work.season, color = HongguoColors.playerChromeMuted,
+                            Text(work.season, color = HongguoColors.muted,
                                 fontSize = 12.sp)
                         }
                         Text(if (work.upcoming) "待上线" else "观看",
-                            color = if (work.upcoming) HongguoColors.playerChromeMuted
+                            color = if (work.upcoming) HongguoColors.muted
                                 else HongguoColors.accent, fontSize = 12.sp)
                     }
                 }
                 if (!state.relatedLoading && state.relatedWorks.isEmpty()) {
                     Text(state.relatedError ?: "暂无官方关联作品",
-                        fontSize = 12.sp, color = HongguoColors.playerChromeMuted,
+                        fontSize = 12.sp, color = HongguoColors.muted,
                         maxLines = 3, overflow = TextOverflow.Ellipsis,
                         modifier = Modifier.fillMaxWidth().padding(vertical = 16.dp))
                 }
