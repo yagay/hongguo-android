@@ -27,6 +27,15 @@ class PlaybackNavigationTest {
         assertEquals(PlaybackOrigin.SWIPE_FEED, details.fromDetails().origin)
     }
 
+    @Test fun detailsFromExplicitHomeReturnToHomeWithMini() {
+        val home = PlaybackNavigation().toFeed().toCatalog()
+        val detailPage = home.toDetails()
+        assertTrue(detailPage.isExplicitCatalog)
+        assertEquals(PlaybackDestination.CATALOG, detailPage.detailsParent)
+        assertEquals(PlaybackDestination.CATALOG, detailPage.fromDetails().destination)
+        assertFalse(detailPage.fromDetails().returnsToFeed)
+    }
+
     @Test fun catalogOpenNeverReturnsToFeed() {
         val catalog = PlaybackNavigation().toSeries(PlaybackOrigin.CATALOG)
         assertFalse(catalog.returnsToFeed)
