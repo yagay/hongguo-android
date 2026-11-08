@@ -86,6 +86,8 @@ internal fun ReelScreenshotOverlay(
     onReal: () -> Unit,
     onRecommend: () -> Unit,
     onSearch: () -> Unit,
+    /** Animation-only chrome mode: it may differ from live route during transition. */
+    feedChrome: Boolean = state.feedMode,
 ) {
     val white = Color.White
     val muted = Color(0xFFD5D5D5)
@@ -106,7 +108,7 @@ internal fun ReelScreenshotOverlay(
     Box(Modifier.fillMaxSize().testTag("reference_video_layout")) {
         // Feed tabs belong only to the one-drama-per-swipe recommendation stream.
         // The full-series episode player retains its original Back / PiP / More bar.
-        if (state.feedMode) {
+        if (feedChrome) {
             // Official-inspired navigation: only Recommend and Real correspond to
             // live official reel feeds. Other tabs open real existing collections.
             Row(
