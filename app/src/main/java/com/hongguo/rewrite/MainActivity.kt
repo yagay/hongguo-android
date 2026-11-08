@@ -432,14 +432,17 @@ private fun HongguoApp(model: DramaViewModel = viewModel()) {
                 if (showMini) InAppMiniPlayer(state, model)
                 if (showPrimaryNavigation) {
                     // NavigationBar's default 80dp min-height and extra glass
-                    // margins shrink the portrait Media3 viewport. Use a
-                    // consistent 50dp compact strip outside system bar insets.
+                    // On the portrait player, reserve less space for the
+                    // navigation strip so the uncropped 9:16 video uses more
+                    // of this device's height. Non-player screens retain
+                    // their regular 50dp touch targets.
+                    val tabHeight = if (darkPlayer) 40.dp else 50.dp
                     Surface(
                         color = HongguoColors.surface,
                         shape = RoundedCornerShape(0.dp),
                     ) {
                         Row(
-                            Modifier.fillMaxWidth().height(50.dp),
+                            Modifier.fillMaxWidth().height(tabHeight),
                             horizontalArrangement = Arrangement.SpaceEvenly,
                             verticalAlignment = Alignment.CenterVertically,
                         ) {
@@ -450,16 +453,17 @@ private fun HongguoApp(model: DramaViewModel = viewModel()) {
                             ).forEach { (tab, label, icon) ->
                                 val selected = primaryTab == tab
                                 Column(
-                                    modifier = Modifier.weight(1f).height(50.dp)
+                                    modifier = Modifier.weight(1f).height(tabHeight)
                                         .clickable { selectPrimaryTab(tab) },
                                     horizontalAlignment = Alignment.CenterHorizontally,
                                     verticalArrangement = Arrangement.Center,
                                 ) {
                                     Icon(icon, contentDescription = label,
-                                        modifier = Modifier.height(21.dp),
+                                        modifier = Modifier.height(if (darkPlayer) 18.dp else 21.dp),
                                         tint = if (selected) HongguoColors.accent
                                             else HongguoColors.muted)
-                                    Text(label, fontSize = 11.sp, lineHeight = 15.sp,
+                                    Text(label, fontSize = if (darkPlayer) 10.sp else 11.sp,
+                                        lineHeight = if (darkPlayer) 13.sp else 15.sp,
                                         fontWeight = if (selected) FontWeight.SemiBold
                                             else FontWeight.Normal,
                                         color = if (selected) HongguoColors.accent
