@@ -78,6 +78,7 @@ class DramaViewModel(application: Application) : AndroidViewModel(application) {
 
     fun openOfflineEpisode(episode: OfflineEpisode) {
         if (episode !in state.value.offlineEpisodes) return
+        val launchedFromFeed = state.value.feedMode
         viewModelScope.launch {
             val uri = runCatching { Uri.parse(episode.documentUri) }.getOrNull() ?: return@launch
             val accessible = withContext(Dispatchers.IO) {
@@ -103,7 +104,8 @@ class DramaViewModel(application: Application) : AndroidViewModel(application) {
                 episodeIndex = 0, offlinePlaybackUri = episode.documentUri,
                 offlineLibraryMessage = null,
                 playbackUrl = episode.documentUri, playing = true,
-                feedMode = false, preparingDetail = false, playbackError = null,
+                feedMode = false, returnToFeed = launchedFromFeed,
+                preparingDetail = false, playbackError = null,
                 resumePositionMs = library.checkpoint(episode.seriesId, episode.vid),
                 relatedSeries = null, relatedWorks = emptyList(),
                 guessWorks = emptyList(), guessesLoading = false, guessesError = null)
@@ -936,10 +938,28 @@ class DramaViewModel(application: Application) : AndroidViewModel(application) {
         val term = label.trim().take(80)
         if (term.isBlank() || state.value.detail == null ||
             !state.value.detailPageVisible) return
-        closePlayer()
-        setSearch(term)
-        search()
-        diagnostics.record("DETAIL", "TAG_SEARCH")
+        if (state.value.feedMode || state.value.returnToFeed) {
+            setSearch(term)
+            searchBrowseQuery(term)
+            backFromDramaDetails()
+            if (state.value.returnToFeed) restoreReelFeed()
+            mutable.update { it.copy(reelSearchRequest = it.reelSearchRequest + 1L) }
+            diagnostics.record("DETAIL", "TAG_SEARCH_REEL_OVERLAY")
+        } else {
+            closePlayer()
+            setSearch(term)
+            search()
+            diagnostics.record("DETAIL", "TAG_SEARCH")
+        }
+    }
+
+    /** Consume overlay navigation only once, even after player recomposition. */
+    fun consumeReelSearchRequest(request: Long) {
+        if (request <= 0L) return
+        mutable.update {
+            if (it.reelSearchRequest == request) it.copy(reelSearchRequest = 0L)
+            else it
+        }
     }
 
     // Search landing browsing uses the same catalog service, but has its own
@@ -2494,6 +2514,17 @@ class DramaViewModel(application: Application) : AndroidViewModel(application) {
     /** Series entered from the swipe feed returns there; other playback minimizes. */
     fun backFromPlayer() {
         if (restoreReelFeed()) return
+        // Offline playback opened from the swipe drawer cannot simply
+        // restore a different cloud MediaItem. Rejoin its prior swipe queue
+        // explicitly instead of falling back to the catalog homepage.
+        val snapshot = state.value
+        if (snapshot.returnToFeed && snapshot.offlinePlaybackUri != null) {
+            val previous = snapshot.feedItems.getOrNull(snapshot.feedIndex)
+                ?.takeIf { it.id !in snapshot.hiddenRecommendationIds }
+            closePlayer()
+            startFeed(previous)
+            return
+        }
         if (state.value.detail == null) closePlayer() else minimizePlayer()
     }
 
@@ -2522,7 +2553,8 @@ class DramaViewModel(application: Application) : AndroidViewModel(application) {
         firstFrameFor = null
         mutable.update { it.copy(detail = null, playbackUrl = null,
             offlinePlaybackUri = null,
-            feedMode = false, returnToFeed = false, detailPageVisible = false,
+            feedMode = false, returnToFeed = false, reelSearchRequest = 0L,
+            detailPageVisible = false,
             miniPlayerVisible = false,
             detailEntryEnabled = false,
             feedItems = emptyList(), feedLoading = false,
