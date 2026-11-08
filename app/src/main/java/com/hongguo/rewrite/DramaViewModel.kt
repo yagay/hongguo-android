@@ -940,7 +940,7 @@ class DramaViewModel(application: Application) : AndroidViewModel(application) {
     // request generation and pagination so it cannot reset the homepage or
     // mutate an actively playing recommendation feed.
     private val mutableSearchBrowse = MutableStateFlow(SearchBrowseState())
-    val searchBrowse = mutableSearchBrowse.asStateFlow()
+    internal val searchBrowse = mutableSearchBrowse.asStateFlow()
     private var searchBrowseJob: Job? = null
     private var searchBrowseFiltersJob: Job? = null
     private var searchBrowseGeneration = 0L
