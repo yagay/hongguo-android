@@ -7,6 +7,17 @@ internal object MiniPlayerPresentation {
     fun show(state: AppState): Boolean =
         state.miniPlayerVisible && state.detail != null
 
+    /** The catalog's navigation bar is a sibling below the mini dock, never
+     * a parent for the PlayerView. This prevents Surface destruction when
+     * navigating between catalog, settings, search and drama details.
+     */
+    fun catalogNavigationVisible(state: AppState, searchLandingOpen: Boolean): Boolean =
+        state.modal != Modal.SETTINGS &&
+            state.modal != Modal.ACCOUNT &&
+            !state.detailPageVisible &&
+            !searchLandingOpen &&
+            (show(state) || (state.detail == null && !state.preparingDetail))
+
     /** Put the mini row above the catalog NavigationBar whenever one exists. */
     fun inCatalog(state: AppState, searchLandingOpen: Boolean): Boolean =
         show(state) &&
