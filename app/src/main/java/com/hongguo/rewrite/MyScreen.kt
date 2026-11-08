@@ -21,6 +21,7 @@ import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.material.icons.Icons
 import androidx.compose.material.icons.outlined.ChevronRight
 import androidx.compose.material.icons.outlined.Download
+import androidx.compose.material.icons.outlined.Menu
 import androidx.compose.material.icons.outlined.History
 import androidx.compose.material.icons.outlined.BookmarkBorder
 import androidx.compose.material.icons.outlined.PersonOutline
@@ -28,6 +29,8 @@ import androidx.compose.material.icons.outlined.PrivacyTip
 import androidx.compose.material.icons.outlined.Settings
 import androidx.compose.material.icons.outlined.Share
 import androidx.compose.material.icons.outlined.StarBorder
+import androidx.compose.material3.DropdownMenu
+import androidx.compose.material3.DropdownMenuItem
 import androidx.compose.material3.HorizontalDivider
 import androidx.compose.material3.Icon
 import androidx.compose.material3.Surface
@@ -70,6 +73,7 @@ internal fun MyScreen(state: AppState, model: DramaViewModel, onBack: () -> Unit
     var gallerySearchOpen by rememberSaveable { mutableStateOf(false) }
     var galleryQuery by rememberSaveable { mutableStateOf("") }
     var localHistoryEdit by rememberSaveable { mutableStateOf(false) }
+    var managementMenuOpen by remember { mutableStateOf(false) }
     LazyColumn(
         Modifier.fillMaxSize().testTag("my_screen").padding(horizontal = 20.dp),
         contentPadding = PaddingValues(top = 16.dp, bottom = 32.dp),
@@ -79,9 +83,89 @@ internal fun MyScreen(state: AppState, model: DramaViewModel, onBack: () -> Unit
             Row(Modifier.fillMaxWidth(), verticalAlignment = Alignment.CenterVertically) {
                 Text("我的", fontSize = 26.sp, fontWeight = FontWeight.Bold,
                     color = HongguoColors.ink, modifier = Modifier.weight(1f))
-                Text("设置", color = HongguoColors.muted, fontSize = 14.sp,
-                    modifier = Modifier.clickable { model.show(Modal.SETTINGS) }
-                        .padding(10.dp).testTag("my_settings_header"))
+                Box {
+                    Icon(
+                        Icons.Outlined.Menu, contentDescription = "管理菜单",
+                        modifier = Modifier.size(40.dp)
+                            .clickable { managementMenuOpen = true }
+                            .padding(7.dp).testTag("my_management_menu"),
+                        tint = HongguoColors.ink,
+                    )
+                    DropdownMenu(
+                        expanded = managementMenuOpen,
+                        onDismissRequest = { managementMenuOpen = false },
+                    ) {
+                        DropdownMenuItem(
+                            text = { Text("稍后看 · ${state.watchLater.size} 部") },
+                            leadingIcon = { Icon(Icons.Outlined.BookmarkBorder, null) },
+                            onClick = {
+                                managementMenuOpen = false
+                                offlineOpen = false
+                                watchLaterOpen = true
+                            },
+                        )
+                        DropdownMenuItem(
+                            text = { Text("下载任务") },
+                            leadingIcon = { Icon(Icons.Outlined.Download, null) },
+                            onClick = {
+                                managementMenuOpen = false
+                                model.updateDownloads()
+                                model.show(Modal.DOWNLOAD)
+                            },
+                        )
+                        DropdownMenuItem(
+                            text = { Text("本机离线 · ${state.offlineEpisodes.size} 集") },
+                            leadingIcon = { Icon(Icons.Outlined.Download, null) },
+                            onClick = {
+                                managementMenuOpen = false
+                                watchLaterOpen = false
+                                offlineOpen = true
+                            },
+                        )
+                        HorizontalDivider()
+                        DropdownMenuItem(
+                            text = { Text("本机收藏 · ${state.favorites.size}") },
+                            leadingIcon = { Icon(Icons.Outlined.StarBorder, null) },
+                            onClick = {
+                                managementMenuOpen = false
+                                model.show(Modal.FAVORITES)
+                            },
+                        )
+                        DropdownMenuItem(
+                            text = { Text("本机看过 · ${state.library.size}") },
+                            leadingIcon = { Icon(Icons.Outlined.History, null) },
+                            onClick = {
+                                managementMenuOpen = false
+                                model.show(Modal.HISTORY)
+                            },
+                        )
+                        DropdownMenuItem(
+                            text = { Text("分享解析") },
+                            leadingIcon = { Icon(Icons.Outlined.Share, null) },
+                            onClick = {
+                                managementMenuOpen = false
+                                model.show(Modal.SHARE)
+                            },
+                        )
+                        HorizontalDivider()
+                        DropdownMenuItem(
+                            text = { Text("账号与隐私") },
+                            leadingIcon = { Icon(Icons.Outlined.PrivacyTip, null) },
+                            onClick = {
+                                managementMenuOpen = false
+                                openAccount()
+                            },
+                        )
+                        DropdownMenuItem(
+                            text = { Text("设置") },
+                            leadingIcon = { Icon(Icons.Outlined.Settings, null) },
+                            onClick = {
+                                managementMenuOpen = false
+                                model.show(Modal.SETTINGS)
+                            },
+                        )
+                    }
+                }
             }
         }
         item {
@@ -412,58 +496,13 @@ internal fun MyScreen(state: AppState, model: DramaViewModel, onBack: () -> Unit
                 }
             }
         } else {
-        item {
-            Row(Modifier.fillMaxWidth(), horizontalArrangement = Arrangement.spacedBy(12.dp)) {
-                MyStat("本机收藏", state.favorites.size, Icons.Outlined.StarBorder,
-                    Modifier.weight(1f).testTag("my_favorites")) {
-                    model.show(Modal.FAVORITES)
-                }
-                MyStat("本机看过", state.library.size, Icons.Outlined.History,
-                    Modifier.weight(1f).testTag("my_history")) {
-                    model.show(Modal.HISTORY)
-                }
+            // Management actions now live in the top-right anchored menu.
+            // The main profile screen stays focused on the account gallery.
+            item {
+                Text("红果短剧 ${BuildConfig.VERSION_NAME}",
+                    color = HongguoColors.muted, fontSize = 12.sp,
+                    modifier = Modifier.padding(top = 8.dp))
             }
-        }
-        item {
-            Surface(shape = RoundedCornerShape(16.dp), color = HongguoColors.surface) {
-                Column {
-                    MyMenuRow("账号与隐私", "登录方式、云片单与账号管理",
-                        "my_account", Icons.Outlined.PrivacyTip, openAccount)
-                    MyMenuDivider()
-                    MyMenuRow("设置", "账号、播放偏好、内容来源与诊断",
-                        "my_settings", Icons.Outlined.Settings) {
-                        model.show(Modal.SETTINGS)
-                    }
-                    MyMenuDivider()
-                    MyMenuRow("稍后看", "待看的短剧 · ${state.watchLater.size} 部",
-                        "my_watch_later", Icons.Outlined.BookmarkBorder) {
-                        watchLaterOpen = true
-                    }
-                    MyMenuDivider()
-                    MyMenuRow("下载任务", "本机已创建的下载与进度",
-                        "my_download", Icons.Outlined.Download) {
-                        model.updateDownloads()
-                        model.show(Modal.DOWNLOAD)
-                    }
-                    MyMenuDivider()
-                    MyMenuRow("本机离线", "已保存的视频 · ${state.offlineEpisodes.size} 集",
-                        "my_offline_library", Icons.Outlined.Download) {
-                        offlineOpen = true
-                    }
-                    MyMenuDivider()
-                    MyMenuRow("分享解析", "从短剧分享链接查找作品",
-                        "my_share", Icons.Outlined.Share) {
-                        model.show(Modal.SHARE)
-                    }
-                }
-            }
-        }
-        item {
-            Text("本机收藏与观看记录仅保存在这台设备。", color = HongguoColors.muted,
-                fontSize = 12.sp, modifier = Modifier.padding(top = 8.dp))
-            Text("红果短剧 ${BuildConfig.VERSION_NAME}", color = HongguoColors.muted,
-                fontSize = 12.sp, modifier = Modifier.padding(top = 8.dp))
-        }
         }
     }
 }
