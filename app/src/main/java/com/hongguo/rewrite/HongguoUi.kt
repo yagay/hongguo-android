@@ -16,6 +16,7 @@ import androidx.compose.foundation.layout.heightIn
 import androidx.compose.foundation.layout.height
 import androidx.compose.foundation.layout.padding
 import androidx.compose.foundation.layout.size
+import androidx.compose.foundation.layout.width
 import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.foundation.shape.CircleShape
 import androidx.compose.material.icons.Icons
@@ -34,6 +35,11 @@ import androidx.compose.material3.Icon
 import androidx.compose.material3.Surface
 import androidx.compose.material3.Switch
 import androidx.compose.material3.SwitchDefaults
+import androidx.compose.material3.Checkbox
+import androidx.compose.material3.CheckboxDefaults
+import androidx.compose.material3.DropdownMenu
+import androidx.compose.material3.DropdownMenuItem
+import androidx.compose.material3.HorizontalDivider
 import androidx.compose.material3.Text
 import androidx.compose.runtime.Composable
 import androidx.compose.ui.Alignment
@@ -488,4 +494,57 @@ internal fun HongguoPlayerTopAction(
                 modifier = Modifier.size(iconSize))
         }
     }
+}
+
+/** Shared themed dropdown for profile and management actions. */
+@Composable
+internal fun HongguoActionMenu(
+    expanded: Boolean,
+    onDismissRequest: () -> Unit,
+    modifier: Modifier = Modifier,
+    content: @Composable androidx.compose.foundation.layout.ColumnScope.() -> Unit,
+) {
+    DropdownMenu(
+        expanded = expanded,
+        onDismissRequest = onDismissRequest,
+        modifier = modifier.width(244.dp)
+            .background(HongguoColors.surface, RoundedCornerShape(HongguoUi.cardRadius)),
+        content = content,
+    )
+}
+
+@Composable
+internal fun HongguoMenuAction(
+    label: String,
+    icon: ImageVector,
+    onClick: () -> Unit,
+    modifier: Modifier = Modifier,
+    checked: Boolean? = null,
+    destructive: Boolean = false,
+) {
+    val foreground = if (destructive) Color(0xFFD94B40) else HongguoColors.ink
+    DropdownMenuItem(
+        modifier = modifier.heightIn(min = 48.dp),
+        text = {
+            Text(label, fontSize = 14.sp, fontWeight = FontWeight.Medium,
+                color = foreground, maxLines = 2)
+        },
+        leadingIcon = {
+            Icon(icon, contentDescription = null,
+                tint = foreground, modifier = Modifier.size(HongguoUi.leadingIconSize))
+        },
+        trailingIcon = if (checked == null) null else ({
+            Checkbox(checked = checked, onCheckedChange = null,
+                colors = CheckboxDefaults.colors(checkedColor = HongguoColors.accent))
+        }),
+        onClick = onClick,
+    )
+}
+
+@Composable
+internal fun HongguoMenuSeparator() {
+    HorizontalDivider(
+        modifier = Modifier.padding(horizontal = HongguoUi.pagePadding, vertical = 4.dp),
+        color = HongguoColors.divider,
+    )
 }
