@@ -33,6 +33,7 @@ import androidx.compose.foundation.isSystemInDarkTheme
 import androidx.compose.material3.Surface
 import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.runtime.Composable
+import androidx.compose.runtime.LaunchedEffect
 import androidx.compose.runtime.SideEffect
 import androidx.compose.runtime.getValue
 import androidx.compose.runtime.key
@@ -65,6 +66,10 @@ class MainActivity : ComponentActivity() {
 private fun HongguoApp(model: DramaViewModel = viewModel()) {
     val state by model.state.collectAsStateWithLifecycle()
     var mineOpen by rememberSaveable { mutableStateOf(false) }
+    // A detail tag may originate from the My tab; search results must be visible.
+    LaunchedEffect(state.detail, state.section) {
+        if (state.detail == null && state.section == Section.SEARCH) mineOpen = false
+    }
     val detailImmersive = state.detailPageVisible && state.detail != null &&
         state.modal == Modal.NONE
     val darkPlayer = state.detail != null && !state.detailPageVisible &&
