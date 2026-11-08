@@ -330,10 +330,19 @@ class RecommendationFeed(
                     request.header("User-Agent", "com.phoenix.read/74332 (Linux; U; Android 16; zh_CN; 25053RT47C; Build/BP2A.250605.031.A3)")
                     request.header("Cookie", account?.cookie?.takeIf { it.isNotBlank() } ?: identity.cookie)
                 }
-                val result =
+                val result = try {
                     RequestScope.execute(accountHttp.newCall(request.build())) { response ->
                         JSONObject(feedResponse(response))
                     }
+                } catch (failure: IOException) {
+                    // A failed transport/empty response on one host need not
+                    // invalidate the recommendation cursor. Rotate to a fresh
+                    // request/host at most twice; never retry 401/403/429.
+                    // RequestScope still owns cancellation.
+                    if (attempt < FEED_HOSTS.lastIndex && transientFeedIo(failure))
+                        return@repeat
+                    throw failure
+                }
                 val parsed =
                     runCatching {
                         when {
@@ -346,7 +355,16 @@ class RecommendationFeed(
                             // 110 一类错误多来自服务端判定旧分页会话不合法的限流/校验：丢掉旧
                             // session 与 offset 从头拉一次，否则用户只能等下次刷新才恢复。
                             val code = result.optInt("code", -1)
-                            // 账号推荐历史上存在设备校验 110；仅对此明确拒绝保留原 Cookie 只读兼容路径。
+                            // Account business code 110 can be intermittent
+                            // across the official host pool. Try each host once
+                            // while preserving the opted-in account identity;
+                            // never silently substitute anonymous recommendations.
+                            if (code == 110 && account != null) {
+                                cursor.restartServer()
+                                if (signed) cursor.unsignedFallback = true
+                                if (attempt < FEED_HOSTS.lastIndex) return@repeat
+                                throw IOException("REELS_ACCOUNT_ACCESS_REJECTED")
+                            }
                             if (signed && code == 110) {
                                 cursor.unsignedFallback = true
                                 cursor.restartServer()
@@ -392,6 +410,29 @@ class RecommendationFeed(
          * MiB account reader must not gate this feed.
          */
         private const val FEED_RESPONSE_LIMIT = 16 * 1024 * 1024L
+
+        /** Only transport-like transient errors are eligible for host rotation.
+         * Authentication rejections, throttle signals and changed schemas
+         * are intentionally excluded.
+         */
+        internal fun transientFeedIo(error: IOException): Boolean {
+            val chain = generateSequence(error as Throwable) { it.cause }.take(8)
+            if (chain.any {
+                    it is java.net.SocketTimeoutException ||
+                        it is java.net.ConnectException ||
+                        it is java.net.UnknownHostException ||
+                        it is java.net.SocketException ||
+                        it is java.io.EOFException
+                }) return true
+            val message = error.message.orEmpty()
+            return message == "推荐接口返回空响应，请稍后重试" ||
+                message in setOf(
+                    "推荐请求失败（HTTP 500）",
+                    "推荐请求失败（HTTP 502）",
+                    "推荐请求失败（HTTP 503）",
+                    "推荐请求失败（HTTP 504）",
+                )
+        }
 
         /** 推荐可用的同族域名；首选项沿用原来的 fqnovel 端点。 */
         private val FEED_HOSTS =
