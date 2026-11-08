@@ -94,10 +94,8 @@ internal fun PlaybackExperienceSheet(
         "${speed.toInt()}×" else "${speed}×"
 
 
-    ModalBottomSheet(
+    HongguoPlayerSheet(
         onDismissRequest = onDismiss,
-        containerColor = HongguoColors.playerSheet,
-        contentColor = white,
         modifier = Modifier.testTag("playback_settings_sheet"),
     ) {
         Column(
@@ -107,7 +105,14 @@ internal fun PlaybackExperienceSheet(
                 .padding(start = 16.dp, end = 16.dp, bottom = 16.dp),
             verticalArrangement = Arrangement.spacedBy(9.dp),
         ) {
-            HongguoSheetHeader(title = "播放设置", dark = true) {
+            HongguoSheetHeader(title = when (focused) {
+                PlaybackQuickSetting.VIDEO -> "画面设置"
+                PlaybackQuickSetting.SPEED -> "倍速"
+                PlaybackQuickSetting.AUDIO -> "音效"
+                PlaybackQuickSetting.DANMAKU -> "弹幕设置"
+                PlaybackQuickSetting.TIMER -> "定时停止"
+                PlaybackQuickSetting.PREFERENCES -> "播放偏好"
+            }, dark = true) {
                 HongguoAction(label = "完成", onClick = onDismiss,
                     style = HongguoActionStyle.QUIET)
             }
