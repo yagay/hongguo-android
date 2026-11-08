@@ -1231,11 +1231,24 @@ class DramaViewModel(application: Application) : AndroidViewModel(application) {
     }
 
     fun setDanmaku(enabled: Boolean) {
+        if (state.value.danmakuEnabled == enabled) return
         prefs.edit().putBoolean("danmaku_enabled", enabled).apply()
+        // Cancellation must clear the loading flag as well. Previously a
+        // cancelled fetch could leave danmakuLoading=true indefinitely, so
+        // switching the toggle back on never requested any comments again.
+        danmakuGeneration++
+        danmakuJob?.cancel()
+        danmakuDurationWaitForVid = null
+        mutable.update { it.copy(
+            danmakuEnabled = enabled,
+            danmakuForVid = null,
+            danmakuItems = emptyList(),
+            danmakuWindowStartMs = 0L,
+            danmakuLoadedUntilMs = 0L,
+            danmakuLoading = false,
+            danmakuError = null,
+        ) }
         diagnostics.record("DANMAKU", if (enabled) "ENABLED" else "DISABLED")
-        mutable.update { it.copy(danmakuEnabled = enabled,
-            danmakuError = if (enabled) null else it.danmakuError) }
-        if (!enabled) danmakuJob?.cancel()
     }
 
     /** Explicit retry after a failed or empty provider response. Do not invent
