@@ -47,3 +47,12 @@ Missing official write protocols are not silently simulated: local 收藏 genuin
 - Actor name and role labels use the same search navigation as a safe fallback; they are not presented as authenticated actor-profile API links. Verified actor-ID-based navigation can replace this after a stable profile destination is available.
 - All available detail labels are shown in the horizontal row (subject to the bounded twelve-tag model), instead of silently displaying only the first six. Search results depend on what the upstream source indexes and may be empty.
 - A search initiated from a detail opened through My must switch the shell to catalog results instead of remaining behind the My screen.
+
+## Search landing based on the 2026-11-08 screenshot
+
+- A primary search icon in the `CatalogHeader` opens a dedicated full-screen black search landing, outside the home `Scaffold` so its bottom tabs are not displayed. The system status/navigation icon contrast switches to light on this page.
+- Top search uses the pre-existing `setSearch` + `search` catalogue pipeline, including real autocomplete, recorded search history, clear-history and actual result navigation. No hard-coded screenshot query or histories.
+- The first recommendation shelf loads the real `NativeHongguoSource.list(Section.RANK, ..., board="all")` data and renders it in a three-column poster grid. Rankings do not invent popularity scores unavailable in the `Drama` model.
+- Search cues and topical keywords are read from the read-only `OpenHongguoSource.browse("hot")` SDK adapter. Failures leave text search functional.
+- The actor shortcut opens the SDK's already-existing actor-ranking tab. “识剧” is not falsely presented as camera recognition until a verified API exists; an unavailable message is shown. “预约榜” is explicitly unavailable pending a validated data source.
+- Prior implementations inspected: local catalogue/search/history, openhongguo's public `hotSearch` and ranking methods, and the openhongguo discovery screen. This visual update was informed by the user-supplied official mobile screenshot; it is not yet screenshot-diff validated on a real device.
