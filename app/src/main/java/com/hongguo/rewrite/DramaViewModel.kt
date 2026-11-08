@@ -1633,10 +1633,15 @@ class DramaViewModel(application: Application) : AndroidViewModel(application) {
         detailJob = viewModelScope.launch {
             val started = System.nanoTime()
             try {
+                val cachedDetail = if (feed) visitedFeedDetails[drama.id] else null
+                val prefetchedDetail = prefetchedFeedDetails.remove(drama.id)
                 val result = api?.detail(drama.id)
-                    ?: prefetchedFeedDetails.remove(drama.id)
-                    ?: if (feed) visitedFeedDetails[drama.id] else null
+                    ?: prefetchedDetail
+                    ?: cachedDetail
                     ?: nativeSource.detail(drama.id)
+                if (feed && (prefetchedDetail != null || cachedDetail != null))
+                    diagnostics.record("FEED", if (prefetchedDetail != null)
+                        "DETAIL_PREFETCH_HIT" else "DETAIL_RECENT_HIT")
                 if (version != detailId) return@launch
                 val resolved = result.copy(drama = result.drama.copy(
                     title = result.drama.title.ifBlank { drama.title },
