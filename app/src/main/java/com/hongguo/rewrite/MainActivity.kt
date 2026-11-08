@@ -265,17 +265,24 @@ private fun HongguoApp(model: DramaViewModel = viewModel()) {
         if (state.section == Section.SEARCH) primaryTab = "theater"
     }
     val activeRoute = state.navigation.destination
+    // A series opened from My/history is a full-player page, not the My tab.
+    // Synchronize the selected tab; otherwise the player appears under My
+    // and later navigation clicks can seem to have no effect.
+    LaunchedEffect(activeRoute, state.miniPlayerVisible) {
+        if (activeRoute == PlaybackDestination.SERIES &&
+            !state.miniPlayerVisible) primaryTab = "home"
+    }
     val detailImmersive = activeRoute == PlaybackDestination.DETAILS &&
         state.detail != null && state.modal == Modal.NONE
     val darkPlayer = activeRoute in setOf(
         PlaybackDestination.FEED, PlaybackDestination.SERIES) &&
-        (primaryTab == "home" || activeRoute == PlaybackDestination.SERIES) &&
-        state.modal == Modal.NONE
+        primaryTab == "home" && state.modal == Modal.NONE
     // A feed can finish loading after the user has selected another tab.
     // Convert it to the persistent mini-player exactly once so no hidden
     // full-screen Surface keeps playing without a visible companion.
     LaunchedEffect(primaryTab, state.detail?.drama?.id, activeRoute) {
-        if (primaryTab != "home" && activeRoute == PlaybackDestination.FEED &&
+        if (primaryTab != "home" &&
+            activeRoute in setOf(PlaybackDestination.FEED, PlaybackDestination.SERIES) &&
             state.detail != null) model.minimizePlayer()
     }
     val playerDetailsOverlay = state.detail != null &&
@@ -298,8 +305,11 @@ private fun HongguoApp(model: DramaViewModel = viewModel()) {
         if (tab == primaryTab) return
         primaryTab = tab
         if (tab == "home") {
-            if (state.detail != null &&
-                state.navigation.origin == PlaybackOrigin.SWIPE_FEED) {
+            // A mini-player from My, History or Theater must restore the
+            // same Media3 item and progress instead of creating a new feed.
+            if (state.detail != null && (state.miniPlayerVisible ||
+                    activeRoute == PlaybackDestination.SERIES ||
+                    state.navigation.origin == PlaybackOrigin.SWIPE_FEED)) {
                 model.restorePlayer()
             } else {
                 model.startFeed()
@@ -400,8 +410,7 @@ private fun HongguoApp(model: DramaViewModel = viewModel()) {
                             activeRoute == PlaybackDestination.DETAILS ->
                                 model.backFromDramaDetails()
                             searchLandingOpen -> searchLandingOpen = false
-                            primaryTab != "home" &&
-                                activeRoute != PlaybackDestination.SERIES ->
+                            primaryTab != "home" ->
                                 selectPrimaryTab("home")
                             activeRoute == PlaybackDestination.FEED ->
                                 confirmExitFeed = true
@@ -427,8 +436,8 @@ private fun HongguoApp(model: DramaViewModel = viewModel()) {
                             onSearchOpen = { searchLandingOpen = true })
                     (activeRoute in setOf(PlaybackDestination.FEED,
                         PlaybackDestination.SERIES) || playerDetailsOverlay) &&
-                        state.detail != null && (primaryTab == "home" ||
-                            activeRoute == PlaybackDestination.SERIES || playerDetailsOverlay) ->
+                        state.detail != null &&
+                            (primaryTab == "home" || playerDetailsOverlay) ->
                         // UI mode changes do not destroy the active Media3 item.
                         key(state.detail?.drama?.id) {
                             NativePlayer(state, model,
