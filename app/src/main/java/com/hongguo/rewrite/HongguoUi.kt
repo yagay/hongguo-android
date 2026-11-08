@@ -42,6 +42,8 @@ import androidx.compose.material.icons.automirrored.outlined.ArrowBack
 import androidx.compose.material3.FilterChip
 import androidx.compose.material3.FilterChipDefaults
 import androidx.compose.material3.Button
+import androidx.compose.material3.ButtonDefaults
+import androidx.compose.material3.BottomSheetDefaults
 import androidx.compose.material3.OutlinedButton
 import androidx.compose.material3.IconButton
 import androidx.compose.material3.TextButton
@@ -272,14 +274,22 @@ internal fun HongguoAction(
     when (style) {
         HongguoActionStyle.PRIMARY -> Button(
             onClick = onClick, modifier = modifier, enabled = enabled, shape = shape,
+            colors = ButtonDefaults.buttonColors(
+                containerColor = HongguoColors.accent, contentColor = Color.White),
             content = buttonContent,
         )
         HongguoActionStyle.OUTLINE -> OutlinedButton(
             onClick = onClick, modifier = modifier, enabled = enabled, shape = shape,
+            colors = ButtonDefaults.outlinedButtonColors(
+                contentColor = HongguoColors.accent,
+                disabledContentColor = HongguoColors.muted),
             content = buttonContent,
         )
         HongguoActionStyle.QUIET -> TextButton(
             onClick = onClick, modifier = modifier, enabled = enabled, shape = shape,
+            colors = ButtonDefaults.textButtonColors(
+                contentColor = HongguoColors.accent,
+                disabledContentColor = HongguoColors.muted),
             content = buttonContent,
         )
     }
@@ -313,7 +323,7 @@ internal fun HongguoPrimaryNavigation(
     // when navigating away from the reel feed.
     val height = HongguoUi.primaryNavHeight
     val backgroundColor = HongguoColors.playerChrome
-    val activeColor = Color.White
+    val activeColor = HongguoColors.ink
     val inactiveColor = HongguoColors.playerChromeMuted
     Surface(color = backgroundColor, shape = RoundedCornerShape(0.dp)) {
         Row(
@@ -579,43 +589,56 @@ internal fun HongguoMenuAction(
 internal fun HongguoMenuSeparator(dark: Boolean = false) {
     HorizontalDivider(
         modifier = Modifier.padding(horizontal = HongguoUi.pagePadding, vertical = 4.dp),
-        color = if (dark) Color(0xFF414043) else HongguoColors.divider,
+        color = HongguoColors.divider,
     )
 }
 
-/** Shared bottom sheet container for all video-side panels.
- * Each panel owns its content and dismissal, not its own palette or inset rules.
+/**
+ * One modal surface for Library, player settings, episodes and comments.
+ * It follows the same palette and radius as ordinary app cards.
  */
 @OptIn(ExperimentalMaterial3Api::class)
 @Composable
-internal fun HongguoPlayerSheet(
+internal fun HongguoModalSheet(
     onDismissRequest: () -> Unit,
     modifier: Modifier = Modifier,
-    content: @Composable androidx.compose.foundation.layout.ColumnScope.() -> Unit,
+    content: @Composable ColumnScope.() -> Unit,
 ) {
     ModalBottomSheet(
         onDismissRequest = onDismissRequest,
-        containerColor = HongguoColors.playerSheet,
-        contentColor = Color.White,
+        containerColor = HongguoColors.surface,
+        contentColor = HongguoColors.ink,
+        shape = RoundedCornerShape(
+            topStart = HongguoUi.cardRadius,
+            topEnd = HongguoUi.cardRadius,
+        ),
+        dragHandle = {
+            BottomSheetDefaults.DragHandle(color = HongguoColors.muted)
+        },
         modifier = modifier,
         content = content,
     )
 }
 
-/** Consistent low-emphasis action in dark player sheets. */
+/** Kept for existing player call sites; now uses the same modal as Library. */
+@Composable
+internal fun HongguoPlayerSheet(
+    onDismissRequest: () -> Unit,
+    modifier: Modifier = Modifier,
+    content: @Composable ColumnScope.() -> Unit,
+) = HongguoModalSheet(onDismissRequest, modifier, content)
+
+/** Same quiet action style as regular menus and Settings. */
 @Composable
 internal fun HongguoPlayerSheetAction(
     label: String,
     onClick: () -> Unit,
     modifier: Modifier = Modifier,
     enabled: Boolean = true,
-) {
-    TextButton(onClick = onClick, modifier = modifier, enabled = enabled,
-        shape = RoundedCornerShape(HongguoUi.controlRadius)) {
-        Text(label, color = if (enabled) Color.White else HongguoColors.playerChromeMuted,
-            fontSize = 13.sp)
-    }
-}
+) = HongguoAction(
+    label = label, onClick = onClick, modifier = modifier,
+    enabled = enabled, style = HongguoActionStyle.QUIET,
+)
 
 /** One active/inactive episode selection control across player episode grids. */
 @Composable
@@ -628,11 +651,13 @@ internal fun HongguoEpisodeCell(
     Box(
         modifier = modifier.height(44.dp)
             .clip(RoundedCornerShape(HongguoUi.controlRadius))
-            .background(if (selected) HongguoColors.accent else Color(0xFF343239))
+            .background(if (selected) HongguoColors.accent
+                else HongguoColors.playerControlBackground)
             .clickable(onClick = onClick),
         contentAlignment = Alignment.Center,
     ) {
-        Text(label, color = Color.White, fontSize = 13.sp,
+        Text(label, color = if (selected) Color.White else HongguoColors.ink,
+            fontSize = 13.sp,
             fontWeight = if (selected) FontWeight.Bold else FontWeight.Medium,
             maxLines = 1)
     }
@@ -662,14 +687,13 @@ internal fun HongguoPlayerPanel(
         HongguoSheetHeader(
             title = title,
             icon = icon,
-            dark = true,
             actions = actions,
         )
         if (!subtitle.isNullOrBlank()) {
             Text(
                 subtitle,
                 fontSize = HongguoUi.rowDescriptionSize,
-                color = HongguoColors.playerChromeMuted,
+                color = HongguoColors.muted,
             )
         }
         content()
@@ -768,7 +792,7 @@ internal fun HongguoPlayerEpisodeEntry(
             label,
             fontSize = HongguoUi.playbackDockTitleSize,
             fontWeight = FontWeight.Medium,
-            color = Color.White,
+            color = HongguoColors.ink,
             modifier = Modifier.weight(1f).testTag("reel_episode_status"),
             maxLines = 1,
             overflow = androidx.compose.ui.text.style.TextOverflow.Ellipsis,
@@ -777,7 +801,7 @@ internal fun HongguoPlayerEpisodeEntry(
             Icons.Outlined.ChevronRight,
             contentDescription = "打开选集",
             modifier = Modifier.size(18.dp),
-            tint = Color.White,
+            tint = HongguoColors.ink,
         )
     }
 }
@@ -795,6 +819,27 @@ internal fun HongguoPlayerTimeLabel(
         fontSize = HongguoUi.playbackDockTimeSize,
         fontWeight = FontWeight.Medium,
         maxLines = 1,
+    )
+}
+
+/** Same inset/background for comment rows and related-series rows. */
+@Composable
+internal fun HongguoSheetListRow(
+    modifier: Modifier = Modifier,
+    onClick: (() -> Unit)? = null,
+    enabled: Boolean = true,
+    content: @Composable RowScope.() -> Unit,
+) {
+    Row(
+        modifier = modifier.fillMaxWidth()
+            .clip(RoundedCornerShape(HongguoUi.controlRadius))
+            .background(HongguoColors.background)
+            .then(if (onClick != null) Modifier.clickable(enabled = enabled, onClick = onClick)
+                else Modifier)
+            .padding(horizontal = 12.dp, vertical = 10.dp),
+        horizontalArrangement = Arrangement.spacedBy(10.dp),
+        verticalAlignment = Alignment.Top,
+        content = content,
     )
 }
 
