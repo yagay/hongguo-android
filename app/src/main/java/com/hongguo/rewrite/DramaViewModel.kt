@@ -1791,7 +1791,8 @@ class DramaViewModel(application: Application) : AndroidViewModel(application) {
      * route's explicit origin is retained even inside a details page.
      */
     fun openRelatedDrama(drama: Drama) {
-        if (state.value.navigation.origin == PlaybackOrigin.SWIPE_FEED)
+        if (state.value.navigation.origin == PlaybackOrigin.SWIPE_FEED &&
+            !state.value.navigation.isExplicitCatalog)
             openFromFeedSelection(drama)
         else open(drama)
     }
@@ -1802,7 +1803,7 @@ class DramaViewModel(application: Application) : AndroidViewModel(application) {
     fun openFromFeedSelection(drama: Drama, resumeEp: Int? = null) {
         val snapshot = state.value
         if (snapshot.navigation.origin != PlaybackOrigin.SWIPE_FEED ||
-            snapshot.navigation.destination == PlaybackDestination.CATALOG) {
+            snapshot.navigation.isExplicitCatalog) {
             open(drama, resumeEp = resumeEp)
             return
         }
@@ -1916,7 +1917,7 @@ class DramaViewModel(application: Application) : AndroidViewModel(application) {
             )
         }
         val fromFeed = state.value.navigation.origin == PlaybackOrigin.SWIPE_FEED &&
-            state.value.navigation.destination != PlaybackDestination.CATALOG
+            !state.value.navigation.isExplicitCatalog
         closeAccount()
         val drama = Drama(id, progress.series.title, progress.series.cover)
         if (fromFeed) openFromFeedSelection(drama, progress.episodeIndex + 1)
@@ -1926,7 +1927,7 @@ class DramaViewModel(application: Application) : AndroidViewModel(application) {
     fun openCloudDrama(series: Series) {
         if (!series.id.matches(Regex("[0-9]{1,30}"))) return
         val fromFeed = state.value.navigation.origin == PlaybackOrigin.SWIPE_FEED &&
-            state.value.navigation.destination != PlaybackDestination.CATALOG
+            !state.value.navigation.isExplicitCatalog
         closeAccount()
         val drama = Drama(series.id, series.title, series.cover)
         if (fromFeed) openFromFeedSelection(drama) else open(drama)
@@ -2522,7 +2523,9 @@ class DramaViewModel(application: Application) : AndroidViewModel(application) {
         if (snapshot.navigation.destination != PlaybackDestination.DETAILS) return
         mutable.update { it.copy(
             navigation = it.navigation.fromDetails(),
-            detailPageVisible = false, miniPlayerVisible = false,
+            detailPageVisible = false,
+            miniPlayerVisible = it.navigation.detailsParent ==
+                PlaybackDestination.CATALOG,
             modal = Modal.NONE,
         ) }
         diagnostics.record("NAVIGATION", "DETAILS_TO_FULL_SERIES")
@@ -2688,7 +2691,7 @@ class DramaViewModel(application: Application) : AndroidViewModel(application) {
     fun share(message: String) {
         val api = source
         val fromFeed = state.value.navigation.origin == PlaybackOrigin.SWIPE_FEED &&
-            state.value.navigation.destination != PlaybackDestination.CATALOG
+            !state.value.navigation.isExplicitCatalog
         detailJob?.cancel()
         detailJob = viewModelScope.launch {
             try {
