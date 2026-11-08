@@ -2233,6 +2233,59 @@ class DramaViewModel(application: Application) : AndroidViewModel(application) {
         }
     }
 
+    /** Resolve the next video with bounded transport-only retries. A transient
+     * network failure must not permanently strand autoplay on an ended item.
+     * Retry a maximum of two transport failures; no retry of 403/429/codec.
+     */
+    private suspend fun openNativePlaybackWithRetry(
+        vid: String,
+        ahead: String?,
+        quality: Int,
+        expectedVersion: Long,
+    ): RemoteVideo? {
+        var networkRetries = 0
+        var emptyRetries = 0
+        while (true) {
+            try {
+                return nativeSource.openVideo(
+                    vid, if (networkRetries == 0 && emptyRetries == 0) ahead else null,
+                    quality)
+            } catch (cancelled: CancellationException) {
+                throw cancelled
+            } catch (error: Exception) {
+                val waitMs = when {
+                    PlaybackProblem.isEmptyPlaybackModel(error) && emptyRetries < 1 -> {
+                        emptyRetries++
+                        diagnostics.record("PLAYBACK", "PRIMARY_EMPTY_RETRY")
+                        1_500L
+                    }
+                    PlaybackProblem.isTransientTransport(error) && networkRetries < 2 -> {
+                        networkRetries++
+                        diagnostics.record("PLAYBACK",
+                            "PRIMARY_NETWORK_RETRY_" + networkRetries)
+                        networkRetries * 1_500L
+                    }
+                    else -> {
+                        if (PlaybackProblem.isEmptyPlaybackModel(error))
+                            diagnostics.record("PLAYBACK", "PRIMARY_EMPTY_RETRY_EXHAUSTED")
+                        if (PlaybackProblem.isTransientTransport(error))
+                            diagnostics.record("PLAYBACK", "PRIMARY_NETWORK_RETRY_EXHAUSTED")
+                        throw error
+                    }
+                }
+                delay(waitMs)
+                val current = state.value
+                if (expectedVersion != detailId ||
+                    current.detail?.episodes
+                        ?.getOrNull(current.episodeIndex)?.vid != vid ||
+                    current.qualityLimit != quality) {
+                    diagnostics.record("PLAYBACK", "PRIMARY_RETRY_CANCELLED_STALE")
+                    return null
+                }
+            }
+        }
+    }
+
     fun play(index: Int) {
         val detail = state.value.detail ?: return
         if (index !in detail.episodes.indices) return
@@ -2315,35 +2368,8 @@ class DramaViewModel(application: Application) : AndroidViewModel(application) {
                 } else {
                     val ahead = detail.episodes.getOrNull(index + 1)?.vid
                     val quality = state.value.qualityLimit
-                    val video = cachedNative ?: try {
-                        nativeSource.openVideo(vid, ahead, quality)
-                    } catch (cancelled: CancellationException) {
-                        throw cancelled
-                    } catch (first: Exception) {
-                        if (!PlaybackProblem.isEmptyPlaybackModel(first)) throw first
-                        // A transient empty playback-model response should not
-                        // immediately strand the reel on its error screen.
-                        // Retry once without metadata-ahead, to reduce work
-                        // on the upstream request. Never retry codecs, 403s or
-                        // other unrelated failures automatically.
-                        diagnostics.record("PLAYBACK", "PRIMARY_EMPTY_RETRY")
-                        delay(1_500L)
-                        val current = state.value
-                        if (version != detailId ||
-                            current.detail?.episodes
-                                ?.getOrNull(current.episodeIndex)?.vid != vid ||
-                            current.qualityLimit != quality) return@launch
-                        try {
-                            nativeSource.openVideo(vid, null, quality)
-                        } catch (cancelled: CancellationException) {
-                            throw cancelled
-                        } catch (again: Exception) {
-                            if (PlaybackProblem.isEmptyPlaybackModel(again)) {
-                                diagnostics.record("PLAYBACK", "PRIMARY_EMPTY_RETRY_EXHAUSTED")
-                            }
-                            throw again
-                        }
-                    }
+                    val video = cachedNative ?: openNativePlaybackWithRetry(
+                        vid, ahead, quality, version) ?: return@launch
                     if (version != detailId) {
                         video.close()
                         return@launch
