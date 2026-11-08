@@ -529,9 +529,7 @@ internal fun ReelBottomDock(
                     episodeIndex = episode?.index,
                 ),
                 onClick = onEpisodes,
-                modifier = Modifier.weight(1f)
-                    .testTag("watch_full_drama")
-                    .testTag("reel_episode_status"),
+                modifier = Modifier.weight(1f).testTag("watch_full_drama"),
             )
             HongguoPlayerTimeLabel(
                 positionMs = displayedPositionMs,
