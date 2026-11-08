@@ -378,7 +378,7 @@ internal fun NativePlayer(
         drawerContent = {
             ModalDrawerSheet(
                 modifier = Modifier.width((LocalConfiguration.current.screenWidthDp * 0.80f).dp),
-                drawerContainerColor = Color(0xFFF8F8F8),
+                drawerContainerColor = HongguoColors.background,
             ) {
                 ReelAccountDrawer(
                     state = state,
