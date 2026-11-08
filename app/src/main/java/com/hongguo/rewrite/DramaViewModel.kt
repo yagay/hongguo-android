@@ -641,7 +641,8 @@ class DramaViewModel(application: Application) : AndroidViewModel(application) {
             try {
                 val result = nativeSource.officialReelsPage(restart, excluded,
                     realOnly = snapshot.reelsMode == "real",
-                    comicOnly = snapshot.reelsMode == "comic")
+                    comicOnly = snapshot.reelsMode == "comic",
+                    firstItemOnly = needsFirstDrama)
                 if (generation != officialFeedGeneration || !state.value.feedMode) return@launch
                 mutable.update { current ->
                     val merged = OfficialReelsPolicy.append(
@@ -2093,6 +2094,15 @@ class DramaViewModel(application: Application) : AndroidViewModel(application) {
         diagnostics.record("MEDIA", "FIRST_FRAME")
         library.record(s.detail.drama, ep.index)
         updateLibrary()
+        // Allow the initial video to render before fetching more recommendations.
+        // Further feed pages and stream-model requests otherwise compete for
+        // startup bandwidth and the upstream registration/session lock.
+        if (s.feedMode && OfficialReelsPolicy.needsMore(s.feedItems,
+                s.feedIndex, s.hiddenRecommendationIds, s.feedHasMore,
+                s.feedLoading)) {
+            diagnostics.record("REELS", "POST_FIRST_FRAME_TOP_UP")
+            loadOfficialReels()
+        }
         // The next episode is more important than the next drama while the
         // current series has remaining episodes; avoid competing range requests.
         if (s.feedMode &&
