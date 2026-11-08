@@ -292,13 +292,16 @@ internal fun NativePlayer(state: AppState, model: DramaViewModel) {
                 contentAlignment = Alignment.Center) {
                 if (page == activePage && episode != null) {
                     val url = state.playbackUrl
+                    // Keep the full-screen PlayerView mounted while the next
+                    // episode URL resolves. Removing it for a null URL destroys
+                    // the Android video surface and adds a black flash.
+                    Media3Reel(
+                        speed = speed,
+                        fillVideo = fillVideo,
+                        controls = playback,
+                        expectedVid = episode.vid,
+                    )
                     if (url != null) {
-                        Media3Reel(
-                            speed = speed,
-                            fillVideo = fillVideo,
-                            controls = playback,
-                            expectedVid = episode.vid,
-                        )
                         Box(
                             Modifier.fillMaxSize()
                                 .pointerInput(detail.drama.id, state.episodeIndex) {
