@@ -73,6 +73,7 @@ internal fun ReelScreenshotOverlay(
     onLike: () -> Unit,
     onComments: () -> Unit,
     onDanmaku: () -> Unit,
+    onRetryDanmaku: () -> Unit,
 ) {
     val white = Color.White
     val muted = Color(0xFFD5D5D5)
@@ -178,8 +179,31 @@ internal fun ReelScreenshotOverlay(
                 ) {
                     Icon(Icons.Outlined.Subtitles, contentDescription = null,
                         tint = white, modifier = Modifier.size(15.dp))
-                    Text(if (state.danmakuEnabled) "弹 · 开" else "弹 · 关",
-                        color = white, fontSize = 11.sp)
+                    Text(
+                        when {
+                            !state.danmakuEnabled -> "弹 · 关"
+                            state.danmakuError != null -> "弹 · 异常"
+                            state.danmakuLoading && state.danmakuItems.isEmpty() -> "弹 · 加载"
+                            state.danmakuForVid == episode?.vid &&
+                                state.danmakuLoadedUntilMs > state.danmakuWindowStartMs &&
+                                state.danmakuItems.isEmpty() -> "弹 · 暂无"
+                            else -> "弹 · 开"
+                        },
+                        color = white, fontSize = 11.sp,
+                    )
+                }
+                if (state.danmakuEnabled && state.danmakuError != null) {
+                    Text(
+                        "重试弹幕",
+                        color = Color(0xFFFFCAA9),
+                        fontSize = 11.sp,
+                        modifier = Modifier
+                            .background(Color.Black.copy(alpha = 0.54f),
+                                RoundedCornerShape(9.dp))
+                            .clickable(onClick = onRetryDanmaku)
+                            .padding(horizontal = 9.dp, vertical = 7.dp)
+                            .testTag("reel_danmaku_retry"),
+                    )
                 }
                 if (inHistory) {
                     Text(
