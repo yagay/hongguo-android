@@ -159,8 +159,10 @@ internal fun SearchLandingScreen(
                         CircularProgressIndicator(Modifier.size(26.dp))
                     browse.error?.let { Text(it, color = SearchMuted, fontSize = 13.sp) }
                     if (!browse.loading && browse.items.isEmpty() && browse.error == null)
-                        Text(if (browse.hasMore) "当前页没有匹配作品，可加载更多"
-                             else "没有找到匹配作品", color = SearchMuted)
+                        HongguoEmptyState(
+                            if (browse.hasMore) "当前页没有匹配作品，可加载更多"
+                            else "没有找到匹配作品",
+                        )
                 }
             }
             items(browse.items.chunked(3)) { dramas ->
