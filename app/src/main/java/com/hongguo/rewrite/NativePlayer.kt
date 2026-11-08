@@ -101,8 +101,6 @@ import androidx.media3.ui.AspectRatioFrameLayout
 import com.hongguotv.core.RemoteVideo
 import kotlinx.coroutines.delay
 import kotlinx.coroutines.flow.distinctUntilChanged
-import kotlinx.coroutines.flow.filterNotNull
-import kotlinx.coroutines.flow.first
 import kotlinx.coroutines.isActive
 import kotlin.math.roundToInt
 import java.time.Instant
@@ -872,8 +870,9 @@ private fun Media3Reel(
     LaunchedEffect(context) {
         try {
             context.startService(Intent(context, BackgroundPlaybackService::class.java))
-            player = BackgroundPlaybackService.playerFlow
-                .filterNotNull().first()
+            BackgroundPlaybackService.playerFlow.collect { sessionPlayer ->
+                player = sessionPlayer
+            }
         } catch (error: Exception) {
             fail("后台播放服务无法启动：${error.javaClass.simpleName}")
         }
