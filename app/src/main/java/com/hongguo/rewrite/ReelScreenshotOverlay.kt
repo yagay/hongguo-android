@@ -401,10 +401,11 @@ internal fun ReelBottomDock(
             .testTag("reel_outside_video_dock"),
         verticalArrangement = Arrangement.spacedBy(0.dp),
     ) {
-        // A truly thin 2dp progress LINE, not the full Material Slider thumb.
-        // 16dp invisible hit target keeps both taps and drag-to-seek usable.
+        // Keep the 2dp line and seek gestures, but reduce the empty
+        // vertical gutter from 16dp to 12dp. The recovered height belongs
+        // to the video viewport, not another overlay.
         Canvas(
-            Modifier.fillMaxWidth().height(16.dp)
+            Modifier.fillMaxWidth().height(12.dp)
                 .pointerInput(duration, playback) {
                     detectTapGestures { point ->
                         if (duration > 0L && size.width > 0) {
@@ -452,7 +453,7 @@ internal fun ReelBottomDock(
             )
         }
         Row(
-            Modifier.fillMaxWidth().height(34.dp)
+            Modifier.fillMaxWidth().height(28.dp)
                 .clickable(onClick = onEpisodes)
                 .padding(start = 10.dp, end = 8.dp)
                 .testTag("watch_full_drama"),
