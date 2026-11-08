@@ -62,7 +62,10 @@ object OpenHongguoMetadataParser {
 
     fun merge(primary: OpenHongguoMetadata?, supplement: OpenHongguoMetadata):
         OpenHongguoMetadata {
-        if (primary == null || primary.seriesId != supplement.seriesId) return supplement
+        if (primary == null) return supplement
+        // Reject unrelated metadata: never transplant another drama's AI
+        // declaration, actors, novel or review score into the active series.
+        if (primary.seriesId != supplement.seriesId) return primary
         return primary.copy(
             tags = (primary.tags + supplement.tags).distinct().take(16),
             actors = (primary.actors + supplement.actors).distinct().take(20),
