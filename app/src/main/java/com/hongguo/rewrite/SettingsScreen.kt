@@ -226,18 +226,19 @@ internal fun SettingsScreen(state: AppState, model: DramaViewModel) {
                         horizontalArrangement = Arrangement.spacedBy(8.dp),
                         verticalArrangement = Arrangement.spacedBy(7.dp),
                     ) {
-                        Button(
+                        HongguoAction(
+                            label = "保存连接",
                             onClick = { model.saveBackend(address) },
-                            shape = RoundedCornerShape(HongguoUi.controlRadius),
                             modifier = Modifier.testTag("save_backend"),
-                        ) { Text("保存连接") }
-                        OutlinedButton(
+                            style = HongguoActionStyle.PRIMARY,
+                        )
+                        HongguoAction(
+                            label = "恢复原生模式",
                             onClick = {
                                 address = ""
                                 model.saveBackend("")
                             },
-                            shape = RoundedCornerShape(HongguoUi.controlRadius),
-                        ) { Text("恢复原生模式") }
+                        )
                     }
                     state.settingsMessage?.let { Text(it, color = HongguoColors.accent,
                         fontSize = 12.sp) }
@@ -251,11 +252,12 @@ internal fun SettingsScreen(state: AppState, model: DramaViewModel) {
                         color = HongguoColors.ink, fontWeight = FontWeight.SemiBold)
                     Text("在首页推荐封面右上角选择「不再推荐」后，该剧不会再出现在推荐列表中；其他分类不受影响。",
                         color = HongguoColors.muted, fontSize = 12.sp)
-                    OutlinedButton(
+                    HongguoAction(
+                        label = "恢复全部隐藏推荐",
                         onClick = model::restoreHiddenRecommendations,
                         enabled = state.hiddenRecommendationIds.isNotEmpty(),
                         modifier = Modifier.testTag("settings_restore_recommendations"),
-                    ) { Text("恢复全部隐藏推荐") }
+                    )
                 }
             }
             item {
