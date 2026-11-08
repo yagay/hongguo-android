@@ -82,11 +82,18 @@ import coil.compose.AsyncImage
 @Composable
 internal fun CatalogScreen(state: AppState, model: DramaViewModel, onMine: () -> Unit = {}) {
     var filtersOpen by rememberSaveable { mutableStateOf(false) }
+    var searchLandingOpen by rememberSaveable { mutableStateOf(false) }
     var openSourceExplore by rememberSaveable { mutableStateOf(false) }
     val grid = rememberLazyGridState()
     LaunchedEffect(state.section, state.board, state.genre) {
         grid.scrollToItem(0)
         filtersOpen = false
+    }
+    if (searchLandingOpen) {
+        SearchLandingScreen(state, model,
+            onClose = { searchLandingOpen = false },
+            onResults = { searchLandingOpen = false })
+        return
     }
     if (openSourceExplore) {
         OpenHongguoExploreScreen(model, onClose = { openSourceExplore = false })
@@ -97,7 +104,8 @@ internal fun CatalogScreen(state: AppState, model: DramaViewModel, onMine: () ->
     Scaffold(
         contentWindowInsets = WindowInsets(0, 0, 0, 0),
         containerColor = HongguoColors.background,
-        topBar = { CatalogHeader(state, model, onMine) },
+        topBar = { CatalogHeader(state, model, onMine,
+            onSearchOpen = { searchLandingOpen = true }) },
     ) { insets ->
         LazyVerticalGrid(
             columns = GridCells.Adaptive(minSize = 100.dp),
@@ -234,8 +242,8 @@ internal fun CatalogScreen(state: AppState, model: DramaViewModel, onMine: () ->
 }
 
 @Composable
-private fun CatalogHeader(state: AppState, model: DramaViewModel, onMine: () -> Unit) {
-    var searchFocused by remember { mutableStateOf(false) }
+private fun CatalogHeader(state: AppState, model: DramaViewModel,
+    onMine: () -> Unit, onSearchOpen: () -> Unit) {
     Column(Modifier.fillMaxWidth().background(HongguoColors.surface)) {
         Row(Modifier.fillMaxWidth().height(54.dp).padding(start = 15.dp, end = 5.dp),
             verticalAlignment = Alignment.CenterVertically) {
@@ -244,6 +252,7 @@ private fun CatalogHeader(state: AppState, model: DramaViewModel, onMine: () -> 
                     color = HongguoColors.accent)
                 Text("发现好故事", fontSize = 10.sp, color = HongguoColors.muted)
             }
+            HeaderIcon(Icons.Outlined.Search, "搜索") { onSearchOpen() }
             HeaderIcon(Icons.Outlined.PersonOutline, "我的") { onMine() }
             HeaderIcon(Icons.Outlined.History, "播放历史") { model.show(Modal.HISTORY) }
             HeaderIcon(Icons.Outlined.StarBorder, "收藏") { model.show(Modal.FAVORITES) }
@@ -253,63 +262,6 @@ private fun CatalogHeader(state: AppState, model: DramaViewModel, onMine: () -> 
             }
             HeaderIcon(Icons.Outlined.Share, "分享解析") { model.show(Modal.SHARE) }
             HeaderIcon(Icons.Outlined.Settings, "设置") { model.show(Modal.SETTINGS) }
-        }
-        Row(Modifier.fillMaxWidth().padding(start = 14.dp, end = 14.dp, bottom = 10.dp),
-            verticalAlignment = Alignment.CenterVertically) {
-            OutlinedTextField(
-                value = state.search,
-                onValueChange = model::setSearch,
-                modifier = Modifier.fillMaxWidth().height(53.dp)
-                    .onFocusChanged { searchFocused = it.isFocused }
-                    .testTag("search_input"),
-                placeholder = { Text("搜索剧名、演员或关键词", fontSize = 13.sp,
-                    color = HongguoColors.muted) },
-                shape = RoundedCornerShape(16.dp),
-                singleLine = true,
-                leadingIcon = { Icon(Icons.Outlined.Search, null, tint = HongguoColors.muted) },
-                trailingIcon = {
-                    TextButton(onClick = model::search,
-                        modifier = Modifier.testTag("search_submit")) {
-                        Text("搜索", color = HongguoColors.accent, fontSize = 13.sp,
-                            fontWeight = FontWeight.Bold)
-                    }
-                },
-                keyboardOptions = KeyboardOptions(imeAction = ImeAction.Search),
-                keyboardActions = KeyboardActions(onSearch = { model.search() }),
-            )
-        }
-        if (searchFocused && (state.suggestions.isNotEmpty() ||
-                state.suggestionsLoading ||
-                (state.search.isBlank() && state.recentSearches.isNotEmpty()))) {
-            Column(
-                Modifier.fillMaxWidth().heightIn(max = 164.dp)
-                    .padding(horizontal = 15.dp, vertical = 3.dp),
-                verticalArrangement = Arrangement.spacedBy(3.dp)
-            ) {
-                val rows = if (state.search.isBlank()) state.recentSearches else state.suggestions
-                if (state.search.isBlank()) Row(
-                    modifier = Modifier.fillMaxWidth(),
-                    verticalAlignment = Alignment.CenterVertically
-                ) {
-                    Text("最近搜索", color = HongguoColors.muted, fontSize = 11.sp,
-                        modifier = Modifier.weight(1f))
-                    TextButton(onClick = model::clearSearchHistory) {
-                        Text("清空", fontSize = 11.sp)
-                    }
-                }
-                if (state.suggestionsLoading) {
-                    Text("正在获取联想…", color = HongguoColors.muted, fontSize = 11.sp)
-                }
-                rows.take(if (state.search.isBlank()) 2 else 4).forEach { text ->
-                    Text(
-                        text, modifier = Modifier.fillMaxWidth()
-                            .clickable { model.chooseSuggestion(text) }
-                            .padding(vertical = 4.dp, horizontal = 6.dp),
-                        maxLines = 1, overflow = TextOverflow.Ellipsis,
-                        fontSize = 13.sp, color = HongguoColors.ink
-                    )
-                }
-            }
         }
         Row(Modifier.fillMaxWidth().height(44.dp),
             horizontalArrangement = Arrangement.SpaceEvenly) {
