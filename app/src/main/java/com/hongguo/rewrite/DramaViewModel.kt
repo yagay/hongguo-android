@@ -779,6 +779,7 @@ class DramaViewModel(application: Application) : AndroidViewModel(application) {
         feedPrefetchJob?.cancel()
         feedPrefetchJob = viewModelScope.launch {
             var warming: RemoteVideo? = null
+            val activeAtStart = state.value.detail?.drama?.id
             try {
                 val detail = prefetchedFeedDetails[next.id] ?: nativeSource.detail(next.id)
                 if (!isUpcomingReel(next.id)) return@launch
@@ -809,6 +810,16 @@ class DramaViewModel(application: Application) : AndroidViewModel(application) {
                 diagnostics.record("FEED", "NEXT_PRELOAD_UNAVAILABLE")
             } finally {
                 warming?.close()
+                // Avoid competing playback-model requests. After the next
+                // drama is warmed (or unavailable), give natural next-episode
+                // playback its usual prefetch opportunity too.
+                val current = state.value
+                if (activeAtStart != null &&
+                    current.detail?.drama?.id == activeAtStart &&
+                    current.preloadNext && current.episodeIndex < current.detail.episodes.lastIndex &&
+                    firstFrameFor == current.detail.episodes[current.episodeIndex].vid) {
+                    preloadFollowingEpisode()
+                }
             }
         }
     }
@@ -1987,9 +1998,15 @@ class DramaViewModel(application: Application) : AndroidViewModel(application) {
         updateLibrary()
         // The next episode is more important than the next drama while the
         // current series has remaining episodes; avoid competing range requests.
-        if (s.feedMode && s.episodeIndex == (s.detail?.episodes?.lastIndex ?: -1))
+        if (s.feedMode &&
+            s.feedItems.drop(s.feedIndex + 1).any {
+                it.id !in s.hiddenRecommendationIds
+            }) {
+            // In swipe mode the immediately adjacent drama has priority.
+            // The next episode is prefetched after this neighboring video,
+            // rather than consuming the same network/identity budget at once.
             prefetchFollowingFeedItem(s.feedIndex)
-        else preloadFollowingEpisode()
+        } else preloadFollowingEpisode()
     }
 
 
@@ -2006,9 +2023,15 @@ class DramaViewModel(application: Application) : AndroidViewModel(application) {
         diagnostics.record("MEDIA", "BACKGROUND_PROGRESS_CONFIRMED")
         library.record(s.detail.drama, ep.index)
         updateLibrary()
-        if (s.feedMode && s.episodeIndex == s.detail.episodes.lastIndex)
+        if (s.feedMode &&
+            s.feedItems.drop(s.feedIndex + 1).any {
+                it.id !in s.hiddenRecommendationIds
+            }) {
+            // In swipe mode the immediately adjacent drama has priority.
+            // The next episode is prefetched after this neighboring video,
+            // rather than consuming the same network/identity budget at once.
             prefetchFollowingFeedItem(s.feedIndex)
-        else preloadFollowingEpisode()
+        } else preloadFollowingEpisode()
     }
 
     /** Media3-driven actual progress, persisted independently of history.
