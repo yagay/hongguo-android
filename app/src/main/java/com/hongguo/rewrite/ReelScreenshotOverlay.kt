@@ -148,14 +148,14 @@ internal fun ReelScreenshotOverlay(
                     .padding(horizontal = 8.dp),
             ) {
                 val tabWidth = minOf(60.dp, (maxWidth - 88.dp) / tabs.size)
-                IconButton(
+                HongguoPlayerTopAction(
+                    icon = Icons.Outlined.Menu,
+                    label = "打开账号与隐私侧边栏",
                     onClick = onOpenAccountDrawer,
                     modifier = Modifier.align(Alignment.TopStart)
-                        .size(40.dp).testTag("reel_menu"),
-                ) {
-                    Icon(Icons.Outlined.Menu, "打开账号与隐私侧边栏",
-                        tint = white, modifier = Modifier.size(23.dp))
-                }
+                        .testTag("reel_menu"),
+                    iconSize = 23.dp,
+                )
                 Row(
                     modifier = Modifier.align(Alignment.TopCenter)
                         .height(52.dp),
