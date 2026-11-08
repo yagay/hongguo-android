@@ -73,7 +73,11 @@ internal fun InAppMiniPlayer(state: AppState, model: DramaViewModel) {
             delay(250)
         }
     }
-    val attachedPlayer = media.takeIf { currentItemReady }
+    // A MediaItem transition can briefly invalidate the selected vid, but
+    // never unmount the PlayerView: its video surface must survive every
+    // automatic episode and reel switch.
+    val showCover = media == null || !currentItemReady ||
+        media?.playbackState != androidx.media3.common.Player.STATE_READY
 
     Row(
         modifier = Modifier.fillMaxWidth()
@@ -91,19 +95,26 @@ internal fun InAppMiniPlayer(state: AppState, model: DramaViewModel) {
                 .background(Color.Black),
             contentAlignment = Alignment.Center,
         ) {
-            if (attachedPlayer != null) {
-                AndroidView(
-                    factory = {
-                        PlayerView(it).apply {
-                            useController = false
-                            resizeMode = AspectRatioFrameLayout.RESIZE_MODE_FIT
-                            player = attachedPlayer
-                        }
-                    },
-                    update = { it.player = attachedPlayer },
-                    modifier = Modifier.fillMaxSize().testTag("mini_video_surface"),
-                )
-            } else if (detail.drama.cover.isNotBlank()) {
+            // Always compose ONE persistent view. On playback/episode changes,
+            // Media3 reuses its ExoPlayer; transient mismatches must not dispose
+            // the Android SurfaceView and produce a black frame on reattach.
+            AndroidView(
+                factory = {
+                    PlayerView(it).apply {
+                        useController = false
+                        resizeMode = AspectRatioFrameLayout.RESIZE_MODE_FIT
+                        setKeepContentOnPlayerReset(true)
+                        player = media
+                    }
+                },
+                update = { view ->
+                    if (view.player !== media) view.player = media
+                },
+                modifier = Modifier.fillMaxSize().testTag("mini_video_surface"),
+            )
+            // The outgoing frame stays behind a cover until the new item is
+            // READY; this avoids displaying the previous series by mistake.
+            if (showCover && detail.drama.cover.isNotBlank()) {
                 AsyncImage(
                     model = model.cover(detail.drama.cover),
                     contentDescription = null,
