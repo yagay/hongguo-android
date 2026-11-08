@@ -171,12 +171,11 @@ internal fun SearchLandingScreen(
                             .clickable { onOpenDrama(drama); onClose() }
                             .testTag("search_browse_drama_" + drama.id),
                             verticalArrangement = Arrangement.spacedBy(6.dp)) {
-                            AsyncImage(model = model.cover(drama.cover),
-                                contentDescription = drama.title,
-                                contentScale = ContentScale.Crop,
-                                modifier = Modifier.fillMaxWidth().height(150.dp)
-                                    .clip(RoundedCornerShape(11.dp))
-                                    .background(SearchTile))
+                            HongguoPosterCover(
+                                cover = model.cover(drama.cover),
+                                title = drama.title,
+                                modifier = Modifier.fillMaxWidth().height(150.dp),
+                            )
                             Text(drama.title, color = SearchInk,
                                 maxLines = 2, overflow = TextOverflow.Ellipsis,
                                 fontSize = 12.sp)
