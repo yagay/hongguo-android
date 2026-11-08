@@ -342,8 +342,8 @@ internal fun NativePlayer(state: AppState, model: DramaViewModel) {
                     } else if (state.playbackError == null) {
                         // The next media item may already be prepared. Do not
                         // flash a spinner while the service swaps its MediaItem.
-                        // Use the destination artwork as a stable frame; only
-                        // show progress after a noticeable loading delay.
+                        // Show un-dimmed destination artwork as the loading frame;
+                        // only show progress after a noticeable loading delay.
                         if (detail.drama.cover.isNotBlank()) {
                             AsyncImage(
                                 model = model.cover(detail.drama.cover),
@@ -351,8 +351,6 @@ internal fun NativePlayer(state: AppState, model: DramaViewModel) {
                                 contentScale = ContentScale.Crop,
                                 modifier = Modifier.fillMaxSize(),
                             )
-                            Box(Modifier.fillMaxSize().background(
-                                Color.Black.copy(alpha = 0.26f)))
                         }
                         var showDelayedSpinner by remember(detail.drama.id, state.episodeIndex) {
                             mutableStateOf(false)
@@ -385,10 +383,8 @@ internal fun NativePlayer(state: AppState, model: DramaViewModel) {
                     val preview = if (state.feedMode) {
                         if (page < activePage) previousFeedDrama else nextFeedDrama
                     } else null
-                    // Adjacent reel pages should show the known target cover,
-                    // not a black "switching drama" placeholder during the
-                    // user's vertical swipe. Never imply the video is actually
-                    // playing until Media3 renders the new item.
+                    // Adjacent pages display the original cover at full brightness.
+                    // Never imply the video is actually playing before the new item renders.
                     if (preview != null && preview.cover.isNotBlank()) {
                         AsyncImage(
                             model = model.cover(preview.cover),
@@ -396,8 +392,6 @@ internal fun NativePlayer(state: AppState, model: DramaViewModel) {
                             contentScale = ContentScale.Crop,
                             modifier = Modifier.fillMaxSize(),
                         )
-                        Box(Modifier.fillMaxSize().background(
-                            Color.Black.copy(alpha = 0.44f)))
                     }
                     Column(horizontalAlignment = Alignment.CenterHorizontally,
                         verticalArrangement = Arrangement.spacedBy(9.dp)) {
