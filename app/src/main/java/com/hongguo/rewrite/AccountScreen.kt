@@ -429,6 +429,33 @@ internal fun AccountScreen(model: DramaViewModel) {
                         }
                     }
                 }
+                // Future verified account integration can provide real social
+                // counts. No placeholder dashes are shown before data exists.
+                FeatureAvailability.socialCounts()?.let { counts ->
+                    item {
+                        Surface(shape = RoundedCornerShape(16.dp),
+                            color = HongguoColors.surface,
+                            modifier = Modifier.fillMaxWidth().testTag("account_stats")) {
+                            Row(Modifier.fillMaxWidth().padding(vertical = 15.dp)) {
+                                listOf(
+                                    "关注" to counts.following,
+                                    "粉丝" to counts.followers,
+                                    "获赞" to counts.likes,
+                                ).forEach { (label, count) ->
+                                    Column(Modifier.weight(1f),
+                                        horizontalAlignment = Alignment.CenterHorizontally,
+                                        verticalArrangement = Arrangement.spacedBy(4.dp)) {
+                                        Text(count.toString(), color = HongguoColors.ink,
+                                            fontSize = 20.sp,
+                                            fontWeight = FontWeight.Medium)
+                                        Text(label, color = HongguoColors.muted,
+                                            fontSize = 13.sp)
+                                    }
+                                }
+                            }
+                        }
+                    }
+                }
                 item {
                     Row(
                         Modifier.fillMaxWidth().padding(top = 12.dp, bottom = 2.dp),
