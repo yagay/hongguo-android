@@ -67,25 +67,25 @@ Missing official write protocols are not silently simulated: local 收藏 genuin
 - Explicit stop/close/detail navigation releases the session; switching episode cancels the old media before the new video model is installed. Never keep a leaked second player or release the active stream just because a Compose video surface is detached.
 - Integration testing required on an actual device: notification controls on Android 8/13/14/16; notification seek/elapsed/total duration; locked-screen playback and audio focus; play/pause from headset; reel/episode boundary behavior; Activity recreation and task removal; encrypted RemoteVideo stream handoff; service foreground promotion; automatic end-of-episode and wake-lock release. Static source changes are not proof of these outcomes.
 
-## Notification and autoplay regression follow-up (2026-11-08)
+## Notification and autoplay regression follow-up (historical; ordinary notification later removed)
 
 Observed on a device: a media player appeared in the system media area, but not as a separate ordinary drawer notification; media switching and continuous playback were unreliable.
 
-- On Android 13+, the quick-settings media carousel is the OS-standard media surface. A separate ordinary `NotificationCompat` progress card is now posted to its own LOW-importance channel only when `POST_NOTIFICATIONS` is granted. The user can request permission from Settings > 后台播放. The ordinary card shows the actual play clock, total time, progress bar and play/pause/previous/next PendingIntent actions. The **seekable** timeline remains the system media player's native progress control; a regular notification's progress bar is not an interactive seek slider.
-- The Media3 custom previous/next buttons now carry explicit BACK/FORWARD slot preferences and availability; the regular notification commands target the running playback service directly, without a second player or a background Activity launch.
+- Earlier versions added a separate `NotificationCompat` progress card and a Settings > 后台播放 permission request. **This entire duplicate notification flow has now been removed.** The only playback notification is Media3's system-managed foreground media notification; its native seekable timeline is managed by Android.
+- The Media3 custom previous/next buttons retain explicit BACK/FORWARD slots and availability. Their commands target the existing media session; there are no parallel ordinary notification `PendingIntent` actions.
 - Real background audio may advance without any visible video surface. `confirmedBackgroundPlayback` treats three seconds of progressing ExoPlayer audio as validated playback for history/checkpoint and next-media prefetch, without falsely recording a rendered video frame. A return to the foreground still receives genuine `onRenderedFirstFrame`.
 - Swiping past the fetched reel queue triggers a page load **without immediately pausing the current stream**. When the new drama arrives, the existing ViewModel transition loads its media into the service. Normal episode transitions use the same single service player.
-- Sanitized diagnostic events now include `BACKGROUND/SERVICE_CREATED`, `SOURCE_CONFIGURED`, `MEDIA_PREVIOUS`, `MEDIA_NEXT`, `MEDIA_ENDED`, `NOTIFICATION_PERMISSION_DENIED`, and `NOTIFICATION_BLOCKED`. The diagnostics never contain media URLs or drama titles.
+- Sanitized diagnostic events include `BACKGROUND/SERVICE_CREATED`, `SOURCE_CONFIGURED`, `MEDIA_PREVIOUS`, `MEDIA_NEXT`, and `MEDIA_ENDED`. Obsolete ordinary-notification permission/block diagnostics were removed with that implementation. Diagnostics never contain media URLs or drama titles.
 - Validate foreground-service notification behavior, OPPO/OnePlus-specific notification settings, screen-off continuity, first episode/last episode, last reel awaiting discovery, audio focus, and real seekbar behavior on a phone. These changes were not confirmed by a successful current CI build in this review.
 
-## 2026-11-08 next-episode stall and 1-second clock correction
+## 2026-11-08 next-episode stall and 1-second clock correction (historical)
 
 - Checked the actual `BackgroundPlaybackService.configure()`, `Player.STATE_ENDED` callback and `DramaViewModel.closeNativeVideo()` handoff against the Media3 service-owned-player model.
 - `DramaViewModel` now detaches its pointer instead of closing an encrypted `RemoteVideo` still owned by `BackgroundPlaybackService`. The service closes the prior source **after** it installs and starts the replacement (or on explicit stop).
 - The Media3 `STATE_ENDED` callback schedules navigation on the next main-loop turn to avoid reentrant `stop()/setMediaSource()` while ExoPlayer dispatches listeners; it skips stale transitions when the media key has already changed.
 - Explicit autoplay is armed before `prepare()`, followed by `play()`; a bounded `STATE_READY` recovery attempts to restore playback if the expected autoplay intent was lost. Playback events record `NEXT_SOURCE_PLAY_REQUESTED`, `AUTO_START_RECOVERY`, and `PLAYING`.
 - Do not checkpoint the old stream after it has reached `STATE_ENDED`; that would recreate a completed-episode resume point after `finishEpisode` cleared it.
-- The **ordinary** notification calls its time/progress refresh every 1000 ms; updates are skipped if the media second is unchanged while playing. MediaSession controls manage their own native clock. Android/OxygenOS can still throttle/redraw notifications independently, so exactly one visible redraw per second cannot be guaranteed.
+- The former ordinary notification refreshed its progress once per second. **That workaround is now removed**. The current system Media3 media control owns its own timeline clock, and Android/OxygenOS determines when to redraw it.
 - This is static-code remediation pending Debug CI and phone testing, especially next episode with screen on/off and end-of-series autoplay.
 
 ## Playback follow-up from 2026-11-08 02:57 diagnostics
@@ -119,3 +119,14 @@ Root cause candidate found by comparing source to **AndroidX Media3 1.8.0** `Med
 Fix: after `MediaSession.Builder(...).build()`, explicitly call `addSession(session)` **once**, before playback begins. Let the default `onUpdateNotification` implementation manage foreground promotion. Add diagnostic events for foreground requested/active transitions and verify `isSessionAdded` / `isPlaybackOngoing` during teardown. This avoids indefinite restart loops or a competing manually managed foreground notification. A session returned by `onGetSession` remains safe because Media3 `addSession` treats re-registering the same object as idempotent.
 
 Validation required: After starting playback, exported log must show `MEDIA_SESSION_REGISTERED`, `FOREGROUND_REQUESTED` and `FOREGROUND_ACTIVE`; test 5+ minutes in background/locked state without `DESTROYED_WHILE_PLAYING`. If service still dies with `DESTROYED_FOREGROUND_ACTIVE`, inspect Android process/FGS policy and OxygenOS battery management rather than assuming the registration fix is sufficient. CI and device result unverified.
+
+## Single system media control only (2026-11-08)
+
+Based on the successful on-device test after explicit `MediaSessionService.addSession(session)`, the user requested removal of the redundant ordinary notification.
+
+- `BackgroundPlaybackService.kt` no longer builds/posts a second `NotificationCompat` card, creates the `hongguo_playback_progress` channel, registers duplicate previous/play/next `PendingIntent` service actions, or refreshes a notification every second.
+- The service removes the **legacy duplicate notification channel** when first created after upgrade; Media3's own foreground-service channel and `onUpdateNotification(session, startInForegroundRequired)` remain untouched.
+- The `MediaSession` is still explicitly registered using `addSession(session)`, with custom BACK/FORWARD commands, session media metadata, actual ExoPlayer timeline, foreground state diagnostics, background sleep timer, stream ownership and state recovery.
+- `SettingsScreen` no longer has a redundant playback-notification permission request. Android `POST_NOTIFICATIONS` remains for the **separate episode-update reminder** feature, whose permission request and toggle are retained.
+- The native media progress/time display is OS-managed. The app's 1-second checkpoint ticker remains, since it also handles sleep-timer, skip-outro, background progress validation and stalled-playback detection; it no longer posts a notification.
+- Only source-level consistency was checked. Debug build and locked-screen regression remain to be verified on device.
