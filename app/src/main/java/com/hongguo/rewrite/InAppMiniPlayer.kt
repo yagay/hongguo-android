@@ -76,8 +76,10 @@ internal fun InAppMiniPlayer(state: AppState, model: DramaViewModel) {
     // A MediaItem transition can briefly invalidate the selected vid, but
     // never unmount the PlayerView: its video surface must survive every
     // automatic episode and reel switch.
-    val showCover = media == null || !currentItemReady ||
-        media?.playbackState != androidx.media3.common.Player.STATE_READY
+    // Only cover an absent or mismatched media item. During buffering the
+    // existing PlayerView retains its last decoded frame instead of flashing
+    // the poster over a still-valid playing video.
+    val showCover = media == null || !currentItemReady
 
     Row(
         modifier = Modifier.fillMaxWidth()
