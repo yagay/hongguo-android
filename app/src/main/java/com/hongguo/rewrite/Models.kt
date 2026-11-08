@@ -82,6 +82,8 @@ data class AppState(
     val modal: Modal = Modal.NONE,
     val detail: DramaDetail? = null,
     val detailPageVisible: Boolean = false,
+    /** Keeps the service-owned video running while browsing other in-app pages. */
+    val miniPlayerVisible: Boolean = false,
     val detailEntryEnabled: Boolean = false,
     /** Separate one-video-per-series feed from full-series episode paging. */
     /** Official swipe feed: all recommendations or strictly real-person dramas. */
