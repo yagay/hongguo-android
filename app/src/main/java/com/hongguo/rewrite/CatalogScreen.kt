@@ -28,6 +28,7 @@ import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.foundation.text.KeyboardActions
 import androidx.compose.foundation.text.KeyboardOptions
 import androidx.compose.material.icons.Icons
+import androidx.compose.material.icons.outlined.ChevronRight
 import androidx.compose.material.icons.outlined.Download
 import androidx.compose.material.icons.outlined.History
 import androidx.compose.material.icons.outlined.PersonOutline
@@ -73,6 +74,7 @@ import androidx.compose.ui.text.input.ImeAction
 import androidx.compose.ui.text.style.TextOverflow
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
+import androidx.lifecycle.compose.collectAsStateWithLifecycle
 import coil.compose.AsyncImage
 
 /**
@@ -84,6 +86,7 @@ internal fun CatalogScreen(
     state: AppState, model: DramaViewModel,
     onMine: () -> Unit = {}, onSearchOpen: () -> Unit = {},
 ) {
+    val account by model.account.state.collectAsStateWithLifecycle()
     var filtersOpen by rememberSaveable { mutableStateOf(false) }
     var openSourceExplore by rememberSaveable { mutableStateOf(false) }
     val grid = rememberLazyGridState()
@@ -115,27 +118,51 @@ internal fun CatalogScreen(
             horizontalArrangement = Arrangement.spacedBy(10.dp),
             verticalArrangement = Arrangement.spacedBy(15.dp),
         ) {
-            if (state.section == Section.RECOMMEND && state.library.isNotEmpty()) {
+            // Continue-watching is a theater feature, not a RECOMMEND-only
+            // widget. Use the saved cloud checkpoint when it is available,
+            // otherwise open the local history entry at its recorded episode.
+            val cloudRecent = account.history.firstOrNull()
+            val localRecent = state.library.firstOrNull()
+            if (cloudRecent != null || localRecent != null) {
                 item(span = { GridItemSpan(maxLineSpan) }) {
-                    Column(verticalArrangement = Arrangement.spacedBy(9.dp)) {
-                        Text("接着看", color = HongguoColors.ink,
-                            fontSize = 18.sp, fontWeight = FontWeight.Bold)
-                        Row(Modifier.fillMaxWidth().horizontalScroll(rememberScrollState()),
-                            horizontalArrangement = Arrangement.spacedBy(12.dp)) {
-                            state.library.take(8).forEach { history ->
-                                Box(Modifier.width(114.dp)) {
-                                    CatalogPoster(history.drama,
-                                        model.cover(history.drama.cover),
-                                        savedLater = state.watchLater.any { it.id == history.drama.id },
-                                        savedFavorite = state.favorites.any { it.drama.id == history.drama.id },
-                                        savedLike = history.drama.id in state.likedDramaIds,
-                                        onLater = { model.toggleWatchLater(history.drama) },
-                                        onFavorite = { model.toggleFavoriteForDrama(history.drama) },
-                                        onLike = { model.toggleLocalLikeForDrama(history.drama.id) },
-                                        onHide = null,
-                                    ) { model.open(history.drama, resumeEp = history.episode) }
-                                }
+                    val cloud = cloudRecent
+                    val local = localRecent
+                    val drama = if (cloud != null)
+                        Drama(cloud.series.id, cloud.series.title, cloud.series.cover)
+                    else local!!.drama
+                    Surface(
+                        shape = RoundedCornerShape(13.dp),
+                        color = HongguoColors.surface,
+                    ) {
+                        Row(Modifier.fillMaxWidth().clickable {
+                            if (cloud != null) model.openCloudProgress(cloud)
+                            else if (local != null) model.open(
+                                local.drama, resumeEp = local.episode)
+                        }.padding(11.dp).testTag("theater_continue_watching"),
+                            horizontalArrangement = Arrangement.spacedBy(11.dp),
+                            verticalAlignment = Alignment.CenterVertically) {
+                            AsyncImage(model = model.cover(drama.cover),
+                                contentDescription = drama.title,
+                                contentScale = ContentScale.Crop,
+                                modifier = Modifier.width(65.dp).aspectRatio(2f / 3f)
+                                    .clip(RoundedCornerShape(8.dp)))
+                            Column(Modifier.weight(1f),
+                                verticalArrangement = Arrangement.spacedBy(5.dp)) {
+                                Text("继续播放", color = HongguoColors.accent,
+                                    fontSize = 12.sp, fontWeight = FontWeight.SemiBold)
+                                Text(drama.title, color = HongguoColors.ink,
+                                    fontSize = 15.sp, fontWeight = FontWeight.SemiBold,
+                                    maxLines = 2, overflow = TextOverflow.Ellipsis)
+                                Text(if (cloud != null)
+                                    "第${cloud.episodeIndex + 1}集 · " +
+                                        PlaybackTimeFormatter.format(cloud.position)
+                                    else "看到第${local?.episode ?: 1}集",
+                                    color = HongguoColors.muted, fontSize = 12.sp)
                             }
+                            Icon(Icons.Outlined.ChevronRight,
+                                contentDescription = "继续观看",
+                                tint = HongguoColors.accent,
+                                modifier = Modifier.size(22.dp))
                         }
                     }
                 }
@@ -478,6 +505,14 @@ private fun CatalogPoster(drama: Drama, cover: String, savedLater: Boolean,
             lineHeight = 17.sp, fontSize = 13.sp, fontWeight = FontWeight.SemiBold,
             color = HongguoColors.ink,
         )
+        if (drama.categories.isNotEmpty()) {
+            Text(
+                drama.categories.take(3).joinToString(" · "),
+                color = HongguoColors.muted, fontSize = 11.sp,
+                maxLines = 1, overflow = TextOverflow.Ellipsis,
+                modifier = Modifier.testTag("poster_categories_" + drama.id),
+            )
+        }
     }
 }
 
