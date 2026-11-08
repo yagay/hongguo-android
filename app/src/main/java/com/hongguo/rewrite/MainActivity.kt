@@ -265,34 +265,29 @@ private fun HongguoApp(model: DramaViewModel = viewModel()) {
         if (state.section == Section.SEARCH) primaryTab = "theater"
     }
     val activeRoute = state.navigation.destination
-    // A series opened from My/history is a full-player page, not the My tab.
-    // Synchronize the selected tab; otherwise the player appears under My
-    // and later navigation clicks can seem to have no effect.
-    LaunchedEffect(activeRoute, state.miniPlayerVisible) {
-        if (activeRoute == PlaybackDestination.SERIES &&
-            !state.miniPlayerVisible) primaryTab = "home"
+    val videoLayer = AppShellNavigationPolicy.videoLayer(state)
+    val playerDetailsOverlay =
+        videoLayer == AppShellNavigationPolicy.VideoLayer.BEHIND_DETAILS
+    val darkPlayer =
+        videoLayer == AppShellNavigationPolicy.VideoLayer.FULL &&
+            state.modal == Modal.NONE
+    // New series opened from Theater or My: select Home to represent the
+    // full-player destination. An asynchronously completed swipe feed while
+    // browsing elsewhere is minimized instead of stealing the foreground.
+    LaunchedEffect(activeRoute, state.detail?.drama?.id, state.miniPlayerVisible) {
+        when {
+            AppShellNavigationPolicy.shouldSelectHomeForNewSeries(state) ->
+                primaryTab = "home"
+            activeRoute == PlaybackDestination.FEED && primaryTab != "home" &&
+                videoLayer == AppShellNavigationPolicy.VideoLayer.FULL ->
+                model.minimizePlayer()
+        }
     }
-    val detailImmersive = activeRoute == PlaybackDestination.DETAILS &&
-        state.detail != null && state.modal == Modal.NONE
-    val darkPlayer = activeRoute in setOf(
-        PlaybackDestination.FEED, PlaybackDestination.SERIES) &&
-        primaryTab == "home" && state.modal == Modal.NONE
-    // A feed can finish loading after the user has selected another tab.
-    // Convert it to the persistent mini-player exactly once so no hidden
-    // full-screen Surface keeps playing without a visible companion.
-    LaunchedEffect(primaryTab, state.detail?.drama?.id, activeRoute) {
-        if (primaryTab != "home" &&
-            activeRoute in setOf(PlaybackDestination.FEED, PlaybackDestination.SERIES) &&
-            state.detail != null) model.minimizePlayer()
-    }
-    val playerDetailsOverlay = state.detail != null &&
-        activeRoute == PlaybackDestination.DETAILS &&
-        state.navigation.detailsParent in setOf(
-            PlaybackDestination.FEED, PlaybackDestination.SERIES)
     // A details page opened over full-screen playback must not attach a
     // second PlayerView to the same ExoPlayer (which would steal its Surface).
     // Explicit catalog details keep the existing mini player.
-    val showMini = MiniPlayerPresentation.show(state) && !playerDetailsOverlay
+    val showMini = videoLayer == AppShellNavigationPolicy.VideoLayer.MINI &&
+        !playerDetailsOverlay
     // Both recommendation reels and the episode player reserve the same
     // compact navigation strip. Hiding it in SERIES changed the available
     // viewport height after entering a drama, invalidating the saved
@@ -303,22 +298,21 @@ private fun HongguoApp(model: DramaViewModel = viewModel()) {
 
     fun selectPrimaryTab(tab: String) {
         if (tab == primaryTab) return
-        primaryTab = tab
         if (tab == "home") {
-            // A mini-player from My, History or Theater must restore the
-            // same Media3 item and progress instead of creating a new feed.
-            if (state.detail != null && (state.miniPlayerVisible ||
-                    activeRoute == PlaybackDestination.SERIES ||
-                    state.navigation.origin == PlaybackOrigin.SWIPE_FEED)) {
-                model.restorePlayer()
+            primaryTab = tab
+            if (AppShellNavigationPolicy.shouldRestoreForHome(state)) {
+                // Preserve the active Media3 item, its progress and feed queue.
+                if (state.miniPlayerVisible) model.restorePlayer()
             } else {
                 model.startFeed()
             }
         } else {
-            if (activeRoute in setOf(PlaybackDestination.FEED,
-                    PlaybackDestination.SERIES) && state.detail != null) {
+            // Apply the player transition BEFORE changing the selected tab.
+            // The tab no longer controls whether the full player is rendered.
+            if (AppShellNavigationPolicy.shouldMinimizeForTab(state, tab)) {
                 model.minimizePlayer()
             }
+            primaryTab = tab
             if (tab == "theater" && state.section == Section.RECOMMEND)
                 model.section(Section.BROWSE)
         }
@@ -353,7 +347,8 @@ private fun HongguoApp(model: DramaViewModel = viewModel()) {
         val selectedVid = state.detail?.episodes
             ?.getOrNull(state.episodeIndex)?.vid
         mainActivity?.updateVideoPictureInPictureEligibility(
-            externalPipEnabled && VideoPiPPolicy.canAutoEnter(
+            externalPipEnabled && darkPlayer &&
+                VideoPiPPolicy.canAutoEnter(
                 hasDetail = state.detail != null,
                 preparingDetail = state.preparingDetail,
                 hasPlaybackSource = state.playbackUrl != null,
@@ -434,10 +429,10 @@ private fun HongguoApp(model: DramaViewModel = viewModel()) {
                         if (primaryTab == "mine") MyScreen(state, model, onBack = { selectPrimaryTab("home") })
                         else CatalogScreen(state, model, onMine = { selectPrimaryTab("mine") },
                             onSearchOpen = { searchLandingOpen = true })
-                    (activeRoute in setOf(PlaybackDestination.FEED,
-                        PlaybackDestination.SERIES) || playerDetailsOverlay) &&
-                        state.detail != null &&
-                            (primaryTab == "home" || playerDetailsOverlay) ->
+                    videoLayer in setOf(
+                        AppShellNavigationPolicy.VideoLayer.FULL,
+                        AppShellNavigationPolicy.VideoLayer.BEHIND_DETAILS,
+                    ) && state.detail != null ->
                         // UI mode changes do not destroy the active Media3 item.
                         key(state.detail?.drama?.id) {
                             NativePlayer(state, model,
@@ -445,8 +440,7 @@ private fun HongguoApp(model: DramaViewModel = viewModel()) {
                                 externalPipEnabled = externalPipEnabled,
                                 onExternalPipEnabled = setExternalPipEnabled)
                         }
-                    activeRoute in setOf(PlaybackDestination.FEED,
-                        PlaybackDestination.SERIES) && primaryTab == "home" -> {
+                    AppShellNavigationPolicy.shouldShowLoading(state, primaryTab) -> {
                         val upcoming = if (state.feedMode)
                             state.feedItems.getOrNull(state.feedIndex) else null
                         ReelLoadingScreen(
