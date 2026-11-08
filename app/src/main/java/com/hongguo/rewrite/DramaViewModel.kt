@@ -2584,9 +2584,18 @@ class DramaViewModel(application: Application) : AndroidViewModel(application) {
             ReelAutoplayPolicy.Action.STOP ->
                 diagnostics.record("PLAYBACK", "AUTO_NEXT_STOPPED")
             ReelAutoplayPolicy.Action.NEXT_EPISODE -> {
-                diagnostics.record("PLAYBACK",
-                    if (s.feedMode) "REEL_NEXT_EPISODE" else "NEXT_EPISODE")
-                play(s.episodeIndex + 1)
+                if (s.feedMode) {
+                    // The first recommendation episode has finished.
+                    // Enter the series player before advancing so the UI,
+                    // pager, and navigation are all episode-scoped. Keep the
+                    // same Media3 session; exitFeedToEpisode invokes play()
+                    // only for the newly selected episode.
+                    diagnostics.record("NAVIGATION", "REEL_AUTONEXT_TO_SERIES")
+                    exitFeedToEpisode(s.episodeIndex + 1)
+                } else {
+                    diagnostics.record("PLAYBACK", "NEXT_EPISODE")
+                    play(s.episodeIndex + 1)
+                }
             }
             ReelAutoplayPolicy.Action.NEXT_DRAMA -> {
                 diagnostics.record("REELS", "SERIES_FINISHED_NEXT_DRAMA")
