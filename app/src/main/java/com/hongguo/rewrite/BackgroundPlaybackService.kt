@@ -1,6 +1,13 @@
 package com.hongguo.rewrite
 
+import android.app.NotificationChannel
+import android.app.NotificationManager
 import android.app.PendingIntent
+import android.content.pm.PackageManager
+import android.os.Build
+import android.Manifest
+import androidx.core.app.NotificationCompat
+import androidx.core.content.ContextCompat
 import android.content.Intent
 import android.net.Uri
 import android.os.Bundle
@@ -37,6 +44,11 @@ class BackgroundPlaybackService : MediaSessionService() {
     companion object {
         const val PREVIOUS = "com.hongguo.rewrite.PREVIOUS_EPISODE_OR_REEL"
         const val NEXT = "com.hongguo.rewrite.NEXT_EPISODE_OR_REEL"
+        private const val NOTIFICATION_CHANNEL = "hongguo_playback_progress"
+        private const val NOTIFICATION_ID = 8452
+        private const val ACTION_PREVIOUS = "com.hongguo.rewrite.notification.PREVIOUS"
+        private const val ACTION_TOGGLE = "com.hongguo.rewrite.notification.TOGGLE"
+        private const val ACTION_NEXT = "com.hongguo.rewrite.notification.NEXT"
 
         /** In-process UI attachment. Keep the player owned by the service. */
         val playerFlow = MutableStateFlow<ExoPlayer?>(null)
@@ -61,6 +73,10 @@ class BackgroundPlaybackService : MediaSessionService() {
     private var nextAllowed = false
     private var onNavigate: ((Int) -> Unit)? = null
     private var onFirstFrame: (() -> Unit)? = null
+    private var onBackgroundProgress: (() -> Unit)? = null
+    private var backgroundConfirmed = false
+    private var notificationTitle = ""
+    private var notificationSubtitle = ""
     private var onFinished: (() -> Unit)? = null
     private var onError: ((String) -> Unit)? = null
     private var onCheckpoint: ((Long, Long) -> Unit)? = null
@@ -162,6 +178,12 @@ class BackgroundPlaybackService : MediaSessionService() {
                     error.errorCodeName, error.cause?.javaClass?.simpleName))
             }
         })
+        val manager = getSystemService(NotificationManager::class.java)
+        manager?.createNotificationChannel(NotificationChannel(
+            NOTIFICATION_CHANNEL, "后台播放进度", NotificationManager.IMPORTANCE_LOW).apply {
+            description = "通知栏显示短剧剧名、集数、播放时间及上一集/下一集控制"
+            setShowBadge(false)
+        })
         active = this
         playerFlow.value = engine
         main.postDelayed(checkpoint, 1000)
@@ -178,8 +200,16 @@ class BackgroundPlaybackService : MediaSessionService() {
                     outroDone = true
                     engine.seekTo(duration)
                 }
-                if (++tick % 4 == 0 && duration > 0L)
-                    onCheckpoint?.invoke(engine.currentPosition.coerceAtLeast(0L), duration)
+                if (!backgroundConfirmed && engine.isPlaying &&
+                    engine.currentPosition >= 3_000L) {
+                    backgroundConfirmed = true
+                    onBackgroundProgress?.invoke()
+                }
+                if (++tick % 4 == 0) {
+                    if (duration > 0L)
+                        onCheckpoint?.invoke(engine.currentPosition.coerceAtLeast(0L), duration)
+                    publishProgressNotification()
+                }
             }
             main.postDelayed(this, 1000)
         }
@@ -200,12 +230,14 @@ class BackgroundPlaybackService : MediaSessionService() {
         endingMs: Long,
         autoRetry: Boolean,
         firstFrame: () -> Unit,
+        backgroundProgress: () -> Unit,
         finished: () -> Unit,
         failed: (String) -> Unit,
         checkpoint: (Long, Long) -> Unit,
         timerExpired: () -> Boolean,
     ) {
         onFirstFrame = firstFrame
+        onBackgroundProgress = backgroundProgress
         onFinished = finished
         onError = failed
         onCheckpoint = checkpoint
@@ -218,6 +250,7 @@ class BackgroundPlaybackService : MediaSessionService() {
         currentKey = key
         currentVid = vid
         didSeek = false
+        backgroundConfirmed = false
         didFinish = false
         retried = false
         outroDone = false
@@ -225,6 +258,8 @@ class BackgroundPlaybackService : MediaSessionService() {
         resumeAtMs = positionMs
         skipIntroMs = introMs
         retryAutomatically = autoRetry
+        notificationTitle = BackgroundNavigationPolicy.title(drama, episode)
+        notificationSubtitle = BackgroundNavigationPolicy.episodeLabel(episode, totalEpisodes)
         val metadata = MediaMetadata.Builder()
             .setTitle(BackgroundNavigationPolicy.title(drama, episode))
             .setDisplayTitle(BackgroundNavigationPolicy.title(drama, episode))
@@ -244,6 +279,7 @@ class BackgroundPlaybackService : MediaSessionService() {
         }
         engine.prepare()
         engine.playWhenReady = true
+        publishProgressNotification()
     }
 
     /** Same gestures as the on-screen pager; changes do not seek the current file. */
@@ -251,6 +287,8 @@ class BackgroundPlaybackService : MediaSessionService() {
         previousAllowed = canPrevious
         nextAllowed = canNext
         onNavigate = action
+        updateMediaButtons()
+        publishProgressNotification()
     }
 
     /** Immediately detach the previous video while ViewModel fetches a new episode. */
@@ -281,12 +319,95 @@ class BackgroundPlaybackService : MediaSessionService() {
         remoteVideo?.close()
         remoteVideo = null
         onFirstFrame = null
+        onBackgroundProgress = null
         onFinished = null
         onError = null
         onCheckpoint = null
         onTimer = null
         onNavigate = null
+        getSystemService(NotificationManager::class.java)?.cancel(NOTIFICATION_ID)
         stopSelf()
+    }
+
+    // Android 13+ uses the system media player in Quick Settings. This separate
+    // ordinary progress notification is shown only when the user grants app
+    // notifications, avoiding the false assumption that the media carousel
+    // must also appear as a second notification in the drawer.
+    private fun actionIntent(action: String, code: Int): PendingIntent =
+        PendingIntent.getService(this, code,
+            Intent(this, BackgroundPlaybackService::class.java).setAction(action),
+            PendingIntent.FLAG_UPDATE_CURRENT or PendingIntent.FLAG_IMMUTABLE)
+
+    private fun publishProgressNotification() {
+        if (currentKey == null || notificationTitle.isEmpty() ||
+            Build.VERSION.SDK_INT >= 33 &&
+            ContextCompat.checkSelfPermission(this, Manifest.permission.POST_NOTIFICATIONS) !=
+                PackageManager.PERMISSION_GRANTED) {
+            getSystemService(NotificationManager::class.java)?.cancel(NOTIFICATION_ID)
+            return
+        }
+        val duration = engine.duration.takeIf { it > 0L } ?: 0L
+        val position = engine.currentPosition.coerceAtLeast(0L)
+        val minuteSeconds: (Long) -> String = { milliseconds ->
+            val seconds = milliseconds.coerceAtLeast(0) / 1000
+            "%02d:%02d".format(java.util.Locale.ROOT, seconds / 60, seconds % 60)
+        }
+        val note = NotificationCompat.Builder(this, NOTIFICATION_CHANNEL)
+            .setSmallIcon(android.R.drawable.ic_media_play)
+            .setContentTitle(notificationTitle)
+            .setContentText("$notificationSubtitle  ·  " +
+                "${minuteSeconds(position)} / ${minuteSeconds(duration)}")
+            .setContentIntent(PendingIntent.getActivity(this, 0,
+                Intent(this, MainActivity::class.java).addFlags(
+                    Intent.FLAG_ACTIVITY_SINGLE_TOP or Intent.FLAG_ACTIVITY_CLEAR_TOP),
+                PendingIntent.FLAG_UPDATE_CURRENT or PendingIntent.FLAG_IMMUTABLE))
+            .setOnlyAlertOnce(true)
+            .setOngoing(engine.isPlaying)
+            .setVisibility(NotificationCompat.VISIBILITY_PUBLIC)
+            .setPriority(NotificationCompat.PRIORITY_LOW)
+            .setProgress(
+                if (duration > 0L) duration.coerceAtMost(Int.MAX_VALUE.toLong()).toInt() else 0,
+                if (duration > 0L) position.coerceIn(0L, duration)
+                    .coerceAtMost(Int.MAX_VALUE.toLong()).toInt() else 0,
+                duration <= 0L)
+            .addAction(android.R.drawable.ic_media_previous, "上一集/上一部",
+                actionIntent(ACTION_PREVIOUS, 1))
+            .addAction(
+                if (engine.isPlaying) android.R.drawable.ic_media_pause
+                else android.R.drawable.ic_media_play,
+                if (engine.isPlaying) "暂停" else "播放",
+                actionIntent(ACTION_TOGGLE, 2))
+            .addAction(android.R.drawable.ic_media_next, "下一集/下一部",
+                actionIntent(ACTION_NEXT, 3))
+            .build()
+        getSystemService(NotificationManager::class.java)?.notify(NOTIFICATION_ID, note)
+    }
+
+    private fun updateMediaButtons() {
+        if (!::session.isInitialized) return
+        session.setMediaButtonPreferences(listOf(
+            CommandButton.Builder(CommandButton.ICON_PREVIOUS)
+                .setDisplayName("上一集/上一部").setSessionCommand(previousCommand)
+                .setEnabled(previousAllowed).setSlots(CommandButton.SLOT_BACK).build(),
+            CommandButton.Builder(CommandButton.ICON_NEXT)
+                .setDisplayName("下一集/下一部").setSessionCommand(nextCommand)
+                .setEnabled(nextAllowed).setSlots(CommandButton.SLOT_FORWARD).build(),
+        ))
+    }
+
+    override fun onStartCommand(intent: Intent?, flags: Int, startId: Int): Int {
+        val direction = when (intent?.action) {
+            ACTION_PREVIOUS -> -1
+            ACTION_NEXT -> 1
+            else -> 0
+        }
+        if (direction != 0 && (if (direction < 0) previousAllowed else nextAllowed)) {
+            onNavigate?.invoke(direction)
+        } else if (intent?.action == ACTION_TOGGLE && ::engine.isInitialized) {
+            if (engine.isPlaying) engine.pause() else engine.play()
+        }
+        publishProgressNotification()
+        return super.onStartCommand(intent, flags, startId)
     }
 
     override fun onGetSession(controllerInfo: MediaSession.ControllerInfo): MediaSession? =
@@ -294,6 +415,7 @@ class BackgroundPlaybackService : MediaSessionService() {
 
     override fun onDestroy() {
         main.removeCallbacks(checkpoint)
+        getSystemService(NotificationManager::class.java)?.cancel(NOTIFICATION_ID)
         playerFlow.value = null
         if (active === this) active = null
         remoteVideo?.close()
