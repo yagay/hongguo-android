@@ -90,11 +90,8 @@ private fun HongguoApp(model: DramaViewModel = viewModel()) {
         state.modal == Modal.NONE
     val darkPlayer = state.detail != null && !state.detailPageVisible &&
         !state.miniPlayerVisible && state.modal != Modal.SETTINGS
-    val showMini = state.miniPlayerVisible && state.detail != null &&
-        !state.preparingDetail
-    val miniInCatalog = showMini && state.modal != Modal.SETTINGS &&
-        state.modal != Modal.ACCOUNT && !state.detailPageVisible &&
-        !searchLandingOpen
+    val showMini = MiniPlayerPresentation.show(state)
+    val miniInCatalog = MiniPlayerPresentation.inCatalog(state, searchLandingOpen)
     val systemDark = isSystemInDarkTheme()
     val darkTheme = when (state.themeMode) {
         "dark" -> true
@@ -166,8 +163,8 @@ private fun HongguoApp(model: DramaViewModel = viewModel()) {
                         DramaDetailScreen(state, model)
                     state.detail != null && !state.miniPlayerVisible ->
                         key(state.detail?.drama?.id, state.feedMode) {
-                        NativePlayer(state, model)
-                    }
+                            NativePlayer(state, model)
+                        }
                     state.preparingDetail -> {
                         val upcoming = if (state.feedMode)
                             state.feedItems.getOrNull(state.feedIndex) else null
@@ -217,25 +214,25 @@ private fun HongguoApp(model: DramaViewModel = viewModel()) {
                             Column {
                                 if (miniInCatalog) InAppMiniPlayer(state, model)
                                 Surface(
-                                modifier = if (state.navigationStyle == "glass")
-                                    Modifier.padding(horizontal = 14.dp, vertical = 7.dp)
-                                else Modifier,
-                                shape = RoundedCornerShape(
-                                    if (state.navigationStyle == "glass") 26.dp else 0.dp),
-                                color = HongguoColors.surface,
-                                shadowElevation = if (state.navigationStyle == "glass") 8.dp else 0.dp,
-                            ) {
-                                NavigationBar(containerColor = Color.Transparent) {
-                                    NavigationBarItem(selected = !mineOpen,
-                                        onClick = { mineOpen = false },
-                                        icon = { Icon(Icons.Outlined.Home, contentDescription = null) },
-                                        label = { Text("首页") })
-                                    NavigationBarItem(selected = mineOpen,
-                                        onClick = { mineOpen = true },
-                                        icon = { Icon(Icons.Outlined.PersonOutline, contentDescription = null) },
-                                        label = { Text("我的") })
+                                    modifier = if (state.navigationStyle == "glass")
+                                        Modifier.padding(horizontal = 14.dp, vertical = 7.dp)
+                                    else Modifier,
+                                    shape = RoundedCornerShape(
+                                        if (state.navigationStyle == "glass") 26.dp else 0.dp),
+                                    color = HongguoColors.surface,
+                                    shadowElevation = if (state.navigationStyle == "glass") 8.dp else 0.dp,
+                                ) {
+                                    NavigationBar(containerColor = Color.Transparent) {
+                                        NavigationBarItem(selected = !mineOpen,
+                                            onClick = { mineOpen = false },
+                                            icon = { Icon(Icons.Outlined.Home, contentDescription = null) },
+                                            label = { Text("首页") })
+                                        NavigationBarItem(selected = mineOpen,
+                                            onClick = { mineOpen = true },
+                                            icon = { Icon(Icons.Outlined.PersonOutline, contentDescription = null) },
+                                            label = { Text("我的") })
+                                    }
                                 }
-                            }
                             }
                         },
                     ) { insets ->
@@ -245,7 +242,7 @@ private fun HongguoApp(model: DramaViewModel = viewModel()) {
                                 onSearchOpen = { searchLandingOpen = true })
                         }
                     }
-                }
+                    }
                     LibrarySheets(state, model)
                 }
                 // Settings, account, search and drama details have no catalog
