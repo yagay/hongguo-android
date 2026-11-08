@@ -113,6 +113,8 @@ data class AppState(
     val resumePositionMs: Long = 0L,
     val qualityLimit: Int = 0,
     val defaultPlaybackSpeed: Float = 1f,
+    /** Full-screen playback-only display brightness: -1 follows Android system. */
+    val videoBrightnessPercent: Int = -1,
     val sleepTimerLabel: String = "关闭",
     val playbackError: String? = null,
     val library: List<Watched> = emptyList(),
