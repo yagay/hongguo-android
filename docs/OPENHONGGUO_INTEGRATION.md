@@ -155,3 +155,12 @@ Actor names from metadata remain unlinked without verified actor user IDs.
   mappings in `OpenHongguoSource.kt`. Wrapper existence is not the same
   as active UI usage. `resolvePlayback` and `resetDevice` deliberately
   remain isolated from automatic playback/retry.
+
+
+## 2026-11-08 runtime hardening (rewrite-web-native)
+
+- Extended discovery now routes the **activity** tab through `browseExtended("activity")` rather than the ordinary `browse()` switch. The optional input `activityId:rankListId` allows IDs supplied by the upstream service; leaving it blank preserves the SDK default-identifier attempt. Incorrect identifiers return a clear validation message, not fabricated results.
+- `getSeriesBatch` sends at most ten distinct, validated series IDs per call.
+- The optional Go-backed SDK discovery, cast, seasons and metadata requests use `Dispatchers.IO` at the Compose/ViewModel call sites. Cancellation exceptions propagate instead of being swallowed by metadata fallbacks.
+- Official reel recommendation requests use a cancellable coroutine `Mutex` for their in-memory cursor serialization. Individual synchronous network requests may still run to their transport timeout; verify this behavior on a device and retain bounded retries.
+- Expanded autoplay/swipe tests cover all-but-last episodes, final episodes, hidden items, duplicates, and queue boundaries. Only Debug builds and lint checks are configured; successful GitHub Actions jobs and real phone behavior must be verified independently.
