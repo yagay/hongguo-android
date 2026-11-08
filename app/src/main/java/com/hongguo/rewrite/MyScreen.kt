@@ -296,29 +296,20 @@ internal fun MyScreen(state: AppState, model: DramaViewModel, onBack: () -> Unit
             Row(Modifier.fillMaxWidth(),
                 horizontalArrangement = Arrangement.SpaceBetween,
                 verticalAlignment = Alignment.CenterVertically) {
-                listOf("历史", "收藏", "点赞", "预约").forEachIndexed { index, label ->
-                    Column(
-                        modifier = Modifier.clickable {
-                            libraryTab = index
-                            watchFilter = 0
-                            if (index == 2 && !account.likesLoaded &&
-                                !account.likesLoading) model.account.loadLikes(force = true)
-                            if (index == 3 && !account.reservationsLoaded)
-                                model.account.loadReservations()
-                        }.testTag("my_gallery_tab_$index").padding(vertical = 7.dp),
-                        horizontalAlignment = Alignment.CenterHorizontally,
-                    ) {
-                        Text(label, fontSize = 16.sp,
-                            fontWeight = if (libraryTab == index)
-                                FontWeight.Bold else FontWeight.Normal,
-                            color = if (libraryTab == index)
-                                HongguoColors.ink else HongguoColors.muted)
-                        Spacer(Modifier.size(2.dp))
-                        Box(Modifier.width(23.dp).height(2.dp)
-                            .background(if (libraryTab == index)
-                                HongguoColors.accent else Color.Transparent))
-                    }
-                }
+                HongguoTabs(
+                    labels = listOf("历史", "收藏", "点赞", "预约"),
+                    selectedIndex = libraryTab,
+                    tagPrefix = "my_gallery_tab",
+                    modifier = Modifier.weight(1f),
+                    onSelect = { index ->
+                        libraryTab = index
+                        watchFilter = 0
+                        if (index == 2 && !account.likesLoaded &&
+                            !account.likesLoading) model.account.loadLikes(force = true)
+                        if (index == 3 && !account.reservationsLoaded)
+                            model.account.loadReservations()
+                    },
+                )
                 Text(if (gallerySearchOpen) "关闭" else "搜索",
                     color = HongguoColors.accent, fontSize = 12.sp,
                     modifier = Modifier.clickable {
