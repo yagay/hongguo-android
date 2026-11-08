@@ -383,7 +383,7 @@ private fun RowScope.PlaybackQuickTile(
             .height(72.dp)
             .background(
                 if (selected) Color(0xFF6D352D) else Color(0xFF343239),
-                RoundedCornerShape(10.dp),
+                RoundedCornerShape(HongguoUi.controlRadius),
             )
             .clickable(onClick = onClick)
             .testTag(tag)
@@ -437,25 +437,10 @@ private fun <T> PlaybackChoices(
     selected: T,
     onSelect: (T) -> Unit,
     tag: String,
-) {
-    FlowRow(
-        horizontalArrangement = Arrangement.spacedBy(6.dp),
-        verticalArrangement = Arrangement.spacedBy(0.dp),
-        modifier = Modifier.fillMaxWidth(),
-    ) {
-        options.forEachIndexed { index, (value, label) ->
-            FilterChip(
-                selected = selected == value,
-                onClick = { onSelect(value) },
-                label = { Text(label, fontSize = 11.sp) },
-                colors = FilterChipDefaults.filterChipColors(
-                    containerColor = Color(0xFF38373E),
-                    labelColor = Color.White,
-                    selectedContainerColor = HongguoColors.accent,
-                    selectedLabelColor = Color.White,
-                ),
-                modifier = Modifier.testTag(tag + "_" + index),
-            )
-        }
-    }
-}
+) = HongguoChoiceGroup(
+    options = options,
+    selected = selected,
+    onSelect = onSelect,
+    tag = tag,
+    dark = true,
+)
