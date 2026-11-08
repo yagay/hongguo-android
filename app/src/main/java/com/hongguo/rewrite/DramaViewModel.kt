@@ -24,6 +24,9 @@ import androidx.lifecycle.viewModelScope
 import kotlinx.coroutines.CancellationException
 import kotlinx.coroutines.Job
 import kotlinx.coroutines.flow.MutableStateFlow
+import kotlinx.coroutines.flow.filterNotNull
+import kotlinx.coroutines.flow.first
+import kotlinx.coroutines.withTimeout
 import kotlinx.coroutines.flow.asStateFlow
 import kotlinx.coroutines.flow.update
 import kotlinx.coroutines.launch
@@ -625,6 +628,7 @@ class DramaViewModel(application: Application) : AndroidViewModel(application) {
                         feedError = if (merged.size == current.feedItems.size)
                             "官方暂未推荐新作品，可上滑重试" else null)
                 }
+                updateNotificationNavigation()
                 diagnostics.record("REELS", "OFFICIAL_BATCH_READY")
                 if (needsFirstDrama && state.value.feedMode) {
                     val first = state.value.feedItems.firstOrNull()
@@ -1452,6 +1456,7 @@ class DramaViewModel(application: Application) : AndroidViewModel(application) {
         if (selected != null && selected.id != current.detail?.drama?.id) {
             pendingFeedAdvance = false
             mutable.update { it.copy(feedIndex = index) }
+            updateNotificationNavigation()
             rememberSwiped(selected.id)
             open(selected, resumeEp = 1, feed = true)
             prefetchFollowingFeedItem(index)
@@ -1568,9 +1573,83 @@ class DramaViewModel(application: Application) : AndroidViewModel(application) {
         }
     }
 
+    /**
+     * The service, not the lifecycle-gated Compose UI, starts each media item.
+     * This is essential for notification next/previous while the phone is locked.
+     */
+    private suspend fun launchBackgroundMedia(
+        detail: DramaDetail,
+        index: Int,
+        url: String,
+        remote: RemoteVideo?,
+        resumeMs: Long,
+        expectedGeneration: Int,
+    ) {
+        withTimeout(8_000) {
+            BackgroundPlaybackService.playerFlow.filterNotNull().first()
+        }
+        if (expectedGeneration != detailId ||
+            state.value.detail?.drama?.id != detail.drama.id) return
+        val current = detail.episodes[index]
+        val currentState = state.value
+        BackgroundPlaybackService.active?.configure(
+            key = "${current.vid}|$url|${remote?.hashCode() ?: 0}",
+            vid = current.vid,
+            url = url,
+            remote = remote,
+            drama = detail.drama.title,
+            episode = current.index,
+            totalEpisodes = detail.episodes.size,
+            cover = cover(detail.drama.cover),
+            positionMs = resumeMs,
+            introMs = currentState.skipIntroSeconds * 1000L,
+            endingMs = currentState.skipOutroSeconds * 1000L,
+            autoRetry = currentState.retryPlaybackAutomatically,
+            firstFrame = { firstFrame(current.vid) },
+            finished = {
+                finishEpisode(current.vid)
+                nextEpisode(current.vid)
+            },
+            failed = { mediaError(current.vid, it) },
+            checkpoint = { position, duration ->
+                savePlaybackPosition(current.vid, position, duration)
+            },
+            timerExpired = ::shouldPauseForTimer,
+        )
+        updateNotificationNavigation()
+    }
+
+    /** Keep notification skip decisions independent of Activity/Compose lifecycle. */
+    private fun updateNotificationNavigation() {
+        val s = state.value
+        val detail = s.detail ?: return
+        val earlier = s.feedItems.take(s.feedIndex)
+            .any { it.id !in s.hiddenRecommendationIds }
+        val later = s.feedItems.drop(s.feedIndex + 1)
+            .any { it.id !in s.hiddenRecommendationIds }
+        val policy = BackgroundNavigationPolicy.availability(
+            feedMode = s.feedMode,
+            selectedIndex = s.episodeIndex,
+            episodeCount = detail.episodes.size,
+            previousFeedExists = earlier,
+            nextFeedAvailableOrPending = later || s.feedHasMore || s.feedLoading,
+        )
+        BackgroundPlaybackService.active?.configureNavigation(
+            policy.previous, policy.next,
+        ) { direction ->
+            if (state.value.feedMode) navigateFeed(direction)
+            else playIfDifferent(state.value.episodeIndex + direction)
+        }
+    }
+
     fun play(index: Int) {
         val detail = state.value.detail ?: return
         if (index !in detail.episodes.indices) return
+        val serviceStarted = runCatching {
+            getApplication<Application>().startService(
+                Intent(getApplication(), BackgroundPlaybackService::class.java))
+        }.isSuccess
+        if (!serviceStarted) diagnostics.record("PLAYBACK", "SERVICE_START_DENIED")
         BackgroundPlaybackService.active?.pauseForTransition()
         mutable.update { it.copy(detailPageVisible = false) }
         if (state.value.offlinePlaybackUri != null) {
@@ -1618,6 +1697,8 @@ class DramaViewModel(application: Application) : AndroidViewModel(application) {
                     val url = api.playableUrl(vid)
                     if (version != detailId) return@launch
                     mutable.update { it.copy(playbackUrl = url, playing = true) }
+                    if (serviceStarted) launchBackgroundMedia(
+                        detail, index, url, null, checkpoint, version)
                 } else {
                     val ahead = detail.episodes.getOrNull(index + 1)?.vid
                     val video = cachedNative ?: nativeSource.openVideo(vid, ahead, state.value.qualityLimit)
@@ -1627,8 +1708,11 @@ class DramaViewModel(application: Application) : AndroidViewModel(application) {
                     }
                     activeNativeVideo = video
                     activeNativeVid = vid
-                    mutable.update { it.copy(playbackUrl = "native://episode/" + vid,
+                    val nativeUri = "native://episode/" + vid
+                    mutable.update { it.copy(playbackUrl = nativeUri,
                         playing = true) }
+                    if (serviceStarted) launchBackgroundMedia(
+                        detail, index, nativeUri, video, checkpoint, version)
                 }
                 diagnostics.record("PLAYBACK", "SOURCE_READY", elapsed(started))
             } catch (e: CancellationException) {
