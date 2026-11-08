@@ -96,6 +96,9 @@ class BackgroundPlaybackService : MediaSessionService() {
     private var resumeAtMs = 0L
     private var skipIntroMs = 0L
     private var tick = 0
+    private var autoStartPending = false
+    private var startRecoveryTried = false
+    private var lastNotifiedSecond = -1L
 
     override fun onCreate() {
         super.onCreate()
@@ -159,12 +162,22 @@ class BackgroundPlaybackService : MediaSessionService() {
             .build()
         engine.addListener(object : Player.Listener {
             override fun onIsPlayingChanged(isPlaying: Boolean) {
+                if (isPlaying) {
+                    autoStartPending = false
+                    diagnostics.record("BACKGROUND", "PLAYING")
+                }
                 publishProgressNotification()
             }
 
             override fun onRenderedFirstFrame() { onFirstFrame?.invoke() }
 
             override fun onPlaybackStateChanged(state: Int) {
+                if (state == Player.STATE_READY && autoStartPending &&
+                    !engine.playWhenReady && !startRecoveryTried) {
+                    startRecoveryTried = true
+                    diagnostics.record("BACKGROUND", "AUTO_START_RECOVERY")
+                    engine.play()
+                }
                 if (state == Player.STATE_READY && !didSeek) {
                     didSeek = true
                     val duration = engine.duration.takeIf { it > 0 } ?: 0L
@@ -176,7 +189,16 @@ class BackgroundPlaybackService : MediaSessionService() {
                 if (state == Player.STATE_ENDED && !didFinish) {
                     diagnostics.record("BACKGROUND", "MEDIA_ENDED")
                     didFinish = true
-                    onFinished?.invoke()
+                    // Avoid reentrant ExoPlayer.stop()/setMediaSource() from a
+                    // listener dispatch. The next episode is started on the
+                    // next main-loop turn; ignore the callback if the source
+                    // was replaced in the meantime.
+                    val endingKey = currentKey
+                    val finished = onFinished
+                    main.post {
+                        if (endingKey != null && currentKey == endingKey)
+                            finished?.invoke()
+                    }
                 }
             }
 
@@ -222,11 +244,11 @@ class BackgroundPlaybackService : MediaSessionService() {
                     backgroundConfirmed = true
                     onBackgroundProgress?.invoke()
                 }
-                if (++tick % 4 == 0) {
-                    if (duration > 0L)
-                        onCheckpoint?.invoke(engine.currentPosition.coerceAtLeast(0L), duration)
-                    publishProgressNotification()
-                }
+                if (++tick % 4 == 0 && duration > 0L)
+                    onCheckpoint?.invoke(engine.currentPosition.coerceAtLeast(0L), duration)
+                // Only refresh the ordinary notification on a changed second.
+                // The native Media3 media carousel has its own timeline clock.
+                publishProgressNotification()
             }
             main.postDelayed(this, 1000)
         }
@@ -261,8 +283,10 @@ class BackgroundPlaybackService : MediaSessionService() {
         onTimer = timerExpired
         outroMs = endingMs.coerceAtLeast(0)
         if (currentKey == key) return
+        val previousRemote = remoteVideo
+        // Install the replacement media before disposing the prior encrypted
+        // stream. A slow network transition keeps the old media session alive.
         engine.stop()
-        remoteVideo?.takeIf { it !== remote }?.close()
         remoteVideo = remote
         currentKey = key
         diagnostics.record("BACKGROUND", "SOURCE_CONFIGURED")
@@ -273,6 +297,9 @@ class BackgroundPlaybackService : MediaSessionService() {
         retried = false
         outroDone = false
         tick = 0
+        autoStartPending = true
+        startRecoveryTried = false
+        lastNotifiedSecond = -1L
         resumeAtMs = positionMs
         skipIntroMs = introMs
         retryAutomatically = autoRetry
@@ -295,8 +322,13 @@ class BackgroundPlaybackService : MediaSessionService() {
         } else {
             engine.setMediaItem(item)
         }
-        engine.prepare()
+        // Set autoplay intent before preparation, not afterward: an ended
+        // player or foreground-service handoff may otherwise remain paused.
         engine.playWhenReady = true
+        engine.prepare()
+        engine.play()
+        previousRemote?.takeIf { it !== remote }?.close()
+        diagnostics.record("BACKGROUND", "NEXT_SOURCE_PLAY_REQUESTED")
         publishProgressNotification()
     }
 
@@ -320,6 +352,7 @@ class BackgroundPlaybackService : MediaSessionService() {
             engine.currentPosition.coerceAtLeast(0L),
             engine.duration.takeIf { it > 0L } ?: 0L)
         engine.pause()
+        autoStartPending = false
         diagnostics.record("BACKGROUND", "TRANSITION_PENDING")
         publishProgressNotification()
     }
@@ -372,6 +405,11 @@ class BackgroundPlaybackService : MediaSessionService() {
         permissionLogged = false
         val duration = engine.duration.takeIf { it > 0L } ?: 0L
         val position = engine.currentPosition.coerceAtLeast(0L)
+        val second = position / 1_000L
+        // Force a refresh on pause/resume, and at most one notification
+        // update per actual media second while playing.
+        if (engine.isPlaying && lastNotifiedSecond == second) return
+        lastNotifiedSecond = second
         val minuteSeconds: (Long) -> String = { milliseconds ->
             val seconds = milliseconds.coerceAtLeast(0) / 1000
             "%02d:%02d".format(java.util.Locale.ROOT, seconds / 60, seconds % 60)
