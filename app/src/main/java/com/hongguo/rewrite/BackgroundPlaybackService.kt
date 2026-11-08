@@ -106,6 +106,8 @@ class BackgroundPlaybackService : MediaSessionService() {
     private var lastProgressMs = 0L
     private var lastProgressObservedAtMs = 0L
     private var stalledRecoveryDone = false
+    private var lastForegroundRequested: Boolean? = null
+    private var lastForegroundActive: Boolean? = null
 
     override fun onCreate() {
         super.onCreate()
@@ -167,6 +169,14 @@ class BackgroundPlaybackService : MediaSessionService() {
                     .setSessionCommand(nextCommand).build(),
             ))
             .build()
+        // The playback engine is created directly by this started service,
+        // rather than by a client MediaController connection. Without an
+        // explicit addSession(), MediaSessionService never tracks this session,
+        // so Media3 can't automatically promote its playback to a foreground
+        // media service. The Android media carousel alone is not proof that
+        // the service itself is in the foreground.
+        addSession(session)
+        diagnostics.record("BACKGROUND", "MEDIA_SESSION_REGISTERED")
         engine.addListener(object : Player.Listener {
             override fun onPlayWhenReadyChanged(playWhenReady: Boolean, reason: Int) {
                 lastObservedPlayWhenReady = playWhenReady
@@ -546,6 +556,28 @@ class BackgroundPlaybackService : MediaSessionService() {
         return super.onStartCommand(intent, flags, startId)
     }
 
+    /**
+     * Record both Media3's request and the actual foreground state. A system
+     * media card can appear even when this service was never promoted.
+     */
+    override fun onUpdateNotification(
+        session: MediaSession,
+        startInForegroundRequired: Boolean,
+    ) {
+        if (lastForegroundRequested != startInForegroundRequired) {
+            lastForegroundRequested = startInForegroundRequired
+            diagnostics.record("BACKGROUND", if (startInForegroundRequired)
+                "FOREGROUND_REQUESTED" else "FOREGROUND_NOT_REQUIRED")
+        }
+        super.onUpdateNotification(session, startInForegroundRequired)
+        val ongoing = isPlaybackOngoing
+        if (lastForegroundActive != ongoing) {
+            lastForegroundActive = ongoing
+            diagnostics.record("BACKGROUND", if (ongoing)
+                "FOREGROUND_ACTIVE" else "FOREGROUND_INACTIVE")
+        }
+    }
+
     override fun onGetSession(controllerInfo: MediaSession.ControllerInfo): MediaSession? =
         if (::session.isInitialized) session else null
 
@@ -559,6 +591,12 @@ class BackgroundPlaybackService : MediaSessionService() {
     override fun onDestroy() {
         diagnostics.record("BACKGROUND", if (::engine.isInitialized &&
             engine.isPlaying) "DESTROYED_WHILE_PLAYING" else "DESTROYED_NOT_PLAYING")
+        diagnostics.record("BACKGROUND",
+            if (isPlaybackOngoing) "DESTROYED_FOREGROUND_ACTIVE"
+            else "DESTROYED_FOREGROUND_INACTIVE")
+        diagnostics.record("BACKGROUND",
+            if (::session.isInitialized && isSessionAdded(session))
+                "DESTROYED_SESSION_REGISTERED" else "DESTROYED_SESSION_MISSING")
         if (::engine.isInitialized && currentKey != null &&
             engine.playbackState != Player.STATE_ENDED) {
             onCheckpoint?.invoke(engine.currentPosition.coerceAtLeast(0L),
