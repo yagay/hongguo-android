@@ -1,5 +1,7 @@
 package com.hongguo.rewrite
 
+import kotlinx.coroutines.sync.withLock
+
 import com.hongguotv.core.AppCommentPages
 import com.hongguotv.core.PublicComments
 import com.hongguotv.core.TimedComments
@@ -48,7 +50,7 @@ class NativeHongguoSource(
     private var recommendationUsePublic = false
     private var recommendationEnd = false
     /** Independent official one-drama-per-swipe cursor; never falls back to sorted web catalog. */
-    private val reelsLock = Any()
+    private val reelsLock = kotlinx.coroutines.sync.Mutex()
     private var reelsCursor = RecommendationCursor()
     private var reelsFeed = RecommendationFeed(repository.http, cursor = reelsCursor)
     private var reelsPageNumber = 1
@@ -76,7 +78,7 @@ class NativeHongguoSource(
         alreadyShown: Set<String> = emptySet(),
         realOnly: Boolean = false,
     ): CatalogPage = withContext(Dispatchers.IO) {
-        synchronized(reelsLock) {
+        reelsLock.withLock {
             if (restart) {
                 reelsCursor = RecommendationCursor()
                 reelsFeed = RecommendationFeed(repository.http,
