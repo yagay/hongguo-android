@@ -197,3 +197,13 @@ Fix:
 - A genuinely uncached detail fetch still renders the destination cover with `正在准备播放` rather than an empty spinner screen. The first-ever feed entry, if no drama is selected yet, still uses the existing loading state.
 - These are real navigation/UX improvements but **not** proof of zero-latency decode: the app still owns one ExoPlayer. Even a prefetched `RemoteVideo` must be attached and decoded after `setMediaSource` / `prepare`. True first-frame-instant switching to never-played media requires a separate media pipeline/prepared decoder and careful memory/foreground handling, not simply hiding the loading indicator.
 - Validate Debug build and on-device reverse swipes, first-entry loading, rapid swipes, app detail/back navigation, first frame order and media-session continuity before declaring the flash fully solved.
+
+## Auto-next episode: bottom progress and time stuck at 00:00 / --:-- (2026-11-08)
+
+A screenshot shows the second episode already rendered (`第2集`), but the separate seek dock reports `00:00 / --:--` and zero progress. Root cause in `NativePlayer.kt`:
+
+- `remember(state.episodeIndex) { ReelPlaybackControls() }` creates a new UI controls instance for every episode. The one `BackgroundPlaybackService` ExoPlayer intentionally persists across episode transitions.
+- Previously `Media3Reel` used `DisposableEffect(player)` and `LaunchedEffect(player)`, so the **same ExoPlayer identity did not restart the polling coroutine** when Compose supplied the next episode's newly allocated controls object. The coroutine continued writing position/duration/isPlaying to the old instance while the new dock remained uninitialized. This also affected the pause button and the seek bar's hit target.
+- `Media3Reel` now rebinds its UI controls with `DisposableEffect(player, controls)` and restarts its polling with `LaunchedEffect(player, controls, expectedVid)`. Every 250 ms the sampled media ID must match the selected episode's `vid`. A still-active previous media item during `play()` handoff is not allowed to contribute its time/duration to the new episode. When the service switches media item, the same polling coroutine immediately begins publishing the actual position/duration and enables matching seek/play controls.
+- The pure `ReelClockPolicy` normalizes item ID and invalid, unknown, or out-of-range durations and is covered by JVM tests for automatic first-to-second episode transitions, stale media IDs, `TIME_UNSET`, and clamped seek positions.
+- Do **not** replace the Media3 service, clear the encrypted stream, force `prepare()`, or add a second notification to fix this UI-only state binding defect. Only Debug validation and real-device verification can confirm that all view hierarchies rebind correctly.
