@@ -236,7 +236,7 @@ internal fun OpenHongguoExploreScreen(
         }
         if (actorId.isBlank()) {
             Row(Modifier.fillMaxWidth().horizontalScroll(rememberScrollState())
-                .padding(horizontal = 12.dp),
+                .padding(horizontal = HongguoUi.pagePadding),
                 horizontalArrangement = Arrangement.spacedBy(7.dp)) {
                 tabs.forEach { (id, name) ->
                     HongguoChoiceChip(label = name, selected = tab == id,
@@ -260,7 +260,7 @@ internal fun OpenHongguoExploreScreen(
         }
         if (actorId.isBlank() && tab in setOf("filter", "filterComic", "filterAI") &&
             filterRows.isNotEmpty()) {
-            Column(Modifier.fillMaxWidth().padding(horizontal = 12.dp),
+            Column(Modifier.fillMaxWidth().padding(horizontal = HongguoUi.pagePadding),
                 verticalArrangement = Arrangement.spacedBy(2.dp)) {
                 filterRows.take(8).forEach { row ->
                     Row(Modifier.fillMaxWidth().horizontalScroll(rememberScrollState()),
@@ -321,7 +321,7 @@ internal fun OpenHongguoExploreScreen(
         }
         if (actorId.isBlank() && tab == "search" && suggestions.isNotEmpty()) {
             Row(Modifier.fillMaxWidth().horizontalScroll(rememberScrollState())
-                .padding(horizontal = 12.dp),
+                .padding(horizontal = HongguoUi.pagePadding),
                 horizontalArrangement = Arrangement.spacedBy(6.dp)) {
                 suggestions.forEach { phrase ->
                     HongguoChoiceChip(
