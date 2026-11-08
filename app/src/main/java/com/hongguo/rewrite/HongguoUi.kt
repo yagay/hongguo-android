@@ -103,8 +103,10 @@ internal fun HongguoNavigationRow(
         Column(Modifier.weight(1f), verticalArrangement = Arrangement.spacedBy(5.dp)) {
             Text(title, fontSize = HongguoUi.rowTitleSize,
                 fontWeight = FontWeight.Medium, color = HongguoColors.ink)
-            Text(subtitle, fontSize = HongguoUi.rowDescriptionSize,
-                lineHeight = 19.sp, color = HongguoColors.muted)
+            if (subtitle.isNotBlank()) {
+                Text(subtitle, fontSize = HongguoUi.rowDescriptionSize,
+                    lineHeight = 19.sp, color = HongguoColors.muted)
+            }
         }
         Icon(Icons.Outlined.ChevronRight, contentDescription = null,
             modifier = Modifier.size(20.dp), tint = HongguoColors.muted)
