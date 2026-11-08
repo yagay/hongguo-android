@@ -10,6 +10,7 @@ import androidx.compose.foundation.layout.PaddingValues
 import androidx.compose.foundation.layout.Row
 import androidx.compose.foundation.layout.Spacer
 import androidx.compose.foundation.layout.fillMaxSize
+import androidx.compose.foundation.layout.offset
 import androidx.compose.foundation.layout.fillMaxWidth
 import androidx.compose.foundation.layout.height
 import androidx.compose.foundation.layout.heightIn
@@ -35,6 +36,7 @@ import androidx.compose.material3.Surface
 import androidx.compose.material3.Text
 import androidx.compose.material3.TextButton
 import androidx.compose.runtime.Composable
+import androidx.compose.runtime.LaunchedEffect
 import androidx.compose.runtime.getValue
 import androidx.compose.runtime.mutableStateOf
 import androidx.compose.runtime.remember
@@ -42,7 +44,9 @@ import androidx.compose.runtime.setValue
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.draw.clip
+import androidx.compose.ui.graphics.graphicsLayer
 import androidx.compose.ui.graphics.Color
+import androidx.compose.ui.text.style.TextAlign
 import androidx.compose.ui.graphics.Brush
 import androidx.compose.ui.layout.ContentScale
 import androidx.compose.ui.platform.testTag
@@ -70,72 +74,81 @@ internal fun DramaDetailScreen(state: AppState, model: DramaViewModel) {
     val tags = (drama.categories + metadata.orEmptyTags()).distinct().take(12)
     val cast = (drama.actors + metadata.orEmptyActors()).distinct().take(20)
 
+    LaunchedEffect(drama.id, state.episodeIndex) {
+        model.ensureCommentsLoaded()
+    }
+
     Column(Modifier.fillMaxSize().background(HongguoColors.background)
         .testTag("drama_detail_screen")) {
-        Row(Modifier.fillMaxWidth().height(56.dp).padding(horizontal = 8.dp),
-            verticalAlignment = Alignment.CenterVertically) {
-            IconButton(onClick = model::backFromDramaDetails) {
-                Icon(Icons.AutoMirrored.Outlined.ArrowBack, "返回",
-                    tint = HongguoColors.ink)
-            }
-            Text("剧集详情", fontSize = 20.sp, color = HongguoColors.ink,
-                fontWeight = FontWeight.SemiBold)
-        }
         LazyColumn(Modifier.weight(1f).fillMaxWidth(),
-            contentPadding = PaddingValues(start = 18.dp, end = 18.dp, top = 14.dp, bottom = 20.dp),
-            verticalArrangement = Arrangement.spacedBy(20.dp)) {
+            contentPadding = PaddingValues(bottom = 24.dp),
+            verticalArrangement = Arrangement.spacedBy(19.dp)) {
             item {
-                Row(Modifier.fillMaxWidth().clip(RoundedCornerShape(18.dp))
-                    .background(Brush.linearGradient(listOf(
-                        HongguoColors.accentSoft, HongguoColors.background)))
-                    .padding(13.dp),
-                    horizontalArrangement = Arrangement.spacedBy(16.dp)) {
-                    AsyncImage(model = model.cover(drama.cover), contentDescription = drama.title,
+                Box(Modifier.fillMaxWidth().height(312.dp)
+                    .background(HongguoColors.playerBackground)
+                    .testTag("detail_cover_hero")) {
+                    AsyncImage(
+                        model = model.cover(drama.cover),
+                        contentDescription = drama.title,
                         contentScale = ContentScale.Crop,
-                        modifier = Modifier.width(112.dp).height(158.dp)
-                            .clip(RoundedCornerShape(14.dp))
-                            .background(HongguoColors.accentSoft))
-                    Column(Modifier.weight(1f), verticalArrangement = Arrangement.spacedBy(12.dp)) {
-                        Text(drama.title, fontWeight = FontWeight.Bold, fontSize = 23.sp,
-                            lineHeight = 31.sp, color = HongguoColors.ink,
-                            maxLines = 3, overflow = TextOverflow.Ellipsis)
-                        Text("共 ${detail.episodes.size} 集", color = HongguoColors.muted,
-                            fontSize = 14.sp)
-                        drama.completionStatus?.takeIf(String::isNotBlank)?.let {
-                            Text(it, color = HongguoColors.accent, fontSize = 13.sp)
-                        }
-                        metadata?.season?.let {
-                            Text("第 ${it} 季", fontSize = 12.sp,
-                                color = HongguoColors.muted)
-                        }
+                        modifier = Modifier.fillMaxSize().graphicsLayer {
+                            alpha = 0.55f
+                        },
+                    )
+                    Box(Modifier.fillMaxSize().background(Brush.verticalGradient(
+                        listOf(
+                            Color(0x55000000),
+                            Color(0x99000000),
+                            HongguoColors.playerBackground,
+                        ),
+                    )))
+                    IconButton(
+                        onClick = model::backFromDramaDetails,
+                        modifier = Modifier.align(Alignment.TopStart)
+                            .padding(start = 6.dp, top = 5.dp)
+                            .testTag("detail_back"),
+                    ) {
+                        Icon(Icons.AutoMirrored.Outlined.ArrowBack, "返回",
+                            tint = Color.White)
                     }
-                }
-            }
-            item {
-                Row(horizontalArrangement = Arrangement.spacedBy(10.dp)) {
-                    DetailActionTile(
-                        title = if (localSaved) "已本机收藏" else "本机收藏",
-                        subtitle = "仅存这台设备",
-                        modifier = Modifier.weight(1f),
-                        onClick = { model.toggleFavoriteForDrama(drama) }) {
-                        Icon(Icons.Outlined.BookmarkBorder, null,
-                            tint = HongguoColors.ink)
-                    }
-                    DetailActionTile(
-                        title = if (cloudSaved) "已账号收藏" else "账号收藏",
-                        subtitle = if (account.profile == null) "登录后同步"
-                            else "同步红果账号",
-                        modifier = Modifier.weight(1f),
-                        onClick = {
-                            if (account.profile == null) model.show(Modal.ACCOUNT)
-                            else model.account.cloudFavorite(drama.id, !cloudSaved)
-                        }) {
-                        Icon(Icons.Outlined.CloudQueue, null, tint = HongguoColors.ink)
+                    Row(
+                        Modifier.align(Alignment.BottomStart)
+                            .fillMaxWidth().padding(horizontal = 18.dp, vertical = 19.dp),
+                        horizontalArrangement = Arrangement.spacedBy(15.dp),
+                        verticalAlignment = Alignment.Bottom,
+                    ) {
+                        AsyncImage(
+                            model = model.cover(drama.cover),
+                            contentDescription = drama.title,
+                            contentScale = ContentScale.Crop,
+                            modifier = Modifier.width(110.dp).height(154.dp)
+                                .clip(RoundedCornerShape(10.dp))
+                                .background(Color(0xFF292929))
+                                .testTag("detail_poster"),
+                        )
+                        Column(
+                            Modifier.weight(1f).padding(bottom = 4.dp),
+                            verticalArrangement = Arrangement.spacedBy(9.dp),
+                        ) {
+                            Text(
+                                drama.title, fontWeight = FontWeight.Bold,
+                                fontSize = 23.sp, lineHeight = 30.sp, color = Color.White,
+                                maxLines = 3, overflow = TextOverflow.Ellipsis,
+                            )
+                            val status = listOfNotNull(
+                                "全${detail.episodes.size}集",
+                                (drama.completionStatus ?: metadata?.statusText)
+                                    ?.takeIf(String::isNotBlank),
+                                metadata?.season?.let { "第${it}季" },
+                            )
+                            Text(status.joinToString(" · "), color = Color(0xFFEEEEEE),
+                                fontSize = 12.sp, lineHeight = 19.sp)
+                        }
                     }
                 }
             }
             if (tags.isNotEmpty()) item {
-                Row(Modifier.fillMaxWidth().horizontalScroll(rememberScrollState()),
+                Row(Modifier.padding(horizontal = 18.dp),Modifier.fillMaxWidth().horizontalScroll(rememberScrollState()),
                     horizontalArrangement = Arrangement.spacedBy(8.dp)) {
                     tags.forEach { tag ->
                         Surface(color = HongguoColors.accentSoft,
@@ -147,8 +160,8 @@ internal fun DramaDetailScreen(state: AppState, model: DramaViewModel) {
                 }
             }
             if (drama.synopsis.isNotBlank()) item {
-                Column(verticalArrangement = Arrangement.spacedBy(8.dp)) {
-                    DetailSectionTitle("故事简介")
+                Column(Modifier.padding(horizontal = 18.dp), verticalArrangement = Arrangement.spacedBy(8.dp)) {
+                    DetailSectionTitle("剧情简介")
                     Text(drama.synopsis,
                         color = HongguoColors.muted, fontSize = 15.sp, lineHeight = 25.sp,
                         maxLines = if (expanded) Int.MAX_VALUE else 5,
@@ -163,7 +176,7 @@ internal fun DramaDetailScreen(state: AppState, model: DramaViewModel) {
                 }
             }
             if (cast.isNotEmpty()) item {
-                Column(verticalArrangement = Arrangement.spacedBy(12.dp)) {
+                Column(Modifier.padding(horizontal = 18.dp), verticalArrangement = Arrangement.spacedBy(12.dp)) {
                     DetailSectionTitle("演员")
                     Row(Modifier.horizontalScroll(rememberScrollState()),
                         horizontalArrangement = Arrangement.spacedBy(14.dp)) {
@@ -188,7 +201,7 @@ internal fun DramaDetailScreen(state: AppState, model: DramaViewModel) {
                 }
             }
             metadata?.score?.let { score -> item {
-                Column(verticalArrangement = Arrangement.spacedBy(10.dp)) {
+                Column(Modifier.padding(horizontal = 18.dp), verticalArrangement = Arrangement.spacedBy(10.dp)) {
                     DetailSectionTitle("剧集评分")
                     Surface(color = HongguoColors.accentSoft,
                         shape = RoundedCornerShape(14.dp)) {
@@ -204,7 +217,7 @@ internal fun DramaDetailScreen(state: AppState, model: DramaViewModel) {
                 }
             } }
             metadata?.novel?.let { novel -> item {
-                Column(verticalArrangement = Arrangement.spacedBy(10.dp)) {
+                Column(Modifier.padding(horizontal = 18.dp), verticalArrangement = Arrangement.spacedBy(10.dp)) {
                     DetailSectionTitle("原著小说")
                     Surface(color = HongguoColors.surface,
                         shape = RoundedCornerShape(14.dp)) {
@@ -238,7 +251,7 @@ internal fun DramaDetailScreen(state: AppState, model: DramaViewModel) {
                 }
             } }
             if (state.openHongguoSeasons.isNotEmpty()) item {
-                Column(verticalArrangement = Arrangement.spacedBy(10.dp)) {
+                Column(Modifier.padding(horizontal = 18.dp), verticalArrangement = Arrangement.spacedBy(10.dp)) {
                     DetailSectionTitle("系列剧 · 其他季")
                     Row(Modifier.horizontalScroll(rememberScrollState()),
                         horizontalArrangement = Arrangement.spacedBy(12.dp)) {
@@ -260,7 +273,7 @@ internal fun DramaDetailScreen(state: AppState, model: DramaViewModel) {
                 }
             }
             item {
-                Column(verticalArrangement = Arrangement.spacedBy(10.dp)) {
+                Column(Modifier.padding(horizontal = 18.dp), verticalArrangement = Arrangement.spacedBy(10.dp)) {
                     Row(Modifier.fillMaxWidth(), verticalAlignment = Alignment.CenterVertically) {
                         DetailSectionTitle("相关作品")
                         Spacer(Modifier.weight(1f))
@@ -301,7 +314,64 @@ internal fun DramaDetailScreen(state: AppState, model: DramaViewModel) {
                 }
             }
             item {
-                Row(Modifier.fillMaxWidth(), verticalAlignment = Alignment.CenterVertically) {
+                Column(Modifier.padding(horizontal = 18.dp),
+                    verticalArrangement = Arrangement.spacedBy(12.dp)) {
+                    Row(Modifier.fillMaxWidth(), verticalAlignment = Alignment.CenterVertically) {
+                        DetailSectionTitle("剧评")
+                        Spacer(Modifier.weight(1f))
+                        val count = state.commentsTotal
+                        if (count != null) Text("${count} 条",
+                            fontSize = 12.sp, color = HongguoColors.muted)
+                    }
+                    val comments = state.comments.take(3)
+                    when {
+                        state.commentsLoading && comments.isEmpty() ->
+                            CircularProgressIndicator(Modifier.size(19.dp), strokeWidth = 2.dp)
+                        comments.isEmpty() ->
+                            Text(state.commentsError ?: "暂无可显示的剧评",
+                                color = HongguoColors.muted, fontSize = 13.sp)
+                        else -> comments.forEach { comment ->
+                            Column(verticalArrangement = Arrangement.spacedBy(6.dp)) {
+                                Text(comment.author.ifBlank { "用户" },
+                                    color = HongguoColors.ink, fontWeight = FontWeight.Medium,
+                                    fontSize = 13.sp)
+                                Text(comment.content, color = HongguoColors.muted,
+                                    fontSize = 13.sp, lineHeight = 20.sp,
+                                    maxLines = 3, overflow = TextOverflow.Ellipsis)
+                            }
+                        }
+                    }
+                    Text("评论来自当前播放分集", fontSize = 11.sp,
+                        color = HongguoColors.muted)
+                }
+            }
+            item {
+                Row(Modifier.fillMaxWidth().padding(horizontal = 18.dp),
+                    horizontalArrangement = Arrangement.spacedBy(10.dp)) {
+                    DetailActionTile(
+                        title = if (localSaved) "已收藏" else "收藏",
+                        subtitle = "本机片单",
+                        modifier = Modifier.weight(1f),
+                        onClick = { model.toggleFavoriteForDrama(drama) }) {
+                        Icon(Icons.Outlined.BookmarkBorder, null,
+                            tint = HongguoColors.ink)
+                    }
+                    DetailActionTile(
+                        title = if (cloudSaved) "已追剧" else "追剧",
+                        subtitle = if (account.profile == null) "登录后同步"
+                            else "账号同步",
+                        modifier = Modifier.weight(1f),
+                        onClick = {
+                            if (account.profile == null) model.show(Modal.ACCOUNT)
+                            else model.account.cloudFavorite(drama.id, !cloudSaved)
+                        }) {
+                        Icon(Icons.Outlined.CloudQueue, null,
+                            tint = HongguoColors.ink)
+                    }
+                }
+            }
+            item {
+                Row(Modifier.fillMaxWidth().padding(horizontal = 18.dp), verticalAlignment = Alignment.CenterVertically) {
                     DetailSectionTitle("选集")
                     Spacer(Modifier.weight(1f))
                     Text(if (state.autoPlayNext) "自动连播已开启" else "自动连播已关闭",
@@ -309,7 +379,7 @@ internal fun DramaDetailScreen(state: AppState, model: DramaViewModel) {
                 }
             }
             items((detail.episodes.size + 4) / 5) { row ->
-                Row(Modifier.fillMaxWidth(),
+                Row(Modifier.fillMaxWidth().padding(horizontal = 18.dp),
                     horizontalArrangement = Arrangement.spacedBy(10.dp)) {
                     repeat(5) { column ->
                         val index = row * 5 + column
