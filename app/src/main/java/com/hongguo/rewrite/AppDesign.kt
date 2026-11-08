@@ -17,6 +17,10 @@ internal object HongguoColors {
     var isDark by mutableStateOf(false); private set
     val playerBackground = Color(0xFF101012)
     val playerSheet = Color(0xFF222225)
+    /** Opaque bottom chrome shared by player progress dock and all primary tabs. */
+    val playerChrome = Color(0xFF232325)
+    val playerChromeMuted = Color(0xFFB7B7BC)
+    val playerChromeTrack = Color(0xFF66666B)
 
     /** References the shared color design of main's warm / immersive / cards variants.
      * Apply only after composition through SideEffect to keep snapshot writes safe.
