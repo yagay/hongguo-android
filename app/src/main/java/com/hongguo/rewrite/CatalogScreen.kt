@@ -545,12 +545,11 @@ private fun CatalogFiltersSheet(
         containerColor = HongguoColors.surface,
         modifier = Modifier.testTag("catalog_filter_sheet"),
     ) {
-        Column(Modifier.fillMaxWidth().padding(horizontal = 18.dp),
-            verticalArrangement = Arrangement.spacedBy(10.dp)) {
-            Row(Modifier.fillMaxWidth(), verticalAlignment = Alignment.CenterVertically) {
-                Text("筛选短剧", fontSize = 20.sp, fontWeight = FontWeight.Bold,
-                    modifier = Modifier.weight(1f), color = HongguoColors.ink)
-                TextButton(onClick = { draft = emptyMap() }) { Text("重置") }
+        Column(Modifier.fillMaxWidth().padding(horizontal = HongguoUi.pagePadding),
+            verticalArrangement = Arrangement.spacedBy(HongguoUi.pageSectionGap)) {
+            HongguoSheetHeader(title = "筛选短剧") {
+                HongguoAction(label = "重置", onClick = { draft = emptyMap() },
+                    style = HongguoActionStyle.QUIET)
             }
             if (state.filters.isEmpty()) {
                 Text("当前分类暂时没有可用筛选条件", color = HongguoColors.muted)
@@ -593,7 +592,7 @@ private fun CatalogFiltersSheet(
                 },
                 modifier = Modifier.fillMaxWidth().height(48.dp)
                     .testTag("apply_filters"),
-                shape = RoundedCornerShape(13.dp),
+                shape = RoundedCornerShape(HongguoUi.controlRadius),
             ) {
                 Text("查看筛选结果", fontWeight = FontWeight.Bold)
             }
