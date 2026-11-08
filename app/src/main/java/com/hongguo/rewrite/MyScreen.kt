@@ -600,7 +600,7 @@ private fun MyStat(
 ) {
     Surface(
         modifier = modifier.clickable(onClick = onClick),
-        shape = RoundedCornerShape(16.dp), color = HongguoColors.surface,
+        shape = RoundedCornerShape(HongguoUi.cardRadius), color = HongguoColors.surface,
     ) {
         Column(Modifier.padding(16.dp), verticalArrangement = Arrangement.spacedBy(8.dp)) {
             Row(verticalAlignment = Alignment.CenterVertically,
