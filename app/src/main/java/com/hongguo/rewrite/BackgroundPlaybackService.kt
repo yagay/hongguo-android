@@ -78,6 +78,7 @@ class BackgroundPlaybackService : MediaSessionService() {
     override fun onCreate() {
         super.onCreate()
         engine = ExoPlayer.Builder(this).build().apply {
+            setAudioAttributes(androidx.media3.common.AudioAttributes.DEFAULT, true)
             setHandleAudioBecomingNoisy(true)
         }
         val intent = Intent(this, MainActivity::class.java)
@@ -91,7 +92,7 @@ class BackgroundPlaybackService : MediaSessionService() {
             ): MediaSession.ConnectionResult {
                 val commands = MediaSession.ConnectionResult.DEFAULT_SESSION_COMMANDS
                     .buildUpon().add(previousCommand).add(nextCommand).build()
-                return MediaSession.ConnectionResult.AcceptedResultBuilder(session, controller)
+                return MediaSession.ConnectionResult.AcceptedResultBuilder(session)
                     .setAvailableSessionCommands(commands)
                     .build()
             }
