@@ -909,7 +909,7 @@ class DramaViewModel(application: Application) : AndroidViewModel(application) {
         }
     }
 
-    /** Public website's cast/genre metadata is optional and never blocks video. */
+    /** Public site enrichment is optional, scoped to the active series and never blocks playback. */
     private fun loadLabels(seriesId: String) {
         val generation = ++labelsGeneration
         labelsJob?.cancel()
@@ -929,8 +929,31 @@ class DramaViewModel(application: Application) : AndroidViewModel(application) {
                 }
             } catch (cancel: CancellationException) {
                 throw cancel
-            } catch (error: Exception) {
+            } catch (_: Exception) {
                 diagnostics.record("DETAIL", "TAGS_UNAVAILABLE")
+            }
+            // Series reviews and actors have a separate success/failure path.
+            try {
+                val extras = nativeSource.publicDetail(seriesId)
+                if (generation == labelsGeneration &&
+                    state.value.detail?.drama?.id == seriesId) {
+                    mutable.update { current ->
+                        val d = current.detail ?: return@update current
+                        if (d.drama.id != seriesId) current
+                        else current.copy(
+                            publicDetail = extras,
+                            detail = d.copy(drama = d.drama.copy(
+                                actors = (d.drama.actors + extras.cast.map { it.name })
+                                    .distinct().take(20),
+                            )),
+                        )
+                    }
+                    diagnostics.record("DETAIL", "PUBLIC_SERIES_READY")
+                }
+            } catch (cancel: CancellationException) {
+                throw cancel
+            } catch (_: Exception) {
+                diagnostics.record("DETAIL", "PUBLIC_SERIES_UNAVAILABLE")
             }
         }
     }
@@ -942,7 +965,7 @@ class DramaViewModel(application: Application) : AndroidViewModel(application) {
         socialJob?.cancel()
         mutable.update {
             it.copy(socialForSeries = null, socialStats = null,
-                openHongguoMetadata = null, openHongguoSeasons = emptyList(),
+                publicDetail = null, openHongguoMetadata = null, openHongguoSeasons = emptyList(),
                 socialStatsLoading = false)
         }
     }
