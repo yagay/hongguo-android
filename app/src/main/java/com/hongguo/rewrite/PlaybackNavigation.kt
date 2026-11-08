@@ -10,11 +10,11 @@ package com.hongguo.rewrite
  * The selected related work joins the live feed queue. Back keeps its current
  * Media3 item and the queue, rather than revealing the legacy home catalog.
  */
-internal enum class PlaybackOrigin { SWIPE_FEED, CATALOG }
+enum class PlaybackOrigin { SWIPE_FEED, CATALOG }
 
-internal enum class PlaybackDestination { FEED, SERIES, DETAILS, CATALOG }
+enum class PlaybackDestination { FEED, SERIES, DETAILS, CATALOG }
 
-internal data class PlaybackNavigation(
+data class PlaybackNavigation(
     val origin: PlaybackOrigin = PlaybackOrigin.SWIPE_FEED,
     val destination: PlaybackDestination = PlaybackDestination.FEED,
 ) {
