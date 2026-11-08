@@ -27,6 +27,10 @@ import androidx.compose.material.icons.outlined.Favorite
 import androidx.compose.material.icons.outlined.FavoriteBorder
 import androidx.compose.material.icons.outlined.KeyboardArrowRight
 import androidx.compose.material.icons.outlined.MoreVert
+import androidx.compose.material.icons.outlined.Menu
+import androidx.compose.material.icons.outlined.Search
+import androidx.compose.material.icons.outlined.Share
+import androidx.compose.material.icons.outlined.PlayCircleOutline
 import androidx.compose.material.icons.outlined.PictureInPictureAlt
 import androidx.compose.material.icons.outlined.Star
 import androidx.compose.material.icons.outlined.StarBorder
@@ -76,6 +80,12 @@ internal fun ReelScreenshotOverlay(
     onComments: () -> Unit,
     onDanmaku: () -> Unit,
     onRetryDanmaku: () -> Unit,
+    onFollowing: () -> Unit,
+    onComic: () -> Unit,
+    onReal: () -> Unit,
+    onRecommend: () -> Unit,
+    onSearch: () -> Unit,
+    onShare: () -> Unit,
 ) {
     val white = Color.White
     val muted = Color(0xFFD5D5D5)
@@ -94,36 +104,44 @@ internal fun ReelScreenshotOverlay(
     var synopsisExpanded by rememberSaveable(detail.drama.id) { mutableStateOf(false) }
 
     Box(Modifier.fillMaxSize().testTag("reference_video_layout")) {
-        // Minimal header: no duplicate full-title row over the video.
+        // Official-inspired navigation: only Recommend and Real correspond to
+        // live official reel feeds. Other tabs open real existing collections.
         Row(
             Modifier.fillMaxWidth().align(Alignment.TopCenter)
-                .padding(start = 8.dp, end = 8.dp, top = 8.dp),
+                .padding(start = 3.dp, end = 3.dp, top = 6.dp),
             verticalAlignment = Alignment.CenterVertically,
         ) {
-            IconButton(onClick = onBack,
-                modifier = Modifier.size(44.dp)
-                    .background(Color.Black.copy(alpha = 0.25f), CircleShape)) {
-                Icon(Icons.AutoMirrored.Outlined.ArrowBack, "返回",
-                    tint = white, modifier = Modifier.size(24.dp))
+            IconButton(onClick = onPlaybackSettings,
+                modifier = Modifier.size(39.dp).testTag("reel_menu")) {
+                Icon(Icons.Outlined.Menu, "播放设置", tint = white,
+                    modifier = Modifier.size(25.dp))
             }
-            Spacer(Modifier.weight(1f))
-            IconButton(
-                onClick = onPictureInPicture,
-                modifier = Modifier.size(44.dp)
-                    .background(Color.Black.copy(alpha = 0.25f), CircleShape)
-                    .testTag("reel_system_pip"),
-            ) {
-                Icon(Icons.Outlined.PictureInPictureAlt, "跨应用画中画",
-                    tint = white, modifier = Modifier.size(23.dp))
+            val tabs = listOf(
+                Triple("关注", false, onFollowing),
+                Triple("漫剧", false, onComic),
+                Triple("真人剧", state.reelsMode == "real", onReal),
+                Triple("推荐", state.reelsMode != "real", onRecommend),
+            )
+            tabs.forEach { (label, active, action) ->
+                Column(
+                    modifier = Modifier.weight(1f).clickable(onClick = action)
+                        .testTag("reel_tab_" + label),
+                    horizontalAlignment = Alignment.CenterHorizontally,
+                    verticalArrangement = Arrangement.spacedBy(5.dp),
+                ) {
+                    Text(label, color = if (active) white else Color(0xFFE3E3E3),
+                        fontSize = if (active) 18.sp else 17.sp,
+                        fontWeight = if (active) FontWeight.Bold else FontWeight.Medium,
+                        maxLines = 1)
+                    Box(Modifier.width(25.dp).height(3.dp)
+                        .background(if (active) white else Color.Transparent,
+                            RoundedCornerShape(2.dp)))
+                }
             }
-            IconButton(
-                onClick = onPlaybackSettings,
-                modifier = Modifier.size(44.dp)
-                    .background(Color.Black.copy(alpha = 0.25f), CircleShape)
-                    .testTag("reel_more"),
-            ) {
-                Icon(Icons.Outlined.MoreVert, "播放设置",
-                    tint = white, modifier = Modifier.size(23.dp))
+            IconButton(onClick = onSearch,
+                modifier = Modifier.size(39.dp).testTag("reel_search")) {
+                Icon(Icons.Outlined.Search, "搜索短剧", tint = white,
+                    modifier = Modifier.size(27.dp))
             }
         }
 
@@ -158,16 +176,7 @@ internal fun ReelScreenshotOverlay(
                     ?: if (state.socialStatsLoading) "…" else null,
                 scope = likeMetric?.second?.takeIf { it == "全剧" },
             )
-            // The provider's series_play_cnt is a series-wide view metric.
-            // It is display-only and must not behave like a clickable action
-            // or be inflated from local playback history.
-            ReferenceMetric(
-                icon = Icons.Outlined.Visibility,
-                label = "全剧播放量",
-                count = social?.playCount?.let(SocialCountFormatter::format)
-                    ?: if (state.socialStatsLoading) "…" else null,
-                tag = "reel_play_count",
-            )
+            ReferenceAction(Icons.Outlined.Share, "分享", "reel_share", onShare)
         }
 
         // Left caption area deliberately does not span beneath the action rail.
@@ -373,6 +382,18 @@ internal fun ReelBottomDock(
             verticalAlignment = Alignment.CenterVertically,
             horizontalArrangement = Arrangement.spacedBy(6.dp),
         ) {
+            Icon(Icons.Outlined.PlayCircleOutline, "观看完整短剧",
+                tint = Color.White, modifier = Modifier.size(20.dp))
+            Text(
+                "观看完整短剧 · 全${detail.episodes.size}集",
+                color = Color.White,
+                fontSize = 13.sp,
+                fontWeight = FontWeight.Medium,
+                maxLines = 1,
+                overflow = TextOverflow.Ellipsis,
+                modifier = Modifier.weight(1f).testTag("reel_episode_status"),
+            )
+            /* legacy label removed
             Text(
                 DramaCompletion.episodeLabel(
                     total = detail.episodes.size,
@@ -386,6 +407,7 @@ internal fun ReelBottomDock(
                 overflow = TextOverflow.Ellipsis,
                 modifier = Modifier.weight(1f).testTag("reel_episode_status"),
             )
+            */
             Text(
                 PlaybackTimeFormatter.label(playback.positionMs, duration),
                 color = Color(0xFFE2E1E5),
