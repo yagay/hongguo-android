@@ -368,6 +368,18 @@ internal fun NativePlayer(
     Box(Modifier.fillMaxSize()) {
     Column(Modifier.fillMaxSize().background(Color.Black).testTag("reels_player")) {
         Box(Modifier.fillMaxWidth().weight(1f).testTag("reel_video_viewport")) {
+        // A single stable SurfaceView lives under the pager. When switching
+        // from one reel-per-drama to the episode pager, pager page positions
+        // change but the actual Media3 video surface is never removed.
+        selected?.let { playingEpisode ->
+            Media3Reel(
+                speed = speed,
+                fillVideo = fillVideo,
+                controls = playback,
+                expectedVid = playingEpisode.vid,
+                onSurfaceType = model::recordVideoSurface,
+            )
+        }
         VerticalPager(
             state = pagerState,
             beyondViewportPageCount = 1,
@@ -378,20 +390,17 @@ internal fun NativePlayer(
             val episode = detail.episodes.getOrNull(
                 if (state.feedMode) state.episodeIndex else page
             )
-            Box(Modifier.fillMaxSize().background(Color.Black),
-                contentAlignment = Alignment.Center) {
+            Box(
+                Modifier.fillMaxSize().then(
+                    if (page == activePage) Modifier
+                    else Modifier.background(Color.Black)
+                ),
+                contentAlignment = Alignment.Center,
+            ) {
                 if (page == activePage && episode != null) {
                     val url = state.playbackUrl
-                    // Keep the full-screen PlayerView mounted while the next
-                    // episode URL resolves. Removing it for a null URL destroys
-                    // the Android video surface and adds a black flash.
-                    Media3Reel(
-                        speed = speed,
-                        fillVideo = fillVideo,
-                        controls = playback,
-                        expectedVid = episode.vid,
-                        onSurfaceType = model::recordVideoSurface,
-                    )
+                    // The active pager page stays transparent so that the
+                    // service-owned SurfaceView remains visible underneath.
                     if (url != null) {
                         Box(
                             Modifier.fillMaxSize()
