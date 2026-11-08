@@ -429,23 +429,21 @@ private fun HongguoApp(model: DramaViewModel = viewModel()) {
                     }
                 }
                     LibrarySheets(state, model)
+                    // Floating video-only window: overlay the page rather than
+                    // consuming an entire row above the bottom navigation.
+                    // Its fixed slot stays stable across catalog/My/settings.
+                    if (showMini) InAppMiniPlayer(
+                        state = state,
+                        model = model,
+                        modifier = Modifier.align(Alignment.BottomEnd)
+                            .padding(end = 12.dp, bottom = 12.dp),
+                        onExpand = {
+                            primaryTab = "home"
+                            searchLandingOpen = false
+                            model.restorePlayer()
+                        },
+                    )
                 }
-                // One stable composition slot for the mini PlayerView across
-                // catalog, settings, account, search and drama details. Moving
-                // it into or out of Scaffold.bottomBar used to dispose its
-                // Android Surface, briefly blacking out or hiding the video.
-                if (showMini) InAppMiniPlayer(
-                    state = state,
-                    model = model,
-                    onExpand = {
-                        // The mini-player may be expanded from Theater, Mine
-                        // or a settings page. FEED is rendered only on Home;
-                        // restore both the selected tab and playback route.
-                        primaryTab = "home"
-                        searchLandingOpen = false
-                        model.restorePlayer()
-                    },
-                )
                 if (showPrimaryNavigation) {
                     // NavigationBar's default 80dp min-height and extra glass
                     // On the portrait player, reserve less space for the
