@@ -15,13 +15,16 @@ internal fun PlaybackScreenBrightness(
     activity: Activity?,
     enabled: Boolean,
     percent: Int,
+    onDiagnostic: (String) -> Unit = {},
 ) {
     DisposableEffect(activity, enabled, percent) {
         val window = activity?.window
         val override = window != null && enabled &&
             VideoBrightnessPolicy.isOverride(percent)
         val previous = if (override) window?.attributes?.screenBrightness else null
+        if (enabled && !override) onDiagnostic("SYSTEM")
         if (override) {
+            onDiagnostic("OVERRIDE_${percent}PCT")
             val attributes = window!!.attributes
             attributes.screenBrightness = VideoBrightnessPolicy.toWindowValue(percent)
             window.attributes = attributes
@@ -31,6 +34,7 @@ internal fun PlaybackScreenBrightness(
                 val attributes = window!!.attributes
                 attributes.screenBrightness = previous
                 window.attributes = attributes
+                onDiagnostic("RESTORED")
             }
         }
     }
