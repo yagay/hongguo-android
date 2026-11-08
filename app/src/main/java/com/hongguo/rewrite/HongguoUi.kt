@@ -6,12 +6,10 @@ import androidx.compose.foundation.layout.Box
 import androidx.compose.foundation.layout.Column
 import androidx.compose.foundation.layout.FlowRow
 import androidx.compose.foundation.layout.Row
-import androidx.compose.foundation.layout.Spacer
 import androidx.compose.foundation.layout.fillMaxWidth
 import androidx.compose.foundation.layout.heightIn
 import androidx.compose.foundation.layout.padding
 import androidx.compose.foundation.layout.size
-import androidx.compose.foundation.layout.width
 import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.material.icons.Icons
 import androidx.compose.material.icons.outlined.ChevronRight
@@ -19,12 +17,9 @@ import androidx.compose.material3.FilterChip
 import androidx.compose.material3.FilterChipDefaults
 import androidx.compose.material3.Button
 import androidx.compose.material3.OutlinedButton
-import androidx.compose.material3.ButtonDefaults
 import androidx.compose.material3.IconButton
 import androidx.compose.material3.TextButton
-import androidx.compose.material3.HorizontalDivider
 import androidx.compose.material3.Icon
-import androidx.compose.material3.OutlinedButton
 import androidx.compose.material3.Surface
 import androidx.compose.material3.Switch
 import androidx.compose.material3.SwitchDefaults
@@ -111,6 +106,7 @@ internal fun <T> HongguoChoiceGroup(
     onSelect: (T) -> Unit,
     tag: String,
     dark: Boolean = false,
+    tagByValue: Boolean = false,
 ) {
     FlowRow(
         modifier = Modifier.fillMaxWidth(),
@@ -124,7 +120,8 @@ internal fun <T> HongguoChoiceGroup(
                 label = { Text(label, fontSize = HongguoUi.chipTextSize) },
                 shape = RoundedCornerShape(HongguoUi.controlRadius),
                 colors = HongguoChoiceColors(dark),
-                modifier = Modifier.testTag(tag + "_" + index),
+                modifier = Modifier.testTag(tag + "_" +
+                    if (tagByValue) value.toString() else index.toString()),
             )
         }
     }
