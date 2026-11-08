@@ -114,7 +114,11 @@ import java.time.format.DateTimeFormatter
  */
 @OptIn(ExperimentalMaterial3Api::class)
 @Composable
-internal fun NativePlayer(state: AppState, model: DramaViewModel) {
+internal fun NativePlayer(
+    state: AppState,
+    model: DramaViewModel,
+    onOpenSearch: () -> Unit,
+) {
     val detail = state.detail ?: return
     if (detail.episodes.isEmpty()) {
         Box(Modifier.fillMaxSize().background(Color.Black),
@@ -462,28 +466,15 @@ internal fun NativePlayer(state: AppState, model: DramaViewModel) {
                 model.retryDanmaku(playback.positionMs, playback.durationMs)
             },
             onFollowing = {
+                // Following has no verified public reel endpoint: open the
+                // authenticated account rather than mislabelling local favorites.
                 model.minimizePlayer()
-                model.show(Modal.FAVORITES)
+                model.show(Modal.ACCOUNT)
             },
-            onComic = {
-                model.closePlayer()
-                model.genre("comic_series")
-                model.section(Section.BROWSE)
-            },
+            onComic = { model.setReelsMode("comic") },
             onReal = { model.setReelsMode("real") },
             onRecommend = { model.setReelsMode("all") },
-            onSearch = {
-                model.closePlayer()
-                model.section(Section.SEARCH)
-            },
-            onShare = {
-                val text = detail.drama.title
-                val send = Intent(Intent.ACTION_SEND).apply {
-                    type = "text/plain"
-                    putExtra(Intent.EXTRA_TEXT, text)
-                }
-                context.startActivity(Intent.createChooser(send, "分享短剧"))
-            },
+            onSearch = onOpenSearch,
         )
         }
         ReelBottomDock(
