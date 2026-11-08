@@ -165,7 +165,10 @@ private fun HongguoApp(model: DramaViewModel = viewModel()) {
                         key(state.detail?.drama?.id, state.feedMode) {
                             NativePlayer(state, model)
                         }
-                    state.preparingDetail -> {
+                    // A minimized feed stays on its browsing page while the
+                    // next drama's metadata is loading; never replace it with
+                    // the fullscreen loading scene.
+                    state.preparingDetail && !state.miniPlayerVisible -> {
                         val upcoming = if (state.feedMode)
                             state.feedItems.getOrNull(state.feedIndex) else null
                         Box(
