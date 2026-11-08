@@ -104,11 +104,14 @@ internal fun MyScreen(state: AppState, model: DramaViewModel, onBack: () -> Unit
                             color = HongguoColors.ink, fontSize = 18.sp,
                             fontWeight = FontWeight.SemiBold, maxLines = 1,
                             overflow = TextOverflow.Ellipsis)
+                        val accountId = account.profile?.id.orEmpty()
                         Text(when {
-                            account.profile != null -> "查看账号收藏、历史与预约"
+                            accountId.isNotBlank() -> "红果号：$accountId"
+                            account.profile != null -> "账号已登录"
                             account.checking -> "正在确认账号状态"
                             else -> "登录后查看云端片单"
-                        }, color = HongguoColors.muted, fontSize = 14.sp)
+                        }, color = HongguoColors.muted, fontSize = 12.sp,
+                            maxLines = 1, overflow = TextOverflow.Ellipsis)
                     }
                     Icon(Icons.Outlined.ChevronRight, contentDescription = null,
                         modifier = Modifier.size(20.dp), tint = HongguoColors.muted)
@@ -166,11 +169,15 @@ internal fun MyScreen(state: AppState, model: DramaViewModel, onBack: () -> Unit
             Drama(progress.series.id, progress.series.title, progress.series.cover)
         }
         val localHistory = state.library.map { it.drama }
-        val history = (localHistory + cloudHistory).distinctBy { it.id }
+        val history = (cloudHistory + localHistory).distinctBy { it.id }
             .filter { drama ->
+                // Do not classify cloud-only progress as unfinished without
+                // a verified total/complete flag. The local completion marker
+                // is authoritative only for local entries.
+                val hasLocalStatus = state.library.any { it.drama.id == drama.id }
                 when (watchFilter) {
-                    1 -> drama.id in state.completedDramaIds
-                    2 -> drama.id !in state.completedDramaIds
+                    1 -> hasLocalStatus && drama.id in state.completedDramaIds
+                    2 -> hasLocalStatus && drama.id !in state.completedDramaIds
                     else -> true
                 }
             }
@@ -191,7 +198,8 @@ internal fun MyScreen(state: AppState, model: DramaViewModel, onBack: () -> Unit
             Text(when (libraryTab) {
                 0 -> "暂无符合条件的观看记录"
                 1 -> "暂无收藏"
-                2 -> "暂无点赞记录"
+                2 -> if (account.likesLoading) "正在读取点赞记录…"
+                     else "暂无点赞记录"
                 else -> if (account.profile == null) "登录后查看预约"
                     else "暂无预约作品"
             }, color = HongguoColors.muted, fontSize = 13.sp)
@@ -228,10 +236,27 @@ internal fun MyScreen(state: AppState, model: DramaViewModel, onBack: () -> Unit
                                 .background(HongguoColors.accentSoft))
                         Text(drama.title, color = HongguoColors.ink, fontSize = 12.sp,
                             maxLines = 1, overflow = TextOverflow.Ellipsis)
+                        if (libraryTab == 3) {
+                            val upcoming = account.upcoming.firstOrNull {
+                                it.series.id == drama.id
+                            }
+                            Text(upcoming?.publishText?.takeIf { it.isNotBlank() }
+                                ?: if (upcoming != null) "待上线" else "已上线",
+                                color = HongguoColors.muted, fontSize = 11.sp,
+                                maxLines = 1, overflow = TextOverflow.Ellipsis)
+                        }
                         if (libraryTab == 0) {
                             val entry = state.library.firstOrNull { it.drama.id == drama.id }
-                            Text(entry?.let { "第${it.episode}集" } ?: "账号历史",
-                                color = HongguoColors.muted, fontSize = 11.sp)
+                            val cloud = account.history.firstOrNull {
+                                it.series.id == drama.id
+                            }
+                            val progressText = if (cloud != null)
+                                "第${cloud.episodeIndex + 1}集 · " +
+                                    PlaybackTimeFormatter.format(cloud.position)
+                            else entry?.let { "第${it.episode}集" } ?: "观看记录"
+                            Text(progressText, color = HongguoColors.muted,
+                                fontSize = 11.sp, maxLines = 1,
+                                overflow = TextOverflow.Ellipsis)
                         }
                     }
                 }
