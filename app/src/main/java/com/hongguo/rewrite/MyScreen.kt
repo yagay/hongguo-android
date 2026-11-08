@@ -128,6 +128,8 @@ internal fun MyScreen(state: AppState, model: DramaViewModel, onBack: () -> Unit
                         modifier = Modifier.clickable {
                             libraryTab = index
                             watchFilter = 0
+                            if (index == 2 && !account.likesLoaded &&
+                                !account.likesLoading) model.account.loadLikes(force = true)
                             if (index == 3 && !account.reservationsLoaded)
                                 model.account.loadReservations()
                         }.testTag("my_gallery_tab_$index").padding(vertical = 7.dp),
