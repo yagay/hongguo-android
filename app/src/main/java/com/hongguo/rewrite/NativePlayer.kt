@@ -95,20 +95,14 @@ import androidx.compose.ui.unit.IntOffset
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
 import androidx.compose.ui.viewinterop.AndroidView
-import androidx.media3.common.MediaItem
-import androidx.media3.common.PlaybackException
-import androidx.media3.common.Player
 import androidx.media3.exoplayer.ExoPlayer
-import androidx.media3.exoplayer.source.ProgressiveMediaSource
-import androidx.media3.datasource.DataSource
 import androidx.media3.ui.PlayerView
 import androidx.media3.ui.AspectRatioFrameLayout
-import androidx.lifecycle.Lifecycle
-import androidx.lifecycle.LifecycleEventObserver
-import androidx.lifecycle.compose.LocalLifecycleOwner
 import com.hongguotv.core.RemoteVideo
 import kotlinx.coroutines.delay
 import kotlinx.coroutines.flow.distinctUntilChanged
+import kotlinx.coroutines.flow.filterNotNull
+import kotlinx.coroutines.flow.first
 import kotlinx.coroutines.isActive
 import kotlin.math.roundToInt
 import java.time.Instant
@@ -323,6 +317,23 @@ internal fun NativePlayer(state: AppState, model: DramaViewModel) {
                             url = url, speed = speed, fillVideo = fillVideo,
                             nativeVideo = model.nativeVideoFor(episode.vid),
                             controls = playback,
+                            vid = episode.vid,
+                            seriesTitle = detail.drama.title,
+                            episodeNumber = episode.index,
+                            episodeTotal = detail.episodes.size,
+                            cover = model.cover(detail.drama.cover),
+                            canPrevious = if (state.feedMode) previousFeedDrama != null
+                                else state.episodeIndex > 0,
+                            canNext = if (state.feedMode) nextFeedPage
+                                else state.episodeIndex < detail.episodes.lastIndex,
+                            onNavigate = { direction ->
+                                if (state.feedMode) model.navigateFeed(direction)
+                                else model.playIfDifferent(state.episodeIndex + direction)
+                            },
+                            onCheckpoint = { position, duration ->
+                                model.savePlaybackPosition(episode.vid, position, duration)
+                            },
+                            onTimer = model::shouldPauseForTimer,
                             resumeAtMs = state.resumePositionMs,
                             skipIntroMs = state.skipIntroSeconds * 1000L,
                             skipOutroMs = state.skipOutroSeconds * 1000L,
@@ -840,6 +851,16 @@ private fun Media3Reel(
     fillVideo: Boolean,
     nativeVideo: RemoteVideo?,
     controls: ReelPlaybackControls,
+    vid: String,
+    seriesTitle: String,
+    episodeNumber: Int,
+    episodeTotal: Int,
+    cover: String,
+    canPrevious: Boolean,
+    canNext: Boolean,
+    onNavigate: (Int) -> Unit,
+    onCheckpoint: (Long, Long) -> Unit,
+    onTimer: () -> Boolean,
     resumeAtMs: Long,
     skipIntroMs: Long,
     skipOutroMs: Long,
@@ -849,114 +870,77 @@ private fun Media3Reel(
     onError: (String) -> Unit,
 ) {
     val context = LocalContext.current
-    val lifecycleOwner = LocalLifecycleOwner.current
     val first by rememberUpdatedState(onFirstFrame)
     val end by rememberUpdatedState(onFinished)
     val fail by rememberUpdatedState(onError)
-    val player = remember(url, nativeVideo) { ExoPlayer.Builder(context).build() }
+    val save by rememberUpdatedState(onCheckpoint)
+    val timer by rememberUpdatedState(onTimer)
+    val navigate by rememberUpdatedState(onNavigate)
+    var player by remember { mutableStateOf<ExoPlayer?>(null) }
+
+    // MediaSessionService owns ExoPlayer. Compose only attaches a video surface,
+    // so ON_STOP, lock-screen, PiP and Activity recreation do not pause/release
+    // the audio session.
+    LaunchedEffect(context) {
+        try {
+            context.startService(Intent(context, BackgroundPlaybackService::class.java))
+            player = BackgroundPlaybackService.playerFlow
+                .filterNotNull().first()
+        } catch (error: Exception) {
+            fail("后台播放服务无法启动：${error.javaClass.simpleName}")
+        }
+    }
+
+    LaunchedEffect(player, url, nativeVideo) {
+        val service = BackgroundPlaybackService.active ?: return@LaunchedEffect
+        service.configure(
+            key = "$vid|$url|${nativeVideo?.hashCode() ?: 0}",
+            vid = vid,
+            url = url,
+            remote = nativeVideo,
+            drama = seriesTitle,
+            episode = episodeNumber,
+            totalEpisodes = episodeTotal,
+            cover = cover,
+            positionMs = resumeAtMs,
+            introMs = skipIntroMs,
+            endingMs = skipOutroMs,
+            autoRetry = autoRetry,
+            firstFrame = { first() },
+            finished = { end() },
+            failed = { fail(it) },
+            checkpoint = { position, duration -> save(position, duration) },
+            timerExpired = { timer() },
+        )
+    }
+
+    LaunchedEffect(player, canPrevious, canNext, vid) {
+        BackgroundPlaybackService.active?.configureNavigation(
+            canPrevious, canNext, { direction -> navigate(direction) })
+    }
+
     DisposableEffect(player) {
-        var seeked = false
-        var retryCount = 0
-        var endReported = false
-        val listener = object : Player.Listener {
-            override fun onRenderedFirstFrame() = first()
-            override fun onPlaybackStateChanged(playbackState: Int) {
-                if (playbackState == Player.STATE_READY && !seeked) {
-                    seeked = true
-                    val duration = player.duration.takeIf { it > 0L } ?: 0L
-                    val target = ResumePolicy.resumable(resumeAtMs, duration)
-                    val intro = if (duration > skipIntroMs + 5_000L) skipIntroMs else 0L
-                    val initial = maxOf(target, intro)
-                    if (initial > 0L) player.seekTo(initial)
-                }
-                if (playbackState == Player.STATE_ENDED && !endReported) {
-                    endReported = true
-                    end()
-                }
-            }
-            override fun onPlayerError(error: PlaybackException) {
-                if (autoRetry && retryCount == 0 &&
-                    error.errorCode in 2000..2999) {
-                    retryCount++
-                    val lastPosition = player.currentPosition.coerceAtLeast(0L)
-                    player.prepare()
-                    player.seekTo(lastPosition)
-                    player.play()
-                    return
-                }
-                fail(PlaybackProblem.media(error.errorCodeName,
-                    error.cause?.javaClass?.simpleName))
-            }
-        }
-        player.addListener(listener)
-        if (nativeVideo != null) {
-            val factory = DataSource.Factory { NativeVideoDataSource(nativeVideo) }
-            player.setMediaSource(
-                ProgressiveMediaSource.Factory(factory)
-                    .createMediaSource(MediaItem.fromUri(url))
-            )
-        } else {
-            player.setMediaItem(MediaItem.fromUri(url))
-        }
-        player.prepare()
-        player.playWhenReady = true
         controls.player = player
         onDispose {
             if (controls.player === player) controls.player = null
-            player.removeListener(listener)
-            player.release()
-            nativeVideo?.close()
+            // Deliberately do not release the player or native video here:
+            // MediaSessionService is still playing in the background.
         }
     }
-    // App backgrounding must not keep playing sound offscreen. Preserve an
-    // intentional manual pause when the activity returns to foreground.
-    DisposableEffect(player, lifecycleOwner) {
-        var resumeOnForeground = false
-        val observer = LifecycleEventObserver { _, event ->
-            when (event) {
-                Lifecycle.Event.ON_STOP -> {
-                    resumeOnForeground = player.isPlaying
-                    player.pause()
-                }
-                Lifecycle.Event.ON_START -> {
-                    if (resumeOnForeground) {
-                        resumeOnForeground = false
-                        player.play()
-                    }
-                }
-                else -> Unit
-            }
-        }
-        lifecycleOwner.lifecycle.addObserver(observer)
-        onDispose { lifecycleOwner.lifecycle.removeObserver(observer) }
-    }
-    LaunchedEffect(player, skipOutroMs) {
-        var outroHandled = false
-        while (isActive) {
-            if (skipOutroMs <= 0L) {
-                delay(500)
-                continue
-            }
-            val duration = player.duration
-            if (!outroHandled && duration > 0L && duration > skipOutroMs + 5_000L &&
-                player.isPlaying && player.currentPosition >= duration - skipOutroMs) {
-                outroHandled = true
-                player.seekTo(duration.coerceAtLeast(0L))
-            }
-            delay(250)
-        }
-    }
-    LaunchedEffect(player, speed) { player.setPlaybackSpeed(speed) }
+
+    LaunchedEffect(player, speed) { player?.setPlaybackSpeed(speed) }
     LaunchedEffect(player) {
         while (isActive) {
-            controls.positionMs = player.currentPosition.coerceAtLeast(0)
-            controls.durationMs = player.duration.takeIf {
+            val active = player
+            controls.positionMs = active?.currentPosition?.coerceAtLeast(0L) ?: 0L
+            controls.durationMs = active?.duration?.takeIf {
                 it > 0L && it != androidx.media3.common.C.TIME_UNSET
             } ?: 0L
-            controls.isPlaying = player.isPlaying
+            controls.isPlaying = active?.isPlaying == true
             delay(250)
         }
     }
+
     AndroidView(
         factory = {
             PlayerView(it).apply {
