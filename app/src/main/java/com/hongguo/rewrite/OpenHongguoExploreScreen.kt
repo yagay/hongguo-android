@@ -238,7 +238,7 @@ internal fun OpenHongguoExploreScreen(
                 .padding(horizontal = 12.dp),
                 horizontalArrangement = Arrangement.spacedBy(7.dp)) {
                 tabs.forEach { (id, name) ->
-                    FilterChip(selected = tab == id,
+                    HongguoChoiceChip(label = name, selected = tab == id,
                         onClick = {
                             if (id != tab) {
                                 tab = id
@@ -253,8 +253,7 @@ internal fun OpenHongguoExploreScreen(
                                 selectedFilters = emptyMap()
                                 suggestions = emptyList()
                             }
-                        },
-                        label = { Text(name) })
+                        })
                 }
             }
         }
@@ -267,13 +266,15 @@ internal fun OpenHongguoExploreScreen(
                         horizontalArrangement = Arrangement.spacedBy(6.dp),
                         verticalAlignment = Alignment.CenterVertically) {
                         Text(row.name, fontSize = 12.sp, color = HongguoColors.muted)
-                        FilterChip(selected = selectedFilters[row.key].isNullOrEmpty(),
+                        HongguoChoiceChip(label = "全部",
+                            selected = selectedFilters[row.key].isNullOrEmpty(),
                             onClick = {
                                 selectedFilters = selectedFilters - row.key
                                 cursor = ""; rows = emptyList(); nextCursor = ""
-                            }, label = { Text("全部") })
+                            })
                         row.options.take(12).forEach { option ->
-                            FilterChip(
+                            HongguoChoiceChip(
+                                label = option.name,
                                 selected = selectedFilters[row.key]?.contains(option.value) == true,
                                 onClick = {
                                     val old = selectedFilters[row.key].orEmpty()
@@ -282,7 +283,6 @@ internal fun OpenHongguoExploreScreen(
                                     else selectedFilters + (row.key to listOf(option.value))
                                     cursor = ""; rows = emptyList(); nextCursor = ""
                                 },
-                                label = { Text(option.name) },
                             )
                         }
                     }
@@ -323,7 +323,8 @@ internal fun OpenHongguoExploreScreen(
                 .padding(horizontal = 12.dp),
                 horizontalArrangement = Arrangement.spacedBy(6.dp)) {
                 suggestions.forEach { phrase ->
-                    FilterChip(
+                    HongguoChoiceChip(
+                        label = phrase.take(40),
                         selected = false,
                         onClick = {
                             query = phrase
@@ -331,7 +332,6 @@ internal fun OpenHongguoExploreScreen(
                             suggestions = emptyList()
                             cursor = ""; rows = emptyList(); nextCursor = ""
                         },
-                        label = { Text(phrase.take(40)) },
                     )
                 }
             }
