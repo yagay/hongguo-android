@@ -692,6 +692,48 @@ class DramaViewModel(application: Application) : AndroidViewModel(application) {
     }
 
     /**
+     * A verified login alone does not authorize use of its Cookie for feeds.
+     * Explicit account-recommendation opt-in updates the request identity,
+     * invalidates the old anonymous cursor and keeps the current playing
+     * drama while new items arrive. Never leak credentials to diagnostics.
+     */
+    fun setAccountRecommendations(enabled: Boolean) {
+        val before = account.recommendationAccount() != null
+        account.setAccountRecommendations(enabled)
+        val session = account.recommendationAccount()
+        val after = session != null
+        if (before == after) return
+        nativeSource.setAccountRecommendations(session)
+        diagnostics.record("REELS",
+            if (after) "ACCOUNT_OPTED_IN" else "ACCOUNT_OPTED_OUT")
+        if (state.value.feedMode) {
+            officialFeedJob?.cancel()
+            officialFeedGeneration++
+            pendingFeedAdvance = false
+            feedPrefetchJob?.cancel()
+            clearReelWarmVideo()
+            prefetchedFeedDetails.clear()
+            val snapshot = state.value
+            val currentDrama = snapshot.feedItems.getOrNull(snapshot.feedIndex)
+                ?: snapshot.detail?.drama
+            // Do not stop/recreate Media3 playback solely for a settings
+            // change. Preserve the visible drama while rebuilding the queue.
+            mutable.update { it.copy(
+                feedItems = currentDrama?.let(::listOf).orEmpty(),
+                feedIndex = 0,
+                feedLoading = false,
+                feedHasMore = true,
+                feedError = null,
+            ) }
+            updateNotificationNavigation()
+            loadOfficialReels(restart = true)
+        } else if (state.value.section == Section.RECOMMEND &&
+            state.value.detail == null) {
+            refresh()
+        }
+    }
+
+    /**
      * A feed-mode switch creates a fresh official cursor and resets the current
      * queue and playback; it does not touch the home recommendation catalog.
      */
