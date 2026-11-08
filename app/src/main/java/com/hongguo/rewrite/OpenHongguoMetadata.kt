@@ -32,6 +32,8 @@ data class OpenHongguoMetadata(
     val albumId: String? = null,
     val season: Int? = null,
     val statusText: String? = null,
+    /** Explicit provider-authored declaration only, never inferred from genre. */
+    val authorAiStatement: String? = null,
     val rows: List<OpenHongguoInfoRow> = emptyList(),
 )
 
@@ -39,6 +41,22 @@ object OpenHongguoMetadataParser {
     private val idPattern = Regex("[1-9][0-9]{0,29}")
     // An InfoScore row is rating evidence; hot_score / rank_score are NOT.
     private val scorePattern = Regex("^(?:10(?:\\.0)?|[0-9](?:\\.[0-9])?)(?:分)?$")
+    private const val AI_AUTHOR_DECLARATION = "作者声明：内容由AI生成"
+
+    /**
+     * This exact phrase is an author's platform declaration, not evidence
+     * available from the generic AI/real-drama genre or actor labels.
+     * Only explicit provider text is eligible; false/unknown is not a badge.
+     */
+    fun confirmedAiAuthorStatement(text: String?): String? {
+        val normalized = text?.trim()
+            ?.replace(Regex("\\s+"), "")
+            ?.replace('：', ':')
+            ?.uppercase()
+        return AI_AUTHOR_DECLARATION.takeIf {
+            normalized == "作者声明:内容由AI生成"
+        }
+    }
 
     fun isRating(value: String): Boolean = scorePattern.matches(value.trim())
 
@@ -53,6 +71,7 @@ object OpenHongguoMetadataParser {
             albumId = primary.albumId ?: supplement.albumId,
             season = primary.season ?: supplement.season,
             statusText = primary.statusText ?: supplement.statusText,
+            authorAiStatement = primary.authorAiStatement ?: supplement.authorAiStatement,
             rows = (primary.rows + supplement.rows).distinct().take(80),
         )
     }
@@ -120,6 +139,12 @@ object OpenHongguoMetadataParser {
             albumId = album,
             season = video.optInt("season_index", 0).takeIf { it > 0 },
             statusText = rows.firstOrNull { it.kind == 11 }?.text,
+            // The signed video_detail/v1 secondary_infos are source-scoped
+            // metadata. Search declaration text only here (and in an
+            // explicitly named declaration field if the server supplies it).
+            authorAiStatement = rows.firstNotNullOfOrNull {
+                confirmedAiAuthorStatement(it.text)
+            } ?: confirmedAiAuthorStatement(video.optString("author_statement")),
             rows = rows,
         )
     }
