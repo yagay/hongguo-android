@@ -130,8 +130,17 @@ internal fun SettingsScreen(state: AppState, model: DramaViewModel) {
                     )
                     if (account.profile != null) {
                         HorizontalDivider()
-                        SettingToggle("账号推荐", "默认关闭，按本人账号推荐", account.accountRecommendations,
-                            model.account::setAccountRecommendations, "settings_account_recommendations")
+                        SettingToggle(
+                            "刷短剧使用登录账号",
+                            "默认关闭；开启后，刷短剧（包括只看真人）及首页推荐会携带本人登录会话请求官方接口。是否真正个性化由服务端决定；切换后刷新推荐队列，不中断当前视频。",
+                            account.accountRecommendations,
+                            model::setAccountRecommendations, "settings_account_recommendations")
+                        Text(
+                            if (account.accountRecommendations)
+                                "已开启：向官方推荐接口发送登录会话（不能保证与官方 App 推荐排序完全一致）"
+                            else "当前为非账号推荐：登录成功不会自动开启此功能。",
+                            color = HongguoColors.muted, fontSize = 12.sp)
+
                         HorizontalDivider()
                         SettingToggle("同步观看进度", "默认关闭，仅上报此后播放进度", account.syncEnabled,
                             model.account::setProgressSync, "settings_account_sync")
