@@ -63,7 +63,7 @@ internal fun LibrarySheets(state: AppState, model: DramaViewModel) {
         modifier = Modifier.testTag("library_sheet"),
     ) {
         Column(
-            Modifier.fillMaxWidth().padding(horizontal = 18.dp),
+            Modifier.fillMaxWidth().padding(horizontal = HongguoUi.pagePadding),
             verticalArrangement = Arrangement.spacedBy(12.dp),
         ) {
             when (state.modal) {
@@ -101,21 +101,24 @@ private fun LibraryRows(state: AppState, model: DramaViewModel) {
                 else -> true
             })
     }
-    Row(Modifier.fillMaxWidth(), verticalAlignment = Alignment.CenterVertically) {
-        Icon(if (isFavorites) Icons.Outlined.StarBorder else Icons.Outlined.History,
-            null, tint = HongguoColors.accent)
-        Spacer(Modifier.width(8.dp))
-        Text(if (isFavorites) "我的收藏" else "播放历史",
-            fontSize = 20.sp, fontWeight = FontWeight.Bold,
-            modifier = Modifier.weight(1f))
+    HongguoSheetHeader(
+        title = if (isFavorites) "我的收藏" else "播放历史",
+        icon = if (isFavorites) Icons.Outlined.StarBorder else Icons.Outlined.History,
+    ) {
         if (rows.isNotEmpty()) {
-            TextButton(onClick = {
-                selecting = !selecting
-                selectedIds = emptyList()
-            }) { Text(if (selecting) "完成" else "批量管理") }
-            TextButton(onClick = { confirmClear = true }) {
-                Text("清空", color = HongguoColors.muted)
-            }
+            HongguoAction(
+                label = if (selecting) "完成" else "批量管理",
+                onClick = {
+                    selecting = !selecting
+                    selectedIds = emptyList()
+                },
+                style = HongguoActionStyle.QUIET,
+            )
+            HongguoAction(
+                label = "清空",
+                onClick = { confirmClear = true },
+                style = HongguoActionStyle.QUIET,
+            )
         }
     }
     OutlinedTextField(value = query, onValueChange = { query = it.take(60) },
@@ -290,15 +293,10 @@ private fun LibraryRows(state: AppState, model: DramaViewModel) {
 
 @Composable
 private fun DownloadRows(state: AppState, model: DramaViewModel) {
-    Row(Modifier.fillMaxWidth(), verticalAlignment = Alignment.CenterVertically) {
-        Icon(Icons.Outlined.Download, null, tint = HongguoColors.accent)
-        Spacer(Modifier.width(8.dp))
-        Text("下载任务", fontSize = 20.sp, fontWeight = FontWeight.Bold,
-            modifier = Modifier.weight(1f))
+    HongguoSheetHeader(title = "下载任务", icon = Icons.Outlined.Download) {
         if (state.backend.isNotBlank()) {
-            TextButton(onClick = model::updateDownloads) {
-                Text("刷新", color = HongguoColors.accent)
-            }
+            HongguoAction(label = "刷新", onClick = model::updateDownloads,
+                style = HongguoActionStyle.QUIET)
         }
     }
     Text(if (state.backend.isBlank())
@@ -351,11 +349,7 @@ private fun DownloadRows(state: AppState, model: DramaViewModel) {
 @Composable
 private fun ShareInput(model: DramaViewModel) {
     var shareText by rememberSaveable { mutableStateOf("") }
-    Row(verticalAlignment = Alignment.CenterVertically) {
-        Icon(Icons.Outlined.Share, null, tint = HongguoColors.accent)
-        Spacer(Modifier.width(8.dp))
-        Text("解析分享链接", fontSize = 20.sp, fontWeight = FontWeight.Bold)
-    }
+    HongguoSheetHeader(title = "解析分享链接", icon = Icons.Outlined.Share)
     Text("粘贴红果短剧分享文案或链接，解析后直接进入相应剧集。",
         fontSize = 12.sp, color = HongguoColors.muted)
     OutlinedTextField(
