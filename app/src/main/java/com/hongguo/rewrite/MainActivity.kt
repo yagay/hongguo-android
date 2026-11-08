@@ -302,8 +302,6 @@ private fun HongguoApp(model: DramaViewModel = viewModel()) {
                                     contentScale = ContentScale.Crop,
                                     modifier = Modifier.fillMaxSize(),
                                 )
-                                Box(Modifier.fillMaxSize().background(
-                                    Color.Black.copy(alpha = 0.45f)))
                             }
                             Column(
                                 horizontalAlignment = Alignment.CenterHorizontally,
