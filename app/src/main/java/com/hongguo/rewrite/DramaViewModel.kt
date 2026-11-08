@@ -2222,7 +2222,9 @@ class DramaViewModel(application: Application) : AndroidViewModel(application) {
         mutable.update { it.copy(
             detailPageVisible = true,
             detailEntryEnabled = true,
-            miniPlayerVisible = it.playbackUrl != null,
+            // Keep a previously visible mini player when a new episode is
+            // loading and playbackUrl has briefly been cleared.
+            miniPlayerVisible = it.miniPlayerVisible || it.playbackUrl != null,
         ) }
         diagnostics.record("DETAIL", "OPEN_WITH_MINI")
     }
