@@ -61,6 +61,12 @@ class BackgroundPlaybackService : MediaSessionService() {
         }
     }
 
+    private val diagnostics by lazy {
+        DiagnosticLog(java.io.File(filesDir, "diagnostics"),
+            getSharedPreferences("web_rewrite_settings", MODE_PRIVATE)
+                .getBoolean("log_enabled", true))
+    }
+    private var permissionLogged = false
     private lateinit var engine: ExoPlayer
     private lateinit var session: MediaSession
     private val main = Handler(Looper.getMainLooper())
@@ -133,6 +139,8 @@ class BackgroundPlaybackService : MediaSessionService() {
                 // The ViewModel pauses only after a real destination is chosen.
                 // If the reel queue needs paging, keep the current drama playing
                 // instead of leaving an idle notification at the queue boundary.
+                diagnostics.record("BACKGROUND", if (direction < 0)
+                    "MEDIA_PREVIOUS" else "MEDIA_NEXT")
                 onNavigate?.invoke(direction)
                 return Futures.immediateFuture(SessionResult(SessionResult.RESULT_SUCCESS))
             }
@@ -166,6 +174,7 @@ class BackgroundPlaybackService : MediaSessionService() {
                     if (position > 0L) engine.seekTo(position)
                 }
                 if (state == Player.STATE_ENDED && !didFinish) {
+                    diagnostics.record("BACKGROUND", "MEDIA_ENDED")
                     didFinish = true
                     onFinished?.invoke()
                 }
@@ -180,6 +189,7 @@ class BackgroundPlaybackService : MediaSessionService() {
                     engine.play()
                     return
                 }
+                diagnostics.record("BACKGROUND", "MEDIA_ERROR")
                 onError?.invoke(PlaybackProblem.media(
                     error.errorCodeName, error.cause?.javaClass?.simpleName))
             }
@@ -190,6 +200,7 @@ class BackgroundPlaybackService : MediaSessionService() {
             description = "通知栏显示短剧剧名、集数、播放时间及上一集/下一集控制"
             setShowBadge(false)
         })
+        diagnostics.record("BACKGROUND", "SERVICE_CREATED")
         active = this
         playerFlow.value = engine
         main.postDelayed(checkpoint, 1000)
@@ -254,6 +265,7 @@ class BackgroundPlaybackService : MediaSessionService() {
         remoteVideo?.takeIf { it !== remote }?.close()
         remoteVideo = remote
         currentKey = key
+        diagnostics.record("BACKGROUND", "SOURCE_CONFIGURED")
         currentVid = vid
         didSeek = false
         backgroundConfirmed = false
@@ -332,6 +344,7 @@ class BackgroundPlaybackService : MediaSessionService() {
         onTimer = null
         onNavigate = null
         getSystemService(NotificationManager::class.java)?.cancel(NOTIFICATION_ID)
+        diagnostics.record("BACKGROUND", "SERVICE_STOP_REQUESTED")
         stopSelf()
     }
 
@@ -345,13 +358,19 @@ class BackgroundPlaybackService : MediaSessionService() {
             PendingIntent.FLAG_UPDATE_CURRENT or PendingIntent.FLAG_IMMUTABLE)
 
     private fun publishProgressNotification() {
-        if (currentKey == null || notificationTitle.isEmpty() ||
-            Build.VERSION.SDK_INT >= 33 &&
-            ContextCompat.checkSelfPermission(this, Manifest.permission.POST_NOTIFICATIONS) !=
-                PackageManager.PERMISSION_GRANTED) {
+        if (currentKey == null || notificationTitle.isEmpty()) {
             getSystemService(NotificationManager::class.java)?.cancel(NOTIFICATION_ID)
             return
         }
+        if (Build.VERSION.SDK_INT >= 33 &&
+            ContextCompat.checkSelfPermission(this, Manifest.permission.POST_NOTIFICATIONS) !=
+                PackageManager.PERMISSION_GRANTED) {
+            if (!permissionLogged) diagnostics.record("BACKGROUND", "NOTIFICATION_PERMISSION_DENIED")
+            permissionLogged = true
+            getSystemService(NotificationManager::class.java)?.cancel(NOTIFICATION_ID)
+            return
+        }
+        permissionLogged = false
         val duration = engine.duration.takeIf { it > 0L } ?: 0L
         val position = engine.currentPosition.coerceAtLeast(0L)
         val minuteSeconds: (Long) -> String = { milliseconds ->
@@ -386,7 +405,11 @@ class BackgroundPlaybackService : MediaSessionService() {
             .addAction(android.R.drawable.ic_media_next, "下一集/下一部",
                 actionIntent(ACTION_NEXT, 3))
             .build()
-        getSystemService(NotificationManager::class.java)?.notify(NOTIFICATION_ID, note)
+        try {
+            getSystemService(NotificationManager::class.java)?.notify(NOTIFICATION_ID, note)
+        } catch (_: SecurityException) {
+            diagnostics.record("BACKGROUND", "NOTIFICATION_BLOCKED")
+        }
     }
 
     private fun updateMediaButtons() {
