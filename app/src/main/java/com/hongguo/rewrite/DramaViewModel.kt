@@ -1039,14 +1039,15 @@ class DramaViewModel(application: Application) : AndroidViewModel(application) {
 
     fun searchBrowseSection(section: Section?) {
         if (section != null && section !in setOf(
-                Section.RECOMMEND, Section.RANK, Section.LATEST, Section.BROWSE)) return
+                Section.SEARCH, Section.RECOMMEND, Section.RANK, Section.LATEST, Section.BROWSE)) return
         val previous = mutableSearchBrowse.value
         if (section == previous.section) return
         searchBrowseJob?.cancel()
         searchBrowseFiltersJob?.cancel()
         ++searchBrowseGeneration
-        mutableSearchBrowse.value = SearchBrowseState(section = section,
-            board = previous.board, genre = previous.genre)
+        mutableSearchBrowse.value = previous.copy(section = section,
+            items = emptyList(), loading = false, moreLoading = false,
+            hasMore = false, nextOffset = 0, error = null)
         if (section != null) refreshSearchBrowse()
     }
 
@@ -1061,8 +1062,10 @@ class DramaViewModel(application: Application) : AndroidViewModel(application) {
         searchBrowseJob?.cancel()
         searchBrowseFiltersJob?.cancel()
         ++searchBrowseGeneration
-        mutableSearchBrowse.value = SearchBrowseState(
-            section = Section.SEARCH, query = query,
+        mutableSearchBrowse.value = mutableSearchBrowse.value.copy(
+            section = mutableSearchBrowse.value.section ?: Section.SEARCH,
+            query = query, items = emptyList(), loading = false,
+            hasMore = false, nextOffset = 0, error = null,
         )
         refreshSearchBrowse()
     }
@@ -1089,6 +1092,15 @@ class DramaViewModel(application: Application) : AndroidViewModel(application) {
         refreshSearchBrowse()
     }
 
+    // Scoped sections have no server-side keyword API. Match each fetched
+    // page without claiming unvisited pages have been searched.
+    private fun matchesScope(drama: Drama, keyword: String): Boolean =
+        keyword.isBlank() ||
+            drama.title.contains(keyword, ignoreCase = true) ||
+            drama.actors.any { it.contains(keyword, ignoreCase = true) } ||
+            drama.categories.any { it.contains(keyword, ignoreCase = true) } ||
+            drama.synopsis.contains(keyword, ignoreCase = true)
+
     fun refreshSearchBrowse() {
         val snapshot = mutableSearchBrowse.value
         val section = snapshot.section ?: return
@@ -1104,7 +1116,9 @@ class DramaViewModel(application: Application) : AndroidViewModel(application) {
                     ?: nativeSource.list(section, 0, snapshot.genre, snapshot.board,
                         snapshot.query, snapshot.activeFilters)
                 if (generation != searchBrowseGeneration) return@launch
-                mutableSearchBrowse.update { it.copy(items = result.items,
+                val matched = if (section == Section.SEARCH) result.items
+                else result.items.filter { matchesScope(it, snapshot.query) }
+                mutableSearchBrowse.update { it.copy(items = matched,
                     loading = false, hasMore = result.hasMore,
                     nextOffset = result.nextOffset) }
             } catch (e: CancellationException) {
@@ -1146,13 +1160,14 @@ class DramaViewModel(application: Application) : AndroidViewModel(application) {
                     ?: nativeSource.list(section, snapshot.nextOffset,
                         snapshot.genre, snapshot.board, snapshot.query, snapshot.activeFilters)
                 if (generation != searchBrowseGeneration) return@launch
-                val merged = (snapshot.items + result.items).distinctBy(Drama::id)
+                val matched = if (section == Section.SEARCH) result.items
+                else result.items.filter { matchesScope(it, snapshot.query) }
+                val merged = (snapshot.items + matched).distinctBy(Drama::id)
                 mutableSearchBrowse.update {
                     it.copy(items = merged, moreLoading = false,
                         nextOffset = result.nextOffset,
                         hasMore = result.hasMore &&
-                            result.nextOffset > snapshot.nextOffset &&
-                            merged.size > snapshot.items.size)
+                            result.nextOffset > snapshot.nextOffset)
                 }
             } catch (e: CancellationException) {
                 throw e
