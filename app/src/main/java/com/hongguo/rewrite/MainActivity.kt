@@ -281,10 +281,7 @@ private fun HongguoApp(model: DramaViewModel = viewModel()) {
                         DramaDetailScreen(state, model)
                     state.detail != null && !state.miniPlayerVisible ->
                         key(state.detail?.drama?.id, state.feedMode) {
-                            NativePlayer(state, model, onOpenSearch = {
-                                model.minimizePlayer()
-                                searchLandingOpen = true
-                            })
+                            NativePlayer(state, model)
                         }
                     // A minimized feed stays on its browsing page while the
                     // next drama's metadata is loading; never replace it with
