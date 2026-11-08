@@ -282,6 +282,11 @@ class DramaViewModel(application: Application) : AndroidViewModel(application) {
         }
     }
 
+    fun recordDisplayHdrSupport(hdr10: Boolean, hlg: Boolean, dolbyVision: Boolean) {
+        diagnostics.record("VIDEO_DISPLAY",
+            "HDR10_${if (hdr10) 1 else 0}_HLG_${if (hlg) 1 else 0}_DV_${if (dolbyVision) 1 else 0}")
+    }
+
     fun setDefaultPlaybackSpeed(value: Float) {
         if (value !in setOf(0.75f, 1f, 1.25f, 1.5f, 2f, 3f)) return
         prefs.edit().putFloat("default_playback_speed", value).apply()
