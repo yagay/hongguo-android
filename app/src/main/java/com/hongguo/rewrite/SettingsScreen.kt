@@ -206,6 +206,22 @@ internal fun SettingsScreen(state: AppState, model: DramaViewModel) {
                     Text("只对全屏刷短剧和正式剧集播放生效，离开播放器自动恢复系统亮度；" +
                         "不修改视频颜色、伽马或全局屏幕设置。",
                         color = HongguoColors.muted, fontSize = 12.sp)
+                    Text("视频声音增强", color = HongguoColors.ink,
+                        fontWeight = FontWeight.SemiBold)
+                    FlowRow(horizontalArrangement = Arrangement.spacedBy(8.dp)) {
+                        listOf(0 to "原音", 3 to "+3 dB", 6 to "+6 dB").forEach {
+                            (value, label) ->
+                            FilterChip(
+                                selected = state.playbackAudioBoostDb == value,
+                                onClick = { model.setPlaybackAudioBoostDb(value) },
+                                label = { Text(label, fontSize = 13.sp) },
+                                modifier = Modifier.testTag("settings_audio_boost_" + value),
+                            )
+                        }
+                    }
+                    Text("增强仅针对本应用音频，不会修改手机全局媒体音量。" +
+                        "系统不支持音效时自动保留原声，出现失真可恢复原音。",
+                        color = HongguoColors.muted, fontSize = 12.sp)
                 }
             }
             item {
