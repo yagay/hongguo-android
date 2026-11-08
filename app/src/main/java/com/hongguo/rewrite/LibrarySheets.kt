@@ -166,7 +166,9 @@ private fun LibraryRows(state: AppState, model: DramaViewModel) {
                             selectedIds - entry.drama.id else selectedIds + entry.drama.id
                     } else {
                         model.closeModal()
-                        model.open(entry.drama, entry.episode)
+                        if (state.feedMode)
+                            model.openFromFeedSelection(entry.drama, entry.episode)
+                        else model.open(entry.drama, entry.episode)
                     }
                 }.padding(vertical = 8.dp),
                 verticalAlignment = Alignment.CenterVertically,
