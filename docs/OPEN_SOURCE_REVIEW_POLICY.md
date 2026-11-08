@@ -1,0 +1,28 @@
+# Open-source-first development checklist (rewrite-web-native)
+
+Before modifying this project, inspect relevant upstream implementations, compare their source and tests, and document why a particular approach was selected. "All projects" means all **relevant, discoverable** implementations, not a claim that the entire internet has been exhaustively audited. Do not copy code with incompatible licensing or unverified private API behavior.
+
+## Sources reviewed for the detail-page rebuild (2026-11-08)
+
+- [zfdang/hongguo-open-player](https://github.com/zfdang/hongguo-open-player), `src/server/native/hongguo.js`: website `seriesDetail.celebrities`, actor names/avatar/role, and `seriesSocialInfo.rating/rating_count`.
+- [tsukiyo-zero/hongguoTV](https://github.com/tsukiyo-zero/hongguoTV), `kotlin-tv/core/src/main/kotlin/com/hongguotv/core/PublicComments.kt`: series-level `seriesSocialInfo.reviews`, ratings, totals, reviewer portraits, and episode-vs-series separation.
+- [beilunyang/openhongguo](https://github.com/beilunyang/openhongguo), Android SDK `0.2.0`: persons, works, related series, novels. Optional read-only enhancement; not a verified follow/review write API.
+- Existing `yagay/hongguo-android` main branch and rewrite `NativeWebsiteSource`, `SocialStatsParser`, `OpenHongguoSource`: preserve media, local favorites, cloud follows, episode playback, validated series IDs and user data.
+- [yangbin1322/hongguo-player](https://github.com/yangbin1322/hongguo-player): actor and social feature ideas; no verified compatible write protocol was established in this pass.
+
+## Rules for future changes
+
+1. Search the relevant upstream Android, web, desktop and SDK repositories before implementation. Read real source and tests, not merely the README.
+2. Separate the verified public/read-only data path from authenticated write actions; do not invent actor follows, rating submissions, reviews, or novel reader deep links.
+3. Preserve existing app behavior, schema and build policy. Only `rewrite-web-native`, Debug APK and Debug tests unless expressly requested otherwise.
+4. Add deterministic parser and state-isolation tests for each imported capability; verify series identity and filter untrusted URLs.
+5. Document source attribution and third-party license obligations; prefer independently authored adapters.
+6. Do not equate a committed file with a successful CI run or a device-tested experience.
+
+## Current data boundaries
+
+- `DramaPublicDetailParser` reads official public **series** detail and review snippets, confirmed against the requested series ID.
+- Player `AppCommentPages` remains **episode**-specific; its counts must not be presented as series-wide review totals.
+- Public cast `celebrity_id` is not necessarily a verified account user ID; never trigger a follow operation from that value without a documented authenticated endpoint.
+- Rating and ratingCount are optional; show a neutral unavailable state instead of fabricating values or drawing them from ranking heat.
+- Native browser/website APIs can fail, change or be rate-limited: detail enrichment never blocks Media3 playback.
