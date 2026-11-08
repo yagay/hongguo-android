@@ -1,6 +1,17 @@
 package com.hongguo.rewrite
 
 import androidx.compose.foundation.clickable
+import androidx.compose.foundation.Canvas
+import androidx.compose.foundation.gestures.detectDragGestures
+import androidx.compose.foundation.gestures.detectTapGestures
+import androidx.compose.ui.input.pointer.pointerInput
+import androidx.compose.runtime.getValue
+import androidx.compose.runtime.mutableStateOf
+import androidx.compose.runtime.remember
+import androidx.compose.runtime.rememberUpdatedState
+import androidx.compose.runtime.setValue
+import androidx.compose.ui.geometry.Offset
+import androidx.compose.ui.graphics.StrokeCap
 import androidx.compose.foundation.background
 import androidx.compose.ui.draw.clip
 import androidx.compose.ui.layout.ContentScale
@@ -662,6 +673,80 @@ internal fun HongguoPlayerPanel(
             )
         }
         content()
+    }
+}
+
+/**
+ * Reusable playback progress surface. Gesture state belongs to the control;
+ * caller receives the drag preview to keep its time label synchronized.
+ * A real Media3 seek happens on release/tap only, never on every drag frame.
+ */
+@Composable
+internal fun HongguoPlayerSeekTrack(
+    durationMs: Long,
+    playedFraction: Float,
+    onSeek: (Long) -> Unit,
+    onPreview: (Float?) -> Unit,
+    modifier: Modifier = Modifier,
+) {
+    var dragging by remember(durationMs) { mutableStateOf<Float?>(null) }
+    val currentSeek by rememberUpdatedState(onSeek)
+    val currentPreview by rememberUpdatedState(onPreview)
+    Canvas(
+        modifier.fillMaxWidth()
+            .height(HongguoUi.playbackSeekTouchHeight)
+            .pointerInput(durationMs) {
+                detectTapGestures { point ->
+                    if (durationMs > 0L && size.width > 0) {
+                        val fraction = (point.x / size.width).coerceIn(0f, 1f)
+                        currentSeek((durationMs * fraction).toLong())
+                    }
+                }
+            }
+            .pointerInput(durationMs) {
+                detectDragGestures(
+                    onDragStart = { start ->
+                        if (durationMs > 0L && size.width > 0) {
+                            val value = (start.x / size.width).coerceIn(0f, 1f)
+                            dragging = value
+                            currentPreview(value)
+                        }
+                    },
+                    onDragEnd = {
+                        dragging?.let { currentSeek((durationMs * it).toLong()) }
+                        dragging = null
+                        currentPreview(null)
+                    },
+                    onDragCancel = {
+                        dragging = null
+                        currentPreview(null)
+                    },
+                    onDrag = { change, _ ->
+                        if (durationMs > 0L && size.width > 0) {
+                            val value = (change.position.x / size.width).coerceIn(0f, 1f)
+                            dragging = value
+                            currentPreview(value)
+                        }
+                        change.consume()
+                    },
+                )
+            },
+    ) {
+        val y = size.height / 2f
+        drawLine(
+            color = HongguoColors.playerChromeTrack,
+            start = Offset(0f, y),
+            end = Offset(size.width, y),
+            strokeWidth = 2.dp.toPx(),
+            cap = StrokeCap.Round,
+        )
+        drawLine(
+            color = HongguoColors.accent,
+            start = Offset(0f, y),
+            end = Offset(size.width * (dragging ?: playedFraction).coerceIn(0f, 1f), y),
+            strokeWidth = 2.dp.toPx(),
+            cap = StrokeCap.Round,
+        )
     }
 }
 
