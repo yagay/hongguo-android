@@ -368,6 +368,6 @@ private fun ShareInput(model: DramaViewModel) {
         onClick = { model.share(shareText) },
         enabled = shareText.isNotBlank(),
         modifier = Modifier.fillMaxWidth().height(48.dp),
-        shape = RoundedCornerShape(13.dp),
+        shape = RoundedCornerShape(HongguoUi.controlRadius),
     ) { Text("解析并播放") }
 }
