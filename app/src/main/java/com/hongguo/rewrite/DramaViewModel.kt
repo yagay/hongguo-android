@@ -1668,6 +1668,45 @@ class DramaViewModel(application: Application) : AndroidViewModel(application) {
         }
     }
 
+    private var serviceRecoveryRequested = false
+
+    /**
+     * Foreground-only repair for a service that the OS has already destroyed.
+     * Never restart playback when the user intentionally paused or closed it.
+     * A stopped service cannot reuse its old encrypted RemoteVideo; play()
+     * fetches a fresh stream and restores the persisted watch checkpoint.
+     */
+    fun recoverPlaybackAfterServiceLoss() {
+        if (serviceRecoveryRequested || BackgroundPlaybackService.active != null ||
+            BackgroundPlaybackService.playerFlow.value != null) return
+        val snapshot = state.value
+        if (snapshot.detail == null || snapshot.detailPageVisible ||
+            snapshot.playbackUrl == null || !snapshot.playing ||
+            snapshot.playbackError != null) return
+        serviceRecoveryRequested = true
+        diagnostics.record("BACKGROUND", "FOREGROUND_SERVICE_MISSING")
+        viewModelScope.launch {
+            delay(600)
+            try {
+                val current = state.value
+                if (BackgroundPlaybackService.active == null &&
+                    BackgroundPlaybackService.playerFlow.value == null &&
+                    current.detail != null && !current.detailPageVisible &&
+                    current.playbackUrl != null && current.playing &&
+                    current.playbackError == null) {
+                    // Discard any cached decoder/source from the dead session.
+                    // The next media load performs the existing authenticated
+                    // stream request rather than reopening a stale data source.
+                    clearPreloadedNext()
+                    diagnostics.record("BACKGROUND", "FOREGROUND_RECONNECT")
+                    play(current.episodeIndex)
+                }
+            } finally {
+                serviceRecoveryRequested = false
+            }
+        }
+    }
+
     fun play(index: Int) {
         val detail = state.value.detail ?: return
         if (index !in detail.episodes.indices) return
