@@ -1647,7 +1647,7 @@ class DramaViewModel(application: Application) : AndroidViewModel(application) {
         if (index !in detail.episodes.indices) return
         val serviceStarted = runCatching {
             getApplication<Application>().startService(
-                Intent(getApplication(), BackgroundPlaybackService::class.java))
+                Intent(getApplication<Application>(), BackgroundPlaybackService::class.java))
         }.isSuccess
         if (!serviceStarted) diagnostics.record("PLAYBACK", "SERVICE_START_DENIED")
         BackgroundPlaybackService.active?.pauseForTransition()
