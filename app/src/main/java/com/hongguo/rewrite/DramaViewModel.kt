@@ -1801,7 +1801,8 @@ class DramaViewModel(application: Application) : AndroidViewModel(application) {
      */
     fun openFromFeedSelection(drama: Drama, resumeEp: Int? = null) {
         val snapshot = state.value
-        if (snapshot.navigation.origin != PlaybackOrigin.SWIPE_FEED) {
+        if (snapshot.navigation.origin != PlaybackOrigin.SWIPE_FEED ||
+            snapshot.navigation.destination == PlaybackDestination.CATALOG) {
             open(drama, resumeEp = resumeEp)
             return
         }
@@ -1914,7 +1915,8 @@ class DramaViewModel(application: Application) : AndroidViewModel(application) {
                 progress.position, progress.duration,
             )
         }
-        val fromFeed = state.value.feedMode
+        val fromFeed = state.value.navigation.origin == PlaybackOrigin.SWIPE_FEED &&
+            state.value.navigation.destination != PlaybackDestination.CATALOG
         closeAccount()
         val drama = Drama(id, progress.series.title, progress.series.cover)
         if (fromFeed) openFromFeedSelection(drama, progress.episodeIndex + 1)
@@ -1923,7 +1925,8 @@ class DramaViewModel(application: Application) : AndroidViewModel(application) {
 
     fun openCloudDrama(series: Series) {
         if (!series.id.matches(Regex("[0-9]{1,30}"))) return
-        val fromFeed = state.value.feedMode
+        val fromFeed = state.value.navigation.origin == PlaybackOrigin.SWIPE_FEED &&
+            state.value.navigation.destination != PlaybackDestination.CATALOG
         closeAccount()
         val drama = Drama(series.id, series.title, series.cover)
         if (fromFeed) openFromFeedSelection(drama) else open(drama)
@@ -2681,7 +2684,8 @@ class DramaViewModel(application: Application) : AndroidViewModel(application) {
 
     fun share(message: String) {
         val api = source
-        val fromFeed = state.value.feedMode
+        val fromFeed = state.value.navigation.origin == PlaybackOrigin.SWIPE_FEED &&
+            state.value.navigation.destination != PlaybackDestination.CATALOG
         detailJob?.cancel()
         detailJob = viewModelScope.launch {
             try {
@@ -2689,7 +2693,7 @@ class DramaViewModel(application: Application) : AndroidViewModel(application) {
                     else nativeSource.resolveShare(message)
                 mutable.update { it.copy(modal = Modal.NONE) }
                 val drama = Drama(id, "分享的短剧")
-                if (fromFeed && state.value.feedMode)
+                if (fromFeed && state.value.navigation.origin == PlaybackOrigin.SWIPE_FEED)
                     openFromFeedSelection(drama, resumeEp = ep)
                 else open(drama, ep)
             } catch (e: CancellationException) {
