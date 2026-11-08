@@ -103,7 +103,7 @@ internal fun SettingsScreen(state: AppState, model: DramaViewModel) {
                     .height(60.dp).padding(start = 4.dp, end = 16.dp),
                 verticalAlignment = Alignment.CenterVertically,
             ) {
-                IconButton(onClick = model::closeModal) {
+                HongguoIconAction(onClick = model::closeModal) {
                     Icon(Icons.AutoMirrored.Outlined.ArrowBack, contentDescription = "返回",
                         tint = HongguoColors.ink)
                 }
