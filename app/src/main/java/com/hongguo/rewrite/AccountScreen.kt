@@ -150,14 +150,19 @@ internal fun AccountScreen(model: DramaViewModel) {
                             color = HongguoColors.ink)
                         Text("网络恢复后可重新验证；也可以清除已保存会话再登录。本机收藏和历史不受影响。",
                             color = HongguoColors.muted, fontSize = 12.sp)
-                        OutlinedButton(onClick = model.account::refresh, enabled = !account.busy,
-                            modifier = Modifier.fillMaxWidth().testTag("account_verify_saved")) {
-                            Text("重新验证已保存账号")
-                        }
-                        TextButton(onClick = { confirmLogout = true }, enabled = !account.busy,
-                            modifier = Modifier.testTag("account_clear_saved")) {
-                            Text("清除已保存的登录态")
-                        }
+                        HongguoAction(
+                            label = "重新验证已保存账号",
+                            onClick = model.account::refresh,
+                            enabled = !account.busy,
+                            modifier = Modifier.fillMaxWidth().testTag("account_verify_saved"),
+                        )
+                        HongguoAction(
+                            label = "清除已保存的登录态",
+                            onClick = { confirmLogout = true },
+                            enabled = !account.busy,
+                            modifier = Modifier.testTag("account_clear_saved"),
+                            style = HongguoActionStyle.QUIET,
+                        )
                     }
                 }
             }
@@ -240,12 +245,16 @@ internal fun AccountScreen(model: DramaViewModel) {
                             fontSize = 12.sp, color = HongguoColors.muted,
                             modifier = Modifier.testTag("account_qr_expiry"))
                         Row(Modifier.fillMaxWidth(), horizontalArrangement = Arrangement.spacedBy(8.dp)) {
-                            OutlinedButton(onClick = model.account::qrLogin,
-                                enabled = !account.busy, modifier = Modifier.testTag("account_qr_refresh")) {
-                                Text("刷新二维码")
-                            }
-                            TextButton(onClick = model.account::cancelQr,
-                                modifier = Modifier.testTag("account_login_cancel")) { Text("取消登录") }
+                            HongguoAction(
+                                label = "刷新二维码", onClick = model.account::qrLogin,
+                                enabled = !account.busy,
+                                modifier = Modifier.testTag("account_qr_refresh"),
+                            )
+                            HongguoAction(
+                                label = "取消登录", onClick = model.account::cancelQr,
+                                modifier = Modifier.testTag("account_login_cancel"),
+                                style = HongguoActionStyle.QUIET,
+                            )
                         }
                     }
                         }
@@ -624,9 +633,12 @@ private fun AccountRow(
                 Text(subtitle, fontSize = 11.sp, color = HongguoColors.muted)
             Row(horizontalArrangement = Arrangement.spacedBy(8.dp)) {
                 if (onAction != null)
-                    OutlinedButton(onClick = onAction) { Text(actionLabel) }
+                    HongguoAction(label = actionLabel, onClick = onAction)
                 if (extraLabel != null && onExtra != null)
-                    TextButton(onClick = onExtra) { Text(extraLabel) }
+                    HongguoAction(
+                        label = extraLabel, onClick = onExtra,
+                        style = HongguoActionStyle.QUIET,
+                    )
             }
         }
     }
