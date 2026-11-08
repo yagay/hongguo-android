@@ -30,6 +30,7 @@ import androidx.compose.material3.CircularProgressIndicator
 import androidx.compose.material3.Icon
 import androidx.compose.material3.IconButton
 import androidx.compose.material3.OutlinedTextField
+import androidx.compose.material3.OutlinedTextFieldDefaults
 import androidx.compose.material3.Surface
 import androidx.compose.material3.Text
 import androidx.compose.material3.TextButton
@@ -109,6 +110,15 @@ internal fun SearchLandingScreen(
                     },
                     singleLine = true,
                     shape = RoundedCornerShape(14.dp),
+                    colors = OutlinedTextFieldDefaults.colors(
+                        focusedTextColor = SearchInk,
+                        unfocusedTextColor = SearchInk,
+                        cursorColor = SearchInk,
+                        focusedContainerColor = SearchTile,
+                        unfocusedContainerColor = SearchTile,
+                        focusedBorderColor = Color.Transparent,
+                        unfocusedBorderColor = Color.Transparent,
+                    ),
                     keyboardOptions = KeyboardOptions(imeAction = ImeAction.Search),
                     keyboardActions = KeyboardActions(onSearch = { submit(state.search) }),
                 )
@@ -129,8 +139,14 @@ internal fun SearchLandingScreen(
                     "筛选" to Section.BROWSE).forEach { (name, section) ->
                     Surface(
                         onClick = {
-                            model.section(section)
-                            onResults()
+                            if (section == Section.SEARCH) {
+                                // Image-based drama recognition has no verified backend.
+                                // Stay on this page with its functional text search.
+                                model.setSearch("")
+                            } else {
+                                model.section(section)
+                                onResults()
+                            }
                         },
                         shape = RoundedCornerShape(12.dp),
                         color = SearchTile,
