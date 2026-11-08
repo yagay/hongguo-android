@@ -79,7 +79,7 @@ internal fun SearchLandingScreen(
     model: DramaViewModel,
     onClose: () -> Unit,
     onResults: () -> Unit,
-    onOpenDrama: (Drama) -> Unit = model::open,
+    onOpenDrama: (Drama) -> Unit = { model.open(it) },
 ) {
     val systemDark = isSystemInDarkTheme()
     val night = when (state.themeMode) {
