@@ -87,3 +87,12 @@ Observed on a device: a media player appeared in the system media area, but not 
 - Do not checkpoint the old stream after it has reached `STATE_ENDED`; that would recreate a completed-episode resume point after `finishEpisode` cleared it.
 - The **ordinary** notification calls its time/progress refresh every 1000 ms; updates are skipped if the media second is unchanged while playing. MediaSession controls manage their own native clock. Android/OxygenOS can still throttle/redraw notifications independently, so exactly one visible redraw per second cannot be guaranteed.
 - This is static-code remediation pending Debug CI and phone testing, especially next episode with screen on/off and end-of-series autoplay.
+
+## Playback follow-up from 2026-11-08 02:57 diagnostics
+
+- In the uploaded diagnostic trace, automatic next-episode navigation had `MEDIA_ENDED` at 02:57:13.838, `NEXT_EPISODE` at 02:57:13.848, `AUTO_START_RECOVERY` at 02:57:13.997 and `PLAYING` at 02:57:14.002 (UTC). `FIRST_FRAME` was later at 02:57:29.146. Thus the trace confirms a temporarily lost autoplay intent and late first-frame rendering, but it does **not** measure the exact audio gap while no video surface is attached.
+- The service now records sanitized reasons for changes to `playWhenReady` (user/audio-focus/noisy/remote/other), Media3 `IDLE/BUFFERING/READY/ENDED` transitions, a bounded stalled-progress event, and the caller-specific service stop reason. It never records original stream URLs or search/title text.
+- Prefetch retries once after 1.5 s **only** for the typed upstream `EmptyPlaybackResponseException`; other errors are not retried, and both episode generation and quality constraints are revalidated before retrying.
+- A restored playback position beyond 3 seconds does not by itself constitute background playback confirmation: the service now requires 3 seconds of newly observed forward progress.
+- Keep the Android/OnePlus notification and MediaSession timeline independent of the UI lifecycle. The real reason for `AUTO_START_RECOVERY` is pending capture by these new diagnostics; do not assume one cause without a new trace.
+- CI run and lock-screen device validation are still pending.
