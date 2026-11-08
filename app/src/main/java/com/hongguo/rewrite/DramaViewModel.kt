@@ -267,6 +267,7 @@ class DramaViewModel(application: Application) : AndroidViewModel(application) {
         prefs.getBoolean("diagnostic_enabled", true))
     private val publicWebsite = NativeWebsiteSource(diagnostics = diagnostics)
     private val nativeSource = NativeHongguoSource(diagnostics = diagnostics)
+    private val catalogRepository = CatalogRepository(nativeSource) { source }
     /** Independent, lazy, read-only SDK; never used by Media3, account auth or reel paging. */
     private val openHongguo = OpenHongguoSource(application)
     internal val openHongguoDiscovery: OpenHongguoSource get() = openHongguo
@@ -1160,9 +1161,8 @@ class DramaViewModel(application: Application) : AndroidViewModel(application) {
         pageJob = viewModelScope.launch {
             val started = System.nanoTime()
             try {
-                val result = if (api != null)
-                    api.list(s.section, 0, s.genre, s.board, s.search, s.activeFilters, emptyList())
-                else nativeSource.list(s.section, 0, s.genre, s.board, s.search, s.activeFilters)
+                val result = catalogRepository.page(
+                    s.section, 0, s.genre, s.board, s.search, s.activeFilters)
                 if (version != requestId) return@launch
                 mutable.update { it.copy(items = result.items, nextOffset = result.nextOffset,
                     hasMore = result.hasMore, loading = false) }
@@ -1178,8 +1178,7 @@ class DramaViewModel(application: Application) : AndroidViewModel(application) {
         if (s.section == Section.BROWSE && s.filters.isEmpty()) {
             viewModelScope.launch {
                 try {
-                    val groups = if (api != null) api.filters(s.genre)
-                        else nativeSource.filters(s.genre)
+                    val groups = catalogRepository.filters(s.genre)
                     if (version == requestId) mutable.update { it.copy(filters = groups) }
                 } catch (e: CancellationException) {
                     throw e
@@ -1197,19 +1196,17 @@ class DramaViewModel(application: Application) : AndroidViewModel(application) {
         val version = requestId
         pageJob = viewModelScope.launch {
             try {
-                val result = source?.list(s.section, s.nextOffset, s.genre,
-                    s.board, s.search, s.activeFilters, s.items.map { it.id })
-                    ?: nativeSource.list(s.section, s.nextOffset,
-                        s.genre, s.board, s.search, s.activeFilters)
+                val result = catalogRepository.page(
+                    s.section, s.nextOffset, s.genre, s.board, s.search,
+                    s.activeFilters, s.items.map { it.id })
                 if (version != requestId) return@launch
-                val merged = (s.items + result.items).distinctBy(Drama::id)
-                val added = (merged.size - s.items.size).coerceAtLeast(0)
-                val continued = result.hasMore && result.nextOffset > s.nextOffset && added > 0
+                val mergedPage = CatalogRepository.mergePage(
+                    s.items, result, s.nextOffset)
                 mutable.update {
-                    it.copy(items = merged, nextOffset = result.nextOffset,
-                        hasMore = continued, moreLoading = false)
+                    it.copy(items = mergedPage.items, nextOffset = mergedPage.nextOffset,
+                        hasMore = mergedPage.hasMore, moreLoading = false)
                 }
-                if (!continued && result.hasMore) {
+                if (!mergedPage.hasMore && result.hasMore) {
                     diagnostics.record("CATALOG", "PAGINATION_NO_PROGRESS")
                 }
                 // Catalog pagination is only for the home grid. Reels have their
