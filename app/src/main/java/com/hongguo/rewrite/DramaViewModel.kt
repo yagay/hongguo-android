@@ -936,6 +936,126 @@ class DramaViewModel(application: Application) : AndroidViewModel(application) {
         diagnostics.record("DETAIL", "TAG_SEARCH")
     }
 
+    // Search landing browsing uses the same catalog service, but has its own
+    // request generation and pagination so it cannot reset the homepage or
+    // mutate an actively playing recommendation feed.
+    private val mutableSearchBrowse = MutableStateFlow(SearchBrowseState())
+    val searchBrowse = mutableSearchBrowse.asStateFlow()
+    private var searchBrowseJob: Job? = null
+    private var searchBrowseFiltersJob: Job? = null
+    private var searchBrowseGeneration = 0L
+
+    fun searchBrowseSection(section: Section?) {
+        if (section != null && section !in setOf(
+                Section.RECOMMEND, Section.RANK, Section.LATEST, Section.BROWSE)) return
+        val previous = mutableSearchBrowse.value
+        if (section == previous.section) return
+        searchBrowseJob?.cancel()
+        searchBrowseFiltersJob?.cancel()
+        ++searchBrowseGeneration
+        mutableSearchBrowse.value = SearchBrowseState(section = section,
+            board = previous.board, genre = previous.genre)
+        if (section != null) refreshSearchBrowse()
+    }
+
+    fun searchBrowseBoard(value: String) {
+        val choices = if (state.value.backend.isBlank())
+            setOf("all", "real", "comic", "ai")
+        else setOf("hot", "new", "recommend")
+        if (value !in choices) return
+        mutableSearchBrowse.update { it.copy(board = value) }
+        refreshSearchBrowse()
+    }
+
+    fun searchBrowseGenre(value: String) {
+        if (value !in setOf("short_play", "comic_series", "ai_series")) return
+        mutableSearchBrowse.update {
+            it.copy(genre = value, activeFilters = emptyMap(), filters = emptyList())
+        }
+        refreshSearchBrowse()
+    }
+
+    fun searchBrowseApplyFilters(filters: Map<String, String>) {
+        mutableSearchBrowse.update { it.copy(activeFilters = filters.filterValues(String::isNotBlank)) }
+        refreshSearchBrowse()
+    }
+
+    fun refreshSearchBrowse() {
+        val snapshot = mutableSearchBrowse.value
+        val section = snapshot.section ?: return
+        searchBrowseJob?.cancel()
+        searchBrowseFiltersJob?.cancel()
+        val generation = ++searchBrowseGeneration
+        mutableSearchBrowse.update { it.copy(items = emptyList(), loading = true,
+            moreLoading = false, error = null, hasMore = false, nextOffset = 0) }
+        searchBrowseJob = viewModelScope.launch {
+            try {
+                val result = source?.list(section, 0, snapshot.genre, snapshot.board,
+                    "", snapshot.activeFilters, emptyList())
+                    ?: nativeSource.list(section, 0, snapshot.genre, snapshot.board,
+                        "", snapshot.activeFilters)
+                if (generation != searchBrowseGeneration) return@launch
+                mutableSearchBrowse.update { it.copy(items = result.items,
+                    loading = false, hasMore = result.hasMore,
+                    nextOffset = result.nextOffset) }
+            } catch (e: CancellationException) {
+                throw e
+            } catch (e: Exception) {
+                if (generation == searchBrowseGeneration)
+                    mutableSearchBrowse.update {
+                        it.copy(loading = false, error = errorText("浏览短剧", e))
+                    }
+            }
+        }
+        if (section == Section.BROWSE && snapshot.filters.isEmpty()) {
+            searchBrowseFiltersJob = viewModelScope.launch {
+                try {
+                    val groups = source?.filters(snapshot.genre)
+                        ?: nativeSource.filters(snapshot.genre)
+                    if (generation == searchBrowseGeneration)
+                        mutableSearchBrowse.update { it.copy(filters = groups) }
+                } catch (e: CancellationException) {
+                    throw e
+                } catch (_: Exception) {
+                    diagnostics.record("SEARCH_BROWSE", "FILTERS_UNAVAILABLE")
+                }
+            }
+        }
+    }
+
+    fun moreSearchBrowse() {
+        val snapshot = mutableSearchBrowse.value
+        val section = snapshot.section ?: return
+        if (snapshot.loading || snapshot.moreLoading || !snapshot.hasMore) return
+        val generation = searchBrowseGeneration
+        mutableSearchBrowse.update { it.copy(moreLoading = true) }
+        searchBrowseJob = viewModelScope.launch {
+            try {
+                val result = source?.list(section, snapshot.nextOffset,
+                    snapshot.genre, snapshot.board, "", snapshot.activeFilters,
+                    snapshot.items.map { it.id })
+                    ?: nativeSource.list(section, snapshot.nextOffset,
+                        snapshot.genre, snapshot.board, "", snapshot.activeFilters)
+                if (generation != searchBrowseGeneration) return@launch
+                val merged = (snapshot.items + result.items).distinctBy(Drama::id)
+                mutableSearchBrowse.update {
+                    it.copy(items = merged, moreLoading = false,
+                        nextOffset = result.nextOffset,
+                        hasMore = result.hasMore &&
+                            result.nextOffset > snapshot.nextOffset &&
+                            merged.size > snapshot.items.size)
+                }
+            } catch (e: CancellationException) {
+                throw e
+            } catch (e: Exception) {
+                if (generation == searchBrowseGeneration)
+                    mutableSearchBrowse.update {
+                        it.copy(moreLoading = false, error = errorText("加载更多", e))
+                    }
+            }
+        }
+    }
+
     fun section(section: Section) {
         if (section == Section.SEARCH && state.value.search.isBlank()) {
             mutable.update { it.copy(section = section, items = emptyList(), error = null) }
