@@ -1,0 +1,40 @@
+package com.hongguo.rewrite
+
+/**
+ * Explicit in-app player navigation. Video presentation (full/mini) is not a
+ * navigation destination: a Media3 surface must never decide where Back goes.
+ *
+ * Flow when entered through the default swipe screen:
+ * FEED -> SERIES -> DETAILS -> (related work) SERIES -> FEED.
+ *
+ * The selected related work joins the live feed queue. Back keeps its current
+ * Media3 item and the queue, rather than revealing the legacy home catalog.
+ */
+internal enum class PlaybackOrigin { SWIPE_FEED, CATALOG }
+
+internal enum class PlaybackDestination { FEED, SERIES, DETAILS, CATALOG }
+
+internal data class PlaybackNavigation(
+    val origin: PlaybackOrigin = PlaybackOrigin.SWIPE_FEED,
+    val destination: PlaybackDestination = PlaybackDestination.FEED,
+) {
+    fun toFeed(): PlaybackNavigation =
+        PlaybackNavigation(PlaybackOrigin.SWIPE_FEED, PlaybackDestination.FEED)
+
+    fun toSeries(origin: PlaybackOrigin = this.origin): PlaybackNavigation =
+        PlaybackNavigation(origin, PlaybackDestination.SERIES)
+
+    fun toDetails(): PlaybackNavigation = copy(destination = PlaybackDestination.DETAILS)
+
+    fun fromDetails(): PlaybackNavigation = copy(destination = PlaybackDestination.SERIES)
+
+    fun toCatalog(): PlaybackNavigation = copy(destination = PlaybackDestination.CATALOG)
+
+    fun restorePlayer(feedMode: Boolean): PlaybackNavigation =
+        copy(destination = if (feedMode) PlaybackDestination.FEED
+            else PlaybackDestination.SERIES)
+
+    val returnsToFeed: Boolean
+        get() = origin == PlaybackOrigin.SWIPE_FEED &&
+            destination == PlaybackDestination.SERIES
+}
