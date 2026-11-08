@@ -117,10 +117,10 @@ internal fun DramaDetailScreen(state: AppState, model: DramaViewModel) {
                 ) {
                     Row(
                         Modifier.fillMaxWidth().height(HongguoUi.pageTopBarHeight)
-                            .padding(horizontal = 12.dp),
+                             .padding(horizontal = HongguoUi.pagePadding),
                         verticalAlignment = Alignment.CenterVertically,
                     ) {
-                        IconButton(
+                        HongguoIconAction(
                             onClick = model::backFromDramaDetails,
                             modifier = Modifier.testTag("detail_back"),
                         ) {
@@ -128,11 +128,11 @@ internal fun DramaDetailScreen(state: AppState, model: DramaViewModel) {
                                 tint = DetailText)
                         }
                         Spacer(Modifier.weight(1f))
-                        IconButton(onClick = shareDrama) {
+                        HongguoIconAction(onClick = shareDrama) {
                             Icon(Icons.Outlined.Share, "分享", tint = DetailText)
                         }
                         Box {
-                            IconButton(onClick = { showMenu = true }) {
+                            HongguoIconAction(onClick = { showMenu = true }) {
                                 Icon(Icons.Outlined.MoreVert, "更多", tint = DetailText)
                             }
                             DropdownMenu(expanded = showMenu,
@@ -579,7 +579,4 @@ internal fun DramaDetailScreen(state: AppState, model: DramaViewModel) {
 }
 
 @Composable
-private fun DetailHeader(title: String) {
-    Text(title, color = MaterialTheme.colorScheme.onBackground, fontSize = 17.sp,
-        fontWeight = FontWeight.SemiBold)
-}
+private fun DetailHeader(title: String) = HongguoSectionTitle(title)
