@@ -50,6 +50,8 @@ import dev.openhongguo.Person
 import dev.openhongguo.Work
 import dev.openhongguo.FilterRow
 import kotlinx.coroutines.CancellationException
+import kotlinx.coroutines.Dispatchers
+import kotlinx.coroutines.withContext
 
 /**
  * Independent read-only discovery built on the published openhongguo Android SDK.
@@ -119,7 +121,9 @@ internal fun OpenHongguoExploreScreen(
                     "filterAI" -> "ai_series"
                     else -> "short_play"
                 }
-                filterRows = source.filterPanel(genre).filter { it.key != "genre" }
+                filterRows = withContext(Dispatchers.IO) {
+                    source.filterPanel(genre)
+                }.filter { it.key != "genre" }
             } catch (e: CancellationException) { throw e }
             catch (_: Exception) { /* Filter defaults stay usable. */ }
         }
@@ -136,17 +140,24 @@ internal fun OpenHongguoExploreScreen(
         try {
             val page = if (tab in setOf("discover", "search", "calendar",
                     "category", "rankGroups") || rankCell.isNotBlank()) {
-                source.browseExtended(
-                    if (rankCell.isNotBlank()) "rankRows" else tab,
-                    if (rankCell.isNotBlank()) rankCell else activeQuery,
-                    cursor)
-            } else source.browse(tab, cursor, selectedFilters)
+                withContext(Dispatchers.IO) {
+                    source.browseExtended(
+                        if (rankCell.isNotBlank()) "rankRows" else tab,
+                        if (rankCell.isNotBlank()) rankCell else activeQuery,
+                        cursor)
+                }
+            } else withContext(Dispatchers.IO) {
+                source.browse(tab, cursor, selectedFilters)
+            }
             rows = if (cursor.isEmpty()) page.items else
                 (rows + page.items).distinctBy { it.id.ifBlank { it.title } }
             nextCursor = page.cursor
             more = page.hasMore && page.cursor.isNotBlank() && page.cursor != cursor
         } catch (e: CancellationException) {
             throw e
+        } catch (e: IllegalArgumentException) {
+            error = e.message ?: "查询参数有误"
+            more = false
         } catch (_: Exception) {
             error = "当前接口暂时不可用，可稍后重试"
             more = false
@@ -159,8 +170,8 @@ internal fun OpenHongguoExploreScreen(
         if (suggestionRequest == 0 || tab != "search") return@LaunchedEffect
         try {
             suggestions = if (query.trim().isBlank())
-                source.searchCues().take(10)
-            else source.suggest(query.trim()).map {
+                withContext(Dispatchers.IO) { source.searchCues() }.take(10)
+            else withContext(Dispatchers.IO) { source.suggest(query.trim()) }.map {
                 it.keyword.ifBlank { it.text }
             }.filter(String::isNotBlank).distinct().take(10)
         } catch (e: CancellationException) { throw e }
@@ -172,9 +183,12 @@ internal fun OpenHongguoExploreScreen(
         worksLoading = true
         try {
             if (worksCursor.isEmpty()) {
-                actor = runCatching { source.person(actorId) }.getOrNull()
+                actor = runCatching { withContext(Dispatchers.IO) { source.person(actorId) } }
+                    .onFailure { if (it is CancellationException) throw it }.getOrNull()
             }
-            val page = source.personWorks(actorId, worksCursor)
+            val page = withContext(Dispatchers.IO) {
+                source.personWorks(actorId, worksCursor)
+            }
             works = if (worksCursor.isEmpty()) page.items else
                 (works + page.items).distinctBy(Work::seriesId)
             nextWorksCursor = page.cursor
