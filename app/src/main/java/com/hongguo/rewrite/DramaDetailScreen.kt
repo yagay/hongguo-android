@@ -386,6 +386,29 @@ internal fun DramaDetailScreen(state: AppState, model: DramaViewModel) {
                 }
             } }
 
+            if (state.openHongguoSeasons.isNotEmpty()) item {
+                Column(Modifier.padding(horizontal = 16.dp),
+                    verticalArrangement = Arrangement.spacedBy(9.dp)) {
+                    DetailHeader("相关作品")
+                    Row(Modifier.fillMaxWidth().horizontalScroll(rememberScrollState()),
+                        horizontalArrangement = Arrangement.spacedBy(12.dp)) {
+                        state.openHongguoSeasons.forEach { season ->
+                            Column(Modifier.width(94.dp).clickable { model.open(season) },
+                                verticalArrangement = Arrangement.spacedBy(6.dp)) {
+                                AsyncImage(model = model.cover(season.cover),
+                                    contentDescription = season.title,
+                                    contentScale = ContentScale.Crop,
+                                    modifier = Modifier.width(94.dp).height(132.dp)
+                                        .clip(RoundedCornerShape(8.dp)))
+                                Text(season.title, color = DetailText,
+                                    fontSize = 12.sp, maxLines = 2,
+                                    overflow = TextOverflow.Ellipsis)
+                            }
+                        }
+                    }
+                }
+            }
+
             item {
                 Column(Modifier.padding(horizontal = 16.dp),
                     verticalArrangement = Arrangement.spacedBy(12.dp)) {
@@ -414,22 +437,6 @@ internal fun DramaDetailScreen(state: AppState, model: DramaViewModel) {
                 }
             }
 
-            if (state.openHongguoSeasons.isNotEmpty()) item {
-                Column(Modifier.padding(horizontal = 16.dp),
-                    verticalArrangement = Arrangement.spacedBy(9.dp)) {
-                    DetailHeader("系列剧 · 其他季")
-                    Row(Modifier.horizontalScroll(rememberScrollState()),
-                        horizontalArrangement = Arrangement.spacedBy(10.dp)) {
-                        state.openHongguoSeasons.forEach { season ->
-                            Text(season.title,
-                                Modifier.background(DetailCard, RoundedCornerShape(9.dp))
-                                    .clickable { model.open(season) }
-                                    .padding(12.dp),
-                                color = DetailText, fontSize = 13.sp)
-                        }
-                    }
-                }
-            }
 
             item {
                 Column(Modifier.padding(horizontal = 16.dp),
