@@ -453,17 +453,4 @@ private fun SettingToggle(
     enabled: Boolean,
     onChange: (Boolean) -> Unit,
     testTag: String,
-) {
-    Row(Modifier.fillMaxWidth(), verticalAlignment = Alignment.CenterVertically) {
-        Column(Modifier.weight(1f),
-            verticalArrangement = Arrangement.spacedBy(3.dp)) {
-            Text(title, fontWeight = FontWeight.SemiBold, color = HongguoColors.ink)
-            Text(explanation, fontSize = 11.sp, color = HongguoColors.muted)
-        }
-        Switch(
-            checked = enabled,
-            onCheckedChange = onChange,
-            modifier = Modifier.testTag(testTag),
-        )
-    }
-}
+) = HongguoToggleRow(title, enabled, onChange, testTag, description = explanation)
