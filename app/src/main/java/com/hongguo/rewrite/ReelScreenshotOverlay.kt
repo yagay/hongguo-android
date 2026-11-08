@@ -186,9 +186,8 @@ internal fun ReelScreenshotOverlay(
                 }
             }
         } else {
-            // Three compact controls: the visible circular backgrounds are
-            // only 30dp, while 40dp touch targets preserve usability. Avoid
-            // oversized dark discs taking space from the playing picture.
+            // Preserve the original icon sizes. Only the dark circular
+            // background is reduced to 30dp; 40dp touch targets remain.
             Row(
                 Modifier.fillMaxWidth()
                     .padding(start = 6.dp, end = 6.dp, top = 2.dp),
@@ -201,7 +200,7 @@ internal fun ReelScreenshotOverlay(
                         contentAlignment = Alignment.Center,
                     ) {
                         Icon(Icons.AutoMirrored.Outlined.ArrowBack, "返回",
-                            tint = white, modifier = Modifier.size(20.dp))
+                            tint = white, modifier = Modifier.size(26.dp))
                     }
                 }
                 Spacer(Modifier.weight(1f))
@@ -215,7 +214,7 @@ internal fun ReelScreenshotOverlay(
                         contentAlignment = Alignment.Center,
                     ) {
                         Icon(Icons.Outlined.PictureInPictureAlt, "跨应用画中画",
-                            tint = white, modifier = Modifier.size(19.dp))
+                            tint = white, modifier = Modifier.size(25.dp))
                     }
                 }
                 IconButton(
@@ -228,7 +227,7 @@ internal fun ReelScreenshotOverlay(
                         contentAlignment = Alignment.Center,
                     ) {
                         Icon(Icons.Outlined.MoreVert, "播放设置",
-                            tint = white, modifier = Modifier.size(20.dp))
+                            tint = white, modifier = Modifier.size(25.dp))
                     }
                 }
             }
