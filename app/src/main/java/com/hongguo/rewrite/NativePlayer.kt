@@ -464,8 +464,9 @@ internal fun NativePlayer(state: AppState, model: DramaViewModel) {
             onLike = model::toggleLocalLike,
             onComments = { showComments = true },
             onDanmaku = { model.setDanmaku(!state.danmakuEnabled) },
-
-
+            onRetryDanmaku = {
+                model.retryDanmaku(playback.positionMs, playback.durationMs)
+            },
         )
         }
         ReelBottomDock(
