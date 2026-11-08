@@ -261,7 +261,9 @@ class BackgroundPlaybackService : MediaSessionService() {
             engine.duration.takeIf { it > 0L } ?: 0L)
         engine.pause()
         engine.stop()
-        engine.clearMediaItems()
+        // Retain the paused media item/notification while the next encrypted
+        // model is resolving; clearing the playlist could stop the foreground
+        // service before the background skip completes.
         currentKey = null
         remoteVideo?.close()
         remoteVideo = null
