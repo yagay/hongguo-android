@@ -121,7 +121,7 @@ internal fun <T> HongguoChoiceGroup(
                 shape = RoundedCornerShape(HongguoUi.controlRadius),
                 colors = HongguoChoiceColors(dark),
                 modifier = Modifier.testTag(tag + "_" +
-                    if (tagByValue) value.toString() else index.toString()),
+                    (if (tagByValue) value.toString() else index.toString())),
             )
         }
     }
