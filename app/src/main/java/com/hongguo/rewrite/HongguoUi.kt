@@ -252,7 +252,6 @@ internal fun HongguoIconAction(
 @Composable
 internal fun HongguoPrimaryNavigation(
     selectedTab: String,
-    playingVideo: Boolean,
     onSelect: (String) -> Unit,
 ) {
     // Keep all three primary destinations visually identical. A separate
