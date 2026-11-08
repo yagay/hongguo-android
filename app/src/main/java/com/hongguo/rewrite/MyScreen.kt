@@ -187,7 +187,8 @@ internal fun MyScreen(state: AppState, model: DramaViewModel, onBack: () -> Unit
                     // A placeholder remains visible if the avatar is missing.
                     Box(Modifier.size(58.dp).clip(CircleShape)
                             .background(HongguoColors.accentSoft)
-                            .clickable(onClick = openAccount),
+                            .then(if (account.profile == null)
+                                Modifier.clickable(onClick = openAccount) else Modifier),
                         contentAlignment = Alignment.Center) {
                         Icon(Icons.Outlined.PersonOutline, null,
                             Modifier.size(33.dp), tint = HongguoColors.accent)
@@ -201,7 +202,10 @@ internal fun MyScreen(state: AppState, model: DramaViewModel, onBack: () -> Unit
                         }
                     }
                     Column(
-                        Modifier.weight(1f).clickable(onClick = openAccount),
+                        Modifier.weight(1f).then(
+                            if (account.profile == null)
+                                Modifier.clickable(onClick = openAccount) else Modifier
+                        ),
                         verticalArrangement = Arrangement.spacedBy(4.dp),
                     ) {
                         Text(
