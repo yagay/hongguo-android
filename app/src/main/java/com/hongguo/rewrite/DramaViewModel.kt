@@ -964,6 +964,23 @@ class DramaViewModel(application: Application) : AndroidViewModel(application) {
         if (section != null) refreshSearchBrowse()
     }
 
+    /** Search results stay inside the search page rather than navigating to
+     * the homepage's Section.SEARCH screen.
+     */
+    fun searchBrowseQuery(value: String) {
+        val query = value.trim().take(80)
+        if (query.isBlank()) return
+        setSearch(query)
+        rememberQuery(query)
+        searchBrowseJob?.cancel()
+        searchBrowseFiltersJob?.cancel()
+        ++searchBrowseGeneration
+        mutableSearchBrowse.value = SearchBrowseState(
+            section = Section.SEARCH, query = query,
+        )
+        refreshSearchBrowse()
+    }
+
     fun searchBrowseBoard(value: String) {
         val choices = if (state.value.backend.isBlank())
             setOf("all", "real", "comic", "ai")
@@ -997,9 +1014,9 @@ class DramaViewModel(application: Application) : AndroidViewModel(application) {
         searchBrowseJob = viewModelScope.launch {
             try {
                 val result = source?.list(section, 0, snapshot.genre, snapshot.board,
-                    "", snapshot.activeFilters, emptyList())
+                    snapshot.query, snapshot.activeFilters, emptyList())
                     ?: nativeSource.list(section, 0, snapshot.genre, snapshot.board,
-                        "", snapshot.activeFilters)
+                        snapshot.query, snapshot.activeFilters)
                 if (generation != searchBrowseGeneration) return@launch
                 mutableSearchBrowse.update { it.copy(items = result.items,
                     loading = false, hasMore = result.hasMore,
@@ -1038,10 +1055,10 @@ class DramaViewModel(application: Application) : AndroidViewModel(application) {
         searchBrowseJob = viewModelScope.launch {
             try {
                 val result = source?.list(section, snapshot.nextOffset,
-                    snapshot.genre, snapshot.board, "", snapshot.activeFilters,
+                    snapshot.genre, snapshot.board, snapshot.query, snapshot.activeFilters,
                     snapshot.items.map { it.id })
                     ?: nativeSource.list(section, snapshot.nextOffset,
-                        snapshot.genre, snapshot.board, "", snapshot.activeFilters)
+                        snapshot.genre, snapshot.board, snapshot.query, snapshot.activeFilters)
                 if (generation != searchBrowseGeneration) return@launch
                 val merged = (snapshot.items + result.items).distinctBy(Drama::id)
                 mutableSearchBrowse.update {
