@@ -77,7 +77,7 @@ import androidx.lifecycle.viewmodel.compose.viewModel
 private const val EXTERNAL_PIP_PREFERENCES = "external_picture_in_picture"
 private const val EXTERNAL_PIP_ENABLED = "enabled"
 
-private fun externalPipEnabled(context: Context): Boolean =
+private fun readExternalPipEnabled(context: Context): Boolean =
     context.getSharedPreferences(EXTERNAL_PIP_PREFERENCES, Context.MODE_PRIVATE)
         .getBoolean(EXTERNAL_PIP_ENABLED, true)
 
@@ -101,7 +101,7 @@ class MainActivity : ComponentActivity() {
     }
 
     fun updateVideoPictureInPictureEligibility(enabled: Boolean) {
-        autoPictureInPictureEligible = enabled && externalPipEnabled(this) &&
+        autoPictureInPictureEligible = enabled && readExternalPipEnabled(this) &&
             packageManager.hasSystemFeature(PackageManager.FEATURE_PICTURE_IN_PICTURE)
         if (!videoInPictureInPicture) {
             // PiP can be disabled per app by the user, and OEM framework
@@ -172,7 +172,7 @@ private fun HongguoApp(model: DramaViewModel = viewModel()) {
     val state by model.state.collectAsStateWithLifecycle()
     val appContext = LocalContext.current
     var externalPipEnabled by remember(appContext) {
-        mutableStateOf(externalPipEnabled(appContext))
+        mutableStateOf(readExternalPipEnabled(appContext))
     }
     val setExternalPipEnabled: (Boolean) -> Unit = { enabled ->
         externalPipEnabled = enabled
