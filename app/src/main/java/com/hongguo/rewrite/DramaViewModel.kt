@@ -2251,8 +2251,10 @@ class DramaViewModel(application: Application) : AndroidViewModel(application) {
         if (!alreadyActive) play(index)
     }
 
-    /** The player's back button minimizes; only mini close explicitly stops. */
-    fun backFromPlayer() = minimizePlayer()
+    /** Back from a visible video minimizes; Back from initial loading cancels it. */
+    fun backFromPlayer() {
+        if (state.value.detail == null) closePlayer() else minimizePlayer()
+    }
 
     fun closePlayer() {
         BackgroundPlaybackService.stopActive("CLOSE_PLAYER")
