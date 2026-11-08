@@ -86,8 +86,10 @@ private fun HongguoApp(model: DramaViewModel = viewModel()) {
         HongguoColors.applyTheme(state.themeStyle, state.themeMode, systemDark)
         activity?.let {
             val bars = WindowCompat.getInsetsController(it.window, it.window.decorView)
-            bars.isAppearanceLightStatusBars = !darkPlayer && !detailImmersive && !darkTheme
-            bars.isAppearanceLightNavigationBars = !darkPlayer && !detailImmersive && !darkTheme
+            bars.isAppearanceLightStatusBars =
+                !darkPlayer && !detailImmersive && !searchLandingOpen && !darkTheme
+            bars.isAppearanceLightNavigationBars =
+                !darkPlayer && !detailImmersive && !searchLandingOpen && !darkTheme
         }
     }
     val palette = (if (darkTheme) darkColorScheme(
@@ -109,6 +111,7 @@ private fun HongguoApp(model: DramaViewModel = viewModel()) {
         Box(
             Modifier.fillMaxSize().background(
                 if (detailImmersive) Color(0xFF6A4939)
+                else if (searchLandingOpen) Color(0xFF101010)
                 else if (darkPlayer) HongguoColors.playerBackground
                 else HongguoColors.background
             )
