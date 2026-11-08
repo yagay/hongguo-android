@@ -80,14 +80,20 @@ class NativeHongguoSource(
     ): CatalogPage = withContext(Dispatchers.IO) {
         reelsLock.withLock {
             if (restart) {
+                val accountForSession = synchronized(recommendationLock) { accountFeed }
                 reelsCursor = RecommendationCursor()
                 reelsFeed = RecommendationFeed(repository.http,
-                    account = synchronized(recommendationLock) { accountFeed },
+                    account = accountForSession,
                     cursor = reelsCursor)
                 reelsPageNumber = 1
                 realReelsCursor = RecommendationCursor()
                 realReelsFeed = RecommendationFeed(repository.http,
+                    account = accountForSession,
                     cursor = realReelsCursor, category = DramaCategory.REAL)
+                // This confirms only the request's authenticated/anonymous
+                // identity. It does not prove the server personalized its rank.
+                diagnostics?.record("REELS", if (accountForSession != null)
+                    "ACCOUNT_REQUEST_MODE" else "ANONYMOUS_REQUEST_MODE")
                 realReelsPageNumber = 1
                 realReelsEnd = false
             }
