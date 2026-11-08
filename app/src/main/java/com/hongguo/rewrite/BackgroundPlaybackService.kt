@@ -80,6 +80,7 @@ class BackgroundPlaybackService : MediaSessionService() {
         engine = ExoPlayer.Builder(this).build().apply {
             setAudioAttributes(androidx.media3.common.AudioAttributes.DEFAULT, true)
             setHandleAudioBecomingNoisy(true)
+            setWakeMode(androidx.media3.common.C.WAKE_MODE_NETWORK)
         }
         val intent = Intent(this, MainActivity::class.java)
             .addFlags(Intent.FLAG_ACTIVITY_SINGLE_TOP or Intent.FLAG_ACTIVITY_CLEAR_TOP)
@@ -225,7 +226,7 @@ class BackgroundPlaybackService : MediaSessionService() {
         skipIntroMs = introMs
         retryAutomatically = autoRetry
         val metadata = MediaMetadata.Builder()
-            .setTitle(drama)
+            .setTitle("$drama · 第${episode}集")
             .setDisplayTitle("$drama · 第${episode}集")
             .setArtist("第${episode}集 / 共${totalEpisodes}集")
             .setAlbumTitle(drama)
