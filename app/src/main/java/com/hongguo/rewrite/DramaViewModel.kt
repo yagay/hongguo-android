@@ -369,7 +369,7 @@ class DramaViewModel(application: Application) : AndroidViewModel(application) {
 
     private fun preloadFollowingEpisode() {
         val s = state.value
-        if (!s.preloadNext || (source != null && !s.feedMode)) return
+        if (!s.preloadNext || (source != null && !s.feedMode && !s.returnToFeed)) return
         val next = s.detail?.episodes?.getOrNull(s.episodeIndex + 1)?.vid ?: return
         if (next == preloadedNextVid) return
         clearPreloadedNext()
@@ -1722,6 +1722,7 @@ class DramaViewModel(application: Application) : AndroidViewModel(application) {
             detailPageVisible = false,
             detail = if (drama == null) null else it.detail,
             feedMode = true,
+            returnToFeed = false,
             feedItems = drama?.let(::listOf).orEmpty(),
             feedIndex = 0,
             feedLoading = false,
@@ -1760,15 +1761,54 @@ class DramaViewModel(application: Application) : AndroidViewModel(application) {
         }
     }
 
+    /** Enter the current drama's episode pager without replacing its active media.
+     * Keep the feed queue/index so Back can return to this same drama and resume swiping.
+     */
     fun exitFeedToEpisode(index: Int) {
+        val snapshot = state.value
+        val target = snapshot.detail?.episodes?.getOrNull(index) ?: return
+        if (!snapshot.feedMode) {
+            if (index != snapshot.episodeIndex) play(index)
+            return
+        }
         officialFeedJob?.cancel()
         officialFeedGeneration++
-        homeFeedExcludedIds = emptySet()
         pendingFeedAdvance = false
         feedPrefetchJob?.cancel()
         clearReelWarmVideo()
-        mutable.update { it.copy(feedMode = false, feedLoading = false) }
-        play(index)
+        val currentMediaMatches = snapshot.playbackUrl != null &&
+            index == snapshot.episodeIndex &&
+            BackgroundPlaybackService.playerFlow.value?.currentMediaItem?.mediaId == target.vid
+        mutable.update {
+            it.copy(feedMode = false, returnToFeed = true, feedLoading = false,
+                detailPageVisible = false, miniPlayerVisible = false)
+        }
+        diagnostics.record("REELS", "ENTER_EPISODES")
+        updateNotificationNavigation()
+        // Only a different or missing media item needs a new playback request.
+        // A mode change alone must not reset the position or pause the player.
+        if (!currentMediaMatches) play(index)
+    }
+
+    /** Restore the original swipe queue while the current Media3 video keeps playing. */
+    private fun restoreReelFeed(): Boolean {
+        val snapshot = state.value
+        if (!ReelReturnPolicy.canRestore(snapshot)) return false
+        mutable.update {
+            it.copy(feedMode = true, returnToFeed = false,
+                miniPlayerVisible = false, detailPageVisible = false,
+                detailEntryEnabled = false)
+        }
+        diagnostics.record("REELS", "RETURN_TO_FEED_KEEP_PLAYING")
+        updateNotificationNavigation()
+        val current = state.value
+        if (OfficialReelsPolicy.needsMore(current.feedItems, current.feedIndex,
+                current.hiddenRecommendationIds, current.feedHasMore, current.feedLoading)) {
+            loadOfficialReels()
+        } else if (current.preloadNext) {
+            prefetchFollowingFeedItem(current.feedIndex)
+        }
+        return true
     }
 
     /** Cloud rows are opened only by user action; local library remains local.
@@ -1850,6 +1890,7 @@ class DramaViewModel(application: Application) : AndroidViewModel(application) {
             episodeIndex = readyIndex ?: it.episodeIndex,
             preparingDetail = ready == null,
             feedMode = feed,
+            returnToFeed = false,
             detailPageVisible = showDetails,
             miniPlayerVisible = retainMini,
             detailEntryEnabled = false,
@@ -2053,7 +2094,7 @@ class DramaViewModel(application: Application) : AndroidViewModel(application) {
             return
         }
         clearEngagement()
-        val api = if (state.value.feedMode) null else source
+        val api = if (state.value.feedMode || state.value.returnToFeed) null else source
         val version = ++detailId
         val vid = detail.episodes[index].vid
         detailJob?.cancel()
@@ -2384,12 +2425,17 @@ class DramaViewModel(application: Application) : AndroidViewModel(application) {
             snapshot.playbackUrl != null &&
             BackgroundPlaybackService.playerFlow.value?.currentMediaItem?.mediaId ==
                 episode.vid
-        restorePlayer()
-        if (!alreadyActive) play(index)
+        if (snapshot.feedMode) {
+            exitFeedToEpisode(index)
+        } else {
+            restorePlayer()
+            if (!alreadyActive) play(index)
+        }
     }
 
-    /** Back from a visible video minimizes; Back from initial loading cancels it. */
+    /** Series entered from the swipe feed returns there; other playback minimizes. */
     fun backFromPlayer() {
+        if (restoreReelFeed()) return
         if (state.value.detail == null) closePlayer() else minimizePlayer()
     }
 
@@ -2418,7 +2464,7 @@ class DramaViewModel(application: Application) : AndroidViewModel(application) {
         firstFrameFor = null
         mutable.update { it.copy(detail = null, playbackUrl = null,
             offlinePlaybackUri = null,
-            feedMode = false, detailPageVisible = false,
+            feedMode = false, returnToFeed = false, detailPageVisible = false,
             miniPlayerVisible = false,
             detailEntryEnabled = false,
             feedItems = emptyList(), feedLoading = false,
