@@ -66,6 +66,7 @@ class MainActivity : ComponentActivity() {
 private fun HongguoApp(model: DramaViewModel = viewModel()) {
     val state by model.state.collectAsStateWithLifecycle()
     var mineOpen by rememberSaveable { mutableStateOf(false) }
+    var searchLandingOpen by rememberSaveable { mutableStateOf(false) }
     // A detail tag may originate from the My tab; search results must be visible.
     LaunchedEffect(state.detail, state.section) {
         if (state.detail == null && state.section == Section.SEARCH) mineOpen = false
@@ -115,7 +116,8 @@ private fun HongguoApp(model: DramaViewModel = viewModel()) {
             Box(Modifier.fillMaxSize().safeDrawingPadding().imePadding()) {
                 BackHandler(
                     enabled = state.detail != null || state.preparingDetail ||
-                        state.feedMode || state.modal != Modal.NONE || mineOpen,
+                        state.feedMode || state.modal != Modal.NONE || mineOpen ||
+                        searchLandingOpen,
                 ) {
                     if (state.modal == Modal.ACCOUNT) model.closeAccount()
                     else if (state.modal != Modal.NONE) model.closeModal()
@@ -123,6 +125,7 @@ private fun HongguoApp(model: DramaViewModel = viewModel()) {
                         if (state.detailPageVisible) model.backFromDramaDetails()
                         else model.backFromPlayer()
                     }
+                    else if (searchLandingOpen) searchLandingOpen = false
                     else mineOpen = false
                 }
                 when {
@@ -145,6 +148,11 @@ private fun HongguoApp(model: DramaViewModel = viewModel()) {
                             }
                         }
                     }
+                    searchLandingOpen -> SearchLandingScreen(
+                        state, model,
+                        onClose = { searchLandingOpen = false },
+                        onResults = { searchLandingOpen = false; mineOpen = false },
+                    )
                     else -> Scaffold(
                         containerColor = HongguoColors.background,
                         contentWindowInsets = WindowInsets(0, 0, 0, 0),
@@ -173,7 +181,8 @@ private fun HongguoApp(model: DramaViewModel = viewModel()) {
                     ) { insets ->
                         Box(Modifier.fillMaxSize().padding(insets)) {
                             if (mineOpen) MyScreen(state, model, onBack = { mineOpen = false })
-                            else CatalogScreen(state, model, onMine = { mineOpen = true })
+                            else CatalogScreen(state, model, onMine = { mineOpen = true },
+                                onSearchOpen = { searchLandingOpen = true })
                         }
                     }
                 }
