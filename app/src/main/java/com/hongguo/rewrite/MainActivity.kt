@@ -2,6 +2,8 @@ package com.hongguo.rewrite
 
 import android.app.Activity
 import android.os.Bundle
+import coil.compose.AsyncImage
+import androidx.compose.ui.layout.ContentScale
 import androidx.activity.ComponentActivity
 import androidx.activity.compose.BackHandler
 import androidx.activity.compose.setContent
@@ -155,14 +157,39 @@ private fun HongguoApp(model: DramaViewModel = viewModel()) {
                         NativePlayer(state, model)
                     }
                     state.preparingDetail -> {
-                        Box(Modifier.fillMaxSize(), contentAlignment = Alignment.Center) {
+                        val upcoming = if (state.feedMode)
+                            state.feedItems.getOrNull(state.feedIndex) else null
+                        Box(
+                            Modifier.fillMaxSize().background(
+                                if (upcoming != null) Color.Black
+                                else HongguoColors.background),
+                            contentAlignment = Alignment.Center,
+                        ) {
+                            if (upcoming != null && upcoming.cover.isNotBlank()) {
+                                AsyncImage(
+                                    model = model.cover(upcoming.cover),
+                                    contentDescription = null,
+                                    contentScale = ContentScale.Crop,
+                                    modifier = Modifier.fillMaxSize(),
+                                )
+                                Box(Modifier.fillMaxSize().background(
+                                    Color.Black.copy(alpha = 0.45f)))
+                            }
                             Column(
                                 horizontalAlignment = Alignment.CenterHorizontally,
                                 verticalArrangement = Arrangement.spacedBy(12.dp),
                             ) {
-                                CircularProgressIndicator(color = HongguoColors.accent)
-                                Text("正在读取剧集…")
-                                TextButton(onClick = model::closePlayer) { Text("取消") }
+                                if (upcoming == null) {
+                                    CircularProgressIndicator(color = HongguoColors.accent)
+                                    Text("正在读取剧集…")
+                                } else {
+                                    Text(upcoming.title, color = Color.White)
+                                    Text("正在准备播放", color = Color.White.copy(alpha = 0.84f))
+                                }
+                                TextButton(onClick = model::closePlayer) {
+                                    Text("取消", color = if (upcoming != null)
+                                        Color.White else HongguoColors.accent)
+                                }
                             }
                         }
                     }
