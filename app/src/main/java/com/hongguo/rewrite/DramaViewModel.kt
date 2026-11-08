@@ -1720,7 +1720,10 @@ class DramaViewModel(application: Application) : AndroidViewModel(application) {
         val readyIndex = ready?.let(::episodeIndexFor)
         mutable.update { it.copy(
             offlinePlaybackUri = null,
-            detail = ready,
+            // Retain the previous media metadata until the replacement
+            // series is resolved. The mini PlayerView needs an item to stay
+            // mounted throughout a cross-drama transition.
+            detail = ready ?: if (retainMini) it.detail else null,
             episodeIndex = readyIndex ?: it.episodeIndex,
             preparingDetail = ready == null,
             feedMode = feed,
