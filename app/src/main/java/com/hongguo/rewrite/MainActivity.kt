@@ -432,7 +432,18 @@ private fun HongguoApp(model: DramaViewModel = viewModel()) {
                 // catalog, settings, account, search and drama details. Moving
                 // it into or out of Scaffold.bottomBar used to dispose its
                 // Android Surface, briefly blacking out or hiding the video.
-                if (showMini) InAppMiniPlayer(state, model)
+                if (showMini) InAppMiniPlayer(
+                    state = state,
+                    model = model,
+                    onExpand = {
+                        // The mini-player may be expanded from Theater, Mine
+                        // or a settings page. FEED is rendered only on Home;
+                        // restore both the selected tab and playback route.
+                        primaryTab = "home"
+                        searchLandingOpen = false
+                        model.restorePlayer()
+                    },
+                )
                 if (showPrimaryNavigation) {
                     // NavigationBar's default 80dp min-height and extra glass
                     // On the portrait player, reserve less space for the
