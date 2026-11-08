@@ -189,6 +189,26 @@ internal fun SettingsScreen(state: AppState, model: DramaViewModel) {
                 }
             }
             item {
+                SettingsGroup("播放画面") {
+                    Text("播放器屏幕亮度", color = HongguoColors.ink,
+                        fontWeight = FontWeight.SemiBold)
+                    FlowRow(horizontalArrangement = Arrangement.spacedBy(8.dp)) {
+                        listOf(-1 to "跟随系统", 65 to "65%", 80 to "80%",
+                            90 to "90%", 100 to "100%").forEach { (value, label) ->
+                            FilterChip(
+                                selected = state.videoBrightnessPercent == value,
+                                onClick = { model.setVideoBrightnessPercent(value) },
+                                label = { Text(label, fontSize = 13.sp) },
+                                modifier = Modifier.testTag("settings_video_brightness_" + value),
+                            )
+                        }
+                    }
+                    Text("只对全屏刷短剧和正式剧集播放生效，离开播放器自动恢复系统亮度；" +
+                        "不修改视频颜色、伽马或全局屏幕设置。",
+                        color = HongguoColors.muted, fontSize = 12.sp)
+                }
+            }
+            item {
                 SettingsGroup("内容来源") {
                     Text(if (state.backend.isBlank()) "原生内容模式" else "使用自定义 API",
                         fontWeight = FontWeight.SemiBold,
