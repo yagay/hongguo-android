@@ -1877,15 +1877,19 @@ class DramaViewModel(application: Application) : AndroidViewModel(application) {
                 progress.position, progress.duration,
             )
         }
+        val fromFeed = state.value.feedMode
         closeAccount()
-        open(Drama(id, progress.series.title, progress.series.cover),
-            resumeEp = progress.episodeIndex + 1, showDetails = false)
+        val drama = Drama(id, progress.series.title, progress.series.cover)
+        if (fromFeed) openFromFeedSelection(drama, progress.episodeIndex + 1)
+        else open(drama, resumeEp = progress.episodeIndex + 1, showDetails = false)
     }
 
     fun openCloudDrama(series: Series) {
         if (!series.id.matches(Regex("[0-9]{1,30}"))) return
+        val fromFeed = state.value.feedMode
         closeAccount()
-        open(Drama(series.id, series.title, series.cover))
+        val drama = Drama(series.id, series.title, series.cover)
+        if (fromFeed) openFromFeedSelection(drama) else open(drama)
     }
 
     fun open(drama: Drama, resumeEp: Int? = null, feed: Boolean = false,
@@ -2604,13 +2608,17 @@ class DramaViewModel(application: Application) : AndroidViewModel(application) {
 
     fun share(message: String) {
         val api = source
+        val fromFeed = state.value.feedMode
         detailJob?.cancel()
         detailJob = viewModelScope.launch {
             try {
                 val (id, ep) = if (api != null) api.resolveShare(message)
                     else nativeSource.resolveShare(message)
                 mutable.update { it.copy(modal = Modal.NONE) }
-                open(Drama(id, "分享的短剧"), ep)
+                val drama = Drama(id, "分享的短剧")
+                if (fromFeed && state.value.feedMode)
+                    openFromFeedSelection(drama, resumeEp = ep)
+                else open(drama, ep)
             } catch (e: CancellationException) {
                 throw e
             } catch (e: Exception) {
