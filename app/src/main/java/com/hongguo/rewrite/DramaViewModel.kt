@@ -714,12 +714,12 @@ class DramaViewModel(application: Application) : AndroidViewModel(application) {
             clearReelWarmVideo()
             prefetchedFeedDetails.clear()
             val snapshot = state.value
-            val currentDrama = snapshot.feedItems.getOrNull(snapshot.feedIndex)
-                ?: snapshot.detail?.drama
             // Do not stop/recreate Media3 playback solely for a settings
             // change. Preserve the visible drama while rebuilding the queue.
+            val retained = OfficialReelsPolicy.retainCurrentOnAccountChange(
+                snapshot.feedItems, snapshot.feedIndex, snapshot.detail?.drama)
             mutable.update { it.copy(
-                feedItems = currentDrama?.let(::listOf).orEmpty(),
+                feedItems = retained,
                 feedIndex = 0,
                 feedLoading = false,
                 feedHasMore = true,
