@@ -1648,7 +1648,10 @@ class DramaViewModel(application: Application) : AndroidViewModel(application) {
     fun play(index: Int) {
         val detail = state.value.detail ?: return
         if (index !in detail.episodes.indices) return
-        val serviceStarted = runCatching {
+        // Notification commands run while the Activity is STOPPED. Reuse the
+        // running foreground service rather than making a forbidden background
+        // service start request on Android 12+.
+        val serviceStarted = BackgroundPlaybackService.active != null || runCatching {
             getApplication<Application>().startService(
                 Intent(getApplication<Application>(), BackgroundPlaybackService::class.java))
         }.isSuccess
