@@ -105,7 +105,11 @@ internal fun SearchLandingScreen(
     if (showActors) {
         OpenHongguoExploreScreen(model,
             onClose = { showActors = false },
-            initialTab = "actor")
+            initialTab = "actor",
+            onOpenDrama = { drama ->
+                onOpenDrama(drama)
+                onClose()
+            })
         return
     }
 
