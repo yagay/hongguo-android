@@ -230,11 +230,11 @@ internal fun CatalogScreen(
             }
             if (!state.loading && state.items.isEmpty() && state.error == null) {
                 item(span = { GridItemSpan(maxLineSpan) }) {
-                    Box(Modifier.fillMaxWidth().height(170.dp),
-                        contentAlignment = Alignment.Center) {
-                        Text(if (state.section == Section.SEARCH) "尝试搜索其他剧名"
-                             else "这里暂时没有剧集", color = HongguoColors.muted)
-                    }
+                    HongguoEmptyState(
+                        if (state.section == Section.SEARCH) "尝试搜索其他剧名"
+                        else "这里暂时没有剧集",
+                        modifier = Modifier.height(170.dp),
+                    )
                 }
             }
             items(state.items.filter { it.id !in state.hiddenRecommendationIds ||
