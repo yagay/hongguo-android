@@ -208,6 +208,10 @@ internal fun NativePlayer(
     var showHeart by remember { mutableStateOf(false) }
     var clearScreenEnabled by rememberSaveable { mutableStateOf(false) }
     var clearScreenMenuOpen by remember { mutableStateOf(false) }
+    // Signed seek feedback: negative = rewind, positive = fast-forward.
+    // Kept separate from clear-screen chrome, so it remains readable even
+    // when all normal video overlays are hidden.
+    var edgeSeekFeedback by remember { mutableStateOf<Int?>(null) }
     val likedNow by rememberUpdatedState(
         detail.drama.id in state.likedDramaIds
     )
@@ -483,12 +487,52 @@ internal fun NativePlayer(
                                             if (!likedNow) model.likeIfNotAlready()
                                             showHeart = true
                                         },
-                                        onLongPress = {
-                                            clearScreenMenuOpen = true
+                                        onLongPress = { touch ->
+                                            val edgeZone = size.width * 0.22f
+                                            when {
+                                                touch.x < edgeZone && playback.durationMs > 0L -> {
+                                                    playback.seekTo(playback.positionMs - 10_000L)
+                                                    edgeSeekFeedback = -10
+                                                }
+                                                touch.x > size.width - edgeZone &&
+                                                    playback.durationMs > 0L -> {
+                                                    playback.seekTo(playback.positionMs + 10_000L)
+                                                    edgeSeekFeedback = 10
+                                                }
+                                                else -> clearScreenMenuOpen = true
+                                            }
+                                        },
+                                        onPress = {
+                                            tryAwaitRelease()
+                                            // Briefly retain feedback after lift-off so
+                                            // a short press is still perceptible.
+                                            delay(350)
+                                            edgeSeekFeedback = null
                                         },
                                     )
                                 },
                         )
+                        edgeSeekFeedback?.let { seconds ->
+                            Box(
+                                Modifier.align(
+                                    if (seconds < 0) Alignment.CenterStart
+                                    else Alignment.CenterEnd
+                                ).padding(horizontal = 15.dp)
+                                    .background(
+                                        Color.Black.copy(alpha = 0.43f),
+                                        RoundedCornerShape(20.dp),
+                                    ).padding(horizontal = 12.dp, vertical = 7.dp)
+                                    .testTag("reel_edge_seek_feedback"),
+                                contentAlignment = Alignment.Center,
+                            ) {
+                                Text(
+                                    if (seconds < 0) "↶ 快退 10 秒"
+                                    else "快进 10 秒 ↷",
+                                    color = Color.White, fontSize = 12.sp,
+                                    fontWeight = FontWeight.Medium,
+                                )
+                            }
+                        }
                         if (!clearScreenEnabled && showHeart) {
                             Icon(Icons.Outlined.Favorite,
                                 contentDescription = "已收藏",
