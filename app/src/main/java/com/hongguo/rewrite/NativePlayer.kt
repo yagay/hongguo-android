@@ -971,7 +971,18 @@ internal class ReelPlaybackControls {
     var positionMs by mutableLongStateOf(0L)
     var durationMs by mutableLongStateOf(0L)
     var isPlaying by mutableStateOf(false)
-    fun toggle() { player?.let { if (it.isPlaying) it.pause() else it.play() } }
+    fun toggle() {
+        player?.let { current ->
+            if (current.isPlaying) current.pause()
+            else {
+                // Media3 play() alone doesn't restart an ENDED item. User
+                // tapping the central play icon must always be able to replay.
+                if (current.playbackState == androidx.media3.common.Player.STATE_ENDED)
+                    current.seekTo(0)
+                current.play()
+            }
+        }
+    }
     fun seekTo(ms: Long) { player?.seekTo(ms.coerceIn(0L, durationMs.coerceAtLeast(0))) }
 }
 
