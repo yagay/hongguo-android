@@ -78,7 +78,7 @@ class DramaViewModel(application: Application) : AndroidViewModel(application) {
 
     fun openOfflineEpisode(episode: OfflineEpisode) {
         if (episode !in state.value.offlineEpisodes) return
-        val launchedFromFeed = state.value.feedMode
+        val launchedFromFeed = state.value.navigation.origin == PlaybackOrigin.SWIPE_FEED
         viewModelScope.launch {
             val uri = runCatching { Uri.parse(episode.documentUri) }.getOrNull() ?: return@launch
             val accessible = withContext(Dispatchers.IO) {
@@ -104,7 +104,9 @@ class DramaViewModel(application: Application) : AndroidViewModel(application) {
                 episodeIndex = 0, offlinePlaybackUri = episode.documentUri,
                 offlineLibraryMessage = null,
                 playbackUrl = episode.documentUri, playing = true,
-                feedMode = false, returnToFeed = launchedFromFeed,
+                feedMode = false,
+                navigation = it.navigation.toSeries(if (launchedFromFeed)
+                    PlaybackOrigin.SWIPE_FEED else PlaybackOrigin.CATALOG),
                 preparingDetail = false, playbackError = null,
                 resumePositionMs = library.checkpoint(episode.seriesId, episode.vid),
                 relatedSeries = null, relatedWorks = emptyList(),
@@ -371,7 +373,8 @@ class DramaViewModel(application: Application) : AndroidViewModel(application) {
 
     private fun preloadFollowingEpisode() {
         val s = state.value
-        if (!s.preloadNext || (source != null && !s.feedMode && !s.returnToFeed)) return
+        if (!s.preloadNext ||
+            (source != null && s.navigation.origin != PlaybackOrigin.SWIPE_FEED)) return
         val next = s.detail?.episodes?.getOrNull(s.episodeIndex + 1)?.vid ?: return
         if (next == preloadedNextVid) return
         clearPreloadedNext()
@@ -938,11 +941,12 @@ class DramaViewModel(application: Application) : AndroidViewModel(application) {
         val term = label.trim().take(80)
         if (term.isBlank() || state.value.detail == null ||
             !state.value.detailPageVisible) return
-        if (state.value.feedMode || state.value.returnToFeed) {
+        if (state.value.navigation.origin == PlaybackOrigin.SWIPE_FEED) {
             setSearch(term)
             searchBrowseQuery(term)
             backFromDramaDetails()
-            if (state.value.returnToFeed) restoreReelFeed()
+            if (state.value.navigation.destination == PlaybackDestination.SERIES)
+                restoreReelFeed()
             mutable.update { it.copy(reelSearchRequest = it.reelSearchRequest + 1L) }
             diagnostics.record("DETAIL", "TAG_SEARCH_REEL_OVERLAY")
         } else {
@@ -1765,7 +1769,7 @@ class DramaViewModel(application: Application) : AndroidViewModel(application) {
             detailPageVisible = false,
             detail = if (drama == null) null else it.detail,
             feedMode = true,
-            returnToFeed = false,
+            navigation = it.navigation.toFeed(),
             feedItems = drama?.let(::listOf).orEmpty(),
             feedIndex = 0,
             feedLoading = false,
@@ -1854,8 +1858,10 @@ class DramaViewModel(application: Application) : AndroidViewModel(application) {
             index == snapshot.episodeIndex &&
             BackgroundPlaybackService.playerFlow.value?.currentMediaItem?.mediaId == target.vid
         mutable.update {
-            it.copy(feedMode = false, returnToFeed = true, feedLoading = false,
-                detailPageVisible = false, miniPlayerVisible = false)
+            it.copy(feedMode = false,
+                navigation = it.navigation.toSeries(PlaybackOrigin.SWIPE_FEED),
+                feedLoading = false, detailPageVisible = false,
+                miniPlayerVisible = false)
         }
         diagnostics.record("REELS", "ENTER_EPISODES")
         updateNotificationNavigation()
@@ -1869,9 +1875,8 @@ class DramaViewModel(application: Application) : AndroidViewModel(application) {
         val snapshot = state.value
         if (!ReelReturnPolicy.canRestore(snapshot)) return false
         mutable.update {
-            it.copy(feedMode = true, returnToFeed = false,
-                miniPlayerVisible = false, detailPageVisible = false,
-                detailEntryEnabled = false)
+            it.copy(feedMode = true, navigation = it.navigation.toFeed(),
+                miniPlayerVisible = false, detailPageVisible = false)
         }
         diagnostics.record("REELS", "RETURN_TO_FEED_KEEP_PLAYING")
         updateNotificationNavigation()
@@ -2172,7 +2177,8 @@ class DramaViewModel(application: Application) : AndroidViewModel(application) {
             return
         }
         clearEngagement()
-        val api = if (state.value.feedMode || state.value.returnToFeed) null else source
+        val api = if (state.value.navigation.origin == PlaybackOrigin.SWIPE_FEED)
+            null else source
         val version = ++detailId
         val vid = detail.episodes[index].vid
         detailJob?.cancel()
@@ -2518,7 +2524,8 @@ class DramaViewModel(application: Application) : AndroidViewModel(application) {
         // restore a different cloud MediaItem. Rejoin its prior swipe queue
         // explicitly instead of falling back to the catalog homepage.
         val snapshot = state.value
-        if (snapshot.returnToFeed && snapshot.offlinePlaybackUri != null) {
+        if (snapshot.navigation.origin == PlaybackOrigin.SWIPE_FEED &&
+            snapshot.offlinePlaybackUri != null) {
             val previous = snapshot.feedItems.getOrNull(snapshot.feedIndex)
                 ?.takeIf { it.id !in snapshot.hiddenRecommendationIds }
             closePlayer()
@@ -2553,10 +2560,10 @@ class DramaViewModel(application: Application) : AndroidViewModel(application) {
         firstFrameFor = null
         mutable.update { it.copy(detail = null, playbackUrl = null,
             offlinePlaybackUri = null,
-            feedMode = false, returnToFeed = false, reelSearchRequest = 0L,
-            detailPageVisible = false,
+            feedMode = false, navigation = it.navigation.toCatalog()
+                .copy(origin = PlaybackOrigin.CATALOG),
+            reelSearchRequest = 0L, detailPageVisible = false,
             miniPlayerVisible = false,
-            detailEntryEnabled = false,
             feedItems = emptyList(), feedLoading = false,
             feedHasMore = false, feedError = null,
             relatedSeries = null, relatedWorks = emptyList(),
