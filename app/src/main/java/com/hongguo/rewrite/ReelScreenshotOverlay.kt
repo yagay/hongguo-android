@@ -85,7 +85,6 @@ internal fun ReelScreenshotOverlay(
     onReal: () -> Unit,
     onRecommend: () -> Unit,
     onSearch: () -> Unit,
-    onShare: () -> Unit,
 ) {
     val white = Color.White
     val muted = Color(0xFFD5D5D5)
@@ -108,38 +107,38 @@ internal fun ReelScreenshotOverlay(
         // live official reel feeds. Other tabs open real existing collections.
         Row(
             Modifier.fillMaxWidth().align(Alignment.TopCenter)
-                .padding(start = 3.dp, end = 3.dp, top = 6.dp),
+                .padding(start = 5.dp, end = 5.dp, top = 5.dp),
             verticalAlignment = Alignment.CenterVertically,
         ) {
             IconButton(onClick = onPlaybackSettings,
-                modifier = Modifier.size(39.dp).testTag("reel_menu")) {
+                modifier = Modifier.size(36.dp).testTag("reel_menu")) {
                 Icon(Icons.Outlined.Menu, "播放设置", tint = white,
                     modifier = Modifier.size(25.dp))
             }
             val tabs = listOf(
                 Triple("关注", false, onFollowing),
-                Triple("漫剧", false, onComic),
+                Triple("漫剧", state.reelsMode == "comic", onComic),
                 Triple("真人剧", state.reelsMode == "real", onReal),
-                Triple("推荐", state.reelsMode != "real", onRecommend),
+                Triple("推荐", state.reelsMode == "all", onRecommend),
             )
             tabs.forEach { (label, active, action) ->
                 Column(
                     modifier = Modifier.weight(1f).clickable(onClick = action)
                         .testTag("reel_tab_" + label),
                     horizontalAlignment = Alignment.CenterHorizontally,
-                    verticalArrangement = Arrangement.spacedBy(5.dp),
+                    verticalArrangement = Arrangement.spacedBy(3.dp),
                 ) {
                     Text(label, color = if (active) white else Color(0xFFE3E3E3),
-                        fontSize = if (active) 18.sp else 17.sp,
+                        fontSize = 16.sp, lineHeight = 19.sp,
                         fontWeight = if (active) FontWeight.Bold else FontWeight.Medium,
-                        maxLines = 1)
-                    Box(Modifier.width(25.dp).height(3.dp)
+                        maxLines = 1, overflow = TextOverflow.Clip)
+                    Box(Modifier.width(22.dp).height(3.dp)
                         .background(if (active) white else Color.Transparent,
                             RoundedCornerShape(2.dp)))
                 }
             }
             IconButton(onClick = onSearch,
-                modifier = Modifier.size(39.dp).testTag("reel_search")) {
+                modifier = Modifier.size(36.dp).testTag("reel_search")) {
                 Icon(Icons.Outlined.Search, "搜索短剧", tint = white,
                     modifier = Modifier.size(27.dp))
             }
