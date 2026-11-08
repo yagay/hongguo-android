@@ -335,23 +335,13 @@ internal fun MyScreen(state: AppState, model: DramaViewModel, onBack: () -> Unit
             )
         }
         if (libraryTab == 0) item {
-            Row(horizontalArrangement = Arrangement.spacedBy(8.dp)) {
-                listOf("全部", "已看完", "未看完").forEachIndexed { index, label ->
-                    Surface(
-                        shape = RoundedCornerShape(10.dp),
-                        color = if (watchFilter == index)
-                            HongguoColors.accentSoft else HongguoColors.surface,
-                        modifier = Modifier.clickable { watchFilter = index }
-                            .testTag("my_history_filter_$index"),
-                    ) {
-                        Text(label, modifier = Modifier.padding(
-                            horizontal = 13.dp, vertical = 9.dp),
-                            color = if (watchFilter == index)
-                                HongguoColors.accent else HongguoColors.muted,
-                            fontSize = 13.sp)
-                    }
-                }
-            }
+            HongguoChoiceGroup(
+                options = listOf("全部", "已看完", "未看完")
+                    .mapIndexed { index, label -> index to label },
+                selected = watchFilter,
+                onSelect = { watchFilter = it },
+                tag = "my_history_filter",
+            )
         }
         val cloudHistory = account.history.map { progress ->
             Drama(progress.series.id, progress.series.title, progress.series.cover)
@@ -527,7 +517,7 @@ internal fun MyScreen(state: AppState, model: DramaViewModel, onBack: () -> Unit
             }
             items(state.offlineEpisodes.size) { index ->
                 val episode = state.offlineEpisodes[index]
-                Surface(color = HongguoColors.surface, shape = RoundedCornerShape(14.dp)) {
+                HongguoCard() {
                     Row(Modifier.fillMaxWidth().padding(12.dp),
                         verticalAlignment = Alignment.CenterVertically) {
                         Column(Modifier.weight(1f).clickable {
@@ -563,7 +553,7 @@ internal fun MyScreen(state: AppState, model: DramaViewModel, onBack: () -> Unit
             }
             items(state.watchLater.size) { index ->
                 val drama = state.watchLater[index]
-                Surface(color = HongguoColors.surface, shape = RoundedCornerShape(14.dp)) {
+                HongguoCard() {
                     Row(Modifier.fillMaxWidth().padding(12.dp),
                         verticalAlignment = Alignment.CenterVertically) {
                         Column(Modifier.weight(1f).clickable { model.open(drama) }) {
