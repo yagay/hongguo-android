@@ -1219,9 +1219,22 @@ private fun Media3Reel(
         }
     }
 
+    // Register the exact visible video bounds with the Activity so system
+    // picture-in-picture scales the video, not the launcher/app icon.
+    val pipActivity = LocalContext.current as? MainActivity
+    var pipPlayerView by remember { mutableStateOf<PlayerView?>(null) }
+    DisposableEffect(pipActivity, pipPlayerView) {
+        val view = pipPlayerView
+        if (view != null) pipActivity?.registerVideoPipSourceView(view)
+        onDispose {
+            if (view != null) pipActivity?.unregisterVideoPipSourceView(view)
+        }
+    }
+
     AndroidView(
         factory = {
             PlayerView(it).apply {
+                pipPlayerView = this
                 this.player = player
                 useController = false
                 setKeepContentOnPlayerReset(true)
