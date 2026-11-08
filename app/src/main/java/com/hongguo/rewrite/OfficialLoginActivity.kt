@@ -1,5 +1,6 @@
 package com.hongguo.rewrite
 
+import androidx.compose.ui.graphics.toArgb
 import android.annotation.SuppressLint
 import android.app.ActivityManager
 import android.content.Context
@@ -63,6 +64,18 @@ class OfficialLoginActivity : ComponentActivity() {
     @SuppressLint("SetJavaScriptEnabled")
     override fun onCreate(savedInstanceState: Bundle?) {
         super.onCreate(null)
+        // This activity lives in an isolated login process, so load the same
+        // saved palette from preferences rather than relying on Compose state
+        // initialized in the main app process.
+        val appearance = getSharedPreferences("web_rewrite_settings", MODE_PRIVATE)
+        val nightMode = appearance.getString("theme_mode", "light") ?: "light"
+        val systemDark = (resources.configuration.uiMode and
+            android.content.res.Configuration.UI_MODE_NIGHT_MASK) ==
+            android.content.res.Configuration.UI_MODE_NIGHT_YES
+        HongguoColors.applyTheme(
+            appearance.getString("theme_style", "warm") ?: "warm",
+            nightMode, systemDark,
+        )
         instanceGeneration = ++processGeneration
         activeActivities++
         activityRegistered = true
@@ -79,7 +92,7 @@ class OfficialLoginActivity : ComponentActivity() {
         }
         val root = LinearLayout(this).apply {
             orientation = LinearLayout.VERTICAL
-            setBackgroundColor(Color.rgb(252, 248, 244))
+            setBackgroundColor(HongguoColors.background.toArgb())
             fitsSystemWindows = true
             @Suppress("DEPRECATION")
             setOnApplyWindowInsetsListener { view, insets ->
@@ -102,7 +115,7 @@ class OfficialLoginActivity : ComponentActivity() {
         bar.addView(TextView(this).apply {
             text = "红果官网登录"
             textSize = 17f
-            setTextColor(Color.rgb(41, 36, 33))
+            setTextColor(HongguoColors.ink.toArgb())
             typeface = Typeface.create("sans-serif", Typeface.BOLD)
             gravity = android.view.Gravity.CENTER
         }, LinearLayout.LayoutParams(0, ViewGroup.LayoutParams.WRAP_CONTENT, 1f))
@@ -118,7 +131,7 @@ class OfficialLoginActivity : ComponentActivity() {
         status = TextView(this).apply {
             text = "在官网完成登录后，点“完成登录”返回确认。页面可双指放大。"
             textSize = 14f
-            setTextColor(Color.rgb(107, 98, 92))
+            setTextColor(HongguoColors.muted.toArgb())
             setPadding(dp(20), dp(8), dp(20), dp(12))
         }
         root.addView(status)
@@ -135,7 +148,7 @@ class OfficialLoginActivity : ComponentActivity() {
         progress = ProgressBar(this, null, android.R.attr.progressBarStyleHorizontal).apply {
             isIndeterminate = false
             max = 100
-            progressTintList = ColorStateList.valueOf(Color.rgb(201, 68, 38))
+            progressTintList = ColorStateList.valueOf(HongguoColors.accent.toArgb())
         }
         root.addView(progress, LinearLayout.LayoutParams(ViewGroup.LayoutParams.MATCH_PARENT, dp(3)))
         val view = WebView(this)
@@ -373,9 +386,9 @@ class OfficialLoginActivity : ComponentActivity() {
     private fun dp(value: Int): Int = (value * resources.displayMetrics.density).toInt()
 
     private fun styleLoginButton(button: Button, prominent: Boolean = false) {
-        val accent = Color.rgb(201, 68, 38)
-        val muted = Color.rgb(107, 98, 92)
-        val cream = Color.rgb(245, 237, 229)
+        val accent = HongguoColors.accent.toArgb()
+        val muted = HongguoColors.muted.toArgb()
+        val cream = HongguoColors.accentSoft.toArgb()
         button.isAllCaps = false
         button.textSize = 14f
         button.typeface = Typeface.create("sans-serif", Typeface.NORMAL)
@@ -384,7 +397,7 @@ class OfficialLoginActivity : ComponentActivity() {
         button.minimumWidth = 0
         button.setPadding(dp(12), dp(4), dp(12), dp(4))
         button.background = GradientDrawable().apply {
-            cornerRadius = dp(16).toFloat()
+            cornerRadius = dp(10).toFloat()
             setColor(cream)
         }
         val states = arrayOf(intArrayOf(android.R.attr.state_enabled), intArrayOf())
