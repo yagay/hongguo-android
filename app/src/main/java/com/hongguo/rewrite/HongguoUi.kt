@@ -8,6 +8,7 @@ import androidx.compose.foundation.layout.FlowRow
 import androidx.compose.foundation.layout.Row
 import androidx.compose.foundation.layout.Spacer
 import androidx.compose.foundation.layout.fillMaxWidth
+import androidx.compose.foundation.layout.heightIn
 import androidx.compose.foundation.layout.padding
 import androidx.compose.foundation.layout.size
 import androidx.compose.foundation.layout.width
@@ -20,6 +21,8 @@ import androidx.compose.material3.HorizontalDivider
 import androidx.compose.material3.Icon
 import androidx.compose.material3.OutlinedButton
 import androidx.compose.material3.Surface
+import androidx.compose.material3.Switch
+import androidx.compose.material3.SwitchDefaults
 import androidx.compose.material3.Text
 import androidx.compose.runtime.Composable
 import androidx.compose.ui.Alignment
@@ -129,5 +132,47 @@ internal fun <T> HongguoChoiceGroup(
                 modifier = Modifier.testTag(tag + "_" + index),
             )
         }
+    }
+}
+
+/**
+ * Standardized toggle row used by both the light settings pages and the
+ * dark in-player controls. Caller keeps the actual preference state.
+ */
+@Composable
+internal fun HongguoToggleRow(
+    title: String,
+    checked: Boolean,
+    onCheckedChange: (Boolean) -> Unit,
+    tag: String,
+    description: String? = null,
+    dark: Boolean = false,
+) {
+    val titleColor = if (dark) Color.White else HongguoColors.ink
+    val supportingColor = if (dark) Color(0xFFC5C3C9) else HongguoColors.muted
+    Row(
+        Modifier.fillMaxWidth().heightIn(min = 40.dp),
+        verticalAlignment = Alignment.CenterVertically,
+        horizontalArrangement = Arrangement.spacedBy(10.dp),
+    ) {
+        Column(
+            modifier = Modifier.weight(1f),
+            verticalArrangement = Arrangement.spacedBy(3.dp),
+        ) {
+            Text(title, color = titleColor, fontSize = 13.sp,
+                fontWeight = FontWeight.Medium)
+            if (!description.isNullOrBlank()) {
+                Text(description, color = supportingColor, fontSize = 11.sp)
+            }
+        }
+        Switch(
+            checked = checked,
+            onCheckedChange = onCheckedChange,
+            modifier = Modifier.testTag(tag),
+            colors = SwitchDefaults.colors(
+                checkedTrackColor = HongguoColors.accent,
+                checkedThumbColor = Color.White,
+            ),
+        )
     }
 }
