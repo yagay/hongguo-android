@@ -150,16 +150,13 @@ internal fun SettingsScreen(state: AppState, model: DramaViewModel) {
             item {
                 SettingsGroup("外观") {
                     Text("主题样式", color = HongguoColors.ink, fontWeight = FontWeight.SemiBold)
-                    FlowRow(horizontalArrangement = Arrangement.spacedBy(8.dp)) {
-                        listOf("warm" to "暖白精修",
-                            "immersive" to "沉浸暗场",
-                            "cards" to "内容卡片").forEach { (key, title) ->
-                            OutlinedButton(onClick = { model.setThemeStyle(key) },
-                                modifier = Modifier.testTag("theme_style_" + key)) {
-                                Text(title + if (state.themeStyle == key) " ✓" else "")
-                            }
-                        }
-                    }
+                    HongguoChoiceGroup(
+                        options = listOf("warm" to "暖白精修",
+                            "immersive" to "沉浸暗场", "cards" to "内容卡片"),
+                        selected = state.themeStyle,
+                        onSelect = model::setThemeStyle,
+                        tag = "theme_style",
+                    )
                     Text("显示模式", color = HongguoColors.ink,
                         fontWeight = FontWeight.SemiBold)
                     Text("白天、夜间和跟随系统。选择后立即应用，重启应用仍会保留。",
@@ -172,14 +169,12 @@ internal fun SettingsScreen(state: AppState, model: DramaViewModel) {
                         tag = "theme_mode",
                     )
                     Text("底栏样式", color = HongguoColors.ink, fontWeight = FontWeight.SemiBold)
-                    FlowRow(horizontalArrangement = Arrangement.spacedBy(8.dp)) {
-                        listOf("classic" to "经典", "glass" to "悬浮玻璃").forEach { (key, title) ->
-                            OutlinedButton(onClick = { model.setNavigationStyle(key) },
-                                modifier = Modifier.testTag("navbar_style_" + key)) {
-                                Text(title + if (state.navigationStyle == key) " ✓" else "")
-                            }
-                        }
-                    }
+                    HongguoChoiceGroup(
+                        options = listOf("classic" to "经典", "glass" to "悬浮玻璃"),
+                        selected = state.navigationStyle,
+                        onSelect = model::setNavigationStyle,
+                        tag = "navbar_style",
+                    )
                     Text("首页、搜索页和剧集详情跟随显示模式；播放视频区域始终使用深色背景。",
                         color = HongguoColors.muted, fontSize = 12.sp)
                 }
