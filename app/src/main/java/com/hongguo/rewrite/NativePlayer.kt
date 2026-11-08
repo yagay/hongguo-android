@@ -161,9 +161,11 @@ internal fun NativePlayer(
         !pagerState.isScrollInProgress
     val playback = remember(state.episodeIndex) { ReelPlaybackControls() }
     var speed by remember(detail.drama.id) { mutableFloatStateOf(state.defaultPlaybackSpeed) }
-    // Full-bleed video as in the reference screenshot; users can switch to
-    // fit mode when letterbox/crop considerations or subtitles require it.
-    var fillVideo by rememberSaveable { mutableStateOf(false) }
+    // Portrait reels default to center-crop (ZOOM) so the Media3 viewport
+    // has no side letterboxing after reserving the outside-video seek dock
+    // and bottom navigation. FIT remains available from player settings
+    // when the user wants every pixel of a differently-shaped video.
+    var fillVideo by rememberSaveable { mutableStateOf(true) }
     var showComments by remember { mutableStateOf(false) }
     var showEpisodes by remember { mutableStateOf(false) }
     var showPlaybackSettings by remember { mutableStateOf(false) }
