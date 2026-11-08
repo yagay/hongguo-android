@@ -133,6 +133,8 @@ internal fun NativePlayer(
     state: AppState,
     model: DramaViewModel,
     onExitFeed: () -> Unit,
+    externalPipEnabled: Boolean,
+    onExternalPipEnabled: (Boolean) -> Unit,
 ) {
     val detail = state.detail ?: return
     if (detail.episodes.isEmpty()) {
@@ -669,11 +671,11 @@ internal fun NativePlayer(
             onOpenAccountDrawer = {
                 accountDrawerScope.launch { accountDrawerState.open() }
             },
-            onPictureInPicture = {
+            onPictureInPicture = if (externalPipEnabled) ({
                 selected?.vid?.let { vid ->
                     (context as? MainActivity)?.enterVideoPictureInPicture(vid)
                 }
-            },
+            }) else null,
             onBack = ::flushThenClose,
             onDramaDetails = {
                 selected?.let { ep ->
@@ -799,6 +801,8 @@ internal fun NativePlayer(
             model = model,
             speed = speed,
             fillVideo = fillVideo,
+            externalPipEnabled = externalPipEnabled,
+            onExternalPipEnabled = onExternalPipEnabled,
             onDismiss = { showPlaybackSettings = false },
             onSpeed = {
                 speed = it
