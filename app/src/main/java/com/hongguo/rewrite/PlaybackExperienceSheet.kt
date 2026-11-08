@@ -62,7 +62,7 @@ import androidx.compose.ui.unit.sp
  * are behind an explicit fold. Playback and all previous controls are kept.
  */
 private enum class PlaybackQuickSetting {
-    QUALITY, SPEED, BRIGHTNESS, AUDIO, ASPECT, TIMER
+    QUALITY, SPEED, BRIGHTNESS, AUDIO, ASPECT, DANMAKU, TIMER
 }
 
 @OptIn(ExperimentalMaterial3Api::class)
@@ -166,8 +166,8 @@ internal fun PlaybackExperienceSheet(
                     title = "弹幕",
                     value = if (state.danmakuEnabled) "已开启" else "已关闭",
                     icon = Icons.Outlined.Subtitles,
-                    selected = state.danmakuEnabled,
-                    onClick = { model.setDanmaku(!state.danmakuEnabled) },
+                    selected = focused == PlaybackQuickSetting.DANMAKU,
+                    onClick = { toggle(PlaybackQuickSetting.DANMAKU) },
                     tag = "player_danmaku_switch",
                 )
                 PlaybackQuickTile(
@@ -232,6 +232,40 @@ internal fun PlaybackExperienceSheet(
                             PlaybackChoices(
                                 listOf(false to "适应画面", true to "铺满画面"),
                                 fillVideo, onFillVideo, "video_frame_mode",
+                            )
+                        }
+                        PlaybackQuickSetting.DANMAKU -> {
+                            Row(Modifier.fillMaxWidth(),
+                                verticalAlignment = Alignment.CenterVertically) {
+                                PlaybackHeading("弹幕设置")
+                                Spacer(Modifier.weight(1f))
+                                Switch(
+                                    checked = state.danmakuEnabled,
+                                    onCheckedChange = model::setDanmaku,
+                                    modifier = Modifier.testTag("player_danmaku_enabled"),
+                                    colors = SwitchDefaults.colors(
+                                        checkedTrackColor = HongguoColors.accent,
+                                        checkedThumbColor = Color.White,
+                                    ),
+                                )
+                            }
+                            PlaybackHeading("移动速度")
+                            PlaybackChoices(
+                                listOf(0 to "慢", 1 to "标准", 2 to "快"),
+                                state.danmakuSpeed, model::setDanmakuSpeed,
+                                "danmaku_speed",
+                            )
+                            PlaybackHeading("轨道数量")
+                            PlaybackChoices(
+                                (1..5).map { it to "${it}轨" },
+                                state.danmakuDensity, model::setDanmakuDensity,
+                                "danmaku_lanes",
+                            )
+                            PlaybackHeading("字体大小")
+                            PlaybackChoices(
+                                listOf(12, 14, 16, 18).map { it to "$it sp" },
+                                state.danmakuFontSize, model::setDanmakuFontSize,
+                                "danmaku_font",
                             )
                         }
                         PlaybackQuickSetting.TIMER -> {
@@ -316,25 +350,6 @@ internal fun PlaybackExperienceSheet(
                     )
 
                     HorizontalDivider(color = Color(0xFF4B4A50))
-                    PlaybackHeading("弹幕设置")
-                    PlaybackHeading("移动速度")
-                    PlaybackChoices(
-                        listOf(0 to "慢", 1 to "标准", 2 to "快"),
-                        state.danmakuSpeed, model::setDanmakuSpeed,
-                        "danmaku_speed",
-                    )
-                    PlaybackHeading("轨道数量")
-                    PlaybackChoices(
-                        (1..5).map { it to "${it}轨" },
-                        state.danmakuDensity, model::setDanmakuDensity,
-                        "danmaku_lanes",
-                    )
-                    PlaybackHeading("字体大小")
-                    PlaybackChoices(
-                        listOf(12, 14, 16, 18).map { it to "$it sp" },
-                        state.danmakuFontSize, model::setDanmakuFontSize,
-                        "danmaku_font",
-                    )
                     if (account.profile != null && state.detail != null) {
                         HorizontalDivider(color = Color(0xFF4B4A50))
                         val currentId = state.detail.drama.id
@@ -378,16 +393,16 @@ private fun RowScope.PlaybackQuickTile(
     val foreground = if (selected) Color.White else Color(0xFFE6E2E7)
     Column(
         Modifier.weight(1f)
-            .height(72.dp)
+            .height(92.dp)
             .background(
                 if (selected) Color(0xFF6D352D) else Color(0xFF343239),
                 RoundedCornerShape(10.dp),
             )
             .clickable(onClick = onClick)
             .testTag(tag)
-            .padding(horizontal = 3.dp, vertical = 5.dp),
+            .padding(horizontal = 3.dp, vertical = 9.dp),
         horizontalAlignment = Alignment.CenterHorizontally,
-        verticalArrangement = Arrangement.spacedBy(3.dp),
+        verticalArrangement = Arrangement.spacedBy(5.dp),
     ) {
         Icon(icon, contentDescription = null, tint = foreground,
             modifier = Modifier.size(20.dp))
