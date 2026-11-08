@@ -393,16 +393,16 @@ private fun RowScope.PlaybackQuickTile(
     val foreground = if (selected) Color.White else Color(0xFFE6E2E7)
     Column(
         Modifier.weight(1f)
-            .height(92.dp)
+            .height(72.dp)
             .background(
                 if (selected) Color(0xFF6D352D) else Color(0xFF343239),
                 RoundedCornerShape(10.dp),
             )
             .clickable(onClick = onClick)
             .testTag(tag)
-            .padding(horizontal = 3.dp, vertical = 9.dp),
+            .padding(horizontal = 3.dp, vertical = 3.dp),
         horizontalAlignment = Alignment.CenterHorizontally,
-        verticalArrangement = Arrangement.spacedBy(5.dp),
+        verticalArrangement = Arrangement.spacedBy(1.dp),
     ) {
         Icon(icon, contentDescription = null, tint = foreground,
             modifier = Modifier.size(20.dp))
