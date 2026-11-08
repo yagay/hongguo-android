@@ -248,13 +248,13 @@ class BackgroundPlaybackService : MediaSessionService() {
                     "SIZE_${format.width.coerceAtLeast(0)}X${format.height.coerceAtLeast(0)}")
                 val color = format.colorInfo
                 diagnostics.record("VIDEO_COLOR",
-                    "SPACE_${color?.colorSpace ?: C.NO_VALUE}")
+                    "SPACE_${color?.colorSpace ?: -1}")
                 diagnostics.record("VIDEO_COLOR",
-                    "RANGE_${color?.colorRange ?: C.NO_VALUE}")
+                    "RANGE_${color?.colorRange ?: -1}")
                 diagnostics.record("VIDEO_COLOR",
-                    "TRANSFER_${color?.colorTransfer ?: C.NO_VALUE}")
+                    "TRANSFER_${color?.colorTransfer ?: -1}")
                 diagnostics.record("VIDEO_COLOR",
-                    "LUMA_BITS_${color?.lumaBitdepth ?: C.NO_VALUE}")
+                    "LUMA_BITS_${color?.lumaBitdepth ?: -1}")
             }
 
             override fun onAudioInputFormatChanged(
