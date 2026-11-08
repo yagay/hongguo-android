@@ -167,7 +167,7 @@ private fun LibraryRows(state: AppState, model: DramaViewModel) {
                     } else {
                         model.closeModal()
                         if (state.navigation.origin == PlaybackOrigin.SWIPE_FEED &&
-                            state.navigation.destination != PlaybackDestination.CATALOG)
+                            !state.navigation.isExplicitCatalog)
                             model.openFromFeedSelection(entry.drama, entry.episode)
                         else model.open(entry.drama, entry.episode)
                     }
