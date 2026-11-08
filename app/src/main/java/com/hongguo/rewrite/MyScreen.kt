@@ -17,10 +17,12 @@ import androidx.compose.foundation.layout.size
 import androidx.compose.foundation.layout.width
 import androidx.compose.foundation.lazy.LazyColumn
 import androidx.compose.foundation.lazy.items
+import androidx.compose.foundation.shape.CircleShape
 import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.material.icons.Icons
 import androidx.compose.material.icons.outlined.ChevronRight
 import androidx.compose.material.icons.outlined.Download
+import androidx.compose.material.icons.outlined.MoreVert
 import androidx.compose.material.icons.outlined.Menu
 import androidx.compose.material.icons.outlined.History
 import androidx.compose.material.icons.outlined.BookmarkBorder
@@ -31,6 +33,9 @@ import androidx.compose.material.icons.outlined.Share
 import androidx.compose.material.icons.outlined.StarBorder
 import androidx.compose.material3.DropdownMenu
 import androidx.compose.material3.DropdownMenuItem
+import androidx.compose.material3.AlertDialog
+import androidx.compose.material3.Checkbox
+import androidx.compose.material3.IconButton
 import androidx.compose.material3.HorizontalDivider
 import androidx.compose.material3.Icon
 import androidx.compose.material3.Surface
@@ -74,6 +79,8 @@ internal fun MyScreen(state: AppState, model: DramaViewModel, onBack: () -> Unit
     var galleryQuery by rememberSaveable { mutableStateOf("") }
     var localHistoryEdit by rememberSaveable { mutableStateOf(false) }
     var managementMenuOpen by remember { mutableStateOf(false) }
+    var accountOperationsOpen by remember { mutableStateOf(false) }
+    var confirmAccountLogout by remember { mutableStateOf(false) }
     LazyColumn(
         Modifier.fillMaxSize().testTag("my_screen").padding(horizontal = 20.dp),
         contentPadding = PaddingValues(top = 16.dp, bottom = 32.dp),
@@ -170,39 +177,110 @@ internal fun MyScreen(state: AppState, model: DramaViewModel, onBack: () -> Unit
         }
         item {
             Surface(shape = RoundedCornerShape(16.dp), color = HongguoColors.surface) {
-                Row(Modifier.fillMaxWidth().clickable(onClick = openAccount)
-                    .testTag("my_account_card").padding(16.dp),
+                Row(
+                    Modifier.fillMaxWidth().testTag("my_account_card")
+                        .padding(horizontal = 14.dp, vertical = 12.dp),
                     verticalAlignment = Alignment.CenterVertically,
-                    horizontalArrangement = Arrangement.spacedBy(12.dp)) {
-                    val avatar = account.profile?.avatarUrl
-                    if (!avatar.isNullOrBlank()) {
-                        AsyncImage(model = avatar, contentDescription = "账号头像",
-                            contentScale = ContentScale.Crop,
-                            modifier = Modifier.size(54.dp).clip(RoundedCornerShape(27.dp)))
-                    } else {
-                        Box(Modifier.size(54.dp).clip(RoundedCornerShape(27.dp))
-                            .background(HongguoColors.accentSoft),
-                            contentAlignment = Alignment.Center) {
-                            Icon(Icons.Outlined.PersonOutline, contentDescription = null,
-                                tint = HongguoColors.accent, modifier = Modifier.size(28.dp))
+                    horizontalArrangement = Arrangement.spacedBy(13.dp),
+                ) {
+                    // Match the verified profile presentation in AccountScreen.
+                    // A placeholder remains visible if the avatar is missing.
+                    Box(Modifier.size(58.dp).clip(CircleShape)
+                            .background(HongguoColors.accentSoft)
+                            .clickable(onClick = openAccount),
+                        contentAlignment = Alignment.Center) {
+                        Icon(Icons.Outlined.PersonOutline, null,
+                            Modifier.size(33.dp), tint = HongguoColors.accent)
+                        account.profile?.avatarUrl?.let { avatar ->
+                            AsyncImage(
+                                model = avatar, contentDescription = "红果账号头像",
+                                contentScale = ContentScale.Crop,
+                                modifier = Modifier.fillMaxSize().clip(CircleShape)
+                                    .testTag("my_account_avatar"),
+                            )
                         }
                     }
-                    Column(Modifier.weight(1f), verticalArrangement = Arrangement.spacedBy(6.dp)) {
-                        Text(account.profile?.nickname ?: "登录红果账号",
-                            color = HongguoColors.ink, fontSize = 18.sp,
-                            fontWeight = FontWeight.SemiBold, maxLines = 1,
-                            overflow = TextOverflow.Ellipsis)
-                        val accountId = account.profile?.id.orEmpty()
-                        Text(when {
-                            accountId.isNotBlank() -> "红果号：$accountId"
-                            account.profile != null -> "账号已登录"
-                            account.checking -> "正在确认账号状态"
-                            else -> "登录后查看云端片单"
-                        }, color = HongguoColors.muted, fontSize = 12.sp,
-                            maxLines = 1, overflow = TextOverflow.Ellipsis)
+                    Column(
+                        Modifier.weight(1f).clickable(onClick = openAccount),
+                        verticalArrangement = Arrangement.spacedBy(4.dp),
+                    ) {
+                        Text(
+                            if (account.profile == null) "登录红果账号"
+                            else account.profile?.nickname.orEmpty().ifBlank { "红果用户" },
+                            color = HongguoColors.ink, fontSize = 20.sp,
+                            fontWeight = FontWeight.Medium, maxLines = 1,
+                            overflow = TextOverflow.Ellipsis,
+                            modifier = Modifier.testTag("my_account_profile"),
+                        )
+                        Text(
+                            if (account.profile != null)
+                                "红果号 ${account.profile?.id.orEmpty()}"
+                            else if (account.checking) "正在确认账号状态"
+                            else if (account.savedSessionPresent) "已保存的账号等待验证"
+                            else "查看账号收藏、历史与预约",
+                            color = HongguoColors.muted, fontSize = 12.sp,
+                            maxLines = 1, overflow = TextOverflow.Ellipsis,
+                        )
                     }
-                    Icon(Icons.Outlined.ChevronRight, contentDescription = null,
-                        modifier = Modifier.size(20.dp), tint = HongguoColors.muted)
+                    if (account.profile != null) {
+                        Box {
+                            IconButton(
+                                onClick = { accountOperationsOpen = true },
+                                modifier = Modifier.testTag("my_account_menu"),
+                            ) {
+                                Icon(Icons.Outlined.MoreVert, "账号操作",
+                                    tint = HongguoColors.ink)
+                            }
+                            DropdownMenu(
+                                expanded = accountOperationsOpen,
+                                onDismissRequest = { accountOperationsOpen = false },
+                            ) {
+                                DropdownMenuItem(
+                                    text = { Text("刷短剧使用登录账号") },
+                                    trailingIcon = { Checkbox(
+                                        checked = account.accountRecommendations,
+                                        onCheckedChange = null) },
+                                    onClick = {
+                                        accountOperationsOpen = false
+                                        model.setAccountRecommendations(
+                                            !account.accountRecommendations)
+                                    },
+                                )
+                                DropdownMenuItem(
+                                    text = { Text("自动同步观看进度") },
+                                    trailingIcon = { Checkbox(
+                                        checked = account.syncEnabled,
+                                        onCheckedChange = null) },
+                                    onClick = {
+                                        accountOperationsOpen = false
+                                        model.account.setProgressSync(!account.syncEnabled)
+                                    },
+                                    modifier = Modifier.testTag("my_account_sync_switch"),
+                                )
+                                DropdownMenuItem(
+                                    text = { Text("刷新账号资料") },
+                                    onClick = {
+                                        accountOperationsOpen = false
+                                        model.account.refresh()
+                                    },
+                                )
+                                HorizontalDivider()
+                                DropdownMenuItem(
+                                    text = { Text("退出账号") },
+                                    onClick = {
+                                        accountOperationsOpen = false
+                                        confirmAccountLogout = true
+                                    },
+                                    modifier = Modifier.testTag("my_account_logout"),
+                                )
+                            }
+                        }
+                    } else {
+                        Icon(Icons.Outlined.ChevronRight, "打开账号登录",
+                            tint = HongguoColors.muted,
+                            modifier = Modifier.size(24.dp)
+                                .clickable(onClick = openAccount))
+                    }
                 }
             }
         }
@@ -505,6 +583,20 @@ internal fun MyScreen(state: AppState, model: DramaViewModel, onBack: () -> Unit
             }
         }
     }
+    if (confirmAccountLogout) AlertDialog(
+        onDismissRequest = { confirmAccountLogout = false },
+        title = { Text("退出红果账号？") },
+        text = { Text("清除本机保存的登录凭据；不会删除本机观看历史和收藏。") },
+        confirmButton = {
+            TextButton(onClick = {
+                confirmAccountLogout = false
+                model.account.logout()
+            }) { Text("退出") }
+        },
+        dismissButton = {
+            TextButton(onClick = { confirmAccountLogout = false }) { Text("取消") }
+        },
+    )
 }
 
 @Composable
