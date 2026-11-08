@@ -381,11 +381,7 @@ private fun HongguoApp(model: DramaViewModel = viewModel()) {
             PictureInPictureVideo(state, model)
         } else Box(
             Modifier.fillMaxSize().background(
-                if (detailImmersive)
-                    if (darkTheme) Color(0xFF6A4939) else Color(0xFFEED7C6)
-                else if (searchLandingOpen)
-                    if (darkTheme) Color(0xFF101010) else Color(0xFFFFFBF7)
-                else if (darkPlayer) HongguoColors.playerBackground
+                if (darkPlayer) HongguoColors.playerBackground
                 else HongguoColors.background
             )
         ) {
