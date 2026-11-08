@@ -38,7 +38,6 @@ jobs:
 
       - name: Run Debug unit tests
         id: tests
-        continue-on-error: true
         run: |
           set -o pipefail
           bash ./gradlew :app:testDebugUnitTest --build-cache --no-daemon 2>&1 | tee debug-tests.log
