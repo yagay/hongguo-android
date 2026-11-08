@@ -385,8 +385,8 @@ class DramaViewModel(application: Application) : AndroidViewModel(application) {
                 } catch (first: CancellationException) {
                     throw first
                 } catch (first: Exception) {
-                    val emptyModel = (first.message ?: "").contains(
-                        "PLAYBACK_EMPTY_RESPONSE", ignoreCase = true)
+                    val emptyModel = generateSequence(first as Throwable) { it.cause }
+                        .take(8).any { it is com.hongguotv.core.EmptyPlaybackResponseException }
                     if (!emptyModel) throw first
                     diagnostics.record("PLAYBACK", "PREFETCH_EMPTY_RETRY")
                     delay(1_500)
