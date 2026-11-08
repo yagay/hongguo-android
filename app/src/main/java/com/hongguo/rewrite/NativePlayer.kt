@@ -7,8 +7,6 @@ import android.provider.DocumentsContract
 import android.content.Intent
 import android.view.SurfaceView
 import android.view.TextureView
-import androidx.compose.animation.AnimatedContent
-import androidx.compose.animation.togetherWith
 import androidx.compose.foundation.background
 import androidx.compose.foundation.clickable
 import androidx.compose.foundation.rememberScrollState
@@ -548,24 +546,11 @@ internal fun NativePlayer(
             )
         }
 
-        // Animate only Compose controls, not the service-owned SurfaceView.
-        // Series controls enter from the right; on Back they leave rightward
-        // and the reel controls are revealed underneath without a black flash.
-        AnimatedContent(
-            targetState = state.feedMode,
-            modifier = Modifier.fillMaxSize().testTag("feed_series_slide"),
-            transitionSpec = {
-                if (targetState) {
-                    PlaybackPageSlide.revealFeed() togetherWith PlaybackPageSlide.exit()
-                } else {
-                    PlaybackPageSlide.enter() togetherWith PlaybackPageSlide.hideFeed()
-                }
-            },
-            label = "feed_series_chrome",
-        ) { feedChrome ->
+        // Exactly one persistent overlay. Its *top navigation* fades
+        // between feed and full-series mode; title, sidebar, status and dock
+        // remain stable above the unchanged Media3 video SurfaceView.
         ReelScreenshotOverlay(
             state = state,
-            feedChrome = feedChrome,
             detail = detail,
             episode = selected,
             onPlaybackSettings = { showPlaybackSettings = true },
@@ -601,7 +586,6 @@ internal fun NativePlayer(
             onRecommend = { model.setReelsMode("all") },
             onSearch = { searchOverlayOpen = true },
         )
-        } // Animated reel/series chrome
         }
         ReelBottomDock(
             detail = detail,
