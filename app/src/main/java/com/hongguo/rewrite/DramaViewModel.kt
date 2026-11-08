@@ -761,7 +761,10 @@ class DramaViewModel(application: Application) : AndroidViewModel(application) {
         if (state.value.feedItems.isEmpty()) {
             mutable.update { it.copy(preparingDetail = true) }
         }
-        loadOfficialReels()
+        // A manual retry starts a fresh official/category cursor. Reusing a
+        // cursor already exhausted by duplicate-only pages can never recover.
+        // Keep any currently playing reel and all valid queue entries.
+        loadOfficialReels(restart = true)
     }
     private val prefetchedFeedDetails = linkedMapOf<String, DramaDetail>()
     /** Reuse the last few series details on reverse swipes, without refetching. */
