@@ -33,12 +33,40 @@ class MiniPlayerPresentationTest {
             playing.copy(detailPageVisible = true)))
     }
 
-    @Test fun explicitCloseOrAnotherPlaybackPreparationHidesMini() {
+    @Test fun loadingNextDramaKeepsMiniAndCatalogNavigationVisible() {
+        val transitioning = playing.copy(
+            preparingDetail = true,
+            playbackUrl = null,
+            playing = false,
+        )
+        assertTrue(MiniPlayerPresentation.show(transitioning))
+        assertTrue(MiniPlayerPresentation.inCatalog(
+            transitioning, searchLandingOpen = false))
+        assertTrue(MiniPlayerPresentation.catalogNavigationVisible(
+            transitioning, searchLandingOpen = false))
+    }
+
+    @Test fun allPagesUseTheSameMiniPlayerDockWithSeparateNavbar() {
+        assertTrue(MiniPlayerPresentation.catalogNavigationVisible(
+            playing, searchLandingOpen = false))
+        assertFalse(MiniPlayerPresentation.catalogNavigationVisible(
+            playing, searchLandingOpen = true))
+        assertFalse(MiniPlayerPresentation.catalogNavigationVisible(
+            playing.copy(modal = Modal.SETTINGS), searchLandingOpen = false))
+        assertFalse(MiniPlayerPresentation.catalogNavigationVisible(
+            playing.copy(modal = Modal.ACCOUNT), searchLandingOpen = false))
+        assertFalse(MiniPlayerPresentation.catalogNavigationVisible(
+            playing.copy(detailPageVisible = true), searchLandingOpen = false))
+        assertTrue(MiniPlayerPresentation.catalogNavigationVisible(
+            AppState(), searchLandingOpen = false))
+    }
+
+    @Test fun explicitCloseOrMissingVideoHidesMini() {
         assertFalse(MiniPlayerPresentation.show(
             playing.copy(detail = null)))
         assertFalse(MiniPlayerPresentation.show(
             playing.copy(miniPlayerVisible = false)))
-        assertFalse(MiniPlayerPresentation.show(
+        assertTrue(MiniPlayerPresentation.show(
             playing.copy(preparingDetail = true)))
     }
 }
