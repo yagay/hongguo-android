@@ -18,6 +18,15 @@ class PlaybackNavigationTest {
         assertEquals(PlaybackDestination.FEED, related.toFeed().destination)
     }
 
+    @Test fun openingDetailsDirectlyFromFeedReturnsToFeedWithoutChangingPlayer() {
+        val feed = PlaybackNavigation().toFeed()
+        val details = feed.toDetails()
+        assertEquals(PlaybackDestination.FEED, details.detailsParent)
+        assertEquals(PlaybackDestination.DETAILS, details.destination)
+        assertEquals(PlaybackDestination.FEED, details.fromDetails().destination)
+        assertEquals(PlaybackOrigin.SWIPE_FEED, details.fromDetails().origin)
+    }
+
     @Test fun catalogOpenNeverReturnsToFeed() {
         val catalog = PlaybackNavigation().toSeries(PlaybackOrigin.CATALOG)
         assertFalse(catalog.returnsToFeed)
