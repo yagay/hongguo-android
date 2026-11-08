@@ -158,7 +158,10 @@ internal fun SearchLandingScreen(
                         Text(browse.section?.title.orEmpty(), color = SearchInk,
                             fontSize = 19.sp, fontWeight = FontWeight.Bold,
                             modifier = Modifier.weight(1f))
-                        TextButton(onClick = model::refreshSearchBrowse) { Text("刷新") }
+                        HongguoAction(
+                            label = "刷新", onClick = model::refreshSearchBrowse,
+                            style = HongguoActionStyle.QUIET,
+                        )
                     }
                     Text("关键词：${browse.query}",
                         color = SearchMuted, fontSize = 12.sp)
@@ -194,11 +197,13 @@ internal fun SearchLandingScreen(
             }
             if (browse.hasMore) item {
                 Box(Modifier.fillMaxWidth(), contentAlignment = Alignment.Center) {
-                    TextButton(onClick = model::moreSearchBrowse,
+                    HongguoAction(
+                        label = if (browse.moreLoading) "正在加载…" else "加载更多",
+                        onClick = model::moreSearchBrowse,
                         enabled = !browse.moreLoading,
-                        modifier = Modifier.testTag("search_browse_more")) {
-                        Text(if (browse.moreLoading) "正在加载…" else "加载更多")
-                    }
+                        modifier = Modifier.testTag("search_browse_more"),
+                        style = HongguoActionStyle.QUIET,
+                    )
                 }
             }
         } else {
