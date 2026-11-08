@@ -126,28 +126,27 @@ import java.time.format.DateTimeFormatter
  */
 @Composable
 internal fun CommentsSheet(state: AppState, model: DramaViewModel) {
-    Column(
-        Modifier.fillMaxWidth().heightIn(max = 540.dp)
-            .padding(horizontal = HongguoUi.pagePadding),
-        verticalArrangement = Arrangement.spacedBy(HongguoUi.pageSectionGap),
-    ) {
-        HongguoSheetHeader(title = "评论", dark = true) {
-            HongguoIconAction(onClick = { model.loadComments() },
-                modifier = Modifier.testTag("player_comments_refresh")) {
+    val countLabel = (state.commentsTotal ?: state.socialStats
+        ?.takeIf { it.seriesId == state.detail?.drama?.id }
+        ?.episodes?.get(state.detail?.episodes
+            ?.getOrNull(state.episodeIndex)?.vid)
+        ?.comments)?.let { total ->
+        "共 " + SocialCountFormatter.format(total) + " 条"
+    } ?: "已加载 " + state.comments.size + " 条"
+    HongguoPlayerPanel(
+        title = "评论",
+        modifier = Modifier.heightIn(max = 540.dp),
+        subtitle = countLabel + " · 仅当前分集的公开评论",
+        actions = {
+            HongguoIconAction(
+                onClick = { model.loadComments() },
+                modifier = Modifier.testTag("player_comments_refresh"),
+            ) {
                 Icon(Icons.Outlined.Refresh, contentDescription = "刷新评论",
                     tint = Color.White)
             }
-        }
-        val countLabel = (state.commentsTotal ?: state.socialStats
-            ?.takeIf { it.seriesId == state.detail?.drama?.id }
-            ?.episodes?.get(state.detail?.episodes
-                ?.getOrNull(state.episodeIndex)?.vid)
-            ?.comments)?.let { total ->
-                "共 " + SocialCountFormatter.format(total) + " 条"
-            } ?: "已加载 " + state.comments.size + " 条"
-        Text(countLabel, color = Color(0xFFC5C3C9), fontSize = 12.sp)
-        Text("按当前分集读取公开评论 · 暂不支持匿名发布或点赞同步",
-            color = Color(0xFFC5C3C9), fontSize = 12.sp)
+        },
+    ) {
         if (state.commentsLimited) {
             Text("当前显示官网公开的部分评论，非全部评论",
                 color = Color(0xFFFFB885), fontSize = 12.sp)
@@ -183,7 +182,7 @@ internal fun CommentsSheet(state: AppState, model: DramaViewModel) {
                                 modifier = Modifier.weight(1f))
                             if (comment.likes > 0) {
                                 Text("♥ " + comment.likes,
-                                    color = Color.LightGray, fontSize = 12.sp)
+                                    color = HongguoColors.playerChromeMuted, fontSize = 12.sp)
                             }
                         }
                         Text(comment.content, color = Color.White,
@@ -200,10 +199,10 @@ internal fun CommentsSheet(state: AppState, model: DramaViewModel) {
                             }
                             if (date.isNotBlank()) {
                                 Text(date, fontSize = 11.sp,
-                                    color = Color.LightGray)
+                                    color = HongguoColors.playerChromeMuted)
                             }
                         }
-                        HorizontalDivider(color = Color(0xFF414043))
+                        HongguoMenuSeparator(dark = true)
                     }
                 }
             }
@@ -214,10 +213,9 @@ internal fun CommentsSheet(state: AppState, model: DramaViewModel) {
             }
             state.commentsError?.let { error -> item {
                 Text(error, color = Color(0xFFFFB6A6), fontSize = 13.sp)
-                HongguoAction(
+                HongguoPlayerSheetAction(
                     label = "重新加载",
                     onClick = { model.loadComments() },
-                    style = HongguoActionStyle.OUTLINE,
                 )
             } }
             if (!state.commentsLoading && state.comments.isEmpty() &&
@@ -228,10 +226,9 @@ internal fun CommentsSheet(state: AppState, model: DramaViewModel) {
                         .padding(vertical = 20.dp))
             }
             if (state.commentsHasMore && !state.commentsLoading) item {
-                HongguoAction(
+                HongguoPlayerSheetAction(
                     label = "加载更多评论",
                     onClick = { model.loadComments(reset = false) },
-                    style = HongguoActionStyle.OUTLINE,
                     modifier = Modifier.fillMaxWidth(),
                 )
             }
