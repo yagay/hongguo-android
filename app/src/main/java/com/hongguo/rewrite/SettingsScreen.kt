@@ -228,7 +228,7 @@ internal fun SettingsScreen(state: AppState, model: DramaViewModel) {
                     ) {
                         Button(
                             onClick = { model.saveBackend(address) },
-                            shape = RoundedCornerShape(12.dp),
+                            shape = RoundedCornerShape(HongguoUi.controlRadius),
                             modifier = Modifier.testTag("save_backend"),
                         ) { Text("保存连接") }
                         OutlinedButton(
@@ -236,7 +236,7 @@ internal fun SettingsScreen(state: AppState, model: DramaViewModel) {
                                 address = ""
                                 model.saveBackend("")
                             },
-                            shape = RoundedCornerShape(12.dp),
+                            shape = RoundedCornerShape(HongguoUi.controlRadius),
                         ) { Text("恢复原生模式") }
                     }
                     state.settingsMessage?.let { Text(it, color = HongguoColors.accent,
@@ -324,7 +324,7 @@ internal fun SettingsScreen(state: AppState, model: DramaViewModel) {
                                     .format(DateTimeFormatter.ofPattern("yyyyMMdd-HHmmss"))
                                 exporter.launch("Hongguo-diagnostic-$stamp.txt")
                             },
-                            shape = RoundedCornerShape(12.dp),
+                            shape = RoundedCornerShape(HongguoUi.controlRadius),
                             modifier = Modifier.testTag("export_diagnostic"),
                         ) {
                             Icon(Icons.Outlined.Description, null, Modifier.size(18.dp))
@@ -332,9 +332,9 @@ internal fun SettingsScreen(state: AppState, model: DramaViewModel) {
                             Text("导出 TXT")
                         }
                         OutlinedButton(onClick = model::refreshDiagnostics,
-                            shape = RoundedCornerShape(12.dp)) { Text("刷新") }
+                            shape = RoundedCornerShape(HongguoUi.controlRadius)) { Text("刷新") }
                         OutlinedButton(onClick = { confirmClear = true },
-                            shape = RoundedCornerShape(12.dp)) { Text("清空") }
+                            shape = RoundedCornerShape(HongguoUi.controlRadius)) { Text("清空") }
                     }
                     state.logNotice?.let { Text(it, color = HongguoColors.accent,
                         fontSize = 12.sp) }
