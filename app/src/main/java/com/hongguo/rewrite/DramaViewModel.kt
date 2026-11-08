@@ -640,7 +640,8 @@ class DramaViewModel(application: Application) : AndroidViewModel(application) {
         officialFeedJob = viewModelScope.launch {
             try {
                 val result = nativeSource.officialReelsPage(restart, excluded,
-                    realOnly = snapshot.reelsMode == "real")
+                    realOnly = snapshot.reelsMode == "real",
+                    comicOnly = snapshot.reelsMode == "comic")
                 if (generation != officialFeedGeneration || !state.value.feedMode) return@launch
                 mutable.update { current ->
                     val merged = OfficialReelsPolicy.append(
@@ -742,9 +743,10 @@ class DramaViewModel(application: Application) : AndroidViewModel(application) {
     /**
      * A feed-mode switch creates a fresh official cursor and resets the current
      * queue and playback; it does not touch the home recommendation catalog.
+     * Comic uses a dedicated official category cursor, not homepage cards.
      */
     fun setReelsMode(mode: String) {
-        if (mode !in setOf("all", "real") || mode == state.value.reelsMode) return
+        if (mode !in setOf("all", "real", "comic") || mode == state.value.reelsMode) return
         prefs.edit().putString("reels_mode", mode).apply()
         val wasInFeed = state.value.feedMode
         if (wasInFeed) closePlayer()
