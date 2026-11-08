@@ -280,15 +280,14 @@ internal fun DramaDetailScreen(state: AppState, model: DramaViewModel) {
                                         fontSize = 21.sp)
                                 }
                             }
-                            Surface(shape = RoundedCornerShape(15.dp),
-                                color = DetailText,
-                                onClick = {
-                                    Toast.makeText(context, "官方演员关注接口尚未验证",
-                                        Toast.LENGTH_SHORT).show()
-                                }) {
-                                Text("+关注", Modifier.padding(
-                                    horizontal = 7.dp, vertical = 2.dp),
-                                    color = DetailBackground, fontSize = 11.sp)
+                            if (FeatureAvailability.hasApi(RemoteFeature.ACTOR_FOLLOW)) {
+                                // Only expose after a verified follow endpoint is wired.
+                                Surface(shape = RoundedCornerShape(15.dp),
+                                    color = DetailText, onClick = {}) {
+                                    Text("+关注", Modifier.padding(
+                                        horizontal = 7.dp, vertical = 2.dp),
+                                        color = DetailBackground, fontSize = 11.sp)
+                                }
                             }
                             Text(actor.name,
                                 modifier = Modifier.clickable {
@@ -576,17 +575,18 @@ internal fun DramaDetailScreen(state: AppState, model: DramaViewModel) {
                 Text(if (locallySaved) "已收藏" else "收藏",
                     color = DetailText, fontSize = 15.sp)
             }
-            Button(
-                onClick = {
-                    Toast.makeText(context, "官方写剧评接口尚未验证，暂仅支持查看",
-                        Toast.LENGTH_SHORT).show()
-                },
-                modifier = Modifier.weight(1f).height(42.dp)
-                    .testTag("detail_write_review_button"),
-                shape = RoundedCornerShape(12.dp),
-                colors = ButtonDefaults.buttonColors(containerColor = DetailChip),
-            ) {
-                Text("写剧评", color = DetailText, fontSize = 15.sp)
+            // Publishing reviews has no verified API. Keep reading reviews,
+            // but don't show a button which can only display a toast.
+            if (FeatureAvailability.hasApi(RemoteFeature.PUBLISH_REVIEW)) {
+                Button(
+                    onClick = {},
+                    modifier = Modifier.weight(1f).height(42.dp)
+                        .testTag("detail_write_review_button"),
+                    shape = RoundedCornerShape(12.dp),
+                    colors = ButtonDefaults.buttonColors(containerColor = DetailChip),
+                ) {
+                    Text("写剧评", color = DetailText, fontSize = 15.sp)
+                }
             }
         }
     }
