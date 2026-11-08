@@ -150,6 +150,10 @@ class BackgroundPlaybackService : MediaSessionService() {
             ))
             .build()
         engine.addListener(object : Player.Listener {
+            override fun onIsPlayingChanged(isPlaying: Boolean) {
+                publishProgressNotification()
+            }
+
             override fun onRenderedFirstFrame() { onFirstFrame?.invoke() }
 
             override fun onPlaybackStateChanged(state: Int) {
