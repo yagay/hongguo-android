@@ -116,7 +116,7 @@ class MainActivity : ComponentActivity() {
 
     /** Explicit PiP action in both the full and in-app mini players. */
     fun enterVideoPictureInPicture(expectedVid: String): Boolean {
-        if (!externalPipEnabled(this)) return false
+        if (!readExternalPipEnabled(this)) return false
         if (!packageManager.hasSystemFeature(
                 PackageManager.FEATURE_PICTURE_IN_PICTURE)) return false
         val player = BackgroundPlaybackService.playerFlow.value ?: return false
