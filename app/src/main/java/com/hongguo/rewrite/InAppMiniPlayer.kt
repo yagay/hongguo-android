@@ -82,7 +82,6 @@ internal fun InAppMiniPlayer(
             .size(width = 90.dp, height = 160.dp)
             .clip(RoundedCornerShape(11.dp))
             .background(Color.Black)
-            .clickable(onClick = onExpand)
             .testTag("in_app_mini_player"),
         contentAlignment = Alignment.Center,
     ) {
@@ -110,5 +109,12 @@ internal fun InAppMiniPlayer(
                 modifier = Modifier.fillMaxSize(),
             )
         }
+        // PlayerView is an AndroidView that may consume pointer events;
+        // a transparent Compose hit layer guarantees tap-to-expand.
+        Box(
+            Modifier.fillMaxSize()
+                .clickable(onClick = onExpand)
+                .testTag("mini_expand_player"),
+        )
     }
 }
