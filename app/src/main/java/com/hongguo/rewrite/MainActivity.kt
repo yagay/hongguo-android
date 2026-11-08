@@ -451,8 +451,16 @@ private fun HongguoApp(model: DramaViewModel = viewModel()) {
                     // of this device's height. Non-player screens retain
                     // their regular 50dp touch targets.
                     val tabHeight = if (darkPlayer) 40.dp else 50.dp
+                    // Match the outside-video progress/episode dock when
+                    // playing; browse tabs continue to follow app theme.
+                    val tabBackground = if (darkPlayer) Color(0xFF232325)
+                        else HongguoColors.surface
+                    val activeTabColor = if (darkPlayer) Color.White
+                        else HongguoColors.accent
+                    val inactiveTabColor = if (darkPlayer) Color(0xFFB7B7BC)
+                        else HongguoColors.muted
                     Surface(
-                        color = HongguoColors.surface,
+                        color = tabBackground,
                         shape = RoundedCornerShape(0.dp),
                     ) {
                         Row(
@@ -474,14 +482,14 @@ private fun HongguoApp(model: DramaViewModel = viewModel()) {
                                 ) {
                                     Icon(icon, contentDescription = label,
                                         modifier = Modifier.height(if (darkPlayer) 18.dp else 21.dp),
-                                        tint = if (selected) HongguoColors.accent
-                                            else HongguoColors.muted)
+                                        tint = if (selected) activeTabColor
+                                            else inactiveTabColor)
                                     Text(label, fontSize = if (darkPlayer) 10.sp else 11.sp,
                                         lineHeight = if (darkPlayer) 13.sp else 15.sp,
                                         fontWeight = if (selected) FontWeight.SemiBold
                                             else FontWeight.Normal,
-                                        color = if (selected) HongguoColors.accent
-                                            else HongguoColors.muted)
+                                        color = if (selected) activeTabColor
+                                            else inactiveTabColor)
                                 }
                             }
                         }
