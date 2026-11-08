@@ -512,54 +512,11 @@ private fun HongguoApp(model: DramaViewModel = viewModel()) {
                     )
                 }
                 if (showPrimaryNavigation) {
-                    // NavigationBar's default 80dp min-height and extra glass
-                    // On the portrait player, reserve less space for the
-                    // navigation strip so the uncropped 9:16 video uses more
-                    // of this device's height. Non-player screens retain
-                    // their regular 50dp touch targets.
-                    val tabHeight = if (darkPlayer) 40.dp else 50.dp
-                    // Match the outside-video progress/episode dock when
-                    // playing; browse tabs continue to follow app theme.
-                    val tabBackground = if (darkPlayer) Color(0xFF232325)
-                        else HongguoColors.surface
-                    val activeTabColor = if (darkPlayer) Color.White
-                        else HongguoColors.accent
-                    val inactiveTabColor = if (darkPlayer) Color(0xFFB7B7BC)
-                        else HongguoColors.muted
-                    Surface(
-                        color = tabBackground,
-                        shape = RoundedCornerShape(0.dp),
-                    ) {
-                        Row(
-                            Modifier.fillMaxWidth().height(tabHeight),
-                            horizontalArrangement = Arrangement.SpaceEvenly,
-                            verticalAlignment = Alignment.CenterVertically,
-                        ) {
-                            listOf(
-                                Triple("home", "首页", Icons.Outlined.Home),
-                                Triple("theater", "剧场", Icons.Outlined.Theaters),
-                                Triple("mine", "我的", Icons.Outlined.PersonOutline),
-                            ).forEach { (tab, label, icon) ->
-                                val selected = primaryTab == tab
-                                Box(
-                                    modifier = Modifier.weight(1f).height(tabHeight)
-                                        .clickable { selectPrimaryTab(tab) }
-                                        .testTag("primary_tab_" + tab),
-                                    contentAlignment = Alignment.Center,
-                                ) {
-                                    // Icon-only navigation: retain the full
-                                    // tap target and accessibility label.
-                                    Icon(
-                                        imageVector = icon,
-                                        contentDescription = label,
-                                        modifier = Modifier.size(if (darkPlayer) 27.dp else 29.dp),
-                                        tint = if (selected) activeTabColor
-                                            else inactiveTabColor,
-                                    )
-                                }
-                            }
-                        }
-                    }
+                    HongguoPrimaryNavigation(
+                        selectedTab = primaryTab,
+                        playingVideo = darkPlayer,
+                        onSelect = ::selectPrimaryTab,
+                    )
                 }
             }
         }
