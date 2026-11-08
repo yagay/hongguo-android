@@ -136,12 +136,13 @@ internal fun ReelScreenshotOverlay(
                     Icon(Icons.Outlined.Menu, "打开账号与隐私侧边栏", tint = white,
                         modifier = Modifier.size(25.dp))
                 }
-                val tabs = listOf(
-                    Triple("关注", false, onFollowing),
-                    Triple("漫剧", state.reelsMode == "comic", onComic),
-                    Triple("真人剧", state.reelsMode == "real", onReal),
-                    Triple("推荐", state.reelsMode == "all", onRecommend),
-                )
+                val tabs = buildList {
+                    if (FeatureAvailability.hasApi(RemoteFeature.FOLLOWING_REEL_FEED))
+                        add(Triple("关注", false, onFollowing))
+                    add(Triple("漫剧", state.reelsMode == "comic", onComic))
+                    add(Triple("真人剧", state.reelsMode == "real", onReal))
+                    add(Triple("推荐", state.reelsMode == "all", onRecommend))
+                }
                 tabs.forEach { (label, active, action) ->
                     Column(
                         modifier = Modifier.weight(1f).clickable(onClick = action)
