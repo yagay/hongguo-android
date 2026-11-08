@@ -64,6 +64,11 @@ data class AppState(
     val suggestions: List<String> = emptyList(),
     val suggestionsLoading: Boolean = false,
     val recentSearches: List<String> = emptyList(),
+    /** Search landing is independent from the current catalogue and player. */
+    val landingRank: List<Drama> = emptyList(),
+    val landingTerms: List<String> = emptyList(),
+    val landingLoading: Boolean = false,
+    val landingError: String? = null,
     val genre: String = "short_play",
     val board: String = "all",
     val filters: List<FilterGroup> = emptyList(),
