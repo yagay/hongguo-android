@@ -297,7 +297,11 @@ private fun HongguoApp(model: DramaViewModel = viewModel()) {
             !playerDetailsOverlay && activeRoute != PlaybackDestination.DETAILS
 
     fun selectPrimaryTab(tab: String) {
-        if (tab == primaryTab) return
+        // During the first frame of an external series launch the selected
+        // tab can still be My/Theater. A same-tab tap must still minimize the
+        // new full player instead of being discarded.
+        if (tab == primaryTab &&
+            !AppShellNavigationPolicy.shouldMinimizeForTab(state, tab)) return
         if (tab == "home") {
             primaryTab = tab
             if (AppShellNavigationPolicy.shouldRestoreForHome(state)) {
