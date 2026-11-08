@@ -3,6 +3,7 @@ package com.hongguo.rewrite
 import androidx.compose.foundation.background
 import androidx.compose.foundation.clickable
 import androidx.compose.foundation.layout.Arrangement
+import androidx.compose.foundation.layout.aspectRatio
 import androidx.compose.foundation.layout.Column
 import androidx.compose.foundation.layout.PaddingValues
 import androidx.compose.foundation.layout.Row
@@ -242,22 +243,40 @@ internal fun ReelAccountDrawer(
             }
         }
         if (recentExpanded && recentlyWatched.isNotEmpty()) {
-            // Keep the drawer's outer LazyColumn responsible for vertical
-            // scrolling, including long histories. No nested vertical scroll.
-            items(recentlyWatched.chunked(2),
-                key = { row -> "recent_expanded_" + row.first().drama.id }) { row ->
-                Card(shape = RoundedCornerShape(16.dp),
+            // A narrow navigation drawer needs one history entry per row.
+            // The poster has a fixed 2:3 ratio; text occupies the remaining
+            // width rather than squeezing two covers into a grid.
+            items(recentlyWatched, key = { "recent_expanded_" + it.drama.id }) { watched ->
+                Row(
                     modifier = Modifier.fillMaxWidth()
-                        .testTag("drawer_recent_expanded_row")) {
-                    Row(Modifier.fillMaxWidth().padding(12.dp),
-                        horizontalArrangement = Arrangement.spacedBy(12.dp)) {
-                        row.forEach { watched ->
-                            RecentWatchTile(watched, model,
-                                modifier = Modifier.weight(1f),
-                                onClick = { onHistoryItem(watched.drama) })
-                        }
-                        if (row.size == 1) Spacer(Modifier.weight(1f))
+                        .clip(RoundedCornerShape(12.dp))
+                        .background(Color.White)
+                        .clickable { onHistoryItem(watched.drama) }
+                        .padding(9.dp)
+                        .testTag("drawer_recent_expanded_row"),
+                    verticalAlignment = Alignment.CenterVertically,
+                    horizontalArrangement = Arrangement.spacedBy(12.dp),
+                ) {
+                    AsyncImage(
+                        model = model.cover(watched.drama.cover),
+                        contentDescription = watched.drama.title,
+                        contentScale = ContentScale.Crop,
+                        modifier = Modifier.width(68.dp).aspectRatio(2f / 3f)
+                            .clip(RoundedCornerShape(8.dp))
+                            .background(Color(0xFFE5E5E5)),
+                    )
+                    Column(
+                        modifier = Modifier.weight(1f),
+                        verticalArrangement = Arrangement.spacedBy(6.dp),
+                    ) {
+                        Text(watched.drama.title, color = Color(0xFF222222),
+                            fontWeight = FontWeight.SemiBold, fontSize = 14.sp,
+                            maxLines = 2, overflow = TextOverflow.Ellipsis)
+                        Text("看到第${watched.episode}集",
+                            color = Color.Gray, fontSize = 12.sp)
                     }
+                    Icon(Icons.Outlined.ChevronRight, contentDescription = null,
+                        tint = Color(0xFFAAAAAA), modifier = Modifier.size(18.dp))
                 }
             }
         }
@@ -310,7 +329,7 @@ internal fun ReelAccountDrawer(
     }
 }
 
-/** Same clickable history item in the horizontal strip and expanded grid. */
+/** Compact poster tile for the horizontal recent-history strip. */
 @Composable
 private fun RecentWatchTile(
     watched: Watched,
@@ -327,7 +346,7 @@ private fun RecentWatchTile(
             model = model.cover(watched.drama.cover),
             contentDescription = watched.drama.title,
             contentScale = ContentScale.Crop,
-            modifier = Modifier.fillMaxWidth().height(128.dp)
+            modifier = Modifier.fillMaxWidth().aspectRatio(2f / 3f)
                 .clip(RoundedCornerShape(10.dp))
                 .background(Color(0xFFE5E5E5)),
         )
