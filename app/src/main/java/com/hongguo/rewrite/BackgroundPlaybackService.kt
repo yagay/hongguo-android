@@ -162,6 +162,7 @@ class BackgroundPlaybackService : MediaSessionService() {
             .build()
         engine.addListener(object : Player.Listener {
             override fun onIsPlayingChanged(isPlaying: Boolean) {
+                lastNotifiedSecond = -1L
                 if (isPlaying) {
                     autoStartPending = false
                     diagnostics.record("BACKGROUND", "PLAYING")
@@ -346,11 +347,16 @@ class BackgroundPlaybackService : MediaSessionService() {
      * notification or stop the foreground service during a slow network fetch.
      * configure() disposes the old media atomically once the new source is ready.
      */
+    /** The encrypted stream must remain open while the session is using it. */
+    fun ownsVideo(video: RemoteVideo): Boolean = remoteVideo === video
+
     fun pauseForTransition() {
         if (!::engine.isInitialized || currentKey == null) return
-        onCheckpoint?.invoke(
-            engine.currentPosition.coerceAtLeast(0L),
-            engine.duration.takeIf { it > 0L } ?: 0L)
+        if (engine.playbackState != Player.STATE_ENDED) {
+            onCheckpoint?.invoke(
+                engine.currentPosition.coerceAtLeast(0L),
+                engine.duration.takeIf { it > 0L } ?: 0L)
+        }
         engine.pause()
         autoStartPending = false
         diagnostics.record("BACKGROUND", "TRANSITION_PENDING")
