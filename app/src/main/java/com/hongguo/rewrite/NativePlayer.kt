@@ -423,18 +423,8 @@ internal fun NativePlayer(state: AppState, model: DramaViewModel) {
             }
         }
 
-        // Passive gradient for legible labels on bright and dark video frames.
-        // No pointer input here: paging and player gestures are unaffected.
-        Box(
-            Modifier.fillMaxSize().background(
-                Brush.verticalGradient(
-                    0.00f to Color.Black.copy(alpha = 0.52f),
-                    0.20f to Color.Transparent,
-                    0.57f to Color.Transparent,
-                    1.00f to Color.Black.copy(alpha = 0.84f),
-                )
-            )
-        )
+        // Keep the actual video unobscured. Text and buttons provide their own
+        // contrast treatment instead of dimming the entire top/bottom frame.
 
         if (state.danmakuEnabled && selected != null && !showComments && !showEpisodes) {
             TimedDanmakuOverlay(
@@ -900,6 +890,7 @@ private fun Media3Reel(
             PlayerView(it).apply {
                 this.player = player
                 useController = false
+                setKeepContentOnPlayerReset(true)
                 resizeMode = if (fillVideo) AspectRatioFrameLayout.RESIZE_MODE_ZOOM
                     else AspectRatioFrameLayout.RESIZE_MODE_FIT
                 keepScreenOn = true
@@ -907,7 +898,7 @@ private fun Media3Reel(
         },
         modifier = Modifier.fillMaxSize().testTag("native_player"),
         update = {
-            it.player = player
+            if (it.player !== player) it.player = player
             it.resizeMode = if (fillVideo) AspectRatioFrameLayout.RESIZE_MODE_ZOOM
                 else AspectRatioFrameLayout.RESIZE_MODE_FIT
         },
