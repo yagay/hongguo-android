@@ -306,58 +306,30 @@ private fun HongguoApp(model: DramaViewModel = viewModel()) {
                         PlaybackDestination.SERIES) -> {
                         val upcoming = if (state.feedMode)
                             state.feedItems.getOrNull(state.feedIndex) else null
-                        Box(
-                            Modifier.fillMaxSize().background(
-                                if (upcoming != null) Color.Black
-                                else HongguoColors.background),
-                            contentAlignment = Alignment.Center,
-                        ) {
-                            if (upcoming != null && upcoming.cover.isNotBlank()) {
-                                AsyncImage(
-                                    model = model.cover(upcoming.cover),
-                                    contentDescription = null,
-                                    contentScale = ContentScale.Crop,
-                                    modifier = Modifier.fillMaxSize(),
-                                )
-                            }
-                            Column(
-                                horizontalAlignment = Alignment.CenterHorizontally,
-                                verticalArrangement = Arrangement.spacedBy(12.dp),
-                            ) {
-                                if (upcoming == null) {
-                                    CircularProgressIndicator(color = HongguoColors.accent)
-                                    Text(if (state.preparingDetail || state.feedLoading)
-                                        "正在获取短剧…" else
-                                        state.playbackError ?: state.feedError
-                                            ?: "短剧暂时无法加载")
-                                } else {
-                                    Text(upcoming.title, color = Color.White)
-                                    Text("正在准备播放", color = Color.White.copy(alpha = 0.84f))
+                        ReelLoadingScreen(
+                            drama = upcoming,
+                            coverUrl = upcoming?.cover?.takeIf(String::isNotBlank)
+                                ?.let(model::cover),
+                            loading = state.feedLoading || state.preparingDetail,
+                            preparingSeries = state.preparingDetail,
+                            error = state.playbackError ?: state.feedError,
+                            onRetry = {
+                                when {
+                                    state.feedMode && upcoming != null ->
+                                        model.open(upcoming, resumeEp = 1, feed = true)
+                                    state.feedMode -> model.retryOfficialReels()
+                                    state.navigation.origin == PlaybackOrigin.SWIPE_FEED ->
+                                        model.startFeed()
+                                    else -> model.closePlayer()
                                 }
-                                if (state.feedMode) {
-                                    state.feedError?.let { problem ->
-                                        Text(problem, color = Color.White,
-                                            modifier = Modifier.padding(horizontal = 24.dp))
-                                    }
-                                    OutlinedButton(
-                                        onClick = model::retryOfficialReels,
-                                        enabled = !state.feedLoading,
-                                    ) { Text("重试推荐", color = Color.White) }
-                                    TextButton(onClick = { confirmExitFeed = true }) {
-                                        Text("退出刷短剧", color = Color.White)
-                                    }
-                                } else if (state.navigation.origin ==
-                                    PlaybackOrigin.SWIPE_FEED) {
-                                    TextButton(onClick = model::backFromPlayer) {
-                                        Text("返回刷短剧", color = HongguoColors.accent)
-                                    }
-                                } else {
-                                    TextButton(onClick = model::closePlayer) {
-                                        Text("取消", color = HongguoColors.accent)
-                                    }
-                                }
-                            }
-                        }
+                            },
+                            onExit = {
+                                if (state.feedMode) confirmExitFeed = true
+                                else model.backFromPlayer()
+                            },
+                            exitLabel = if (state.feedMode) "退出刷短剧"
+                                else "返回",
+                        )
                     }
                     searchLandingOpen -> SearchLandingScreen(
                         state, model,
