@@ -1063,7 +1063,9 @@ class DramaViewModel(application: Application) : AndroidViewModel(application) {
         searchBrowseFiltersJob?.cancel()
         ++searchBrowseGeneration
         mutableSearchBrowse.value = mutableSearchBrowse.value.copy(
-            section = mutableSearchBrowse.value.section ?: Section.SEARCH,
+            // Search entry is keyword-only; discovery/ranking/filter tabs
+            // belong to the Theater screen, even after restoring old state.
+            section = Section.SEARCH,
             query = query, items = emptyList(), loading = false,
             hasMore = false, nextOffset = 0, error = null,
         )
