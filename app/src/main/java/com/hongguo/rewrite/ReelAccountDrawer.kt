@@ -19,15 +19,23 @@ import androidx.compose.foundation.lazy.items
 import androidx.compose.foundation.shape.CircleShape
 import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.material.icons.Icons
+import androidx.compose.material.icons.automirrored.outlined.ArrowBack
+import androidx.compose.material.icons.outlined.BookmarkBorder
 import androidx.compose.material.icons.outlined.ChevronRight
 import androidx.compose.material.icons.outlined.Download
 import androidx.compose.material.icons.outlined.EventAvailable
 import androidx.compose.material.icons.outlined.PersonOutline
 import androidx.compose.material.icons.outlined.PrivacyTip
+import androidx.compose.material.icons.outlined.Settings
+import androidx.compose.material.icons.outlined.Share
+import androidx.compose.material.icons.outlined.FolderOpen
 import androidx.compose.material3.Card
 import androidx.compose.material3.Icon
 import androidx.compose.material3.MaterialTheme
 import androidx.compose.material3.Text
+import androidx.compose.material3.Surface
+import androidx.compose.material3.TextButton
+import androidx.compose.material3.HorizontalDivider
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.getValue
 import androidx.compose.runtime.mutableStateOf
@@ -56,6 +64,9 @@ internal fun ReelAccountDrawer(
     onHistoryItem: (Drama) -> Unit,
     onReservations: () -> Unit,
     onDownloads: () -> Unit,
+    onShare: () -> Unit,
+    onSettings: () -> Unit,
+    onOfflineEpisode: (OfflineEpisode) -> Unit,
 ) {
     val account by model.account.state.collectAsStateWithLifecycle()
     // History can include repeat visits; show each drama only once, most recent first.
@@ -63,12 +74,96 @@ internal fun ReelAccountDrawer(
         state.library.sortedByDescending { it.updated }.distinctBy { it.drama.id }
     }
     var recentExpanded by rememberSaveable { mutableStateOf(false) }
-    LazyColumn(
-        modifier = Modifier.fillMaxSize().background(Color(0xFFF8F8F8))
-            .testTag("reel_account_drawer"),
-        contentPadding = PaddingValues(start = 14.dp, end = 14.dp, top = 24.dp, bottom = 30.dp),
-        verticalArrangement = Arrangement.spacedBy(14.dp),
-    ) {
+    var drawerPage by rememberSaveable { mutableStateOf<String?>(null) }
+    Column(Modifier.fillMaxSize().background(Color(0xFFF8F8F8))
+        .testTag("reel_account_drawer")) {
+        LazyColumn(
+            modifier = Modifier.weight(1f).fillMaxWidth(),
+            contentPadding = PaddingValues(start = 14.dp, end = 14.dp,
+                top = 24.dp, bottom = 24.dp),
+            verticalArrangement = Arrangement.spacedBy(14.dp),
+        ) {
+            if (drawerPage == "watch_later" || drawerPage == "offline") {
+                item {
+                    Row(Modifier.fillMaxWidth(),
+                        verticalAlignment = Alignment.CenterVertically) {
+                        Row(Modifier.clickable { drawerPage = null }
+                            .padding(vertical = 10.dp, horizontal = 4.dp)
+                            .testTag("drawer_library_back"),
+                            verticalAlignment = Alignment.CenterVertically) {
+                            Icon(Icons.AutoMirrored.Outlined.ArrowBack,
+                                "返回常用功能", tint = Color(0xFF222222),
+                                modifier = Modifier.size(22.dp))
+                            Spacer(Modifier.width(6.dp))
+                            Text("返回", color = Color(0xFF222222), fontSize = 14.sp)
+                        }
+                        Spacer(Modifier.weight(1f))
+                        Text(if (drawerPage == "watch_later") "稍后看" else "本机离线",
+                            color = Color(0xFF222222), fontWeight = FontWeight.SemiBold,
+                            fontSize = 18.sp)
+                    }
+                }
+                if (drawerPage == "watch_later") {
+                    if (state.watchLater.isEmpty()) item {
+                        Text("还没有稍后看的短剧", color = Color.Gray, fontSize = 13.sp)
+                    }
+                    items(state.watchLater, key = { "later_" + it.id }) { drama ->
+                        Card(shape = RoundedCornerShape(14.dp)) {
+                            Row(Modifier.fillMaxWidth().padding(12.dp),
+                                verticalAlignment = Alignment.CenterVertically) {
+                                AsyncImage(model = model.cover(drama.cover),
+                                    contentDescription = null,
+                                    contentScale = ContentScale.Crop,
+                                    modifier = Modifier.size(width = 48.dp, height = 65.dp)
+                                        .clip(RoundedCornerShape(8.dp)))
+                                Spacer(Modifier.width(10.dp))
+                                Column(Modifier.weight(1f).clickable {
+                                    onHistoryItem(drama)
+                                }.testTag("drawer_later_open_" + drama.id)) {
+                                    Text(drama.title, fontWeight = FontWeight.SemiBold,
+                                        fontSize = 14.sp, maxLines = 2,
+                                        overflow = TextOverflow.Ellipsis,
+                                        color = Color(0xFF222222))
+                                    Text("点击继续观看", fontSize = 11.sp, color = Color.Gray)
+                                }
+                                TextButton(onClick = { model.toggleWatchLater(drama) },
+                                    modifier = Modifier.testTag("drawer_later_remove_" + drama.id)) {
+                                    Text("移除")
+                                }
+                            }
+                        }
+                    }
+                } else {
+                    state.offlineLibraryMessage?.let { notice ->
+                        item { Text(notice, color = Color(0xFF8F4E3C), fontSize = 12.sp) }
+                    }
+                    if (state.offlineEpisodes.isEmpty()) item {
+                        Text("还没有保存到本机的离线视频", color = Color.Gray, fontSize = 13.sp)
+                    }
+                    items(state.offlineEpisodes,
+                        key = { "offline_" + it.documentUri }) { episode ->
+                        Card(shape = RoundedCornerShape(14.dp)) {
+                            Row(Modifier.fillMaxWidth().padding(12.dp),
+                                verticalAlignment = Alignment.CenterVertically) {
+                                Column(Modifier.weight(1f).clickable {
+                                    onOfflineEpisode(episode)
+                                }.testTag("drawer_offline_open_" + episode.vid)) {
+                                    Text(episode.title, color = Color(0xFF222222),
+                                        fontWeight = FontWeight.SemiBold, fontSize = 14.sp,
+                                        maxLines = 2, overflow = TextOverflow.Ellipsis)
+                                    Text("第 ${episode.episode} 集 · 本机播放",
+                                        color = Color.Gray, fontSize = 12.sp)
+                                }
+                                TextButton(onClick = {
+                                    model.removeOfflineEpisode(episode.documentUri)
+                                }, modifier = Modifier.testTag("drawer_offline_remove_" + episode.vid)) {
+                                    Text("移除记录")
+                                }
+                            }
+                        }
+                    }
+                }
+            } else {
         item {
             Row(
                 Modifier.fillMaxWidth().clickable(onClick = onAccount)
@@ -172,10 +267,37 @@ internal fun ReelAccountDrawer(
                         color = Color(0xFF222222))
                     DrawerAction("我的预约", Icons.Outlined.EventAvailable,
                         onReservations, "drawer_reservations")
-                    DrawerAction("我的下载", Icons.Outlined.Download,
+                    DrawerAction("稍后看 · ${state.watchLater.size}部",
+                        Icons.Outlined.BookmarkBorder,
+                        { drawerPage = "watch_later" }, "drawer_watch_later")
+                    DrawerAction("下载任务", Icons.Outlined.Download,
                         onDownloads, "drawer_downloads")
+                    DrawerAction("本机离线 · ${state.offlineEpisodes.size}集",
+                        Icons.Outlined.FolderOpen,
+                        { drawerPage = "offline" }, "drawer_offline_library")
+                    DrawerAction("分享解析", Icons.Outlined.Share,
+                        onShare, "drawer_share")
                     DrawerAction("账号与隐私", Icons.Outlined.PrivacyTip,
                         onAccount, "drawer_privacy")
+                }
+            }
+        }
+        } // Drawer main menu
+        } // Scrollable content: settings stays pinned below
+        Surface(color = Color(0xFFF8F8F8), shadowElevation = 8.dp) {
+            Column(Modifier.fillMaxWidth()) {
+                HorizontalDivider(color = Color(0xFFE5E5E5))
+                Row(Modifier.fillMaxWidth().clickable(onClick = onSettings)
+                    .testTag("drawer_settings")
+                    .padding(horizontal = 23.dp, vertical = 16.dp),
+                    verticalAlignment = Alignment.CenterVertically) {
+                    Icon(Icons.Outlined.Settings, contentDescription = null,
+                        tint = Color(0xFF242424), modifier = Modifier.size(23.dp))
+                    Spacer(Modifier.width(12.dp))
+                    Text("设置", color = Color(0xFF242424), fontSize = 16.sp,
+                        fontWeight = FontWeight.SemiBold, modifier = Modifier.weight(1f))
+                    Icon(Icons.Outlined.ChevronRight, contentDescription = null,
+                        tint = Color(0xFF777777))
                 }
             }
         }
