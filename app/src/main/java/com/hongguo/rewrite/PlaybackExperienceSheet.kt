@@ -93,6 +93,16 @@ internal fun PlaybackExperienceSheet(
                 "退出播放或打开其他页面会恢复原来的屏幕亮度。",
                 fontSize = 11.sp, color = secondary)
 
+            PlaybackHeading("声音增强")
+            PlaybackChoices(
+                listOf(0 to "原音", 3 to "+3 dB", 6 to "+6 dB"),
+                state.playbackAudioBoostDb, model::setPlaybackAudioBoostDb,
+                "audio_boost",
+            )
+            Text("只增强当前应用的声音，不改变系统媒体音量。" +
+                "部分设备或蓝牙输出可能不支持；如果出现破音，请恢复原音。",
+                fontSize = 11.sp, color = secondary)
+
             PlaybackHeading("播放倍速")
             PlaybackChoices(
                 listOf(0.75f to "0.75×", 1f to "1×", 1.25f to "1.25×",
