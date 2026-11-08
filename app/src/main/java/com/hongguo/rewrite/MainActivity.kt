@@ -21,6 +21,8 @@ import androidx.compose.foundation.layout.fillMaxSize
 import androidx.compose.foundation.layout.imePadding
 import androidx.compose.foundation.layout.safeDrawingPadding
 import androidx.compose.foundation.layout.padding
+import androidx.compose.material3.AlertDialog
+import androidx.compose.material3.OutlinedButton
 import androidx.compose.material3.CircularProgressIndicator
 import androidx.compose.material3.MaterialTheme
 import androidx.compose.material3.NavigationBar
@@ -184,14 +186,16 @@ private fun HongguoApp(model: DramaViewModel = viewModel()) {
     }
     var mineOpen by rememberSaveable { mutableStateOf(false) }
     var searchLandingOpen by rememberSaveable { mutableStateOf(false) }
+    var confirmExitFeed by rememberSaveable { mutableStateOf(false) }
     // A detail tag may originate from the My tab; search results must be visible.
     LaunchedEffect(state.detail, state.section) {
         if (state.detail == null && state.section == Section.SEARCH) mineOpen = false
     }
     val detailImmersive = state.detailPageVisible && state.detail != null &&
         state.modal == Modal.NONE
-    val darkPlayer = state.detail != null && !state.detailPageVisible &&
-        !state.miniPlayerVisible && state.modal != Modal.SETTINGS
+    val darkPlayer = (state.detail != null || state.feedMode) &&
+        !state.detailPageVisible && !state.miniPlayerVisible &&
+        state.modal != Modal.SETTINGS && state.modal != Modal.ACCOUNT
     val showMini = MiniPlayerPresentation.show(state)
     val showCatalogBottomNav =
         MiniPlayerPresentation.catalogNavigationVisible(state, searchLandingOpen)
@@ -269,7 +273,9 @@ private fun HongguoApp(model: DramaViewModel = viewModel()) {
                             // mini video; root Back falls through to Android.
                             if (searchLandingOpen) searchLandingOpen = false
                             else if (mineOpen) mineOpen = false
-                        } else if (state.detail != null || state.preparingDetail || state.feedMode)
+                        } else if (state.feedMode)
+                            confirmExitFeed = true
+                        else if (state.detail != null || state.preparingDetail)
                             model.backFromPlayer()
                         else if (searchLandingOpen) searchLandingOpen = false
                         else mineOpen = false
@@ -283,12 +289,13 @@ private fun HongguoApp(model: DramaViewModel = viewModel()) {
                         // Do not discard the whole Compose player when the same
                         // video switches between swipe feed and full-series mode.
                         key(state.detail?.drama?.id) {
-                            NativePlayer(state, model)
+                            NativePlayer(state, model,
+                                onExitFeed = { confirmExitFeed = true })
                         }
                     // A minimized feed stays on its browsing page while the
                     // next drama's metadata is loading; never replace it with
                     // the fullscreen loading scene.
-                    state.preparingDetail && !state.miniPlayerVisible -> {
+                    (state.preparingDetail || state.feedMode) && !state.miniPlayerVisible -> {
                         val upcoming = if (state.feedMode)
                             state.feedItems.getOrNull(state.feedIndex) else null
                         Box(
@@ -316,9 +323,22 @@ private fun HongguoApp(model: DramaViewModel = viewModel()) {
                                     Text(upcoming.title, color = Color.White)
                                     Text("正在准备播放", color = Color.White.copy(alpha = 0.84f))
                                 }
-                                TextButton(onClick = model::closePlayer) {
-                                    Text("取消", color = if (upcoming != null)
-                                        Color.White else HongguoColors.accent)
+                                if (state.feedMode) {
+                                    state.feedError?.let { problem ->
+                                        Text(problem, color = Color.White,
+                                            modifier = Modifier.padding(horizontal = 24.dp))
+                                    }
+                                    OutlinedButton(
+                                        onClick = model::retryOfficialReels,
+                                        enabled = !state.feedLoading,
+                                    ) { Text("重试推荐", color = Color.White) }
+                                    TextButton(onClick = { confirmExitFeed = true }) {
+                                        Text("退出刷短剧", color = Color.White)
+                                    }
+                                } else {
+                                    TextButton(onClick = model::closePlayer) {
+                                        Text("取消", color = HongguoColors.accent)
+                                    }
                                 }
                             }
                         }
@@ -369,6 +389,23 @@ private fun HongguoApp(model: DramaViewModel = viewModel()) {
                     }
                 }
             }
+        }
+        if (confirmExitFeed) {
+            AlertDialog(
+                onDismissRequest = { confirmExitFeed = false },
+                title = { Text("退出刷短剧？") },
+                text = { Text("退出应用后将停止当前播放。") },
+                confirmButton = {
+                    TextButton(onClick = {
+                        confirmExitFeed = false
+                        model.closePlayer()
+                        activity?.finish()
+                    }) { Text("退出") }
+                },
+                dismissButton = {
+                    TextButton(onClick = { confirmExitFeed = false }) { Text("继续观看") }
+                },
+            )
         }
     }
 }
