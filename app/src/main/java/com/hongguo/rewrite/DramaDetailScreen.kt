@@ -10,7 +10,6 @@ import androidx.compose.foundation.layout.PaddingValues
 import androidx.compose.foundation.layout.Row
 import androidx.compose.foundation.layout.Spacer
 import androidx.compose.foundation.layout.fillMaxSize
-import androidx.compose.foundation.layout.offset
 import androidx.compose.foundation.layout.fillMaxWidth
 import androidx.compose.foundation.layout.height
 import androidx.compose.foundation.layout.heightIn
@@ -46,7 +45,6 @@ import androidx.compose.ui.Modifier
 import androidx.compose.ui.draw.clip
 import androidx.compose.ui.graphics.graphicsLayer
 import androidx.compose.ui.graphics.Color
-import androidx.compose.ui.text.style.TextAlign
 import androidx.compose.ui.graphics.Brush
 import androidx.compose.ui.layout.ContentScale
 import androidx.compose.ui.platform.testTag
@@ -148,7 +146,8 @@ internal fun DramaDetailScreen(state: AppState, model: DramaViewModel) {
                 }
             }
             if (tags.isNotEmpty()) item {
-                Row(Modifier.padding(horizontal = 18.dp),Modifier.fillMaxWidth().horizontalScroll(rememberScrollState()),
+                Row(Modifier.fillMaxWidth().padding(horizontal = 18.dp)
+                    .horizontalScroll(rememberScrollState()),
                     horizontalArrangement = Arrangement.spacedBy(8.dp)) {
                     tags.forEach { tag ->
                         Surface(color = HongguoColors.accentSoft,
