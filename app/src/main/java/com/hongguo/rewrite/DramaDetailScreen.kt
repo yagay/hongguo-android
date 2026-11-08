@@ -103,8 +103,8 @@ internal fun DramaDetailScreen(state: AppState, model: DramaViewModel) {
         .testTag("drama_detail_screen")) {
         LazyColumn(
             Modifier.fillMaxWidth().weight(1f),
-            contentPadding = PaddingValues(bottom = 20.dp),
-            verticalArrangement = Arrangement.spacedBy(24.dp),
+            contentPadding = PaddingValues(bottom = 14.dp),
+            verticalArrangement = Arrangement.spacedBy(19.dp),
         ) {
             item {
                 Column(
@@ -112,7 +112,7 @@ internal fun DramaDetailScreen(state: AppState, model: DramaViewModel) {
                         Brush.verticalGradient(listOf(DetailTop, DetailBackground)))
                 ) {
                     Row(
-                        Modifier.fillMaxWidth().height(70.dp)
+                        Modifier.fillMaxWidth().height(62.dp)
                             .padding(horizontal = 12.dp),
                         verticalAlignment = Alignment.CenterVertically,
                     ) {
@@ -154,7 +154,7 @@ internal fun DramaDetailScreen(state: AppState, model: DramaViewModel) {
                     }
                     Row(
                         Modifier.fillMaxWidth()
-                            .padding(start = 16.dp, end = 16.dp, top = 18.dp, bottom = 4.dp),
+                            .padding(start = 15.dp, end = 15.dp, top = 12.dp, bottom = 4.dp),
                         horizontalArrangement = Arrangement.spacedBy(12.dp),
                         verticalAlignment = Alignment.Top,
                     ) {
@@ -162,7 +162,7 @@ internal fun DramaDetailScreen(state: AppState, model: DramaViewModel) {
                             model = model.cover(drama.cover),
                             contentDescription = drama.title,
                             contentScale = ContentScale.Crop,
-                            modifier = Modifier.width(100.dp).height(146.dp)
+                            modifier = Modifier.width(91.dp).height(130.dp)
                                 .clip(RoundedCornerShape(10.dp))
                                 .background(DetailCard)
                                 .testTag("detail_poster"),
@@ -172,19 +172,19 @@ internal fun DramaDetailScreen(state: AppState, model: DramaViewModel) {
                             verticalArrangement = Arrangement.spacedBy(12.dp),
                         ) {
                             Text(drama.title, color = DetailText,
-                                fontSize = 23.sp, fontWeight = FontWeight.SemiBold,
-                                lineHeight = 29.sp, maxLines = 3,
+                                fontSize = 20.sp, fontWeight = FontWeight.SemiBold,
+                                lineHeight = 26.sp, maxLines = 3,
                                 overflow = TextOverflow.Ellipsis)
                             Text("全${detail.episodes.size}集",
-                                color = DetailMuted, fontSize = 14.sp)
+                                color = DetailMuted, fontSize = 13.sp)
                             Row(Modifier.horizontalScroll(rememberScrollState()),
-                                horizontalArrangement = Arrangement.spacedBy(7.dp)) {
+                                horizontalArrangement = Arrangement.spacedBy(6.dp)) {
                                 tags.take(6).forEach { tag ->
                                     Surface(shape = RoundedCornerShape(6.dp),
                                         color = DetailChip) {
                                         Text(tag + " ›", Modifier.padding(
-                                            horizontal = 8.dp, vertical = 5.dp),
-                                            fontSize = 12.sp, color = DetailMuted,
+                                            horizontal = 7.dp, vertical = 4.dp),
+                                            fontSize = 11.sp, color = DetailMuted,
                                             maxLines = 1)
                                     }
                                 }
@@ -195,13 +195,13 @@ internal fun DramaDetailScreen(state: AppState, model: DramaViewModel) {
             }
 
             if (drama.synopsis.isNotBlank()) item {
-                Column(Modifier.padding(horizontal = 16.dp),
-                    verticalArrangement = Arrangement.spacedBy(12.dp)) {
+                Column(Modifier.padding(horizontal = 15.dp),
+                    verticalArrangement = Arrangement.spacedBy(9.dp)) {
                     DetailHeader("剧情简介")
                     Text(
                         drama.synopsis,
-                        color = DetailMuted, fontSize = 14.sp,
-                        lineHeight = 24.sp,
+                        color = DetailMuted, fontSize = 13.sp,
+                        lineHeight = 22.sp,
                         maxLines = if (expanded) Int.MAX_VALUE else 2,
                         overflow = TextOverflow.Ellipsis,
                         modifier = Modifier.clickable { expanded = !expanded }
@@ -217,9 +217,9 @@ internal fun DramaDetailScreen(state: AppState, model: DramaViewModel) {
             if (cast.isNotEmpty()) item {
                 Row(Modifier.fillMaxWidth().horizontalScroll(rememberScrollState())
                     .padding(horizontal = 16.dp),
-                    horizontalArrangement = Arrangement.spacedBy(15.dp)) {
+                    horizontalArrangement = Arrangement.spacedBy(10.dp)) {
                     cast.forEach { actor ->
-                        Column(Modifier.width(77.dp),
+                        Column(Modifier.width(64.dp),
                             horizontalAlignment = Alignment.CenterHorizontally,
                             verticalArrangement = Arrangement.spacedBy(5.dp)) {
                             Box(contentAlignment = Alignment.BottomCenter) {
@@ -228,13 +228,13 @@ internal fun DramaDetailScreen(state: AppState, model: DramaViewModel) {
                                         model = model.cover(actor.avatar),
                                         contentDescription = actor.name,
                                         contentScale = ContentScale.Crop,
-                                        modifier = Modifier.size(64.dp).clip(CircleShape),
+                                        modifier = Modifier.size(52.dp).clip(CircleShape),
                                     )
-                                else Box(Modifier.size(64.dp).background(
+                                else Box(Modifier.size(52.dp).background(
                                     DetailCardLight, CircleShape),
                                     contentAlignment = Alignment.Center) {
                                     Text(actor.name.take(1), color = DetailText,
-                                        fontSize = 25.sp)
+                                        fontSize = 21.sp)
                                 }
                             }
                             Surface(shape = RoundedCornerShape(15.dp),
@@ -244,14 +244,14 @@ internal fun DramaDetailScreen(state: AppState, model: DramaViewModel) {
                                         Toast.LENGTH_SHORT).show()
                                 }) {
                                 Text("+关注", Modifier.padding(
-                                    horizontal = 10.dp, vertical = 3.dp),
-                                    color = DetailBackground, fontSize = 12.sp)
+                                    horizontal = 7.dp, vertical = 2.dp),
+                                    color = DetailBackground, fontSize = 11.sp)
                             }
-                            Text(actor.name, color = DetailText, fontSize = 13.sp,
+                            Text(actor.name, color = DetailText, fontSize = 12.sp,
                                 maxLines = 1, overflow = TextOverflow.Ellipsis)
                             if (actor.role.isNotBlank())
                                 Text("饰 ${actor.role}", color = DetailMuted,
-                                    fontSize = 11.sp, maxLines = 1,
+                                    fontSize = 10.sp, maxLines = 1,
                                     overflow = TextOverflow.Ellipsis)
                         }
                     }
@@ -271,15 +271,15 @@ internal fun DramaDetailScreen(state: AppState, model: DramaViewModel) {
                     }
                     Surface(shape = RoundedCornerShape(14.dp),
                         color = DetailCard) {
-                        Row(Modifier.fillMaxWidth().heightIn(min = 72.dp),
+                        Row(Modifier.fillMaxWidth().heightIn(min = 54.dp),
                             verticalAlignment = Alignment.CenterVertically) {
                             Column(
-                                Modifier.width(82.dp).background(DetailCardLight)
-                                    .padding(horizontal = 9.dp, vertical = 15.dp),
+                                Modifier.width(69.dp).background(DetailCardLight)
+                                    .padding(horizontal = 7.dp, vertical = 12.dp),
                                 horizontalAlignment = Alignment.CenterHorizontally) {
                                 Text(verified?.rating?.let {
                                     String.format(Locale.ROOT, "%.1f", it)
-                                } ?: "—", fontSize = 26.sp, color = DetailText,
+                                } ?: "—", fontSize = 24.sp, color = DetailText,
                                     fontWeight = FontWeight.Bold)
                                 Text("红果分", fontSize = 11.sp, color = DetailMuted)
                             }
@@ -298,7 +298,7 @@ internal fun DramaDetailScreen(state: AppState, model: DramaViewModel) {
                                 Row(horizontalArrangement = Arrangement.spacedBy(4.dp)) {
                                     repeat(5) {
                                         Icon(Icons.Outlined.StarBorder, null,
-                                            modifier = Modifier.size(20.dp),
+                                            modifier = Modifier.size(17.dp),
                                             tint = DetailMuted)
                                     }
                                 }
@@ -312,11 +312,11 @@ internal fun DramaDetailScreen(state: AppState, model: DramaViewModel) {
                             verified.reviews.take(if (showAllReviews) 30 else 10)
                                 .forEach { review ->
                                 Surface(
-                                    modifier = Modifier.width(282.dp).heightIn(min = 123.dp),
+                                    modifier = Modifier.width(294.dp).heightIn(min = 108.dp),
                                     color = DetailCard,
                                     shape = RoundedCornerShape(12.dp),
                                 ) {
-                                    Column(Modifier.padding(13.dp),
+                                    Column(Modifier.padding(12.dp),
                                         verticalArrangement = Arrangement.spacedBy(10.dp)) {
                                         Row(verticalAlignment = Alignment.CenterVertically,
                                             horizontalArrangement = Arrangement.spacedBy(6.dp)) {
@@ -339,7 +339,7 @@ internal fun DramaDetailScreen(state: AppState, model: DramaViewModel) {
                                                     color = DetailText, fontSize = 11.sp)
                                         }
                                         Text(review.content, color = DetailText,
-                                            fontSize = 14.sp, lineHeight = 22.sp,
+                                            fontSize = 13.sp, lineHeight = 20.sp,
                                             maxLines = 4, overflow = TextOverflow.Ellipsis)
                                     }
                                 }
@@ -362,7 +362,7 @@ internal fun DramaDetailScreen(state: AppState, model: DramaViewModel) {
                             model = model.cover(novel.cover),
                             contentDescription = novel.title,
                             contentScale = ContentScale.Crop,
-                            modifier = Modifier.width(44.dp).height(58.dp)
+                            modifier = Modifier.width(36.dp).height(43.dp)
                                 .clip(RoundedCornerShape(7.dp)),
                         )
                         Column(Modifier.weight(1f),
@@ -398,7 +398,7 @@ internal fun DramaDetailScreen(state: AppState, model: DramaViewModel) {
                                 AsyncImage(model = model.cover(season.cover),
                                     contentDescription = season.title,
                                     contentScale = ContentScale.Crop,
-                                    modifier = Modifier.width(94.dp).height(132.dp)
+                                    modifier = Modifier.width(90.dp).height(122.dp)
                                         .clip(RoundedCornerShape(8.dp)))
                                 Text(season.title, color = DetailText,
                                     fontSize = 12.sp, maxLines = 2,
@@ -426,7 +426,7 @@ internal fun DramaDetailScreen(state: AppState, model: DramaViewModel) {
                                 AsyncImage(model = model.cover(work.drama.cover),
                                     contentDescription = work.drama.title,
                                     contentScale = ContentScale.Crop,
-                                    modifier = Modifier.width(94.dp).height(132.dp)
+                                    modifier = Modifier.width(90.dp).height(122.dp)
                                         .clip(RoundedCornerShape(8.dp)))
                                 Text(work.drama.title, color = DetailText,
                                     fontSize = 12.sp, maxLines = 2,
@@ -478,14 +478,14 @@ internal fun DramaDetailScreen(state: AppState, model: DramaViewModel) {
 
         Row(
             Modifier.fillMaxWidth().background(Color(0xEF24140E))
-                .padding(horizontal = 16.dp, vertical = 9.dp),
+                .padding(horizontal = 15.dp, vertical = 6.dp),
             horizontalArrangement = Arrangement.spacedBy(12.dp),
         ) {
             Button(
                 onClick = { model.toggleFavoriteForDrama(drama) },
-                modifier = Modifier.weight(1f).height(50.dp)
+                modifier = Modifier.weight(1f).height(42.dp)
                     .testTag("detail_favorite_button"),
-                shape = RoundedCornerShape(13.dp),
+                shape = RoundedCornerShape(12.dp),
                 colors = ButtonDefaults.buttonColors(containerColor = DetailCardLight),
             ) {
                 Icon(Icons.Outlined.BookmarkBorder, null, tint = DetailText)
@@ -498,9 +498,9 @@ internal fun DramaDetailScreen(state: AppState, model: DramaViewModel) {
                     Toast.makeText(context, "官方写剧评接口尚未验证，暂仅支持查看",
                         Toast.LENGTH_SHORT).show()
                 },
-                modifier = Modifier.weight(1f).height(50.dp)
+                modifier = Modifier.weight(1f).height(42.dp)
                     .testTag("detail_write_review_button"),
-                shape = RoundedCornerShape(13.dp),
+                shape = RoundedCornerShape(12.dp),
                 colors = ButtonDefaults.buttonColors(containerColor = DetailChip),
             ) {
                 Text("写剧评", color = DetailText, fontSize = 15.sp)
@@ -511,6 +511,6 @@ internal fun DramaDetailScreen(state: AppState, model: DramaViewModel) {
 
 @Composable
 private fun DetailHeader(title: String) {
-    Text(title, color = DetailText, fontSize = 18.sp,
+    Text(title, color = DetailText, fontSize = 17.sp,
         fontWeight = FontWeight.SemiBold)
 }
