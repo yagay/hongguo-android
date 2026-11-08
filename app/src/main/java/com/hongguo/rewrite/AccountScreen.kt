@@ -483,27 +483,17 @@ internal fun AccountScreen(model: DramaViewModel) {
                     }
                 }
                 item {
-                    Row(Modifier.fillMaxWidth().testTag("account_library_tabs")) {
-                        listOf("历史", "收藏", "点赞", "预约").forEachIndexed { index, title ->
-                            Column(Modifier.weight(1f).clickable {
-                                tab = index
-                                if (index == 3 && !account.reservationsLoaded)
-                                    model.account.loadReservations()
-                            }.testTag("account_library_tab_$index"),
-                                horizontalAlignment = Alignment.CenterHorizontally) {
-                                Text(title, color = if (tab == index)
-                                    HongguoColors.accent else HongguoColors.muted,
-                                    fontSize = 16.sp,
-                                    fontWeight = if (tab == index)
-                                        FontWeight.Medium else FontWeight.Normal,
-                                    modifier = Modifier.padding(vertical = 12.dp))
-                                Box(Modifier.fillMaxWidth().height(3.dp)
-                                    .background(if (tab == index) HongguoColors.accent
-                                        else Color.Transparent))
-                            }
-                        }
-                    }
-                    HorizontalDivider(color = HongguoColors.divider)
+                    HongguoTabs(
+                        labels = listOf("历史", "收藏", "点赞", "预约"),
+                        selectedIndex = tab,
+                        tagPrefix = "account_library_tab",
+                        modifier = Modifier.testTag("account_library_tabs"),
+                        onSelect = { index ->
+                            tab = index
+                            if (index == 3 && !account.reservationsLoaded)
+                                model.account.loadReservations()
+                        },
+                    )
                 }
 
                 val gallery: List<AccountGalleryEntry> = when (tab) {
