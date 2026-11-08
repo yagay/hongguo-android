@@ -239,6 +239,8 @@ internal fun CatalogScreen(
             items(state.items.filter { it.id !in state.hiddenRecommendationIds ||
                 state.section != Section.RECOMMEND }, key = { it.id }) { drama ->
                 CatalogPoster(drama, model.cover(drama.cover),
+                    sourceGenre = if (state.section in setOf(Section.BROWSE, Section.LATEST))
+                        state.genre else null,
                     savedLater = state.watchLater.any { it.id == drama.id },
                     savedFavorite = state.favorites.any { it.drama.id == drama.id },
                     savedLike = drama.id in state.likedDramaIds,
@@ -460,7 +462,8 @@ private fun CompactChoices(
 }
 
 @Composable
-private fun CatalogPoster(drama: Drama, cover: String, savedLater: Boolean,
+private fun CatalogPoster(drama: Drama, cover: String,
+    sourceGenre: String? = null, savedLater: Boolean,
     savedFavorite: Boolean, savedLike: Boolean,
     onLater: () -> Unit, onFavorite: () -> Unit, onLike: () -> Unit,
     onHide: (() -> Unit)?, onClick: () -> Unit) {
@@ -484,6 +487,25 @@ private fun CatalogPoster(drama: Drama, cover: String, savedLater: Boolean,
                     model = cover, contentDescription = drama.title,
                     modifier = Modifier.fillMaxSize(), contentScale = ContentScale.Crop,
                 )
+            }
+            // The selected native category is a verified source scope.
+            // Never infer a type on mixed-ranking or global-search results.
+            val sourceType = when (sourceGenre) {
+                "short_play" -> "真人剧"
+                "comic_series" -> "漫剧"
+                "ai_series" -> "AI剧"
+                else -> null
+            }
+            if (sourceType != null) {
+                Text(sourceType,
+                    modifier = Modifier.align(Alignment.TopStart)
+                        .padding(6.dp)
+                        .background(Color.Black.copy(alpha = 0.62f),
+                            RoundedCornerShape(5.dp))
+                        .padding(horizontal = 6.dp, vertical = 3.dp)
+                        .testTag("poster_source_type_" + drama.id),
+                    color = Color.White, fontSize = 10.sp,
+                    fontWeight = FontWeight.Medium)
             }
             Box(Modifier.align(Alignment.TopEnd)) {
                 IconButton(onClick = { menuOpen = true },
@@ -520,12 +542,20 @@ private fun CatalogPoster(drama: Drama, cover: String, savedLater: Boolean,
             color = HongguoColors.ink,
         )
         if (drama.categories.isNotEmpty()) {
-            Text(
-                drama.categories.take(3).joinToString(" · "),
-                color = HongguoColors.muted, fontSize = 11.sp,
-                maxLines = 1, overflow = TextOverflow.Ellipsis,
-                modifier = Modifier.testTag("poster_categories_" + drama.id),
-            )
+            // Horizontally scrollable real genre chips retain individual labels
+            // without squeezing the poster or cutting off all but one label.
+            Row(Modifier.fillMaxWidth()
+                    .horizontalScroll(rememberScrollState())
+                    .testTag("poster_categories_" + drama.id),
+                horizontalArrangement = Arrangement.spacedBy(4.dp)) {
+                drama.categories.take(5).forEach { category ->
+                    Text(category, color = HongguoColors.muted, fontSize = 10.sp,
+                        maxLines = 1,
+                        modifier = Modifier.background(HongguoColors.surface,
+                            RoundedCornerShape(4.dp))
+                            .padding(horizontal = 5.dp, vertical = 3.dp))
+                }
+            }
         }
     }
 }
