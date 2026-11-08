@@ -50,6 +50,36 @@ class OfficialReelsPolicyTest {
             feed, 4, emptySet(), hasMore = true, loading = true))
     }
 
+    @Test fun autoplayAdvancesEpisodesBeforeSwitchingDrama() {
+        assertEquals(ReelAutoplayPolicy.Action.NEXT_EPISODE,
+            ReelAutoplayPolicy.onEnded(0, 5, true, true))
+        assertEquals(ReelAutoplayPolicy.Action.NEXT_EPISODE,
+            ReelAutoplayPolicy.onEnded(3, 5, true, true))
+        assertEquals(ReelAutoplayPolicy.Action.NEXT_DRAMA,
+            ReelAutoplayPolicy.onEnded(4, 5, true, true))
+        assertEquals(ReelAutoplayPolicy.Action.STOP,
+            ReelAutoplayPolicy.onEnded(4, 5, true, false))
+        assertEquals(ReelAutoplayPolicy.Action.STOP,
+            ReelAutoplayPolicy.onEnded(0, 5, false, true))
+        assertEquals(ReelAutoplayPolicy.Action.STOP,
+            ReelAutoplayPolicy.onEnded(0, 0, true, true))
+    }
+
+    @Test fun userCanSwipeBackAfterAutoplayWhileHiddenIdsAreSkipped() {
+        val q = (1..7).map { title(it.toString()) }
+        assertEquals(5, OfficialReelsPolicy.nextIndex(q, 3, 1, setOf("5")))
+        assertEquals(2, OfficialReelsPolicy.nextIndex(q, 3, -1, setOf("3")))
+        assertNull(OfficialReelsPolicy.nextIndex(q, 6, 1, emptySet()))
+        assertNull(OfficialReelsPolicy.nextIndex(q, 0, -1, emptySet()))
+        assertNull(OfficialReelsPolicy.nextIndex(q, 0, 0, emptySet()))
+    }
+
+    @Test fun duplicateOnlyPageDoesNotExtendQueue() {
+        val current = listOf(title("1"), title("2"))
+        assertEquals(current, OfficialReelsPolicy.append(
+            current, listOf(title("1"), title("2"), title("2")), emptySet()))
+    }
+
     @Test fun homeListAndFeedQueueRemainSeparate() {
         val home = listOf(title("10"), title("11"), title("12"))
         val queue = OfficialReelsPolicy.append(listOf(home.first()),
