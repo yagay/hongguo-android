@@ -62,7 +62,7 @@ import androidx.compose.ui.unit.sp
  * page. Only one relevant control group opens at a time; less-used options
  * are behind an explicit fold. Playback and all previous controls are kept.
  */
-private enum class PlaybackQuickSetting {
+internal enum class PlaybackQuickSetting {
     VIDEO, SPEED, AUDIO, DANMAKU, TIMER, PREFERENCES
 }
 
@@ -80,9 +80,10 @@ internal fun PlaybackExperienceSheet(
     onFillVideo: (Boolean) -> Unit,
     onQuality: (Int) -> Unit,
     onDownload: () -> Unit,
+    initialSection: PlaybackQuickSetting = PlaybackQuickSetting.VIDEO,
 ) {
     val account by model.account.state.collectAsStateWithLifecycle()
-    var focused by remember { mutableStateOf<PlaybackQuickSetting?>(null) }
+    val focused = initialSection
 
     val white = Color.White
     val secondary = Color(0xFFC5C3C9)
@@ -92,9 +93,6 @@ internal fun PlaybackExperienceSheet(
     val speedLabel = if (speed == speed.toInt().toFloat())
         "${speed.toInt()}×" else "${speed}×"
 
-    fun toggle(control: PlaybackQuickSetting) {
-        focused = if (focused == control) null else control
-    }
 
     ModalBottomSheet(
         onDismissRequest = onDismiss,
@@ -114,68 +112,6 @@ internal fun PlaybackExperienceSheet(
                     style = HongguoActionStyle.QUIET)
             }
 
-            // Compact six-tile grid. Video settings group quality, aspect
-            // ratio and brightness behind one quick action.
-            Row(Modifier.fillMaxWidth(), horizontalArrangement = Arrangement.spacedBy(7.dp)) {
-                PlaybackQuickTile(
-                    title = "画面设置",
-                    value = if (qualityAvailable) "$qualityLabel · ${if (fillVideo) "铺满" else "适应"}"
-                        else if (fillVideo) "铺满" else "适应",
-                    icon = Icons.Outlined.AspectRatio,
-                    selected = focused == PlaybackQuickSetting.VIDEO,
-                    onClick = { toggle(PlaybackQuickSetting.VIDEO) },
-                    tag = "quick_video_settings",
-                )
-                PlaybackQuickTile(
-                    title = "倍速", value = speedLabel,
-                    icon = Icons.Outlined.Speed,
-                    selected = focused == PlaybackQuickSetting.SPEED,
-                    onClick = { toggle(PlaybackQuickSetting.SPEED) },
-                    tag = "quick_speed",
-                )
-                PlaybackQuickTile(
-                    title = "音效",
-                    value = if (state.playbackAudioBoostDb == 0) "原音"
-                        else "+${state.playbackAudioBoostDb}dB",
-                    icon = Icons.Outlined.VolumeUp,
-                    selected = focused == PlaybackQuickSetting.AUDIO,
-                    onClick = { toggle(PlaybackQuickSetting.AUDIO) },
-                    tag = "quick_audio",
-                )
-                PlaybackQuickTile(
-                    title = "播放偏好", value = "连播 · 跳过",
-                    icon = Icons.Outlined.Tune,
-                    selected = focused == PlaybackQuickSetting.PREFERENCES,
-                    onClick = { toggle(PlaybackQuickSetting.PREFERENCES) },
-                    tag = "quick_playback_preferences",
-                )
-            }
-            Row(Modifier.fillMaxWidth(), horizontalArrangement = Arrangement.spacedBy(7.dp)) {
-                PlaybackQuickTile(
-                    title = "弹幕",
-                    value = if (state.danmakuEnabled) "已开启" else "已关闭",
-                    icon = Icons.Outlined.Subtitles,
-                    selected = focused == PlaybackQuickSetting.DANMAKU,
-                    onClick = { toggle(PlaybackQuickSetting.DANMAKU) },
-                    tag = "player_danmaku_switch",
-                )
-                PlaybackQuickTile(
-                    title = "定时停止", value = state.sleepTimerLabel,
-                    icon = Icons.Outlined.Timer,
-                    selected = focused == PlaybackQuickSetting.TIMER,
-                    onClick = { toggle(PlaybackQuickSetting.TIMER) },
-                    tag = "quick_sleep_timer",
-                )
-                PlaybackQuickTile(
-                    title = "下载", value = "当前剧集",
-                    icon = Icons.Outlined.Download,
-                    selected = false,
-                    onClick = { onDismiss(); onDownload() },
-                    tag = "download_current_episode",
-                )
-            }
-
-            AnimatedVisibility(visible = focused != null) {
                 Column(
                     Modifier.fillMaxWidth()
                         .background(Color(0xFF302E35),
@@ -359,42 +295,7 @@ internal fun PlaybackExperienceSheet(
                         null -> Unit
                     }
                 }
-            }
-
-
         }
-    }
-}
-
-@Composable
-private fun RowScope.PlaybackQuickTile(
-    title: String,
-    value: String,
-    icon: ImageVector,
-    selected: Boolean,
-    onClick: () -> Unit,
-    tag: String,
-) {
-    val foreground = if (selected) Color.White else Color(0xFFE6E2E7)
-    Column(
-        Modifier.weight(1f)
-            .height(72.dp)
-            .background(
-                if (selected) Color(0xFF6D352D) else Color(0xFF343239),
-                RoundedCornerShape(HongguoUi.controlRadius),
-            )
-            .clickable(onClick = onClick)
-            .testTag(tag)
-            .padding(horizontal = 3.dp, vertical = 3.dp),
-        horizontalAlignment = Alignment.CenterHorizontally,
-        verticalArrangement = Arrangement.spacedBy(1.dp),
-    ) {
-        Icon(icon, contentDescription = null, tint = foreground,
-            modifier = Modifier.size(20.dp))
-        Text(title, fontSize = 11.sp, color = foreground,
-            maxLines = 1, overflow = TextOverflow.Ellipsis)
-        Text(value, fontSize = 10.sp, color = Color(0xFFBCB9C3),
-            maxLines = 1, overflow = TextOverflow.Ellipsis)
     }
 }
 
