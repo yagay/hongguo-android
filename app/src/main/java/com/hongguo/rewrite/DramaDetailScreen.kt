@@ -363,7 +363,7 @@ internal fun DramaDetailScreen(state: AppState, model: DramaViewModel) {
                                 Surface(
                                     modifier = Modifier.width(294.dp).heightIn(min = 108.dp),
                                     color = DetailCard,
-                                    shape = RoundedCornerShape(12.dp),
+                                    shape = RoundedCornerShape(HongguoUi.controlRadius),
                                 ) {
                                     Column(Modifier.padding(12.dp),
                                         verticalArrangement = Arrangement.spacedBy(10.dp)) {
@@ -566,7 +566,7 @@ internal fun DramaDetailScreen(state: AppState, model: DramaViewModel) {
                 onClick = { model.toggleFavoriteForDrama(drama) },
                 modifier = Modifier.weight(1f).height(42.dp)
                     .testTag("detail_favorite_button"),
-                shape = RoundedCornerShape(12.dp),
+                shape = RoundedCornerShape(HongguoUi.controlRadius),
                 colors = ButtonDefaults.buttonColors(containerColor = DetailCardLight),
             ) {
                 Icon(Icons.Outlined.BookmarkBorder, null, tint = DetailText)
@@ -579,7 +579,7 @@ internal fun DramaDetailScreen(state: AppState, model: DramaViewModel) {
                     onClick = { openComposer(drama.id) },
                     modifier = Modifier.weight(1f).height(42.dp)
                         .testTag("detail_write_review_button"),
-                    shape = RoundedCornerShape(12.dp),
+                    shape = RoundedCornerShape(HongguoUi.controlRadius),
                     colors = ButtonDefaults.buttonColors(containerColor = DetailChip),
                 ) {
                     Text("写剧评", color = DetailText, fontSize = 15.sp)
