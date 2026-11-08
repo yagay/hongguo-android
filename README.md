@@ -8,9 +8,9 @@
 - 顶部明确可见「设置」入口：独立设置页包含内容来源、API 地址、详细日志预览、日志开关、清空和 TXT 导出。
 - 统一 Insets：Activity 显式 edge-to-edge，ApplicationRoot 一次性处理 safeDrawing + IME；首页、设置页 Scaffold 禁止重复处理系统栏 Insets；播放器底部控制区可滚动，适配手势导航、三键导航和刘海屏。
 - 诊断事件存储在本机私有目录（256 KB 上限），记录阶段、耗时、HTTP 状态和错误代码，不收集 URL、搜索内容和凭据；经 Android 文档选择器导出。
-- 所有页面使用 Kotlin + Jetpack Compose；视频使用 AndroidX Media3。
+- 主要 App 页面使用 Kotlin + Jetpack Compose，官网验证 Activity 的外层采用原生 Android View；视频使用 AndroidX Media3。
 - 不引入旧 Android 项目的 Activity、播放器、设备注册、缓存、状态或 Hook。
-- 单向数据流：DramaViewModel -> AppState -> Compose。
+- 单向数据流：DramaViewModel -> AppState -> Compose；本机数据、剧场分页、下载任务、播放地址重试及视频 Surface 已逐步拆入独立模块，模块边界详见 docs/ARCHITECTURE.md。
 - 统一的剧集、分集、分页和错误模型；收藏/历史保存在本机并限定为 200 条。
 - 历史只在 Media3 实际渲染首帧后记录，避免播放失败留下误记录。
 - 独立包名 `com.hongguo.rewrite`，能与旧版并排安装进行验收。
