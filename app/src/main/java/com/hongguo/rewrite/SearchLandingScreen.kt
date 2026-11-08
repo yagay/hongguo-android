@@ -142,7 +142,7 @@ internal fun SearchLandingScreen(
         if (browse.section == Section.SEARCH && browse.query.isNotBlank() &&
             state.search.trim() == browse.query) {
             item {
-                Column(Modifier.fillMaxWidth().padding(horizontal = 14.dp),
+                Column(Modifier.fillMaxWidth().padding(horizontal = HongguoUi.pagePadding),
                     verticalArrangement = Arrangement.spacedBy(10.dp)) {
                     Row(Modifier.fillMaxWidth(), verticalAlignment = Alignment.CenterVertically) {
                         Text(browse.section?.title.orEmpty(), color = SearchInk,
@@ -164,7 +164,7 @@ internal fun SearchLandingScreen(
                 }
             }
             items(browse.items.chunked(3)) { dramas ->
-                Row(Modifier.fillMaxWidth().padding(horizontal = 14.dp),
+                Row(Modifier.fillMaxWidth().padding(horizontal = HongguoUi.pagePadding),
                     horizontalArrangement = Arrangement.spacedBy(9.dp)) {
                     dramas.forEach { drama ->
                         Column(Modifier.weight(1f)
@@ -200,7 +200,7 @@ internal fun SearchLandingScreen(
         if (state.search.isNotBlank() &&
             (state.suggestions.isNotEmpty() || state.suggestionsLoading)) {
             item {
-                Column(Modifier.padding(horizontal = 16.dp),
+                Column(Modifier.padding(horizontal = HongguoUi.pagePadding),
                     verticalArrangement = Arrangement.spacedBy(10.dp)) {
                     Text("搜索建议", fontSize = 16.sp, fontWeight = FontWeight.SemiBold,
                         color = SearchInk)
@@ -216,7 +216,7 @@ internal fun SearchLandingScreen(
             }
         }
         if (state.recentSearches.isNotEmpty()) item {
-            Column(Modifier.fillMaxWidth().padding(horizontal = 16.dp),
+            Column(Modifier.fillMaxWidth().padding(horizontal = HongguoUi.pagePadding),
                 verticalArrangement = Arrangement.spacedBy(10.dp)) {
                 Row(verticalAlignment = Alignment.CenterVertically) {
                     Text("搜索历史", fontSize = 17.sp,
@@ -243,7 +243,7 @@ internal fun SearchLandingScreen(
             }
         }
         if (state.landingTerms.isNotEmpty()) item {
-            Column(Modifier.fillMaxWidth().padding(horizontal = 16.dp),
+            Column(Modifier.fillMaxWidth().padding(horizontal = HongguoUi.pagePadding),
                 verticalArrangement = Arrangement.spacedBy(12.dp)) {
                 Row(verticalAlignment = Alignment.CenterVertically) {
                     Text("猜你想搜", color = SearchInk, fontSize = 17.sp,
