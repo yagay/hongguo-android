@@ -143,22 +143,18 @@ internal fun CommentsSheet(state: AppState, model: DramaViewModel) {
                 modifier = Modifier.testTag("player_comments_refresh"),
             ) {
                 Icon(Icons.Outlined.Refresh, contentDescription = "刷新评论",
-                    tint = Color.White)
+                    tint = HongguoColors.ink)
             }
         },
     ) {
         if (state.commentsLimited) {
             Text("当前显示官网公开的部分评论，非全部评论",
-                color = Color(0xFFFFB885), fontSize = 12.sp)
+                color = HongguoColors.accent, fontSize = 12.sp)
         }
         LazyColumn(Modifier.fillMaxWidth().heightIn(max = 400.dp),
             verticalArrangement = Arrangement.spacedBy(10.dp)) {
             items(state.comments, key = { it.id }) { comment ->
-                Row(
-                    Modifier.fillMaxWidth().padding(vertical = 4.dp),
-                    verticalAlignment = Alignment.Top,
-                    horizontalArrangement = Arrangement.spacedBy(10.dp),
-                ) {
+                HongguoSheetListRow {
                     if (comment.avatar.startsWith("https://")) {
                         AsyncImage(
                             model = comment.avatar, contentDescription = null,
@@ -167,9 +163,9 @@ internal fun CommentsSheet(state: AppState, model: DramaViewModel) {
                         )
                     } else {
                         Box(Modifier.size(36.dp)
-                            .background(Color(0xFF404045), CircleShape),
+                            .background(HongguoColors.accentSoft, CircleShape),
                             contentAlignment = Alignment.Center) {
-                            Text(comment.author.take(1), color = Color.White,
+                            Text(comment.author.take(1), color = HongguoColors.accent,
                                 fontSize = 12.sp)
                         }
                     }
@@ -177,15 +173,15 @@ internal fun CommentsSheet(state: AppState, model: DramaViewModel) {
                         verticalArrangement = Arrangement.spacedBy(5.dp)) {
                         Row(Modifier.fillMaxWidth(),
                             verticalAlignment = Alignment.CenterVertically) {
-                            Text(comment.author, color = Color.White,
+                            Text(comment.author, color = HongguoColors.ink,
                                 fontWeight = FontWeight.SemiBold, fontSize = 13.sp,
                                 modifier = Modifier.weight(1f))
                             if (comment.likes > 0) {
                                 Text("♥ " + comment.likes,
-                                    color = HongguoColors.playerChromeMuted, fontSize = 12.sp)
+                                    color = HongguoColors.muted, fontSize = 12.sp)
                             }
                         }
-                        Text(comment.content, color = Color.White,
+                        Text(comment.content, color = HongguoColors.ink,
                             fontSize = 14.sp, lineHeight = 20.sp)
                         if (comment.created > 0) {
                             val date = remember(comment.created) {
@@ -202,17 +198,16 @@ internal fun CommentsSheet(state: AppState, model: DramaViewModel) {
                                     color = HongguoColors.playerChromeMuted)
                             }
                         }
-                        HongguoMenuSeparator(dark = true)
                     }
                 }
             }
             if (state.commentsLoading) item {
                 Box(Modifier.fillMaxWidth(), contentAlignment = Alignment.Center) {
-                    CircularProgressIndicator(Modifier.size(24.dp), color = Color.White)
+                    CircularProgressIndicator(Modifier.size(24.dp), color = HongguoColors.accent)
                 }
             }
             state.commentsError?.let { error -> item {
-                Text(error, color = Color(0xFFFFB6A6), fontSize = 13.sp)
+                Text(error, color = HongguoColors.accent, fontSize = 13.sp)
                 HongguoPlayerSheetAction(
                     label = "重新加载",
                     onClick = { model.loadComments() },
@@ -221,7 +216,7 @@ internal fun CommentsSheet(state: AppState, model: DramaViewModel) {
             if (!state.commentsLoading && state.comments.isEmpty() &&
                 state.commentsError == null) item {
                 Text("当前分集没有可读取的评论",
-                    color = Color(0xFFC5C3C9), fontSize = 13.sp,
+                    color = HongguoColors.muted, fontSize = 13.sp,
                     modifier = Modifier.fillMaxWidth()
                         .padding(vertical = 20.dp))
             }
