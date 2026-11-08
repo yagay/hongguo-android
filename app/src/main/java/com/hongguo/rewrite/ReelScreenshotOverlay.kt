@@ -516,39 +516,28 @@ internal fun ReelBottomDock(
             )
         }
         Row(
-            Modifier.fillMaxWidth().height(HongguoUi.playbackDockRowHeight)
-                .clickable(onClick = onEpisodes)
-                .padding(start = HongguoUi.pagePadding, end = 12.dp)
-                .testTag("watch_full_drama"),
+            modifier = Modifier.fillMaxWidth()
+                .height(HongguoUi.playbackDockRowHeight)
+                .testTag("player_dock_meta"),
             verticalAlignment = Alignment.CenterVertically,
-            horizontalArrangement = Arrangement.spacedBy(8.dp),
+            horizontalArrangement = Arrangement.spacedBy(4.dp),
         ) {
-            Text(
-                DramaCompletion.episodeLabel(
+            HongguoPlayerEpisodeEntry(
+                label = DramaCompletion.episodeLabel(
                     total = detail.episodes.size,
                     status = detail.drama.completionStatus,
                     episodeIndex = episode?.index,
                 ),
-                color = Color.White,
-                fontSize = HongguoUi.playbackDockTitleSize,
-                fontWeight = FontWeight.Medium,
-                maxLines = 1,
-                overflow = TextOverflow.Ellipsis,
-                modifier = Modifier.weight(1f).testTag("reel_episode_status"),
+                onClick = onEpisodes,
+                modifier = Modifier.weight(1f)
+                    .testTag("watch_full_drama")
+                    .testTag("reel_episode_status"),
             )
-            Text(
-                PlaybackTimeFormatter.label(displayedPositionMs, duration),
-                color = HongguoColors.playerChromeMuted,
-                fontSize = HongguoUi.playbackDockTimeSize,
-                fontWeight = FontWeight.Medium,
-                maxLines = 1,
-                modifier = Modifier.testTag("reel_time_label"),
-            )
-            Icon(
-                Icons.Outlined.KeyboardArrowRight,
-                contentDescription = "打开选集",
-                tint = Color.White,
-                modifier = Modifier.size(18.dp),
+            HongguoPlayerTimeLabel(
+                positionMs = displayedPositionMs,
+                durationMs = duration,
+                modifier = Modifier.padding(end = HongguoUi.pagePadding)
+                    .testTag("reel_time_label"),
             )
         }
     }
