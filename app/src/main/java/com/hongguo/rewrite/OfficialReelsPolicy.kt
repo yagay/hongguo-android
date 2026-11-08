@@ -2,6 +2,13 @@ package com.hongguo.rewrite
 
 /** The swipe queue is independent from the manually loaded home recommendation catalog. */
 internal object OfficialReelsPolicy {
+    /** An account-mode switch discards stale anonymous recommendations, but
+     * never closes or replaces the drama currently playing in Media3.
+     */
+    fun retainCurrentOnAccountChange(
+        current: List<Drama>, position: Int, playing: Drama?,
+    ): List<Drama> = listOfNotNull(current.getOrNull(position) ?: playing)
+
     fun append(current: List<Drama>, incoming: List<Drama>, hidden: Set<String>): List<Drama> {
         val seen = current.mapTo(hashSetOf()) { it.id }
         return current + incoming.filter { it.id !in seen && it.id !in hidden }
