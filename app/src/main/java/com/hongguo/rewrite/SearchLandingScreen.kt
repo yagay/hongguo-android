@@ -111,7 +111,7 @@ internal fun SearchLandingScreen(
             Row(Modifier.fillMaxWidth().padding(start = 8.dp, end = 12.dp, top = 10.dp),
                 verticalAlignment = Alignment.CenterVertically,
                 horizontalArrangement = Arrangement.spacedBy(6.dp)) {
-                IconButton(onClick = onClose) {
+                HongguoIconAction(onClick = onClose) {
                     Icon(Icons.AutoMirrored.Outlined.ArrowBack, "返回",
                         tint = SearchInk)
                 }
@@ -130,7 +130,7 @@ internal fun SearchLandingScreen(
                             modifier = Modifier.size(19.dp))
                     },
                     singleLine = true,
-                    shape = RoundedCornerShape(14.dp),
+                    shape = RoundedCornerShape(HongguoUi.cardRadius),
                     colors = OutlinedTextFieldDefaults.colors(
                         focusedTextColor = SearchInk,
                         unfocusedTextColor = SearchInk,
@@ -227,7 +227,7 @@ internal fun SearchLandingScreen(
                     Text("搜索历史", fontSize = 17.sp,
                         color = SearchInk, fontWeight = FontWeight.SemiBold,
                         modifier = Modifier.weight(1f))
-                    IconButton(onClick = model::clearSearchHistory) {
+                    HongguoIconAction(onClick = model::clearSearchHistory) {
                         Icon(Icons.Outlined.DeleteOutline, "清空历史",
                             tint = SearchInk, modifier = Modifier.size(19.dp))
                     }
@@ -254,7 +254,7 @@ internal fun SearchLandingScreen(
                     Text("猜你想搜", color = SearchInk, fontSize = 17.sp,
                         modifier = Modifier.weight(1f),
                         fontWeight = FontWeight.SemiBold)
-                    IconButton(onClick = { model.loadSearchLanding(force = true) }) {
+                    HongguoIconAction(onClick = { model.loadSearchLanding(force = true) }) {
                         Icon(Icons.Outlined.Refresh, "刷新热搜", tint = SearchInk)
                     }
                 }
