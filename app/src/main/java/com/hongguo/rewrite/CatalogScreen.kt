@@ -344,7 +344,7 @@ private fun HeaderIcon(
     label: String,
     onClick: () -> Unit,
 ) {
-    IconButton(onClick = onClick, modifier = Modifier.size(39.dp)) {
+    HongguoIconAction(onClick = onClick) {
         Icon(icon, contentDescription = label, tint = HongguoColors.ink,
             modifier = Modifier.size(20.dp))
     }
@@ -566,7 +566,8 @@ private fun CatalogFiltersSheet(
                             Row(Modifier.fillMaxWidth().horizontalScroll(rememberScrollState()),
                                 horizontalArrangement = Arrangement.spacedBy(8.dp)) {
                                 group.options.forEach { option ->
-                                    FilterChip(
+                                    HongguoChoiceChip(
+                                        label = option.label,
                                         selected = draft[group.key].orEmpty() == option.value,
                                         onClick = {
                                             draft = draft.toMutableMap().apply {
@@ -574,8 +575,6 @@ private fun CatalogFiltersSheet(
                                                 else put(group.key, option.value)
                                             }
                                         },
-                                        label = { Text(option.label, fontSize = 12.sp) },
-                                        shape = RoundedCornerShape(10.dp),
                                     )
                                 }
                             }
