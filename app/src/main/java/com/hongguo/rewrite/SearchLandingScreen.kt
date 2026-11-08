@@ -1,6 +1,7 @@
 package com.hongguo.rewrite
 
 import android.widget.Toast
+import androidx.compose.foundation.isSystemInDarkTheme
 import androidx.compose.foundation.background
 import androidx.compose.foundation.clickable
 import androidx.compose.foundation.horizontalScroll
@@ -73,6 +74,18 @@ internal fun SearchLandingScreen(
     onClose: () -> Unit,
     onResults: () -> Unit,
 ) {
+    val systemDark = isSystemInDarkTheme()
+    val night = when (state.themeMode) {
+        "dark" -> true
+        "system" -> systemDark
+        else -> false
+    }
+    // The search page honors the saved appearance mode independently of the
+    // content theme preset. Values shadow the original dark screenshot palette.
+    val SearchBg = if (night) Color(0xFF101010) else Color(0xFFFFFBF7)
+    val SearchTile = if (night) Color(0xFF222222) else Color(0xFFF2EAE3)
+    val SearchInk = if (night) Color(0xFFF5F5F5) else Color(0xFF30231F)
+    val SearchMuted = if (night) Color(0xFF969696) else Color(0xFF806D63)
     var selectedBoard by remember { mutableIntStateOf(0) }
     var showActors by remember { mutableStateOf(false) }
     val context = LocalContext.current
@@ -246,7 +259,7 @@ internal fun SearchLandingScreen(
                 Modifier.fillMaxWidth().clip(RoundedCornerShape(topStart = 15.dp,
                     topEnd = 15.dp))
                     .background(Brush.verticalGradient(listOf(
-                        Color(0xFF35251F), SearchBg)))
+                        if (night) Color(0xFF35251F) else Color(0xFFF4E5D9), SearchBg)))
                     .padding(top = 15.dp, start = 14.dp, end = 14.dp),
                 verticalArrangement = Arrangement.spacedBy(15.dp),
             ) {
