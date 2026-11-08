@@ -136,7 +136,8 @@ internal fun InAppMiniPlayer(state: AppState, model: DramaViewModel) {
         IconButton(
             onClick = {
                 val player = media
-                if (player?.currentMediaItem?.mediaId == selected.vid) {
+                if (player != null &&
+                    player.currentMediaItem?.mediaId == selected.vid) {
                     if (player.isPlaying) player.pause() else player.play()
                 }
             },
