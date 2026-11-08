@@ -1,6 +1,7 @@
 package com.hongguo.rewrite
 
 import androidx.compose.foundation.clickable
+import androidx.compose.foundation.background
 import androidx.compose.foundation.layout.Arrangement
 import androidx.compose.foundation.layout.Box
 import androidx.compose.foundation.layout.Column
@@ -340,4 +341,72 @@ internal fun HongguoSectionTitle(title: String, modifier: Modifier = Modifier) {
         title, modifier = modifier, fontSize = HongguoUi.sectionTitleSize,
         fontWeight = FontWeight.SemiBold, color = HongguoColors.ink,
     )
+}
+
+/**
+ * A single tab strip used for My and Account galleries. Content remains
+ * screen-owned; only tab hit areas, indicator and selected typography live here.
+ */
+@Composable
+internal fun HongguoTabs(
+    labels: List<String>,
+    selectedIndex: Int,
+    onSelect: (Int) -> Unit,
+    modifier: Modifier = Modifier,
+    tagPrefix: String = "gallery_tab",
+) {
+    Row(
+        modifier = modifier.fillMaxWidth(),
+        verticalAlignment = Alignment.CenterVertically,
+    ) {
+        labels.forEachIndexed { index, label ->
+            Column(
+                modifier = Modifier.weight(1f)
+                    .clickable { if (index != selectedIndex) onSelect(index) }
+                    .testTag(tagPrefix + "_" + index),
+                horizontalAlignment = Alignment.CenterHorizontally,
+            ) {
+                Box(
+                    Modifier.fillMaxWidth().height(42.dp),
+                    contentAlignment = Alignment.Center,
+                ) {
+                    Text(
+                        label, fontSize = 14.sp,
+                        fontWeight = if (index == selectedIndex)
+                            FontWeight.SemiBold else FontWeight.Normal,
+                        color = if (index == selectedIndex)
+                            HongguoColors.ink else HongguoColors.muted,
+                    )
+                }
+                Box(
+                    Modifier.fillMaxWidth().height(2.dp)
+                        .background(if (index == selectedIndex)
+                            HongguoColors.accent else Color.Transparent),
+                )
+            }
+        }
+    }
+}
+
+/** One themed content area for ordinary non-video pages and drawers. */
+@Composable
+internal fun HongguoPageSurface(
+    modifier: Modifier = Modifier,
+    content: @Composable () -> Unit,
+) {
+    Box(
+        modifier = modifier.background(HongguoColors.background),
+        contentAlignment = Alignment.TopStart,
+    ) { content() }
+}
+
+/** Standard empty state with consistent text hierarchy. */
+@Composable
+internal fun HongguoEmptyState(message: String, modifier: Modifier = Modifier) {
+    Box(
+        modifier = modifier.fillMaxWidth().padding(vertical = 24.dp),
+        contentAlignment = Alignment.Center,
+    ) {
+        Text(message, color = HongguoColors.muted, fontSize = 13.sp)
+    }
 }
