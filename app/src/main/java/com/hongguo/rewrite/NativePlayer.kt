@@ -48,6 +48,7 @@ import androidx.compose.material.icons.outlined.PlayArrow
 import androidx.compose.material.icons.outlined.Refresh
 import androidx.compose.material.icons.outlined.Share
 import androidx.compose.material.icons.outlined.Subtitles
+import androidx.compose.material3.AlertDialog
 import androidx.compose.material3.Button
 import androidx.compose.material3.CircularProgressIndicator
 import androidx.compose.material3.ExperimentalMaterial3Api
@@ -178,12 +179,11 @@ internal fun NativePlayer(
     val accountDrawerState = rememberDrawerState(DrawerValue.Closed)
     val accountDrawerScope = rememberCoroutineScope()
     var showHeart by remember { mutableStateOf(false) }
-    var longHolding by remember { mutableStateOf(false) }
-    var speedBeforeHold by remember { mutableFloatStateOf(1f) }
+    var clearScreenEnabled by rememberSaveable { mutableStateOf(false) }
+    var clearScreenMenuOpen by remember { mutableStateOf(false) }
     val likedNow by rememberUpdatedState(
         detail.drama.id in state.likedDramaIds
     )
-    val currentSpeed by rememberUpdatedState(speed)
     var pendingDownloadVid by rememberSaveable { mutableStateOf<String?>(null) }
     val downloader = rememberLauncherForActivityResult(
         ActivityResultContracts.CreateDocument("video/mp4")
@@ -256,7 +256,12 @@ internal fun NativePlayer(
         accountDrawerScope.launch { accountDrawerState.close() }
     }
     BackHandler(enabled = state.navigation.destination != PlaybackDestination.DETAILS &&
-        !searchOverlayOpen && accountDrawerState.isClosed &&
+        !searchOverlayOpen && accountDrawerState.isClosed && clearScreenEnabled &&
+        !showPlaybackSettings && !showComments && !showEpisodes) {
+        clearScreenEnabled = false
+    }
+    BackHandler(enabled = state.navigation.destination != PlaybackDestination.DETAILS &&
+        !searchOverlayOpen && accountDrawerState.isClosed && !clearScreenEnabled &&
         !showPlaybackSettings && !showComments && !showEpisodes) {
         flushThenClose()
     }
@@ -421,29 +426,19 @@ internal fun NativePlayer(
                                             showHeart = true
                                         },
                                         onLongPress = {
-                                            if (!longHolding) {
-                                                speedBeforeHold = currentSpeed
-                                                longHolding = true
-                                                speed = 2f
-                                            }
-                                        },
-                                        onPress = {
-                                            tryAwaitRelease()
-                                            if (longHolding) {
-                                                speed = speedBeforeHold
-                                                longHolding = false
-                                            }
+                                            clearScreenMenuOpen = true
                                         },
                                     )
                                 },
                         )
-                        if (showHeart) {
+                        if (!clearScreenEnabled && showHeart) {
                             Icon(Icons.Outlined.Favorite,
                                 contentDescription = "已收藏",
                                 tint = Color(0xFFFF6D6D),
                                 modifier = Modifier.size(92.dp))
                         }
-                        if (!playback.isPlaying && playback.positionMs > 0) {
+                        if (!clearScreenEnabled &&
+                            !playback.isPlaying && playback.positionMs > 0) {
                             Icon(Icons.Outlined.PlayArrow, "继续播放",
                                 tint = Color.White.copy(alpha = 0.88f),
                                 modifier = Modifier.size(68.dp))
@@ -531,7 +526,8 @@ internal fun NativePlayer(
         // Keep the actual video unobscured. Text and buttons provide their own
         // contrast treatment instead of dimming the entire top/bottom frame.
 
-        if (state.danmakuEnabled && selected != null && !showComments && !showEpisodes) {
+        if (!clearScreenEnabled && state.danmakuEnabled &&
+            selected != null && !showComments && !showEpisodes) {
             TimedDanmakuOverlay(
                 items = state.danmakuItems.takeIf {
                     state.danmakuForVid == selected.vid
@@ -549,7 +545,7 @@ internal fun NativePlayer(
         // Exactly one persistent overlay. Its *top navigation* fades
         // between feed and full-series mode; title, sidebar, status and dock
         // remain stable above the unchanged Media3 video SurfaceView.
-        ReelScreenshotOverlay(
+        if (!clearScreenEnabled) ReelScreenshotOverlay(
             state = state,
             detail = detail,
             episode = selected,
@@ -613,6 +609,27 @@ internal fun NativePlayer(
     }
     } // Overlay container
     } // ModalNavigationDrawer content
+
+    if (clearScreenMenuOpen) AlertDialog(
+        onDismissRequest = { clearScreenMenuOpen = false },
+        title = { Text("清屏模式") },
+        text = { Text(if (clearScreenEnabled)
+            "关闭后恢复视频画面上的文字、按钮和弹幕。"
+            else "开启后只隐藏视频画面上的内容。底部进度条、选集和页面导航保持显示。") },
+        confirmButton = {
+            TextButton(
+                onClick = {
+                    clearScreenEnabled = !clearScreenEnabled
+                    clearScreenMenuOpen = false
+                },
+                modifier = Modifier.testTag("player_clear_screen_toggle"),
+            ) { Text(if (clearScreenEnabled) "关闭清屏" else "开启清屏") }
+        },
+        dismissButton = {
+            TextButton(onClick = { clearScreenMenuOpen = false }) { Text("取消") }
+        },
+        modifier = Modifier.testTag("player_clear_screen_dialog"),
+    )
 
     if (showPlaybackSettings) {
         PlaybackExperienceSheet(
