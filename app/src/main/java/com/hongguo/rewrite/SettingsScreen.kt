@@ -163,14 +163,6 @@ internal fun SettingsScreen(state: AppState, model: DramaViewModel) {
                         tag = "theme_mode",
                         tagByValue = true,
                     )
-                    Text("底栏样式", color = HongguoColors.ink, fontWeight = FontWeight.SemiBold)
-                    HongguoChoiceGroup(
-                        options = listOf("classic" to "经典", "glass" to "悬浮玻璃"),
-                        selected = state.navigationStyle,
-                        onSelect = model::setNavigationStyle,
-                        tag = "navbar_style",
-                        tagByValue = true,
-                    )
                     Text("首页、搜索页和剧集详情跟随显示模式；播放视频区域始终使用深色背景。",
                         color = HongguoColors.muted, fontSize = 12.sp)
                 }
