@@ -280,7 +280,9 @@ private fun HongguoApp(model: DramaViewModel = viewModel()) {
                     state.detailPageVisible && state.detail != null ->
                         DramaDetailScreen(state, model)
                     state.detail != null && !state.miniPlayerVisible ->
-                        key(state.detail?.drama?.id, state.feedMode) {
+                        // Do not discard the whole Compose player when the same
+                        // video switches between swipe feed and full-series mode.
+                        key(state.detail?.drama?.id) {
                             NativePlayer(state, model)
                         }
                     // A minimized feed stays on its browsing page while the
