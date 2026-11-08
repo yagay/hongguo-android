@@ -16,7 +16,8 @@ internal object MiniPlayerPresentation {
             state.modal != Modal.ACCOUNT &&
             !state.detailPageVisible &&
             !searchLandingOpen &&
-            (show(state) || (state.detail == null && !state.preparingDetail))
+            (show(state) || (state.detail == null && !state.preparingDetail &&
+                !state.feedMode))
 
     /** Put the mini row above the catalog NavigationBar whenever one exists. */
     fun inCatalog(state: AppState, searchLandingOpen: Boolean): Boolean =
