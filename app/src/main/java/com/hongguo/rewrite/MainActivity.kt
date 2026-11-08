@@ -1,7 +1,11 @@
 package com.hongguo.rewrite
 
 import android.app.Activity
+import android.app.PictureInPictureParams
+import android.content.pm.PackageManager
+import android.content.res.Configuration
 import android.os.Bundle
+import android.util.Rational
 import coil.compose.AsyncImage
 import androidx.compose.ui.layout.ContentScale
 import androidx.activity.ComponentActivity
@@ -39,6 +43,7 @@ import androidx.compose.runtime.DisposableEffect
 import androidx.compose.runtime.LaunchedEffect
 import androidx.compose.runtime.SideEffect
 import androidx.compose.runtime.getValue
+import androidx.compose.runtime.mutableStateOf
 import androidx.compose.runtime.key
 import androidx.compose.runtime.mutableStateOf
 import androidx.compose.runtime.setValue
@@ -48,6 +53,9 @@ import androidx.compose.ui.Modifier
 import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.platform.LocalContext
 import androidx.compose.ui.unit.dp
+import androidx.compose.ui.viewinterop.AndroidView
+import androidx.media3.ui.AspectRatioFrameLayout
+import androidx.media3.ui.PlayerView
 import androidx.core.view.WindowCompat
 import androidx.lifecycle.compose.collectAsStateWithLifecycle
 import androidx.lifecycle.Lifecycle
@@ -56,9 +64,71 @@ import androidx.lifecycle.compose.LocalLifecycleOwner
 import androidx.lifecycle.viewmodel.compose.viewModel
 
 class MainActivity : ComponentActivity() {
+    /** PiP is a display mode for the existing Media3 session, not a second service. */
+    var videoInPictureInPicture by mutableStateOf(false)
+        private set
+    private var autoPictureInPictureEligible = false
+
+    private fun videoPiPParams(autoEnter: Boolean): PictureInPictureParams =
+        PictureInPictureParams.Builder()
+            // The source videos are vertical; a portrait ratio gives a compact
+            // width. The OS owns the physical minimum size and user pinch.
+            .setAspectRatio(Rational(9, 16))
+            .setAutoEnterEnabled(autoEnter)
+            .setSeamlessResizeEnabled(true)
+            .build()
+
+    fun updateVideoPictureInPictureEligibility(enabled: Boolean) {
+        autoPictureInPictureEligible = enabled &&
+            packageManager.hasSystemFeature(PackageManager.FEATURE_PICTURE_IN_PICTURE)
+        if (!videoInPictureInPicture) {
+            setPictureInPictureParams(videoPiPParams(autoPictureInPictureEligible))
+        }
+    }
+
+    /** Explicit PiP action in both the full and in-app mini players. */
+    fun enterVideoPictureInPicture(expectedVid: String): Boolean {
+        if (!packageManager.hasSystemFeature(
+                PackageManager.FEATURE_PICTURE_IN_PICTURE)) return false
+        val player = BackgroundPlaybackService.playerFlow.value ?: return false
+        if (expectedVid.isBlank() ||
+            player.currentMediaItem?.mediaId != expectedVid) return false
+        return runCatching {
+            enterPictureInPictureMode(videoPiPParams(autoEnter = true))
+        }.getOrDefault(false)
+    }
+
+    override fun onUserLeaveHint() {
+        super.onUserLeaveHint()
+        // Android 12+ normally uses auto-enter for smoother navigation.
+        // A manual fallback also covers OEM builds that skip that transition.
+        if (!videoInPictureInPicture && autoPictureInPictureEligible &&
+            BackgroundPlaybackService.playerFlow.value?.isPlaying == true) {
+            runCatching { enterPictureInPictureMode(
+                videoPiPParams(autoEnter = true)) }
+        }
+    }
+
+    override fun onPictureInPictureModeChanged(
+        isInPictureInPictureMode: Boolean,
+        newConfig: Configuration,
+    ) {
+        super.onPictureInPictureModeChanged(isInPictureInPictureMode, newConfig)
+        videoInPictureInPicture = isInPictureInPictureMode
+    }
+
+    override fun onDestroy() {
+        // Dismissing the PiP window is an explicit close. Expanding it first
+        // clears the flag so normal return to full screen does not stop audio.
+        if (isFinishing && videoInPictureInPicture)
+            BackgroundPlaybackService.stopActive("PIP_CLOSED")
+        super.onDestroy()
+    }
+
     override fun onCreate(savedInstanceState: Bundle?) {
         CrashCapture.install(applicationContext)
         super.onCreate(savedInstanceState)
+        videoInPictureInPicture = isInPictureInPictureMode
         enableEdgeToEdge()
         setContent { HongguoApp() }
     }
@@ -71,6 +141,8 @@ class MainActivity : ComponentActivity() {
 @Composable
 private fun HongguoApp(model: DramaViewModel = viewModel()) {
     val state by model.state.collectAsStateWithLifecycle()
+    val mainActivity = LocalContext.current as? MainActivity
+    val systemPictureInPicture = mainActivity?.videoInPictureInPicture == true
     val lifecycleOwner = LocalLifecycleOwner.current
     DisposableEffect(lifecycleOwner, model) {
         val observer = LifecycleEventObserver { _, event ->
@@ -100,6 +172,13 @@ private fun HongguoApp(model: DramaViewModel = viewModel()) {
     }
     val activity = LocalContext.current as? Activity
     SideEffect {
+        val selectedVid = state.detail?.episodes
+            ?.getOrNull(state.episodeIndex)?.vid
+        val media = BackgroundPlaybackService.playerFlow.value
+        val canEnter = selectedVid != null && state.playbackUrl != null &&
+            !state.preparingDetail && media?.currentMediaItem?.mediaId == selectedVid &&
+            media.isPlaying
+        mainActivity?.updateVideoPictureInPictureEligibility(canEnter)
         HongguoColors.applyTheme(state.themeStyle, state.themeMode, systemDark)
         activity?.let {
             val bars = WindowCompat.getInsetsController(it.window, it.window.decorView)
@@ -125,7 +204,9 @@ private fun HongguoApp(model: DramaViewModel = viewModel()) {
         onSurface = HongguoColors.ink,
     ))
     MaterialTheme(colorScheme = palette) {
-        Box(
+        if (systemPictureInPicture) {
+            PictureInPictureVideo(state, model)
+        } else Box(
             Modifier.fillMaxSize().background(
                 if (detailImmersive)
                     if (darkTheme) Color(0xFF6A4939) else Color(0xFFEED7C6)
@@ -252,6 +333,42 @@ private fun HongguoApp(model: DramaViewModel = viewModel()) {
                 // NavigationBar; their mini player stays fixed at the bottom.
                 if (showMini && !miniInCatalog) InAppMiniPlayer(state, model)
             }
+        }
+    }
+}
+
+
+/** Render only the video surface in system PiP, never Compose buttons or sheets. */
+@androidx.annotation.OptIn(androidx.media3.common.util.UnstableApi::class)
+@Composable
+private fun PictureInPictureVideo(state: AppState, model: DramaViewModel) {
+    val player by BackgroundPlaybackService.playerFlow.collectAsStateWithLifecycle()
+    val detail = state.detail
+    val expectedVid = detail?.episodes?.getOrNull(state.episodeIndex)?.vid
+    val validPlayer = player?.takeIf {
+        expectedVid != null && it.currentMediaItem?.mediaId == expectedVid
+    }
+    Box(Modifier.fillMaxSize().background(Color.Black),
+        contentAlignment = Alignment.Center) {
+        if (validPlayer != null) {
+            AndroidView(
+                factory = { context ->
+                    PlayerView(context).apply {
+                        useController = false
+                        resizeMode = AspectRatioFrameLayout.RESIZE_MODE_FIT
+                        this.player = validPlayer
+                    }
+                },
+                update = { it.player = validPlayer },
+                modifier = Modifier.fillMaxSize(),
+            )
+        } else if (detail?.drama?.cover?.isNotBlank() == true) {
+            AsyncImage(
+                model = model.cover(detail.drama.cover),
+                contentDescription = null,
+                contentScale = ContentScale.Fit,
+                modifier = Modifier.fillMaxSize(),
+            )
         }
     }
 }
