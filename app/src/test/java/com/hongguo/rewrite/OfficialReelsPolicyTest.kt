@@ -7,6 +7,16 @@ import org.junit.Test
 class OfficialReelsPolicyTest {
     private fun title(id: String) = Drama(id, "Drama $id")
 
+    @Test fun switchingAccountRecommendationKeepsCurrentDramaWithoutOldQueue() {
+        val oldQueue = listOf(title("1"), title("2"), title("3"), title("4"))
+        assertEquals(listOf("3"), OfficialReelsPolicy.retainCurrentOnAccountChange(
+            oldQueue, 2, null).map { it.id })
+        assertEquals(listOf("9"), OfficialReelsPolicy.retainCurrentOnAccountChange(
+            emptyList(), 0, title("9")).map { it.id })
+        assertEquals(emptyList<Drama>(), OfficialReelsPolicy.retainCurrentOnAccountChange(
+            emptyList(), 0, null))
+    }
+
     @Test fun officialPagesExtendPastTheThreeItemManualHomeBatch() {
         val seed = listOf(title("1"))
         val first = OfficialReelsPolicy.append(seed,
