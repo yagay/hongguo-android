@@ -81,6 +81,7 @@ class BackgroundPlaybackService : MediaSessionService() {
     private var onFirstFrame: (() -> Unit)? = null
     private var onBackgroundProgress: (() -> Unit)? = null
     private var backgroundConfirmed = false
+    private var backgroundProgressBase = -1L
     private var notificationTitle = ""
     private var notificationSubtitle = ""
     private var onFinished: (() -> Unit)? = null
@@ -275,10 +276,16 @@ class BackgroundPlaybackService : MediaSessionService() {
                     outroDone = true
                     engine.seekTo(duration)
                 }
-                if (!backgroundConfirmed && engine.isPlaying &&
-                    engine.currentPosition >= 3_000L) {
-                    backgroundConfirmed = true
-                    onBackgroundProgress?.invoke()
+                if (!backgroundConfirmed && engine.isPlaying) {
+                    val position = engine.currentPosition.coerceAtLeast(0L)
+                    if (backgroundProgressBase < 0L) {
+                        backgroundProgressBase = position
+                    } else if (position >= backgroundProgressBase + 3_000L) {
+                        // Verify three seconds of actual forward progress, not
+                        // merely a resume checkpoint already beyond 00:03.
+                        backgroundConfirmed = true
+                        onBackgroundProgress?.invoke()
+                    }
                 }
                 if (engine.playbackState == Player.STATE_READY && engine.isPlaying) {
                     val position = engine.currentPosition.coerceAtLeast(0L)
@@ -346,6 +353,7 @@ class BackgroundPlaybackService : MediaSessionService() {
         currentVid = vid
         didSeek = false
         backgroundConfirmed = false
+        backgroundProgressBase = -1L
         didFinish = false
         retried = false
         outroDone = false
