@@ -76,7 +76,7 @@ internal fun ReelScreenshotOverlay(
     episode: Episode?,
     onPlaybackSettings: () -> Unit,
     onOpenAccountDrawer: () -> Unit,
-    onPictureInPicture: () -> Unit,
+    onPictureInPicture: (() -> Unit)?,
     onBack: () -> Unit,
     onDramaDetails: () -> Unit,
     onFavorite: () -> Unit,
@@ -210,7 +210,7 @@ internal fun ReelScreenshotOverlay(
                     }
                 }
                 Spacer(Modifier.weight(1f))
-                IconButton(
+                if (onPictureInPicture != null) IconButton(
                     onClick = onPictureInPicture,
                     modifier = Modifier.size(40.dp).testTag("reel_system_pip"),
                 ) {
