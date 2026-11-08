@@ -814,10 +814,12 @@ class DramaViewModel(application: Application) : AndroidViewModel(application) {
                 // drama is warmed (or unavailable), give natural next-episode
                 // playback its usual prefetch opportunity too.
                 val current = state.value
-                if (activeAtStart != null &&
-                    current.detail?.drama?.id == activeAtStart &&
-                    current.preloadNext && current.episodeIndex < current.detail.episodes.lastIndex &&
-                    firstFrameFor == current.detail.episodes[current.episodeIndex].vid) {
+                val activeDetail = current.detail
+                if (activeAtStart != null && activeDetail != null &&
+                    activeDetail.drama.id == activeAtStart &&
+                    current.preloadNext && current.episodeIndex in activeDetail.episodes.indices &&
+                    current.episodeIndex < activeDetail.episodes.lastIndex &&
+                    firstFrameFor == activeDetail.episodes[current.episodeIndex].vid) {
                     preloadFollowingEpisode()
                 }
             }
