@@ -1954,8 +1954,28 @@ class DramaViewModel(application: Application) : AndroidViewModel(application) {
             it.copy(feedMode = true, navigation = it.navigation.toFeed(),
                 miniPlayerVisible = false, detailPageVisible = false)
         }
-        diagnostics.record("REELS", "RETURN_TO_FEED_KEEP_PLAYING")
         updateNotificationNavigation()
+        val player = BackgroundPlaybackService.playerFlow.value
+        // A navigation switch is NOT a playback restart. In particular an
+        // upstream failure can leave the service holding an already-ended
+        // previous item; merely restoring the reel UI used to claim it was
+        // "still playing" and leave a permanently frozen video.
+        when {
+            snapshot.playbackError != null -> {
+                diagnostics.record("REELS", "RETURN_TO_FEED_RETRY_FAILED_SOURCE")
+                retryPlayback()
+            }
+            player?.playbackState == androidx.media3.common.Player.STATE_ENDED -> {
+                diagnostics.record("REELS", "RETURN_TO_FEED_RESOLVE_ENDED")
+                if (snapshot.autoPlayNext) nextEpisode(
+                    snapshot.detail?.episodes?.getOrNull(snapshot.episodeIndex)?.vid)
+            }
+            player == null && snapshot.playbackUrl != null -> {
+                diagnostics.record("REELS", "RETURN_TO_FEED_RESTORE_MISSING_PLAYER")
+                retryPlayback()
+            }
+            else -> diagnostics.record("REELS", "RETURN_TO_FEED_KEEP_PLAYING")
+        }
         val current = state.value
         if (OfficialReelsPolicy.needsMore(current.feedItems, current.feedIndex,
                 current.hiddenRecommendationIds, current.feedHasMore, current.feedLoading)) {
