@@ -434,25 +434,31 @@ internal fun OpenHongguoExploreScreen(
                 Column(Modifier.fillMaxWidth().padding(18.dp),
                     horizontalAlignment = Alignment.CenterHorizontally) {
                     Text(message, fontSize = 13.sp, color = HongguoColors.muted)
-                    OutlinedButton(onClick = {
-                        if (actorId.isBlank()) refresh++
-                        else worksRefresh++
-                    }) { Text("重试") }
+                    HongguoAction(
+                        label = "重试",
+                        onClick = {
+                            if (actorId.isBlank()) refresh++
+                            else worksRefresh++
+                        },
+                    )
                 }
             } }
             if (actorId.isNotBlank() && worksMore && !worksLoading) item {
                 Box(Modifier.fillMaxWidth().padding(12.dp),
                     contentAlignment = Alignment.Center) {
-                    OutlinedButton(onClick = {
-                        if (nextWorksCursor.isNotBlank()) worksCursor = nextWorksCursor
-                    }) { Text("加载更多作品") }
+                    HongguoAction(
+                        label = "加载更多作品",
+                        onClick = { if (nextWorksCursor.isNotBlank()) worksCursor = nextWorksCursor },
+                    )
                 }
             }
             if (actorId.isBlank() && more && !loading) item {
                 Box(Modifier.fillMaxWidth().padding(12.dp),
                     contentAlignment = Alignment.Center) {
-                    OutlinedButton(onClick = { if (nextCursor.isNotBlank())
-                        cursor = nextCursor }) { Text("加载更多") }
+                    HongguoAction(
+                        label = "加载更多",
+                        onClick = { if (nextCursor.isNotBlank()) cursor = nextCursor },
+                    )
                 }
             }
         }
