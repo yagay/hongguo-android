@@ -214,6 +214,21 @@ internal fun DramaDetailScreen(state: AppState, model: DramaViewModel) {
                 }
             }
 
+            metadata?.authorAiStatement?.let { declaration ->
+                item {
+                    Text(
+                        declaration,
+                        color = DetailMuted,
+                        fontSize = 12.sp,
+                        maxLines = 2,
+                        modifier = Modifier.padding(horizontal = 16.dp)
+                            .background(DetailChip, RoundedCornerShape(6.dp))
+                            .padding(horizontal = 9.dp, vertical = 7.dp)
+                            .testTag("detail_ai_author_statement"),
+                    )
+                }
+            }
+
             if (drama.synopsis.isNotBlank()) item {
                 Column(Modifier.padding(horizontal = 15.dp),
                     verticalArrangement = Arrangement.spacedBy(9.dp)) {
