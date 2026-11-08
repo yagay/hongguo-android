@@ -40,6 +40,8 @@ import androidx.compose.material3.CheckboxDefaults
 import androidx.compose.material3.DropdownMenu
 import androidx.compose.material3.DropdownMenuItem
 import androidx.compose.material3.HorizontalDivider
+import androidx.compose.material3.ModalBottomSheet
+import androidx.compose.material3.ExperimentalMaterial3Api
 import androidx.compose.material3.Text
 import androidx.compose.runtime.Composable
 import androidx.compose.ui.Alignment
@@ -546,5 +548,24 @@ internal fun HongguoMenuSeparator() {
     HorizontalDivider(
         modifier = Modifier.padding(horizontal = HongguoUi.pagePadding, vertical = 4.dp),
         color = HongguoColors.divider,
+    )
+}
+
+/** Shared bottom sheet container for all video-side panels.
+ * Each panel owns its content and dismissal, not its own palette or inset rules.
+ */
+@OptIn(ExperimentalMaterial3Api::class)
+@Composable
+internal fun HongguoPlayerSheet(
+    onDismissRequest: () -> Unit,
+    modifier: Modifier = Modifier,
+    content: @Composable androidx.compose.foundation.layout.ColumnScope.() -> Unit,
+) {
+    ModalBottomSheet(
+        onDismissRequest = onDismissRequest,
+        containerColor = HongguoColors.playerSheet,
+        contentColor = Color.White,
+        modifier = modifier,
+        content = content,
     )
 }
