@@ -79,7 +79,8 @@ internal fun InAppMiniPlayer(state: AppState, model: DramaViewModel) {
     // Only cover an absent or mismatched media item. During buffering the
     // existing PlayerView retains its last decoded frame instead of flashing
     // the poster over a still-valid playing video.
-    val showCover = media == null || !currentItemReady
+    val showCover = PlaybackFramePolicy.showCover(selected.vid,
+        media?.currentMediaItem?.mediaId)
 
     Row(
         modifier = Modifier.fillMaxWidth()
