@@ -703,7 +703,7 @@ internal fun NativePlayer(
                             .background(Color(0xFF35353A), RoundedCornerShape(10.dp))
                             .clickable(enabled = !work.upcoming) {
                                 showEpisodes = false
-                                model.open(work.drama)
+                                model.openRelatedDrama(work.drama)
                             }
                             .padding(horizontal = 12.dp, vertical = 10.dp),
                         verticalAlignment = Alignment.CenterVertically,
