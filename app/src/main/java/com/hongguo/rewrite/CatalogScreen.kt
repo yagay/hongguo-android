@@ -110,7 +110,11 @@ internal fun CatalogScreen(
             onFilters = {
                 if (state.section != Section.BROWSE) model.section(Section.BROWSE)
                 filtersOpen = true
-            }) },
+            },
+            onReservations = { model.show(Modal.ACCOUNT) },
+            hasReservations = account.profile != null &&
+                (account.reservationsLoaded ||
+                    account.upcoming.isNotEmpty() || account.online.isNotEmpty())) },
     ) { insets ->
         LazyVerticalGrid(
             columns = GridCells.Fixed(2),
@@ -273,7 +277,9 @@ internal fun CatalogScreen(
 @Composable
 private fun CatalogHeader(state: AppState, model: DramaViewModel,
     onMine: () -> Unit, onSearchOpen: () -> Unit,
-    onFilters: () -> Unit) {
+    onFilters: () -> Unit,
+    onReservations: () -> Unit,
+    hasReservations: Boolean) {
     var selectedCategory by rememberSaveable { mutableStateOf(0) }
     Column(Modifier.fillMaxWidth().background(HongguoColors.surface),
         verticalArrangement = Arrangement.spacedBy(8.dp)) {
@@ -322,13 +328,16 @@ private fun CatalogHeader(state: AppState, model: DramaViewModel,
         }
         Row(Modifier.fillMaxWidth().padding(horizontal = 12.dp),
             horizontalArrangement = Arrangement.spacedBy(8.dp)) {
-            listOf("筛选", "排行榜", "新剧").forEachIndexed { index, title ->
+            (listOf("筛选", "排行榜", "新剧") +
+                if (hasReservations) listOf("预约") else emptyList())
+                .forEachIndexed { index, title ->
                 Surface(
                     modifier = Modifier.weight(1f).clickable {
                         when (index) {
                             0 -> { selectedCategory = 0; onFilters() }
                             1 -> model.section(Section.RANK)
-                            else -> model.section(Section.LATEST)
+                            2 -> model.section(Section.LATEST)
+                            else -> onReservations()
                         }
                     }.testTag("theater_quick_$index"),
                     shape = RoundedCornerShape(12.dp),
@@ -492,13 +501,16 @@ private fun CatalogPoster(drama: Drama, cover: String, savedLater: Boolean,
                         onClick = { menuOpen = false; onHide() })
                 }
             }
-            if (drama.total > 0) {
+            val officialEpisodeStatus = DramaCompletion.episodeLabel(
+                drama.total, drama.completionStatus, null)
+            if (officialEpisodeStatus.isNotBlank()) {
                 Box(Modifier.fillMaxWidth().align(Alignment.BottomCenter)
                     .background(Brush.verticalGradient(
                         colors = listOf(Color.Transparent, Color.Black.copy(alpha = 0.74f))))
                     .padding(start = 7.dp, top = 18.dp, bottom = 6.dp)) {
-                    Text("全 " + drama.total + " 集", color = Color.White,
-                        fontWeight = FontWeight.Medium, fontSize = 10.sp)
+                    Text(officialEpisodeStatus, color = Color.White,
+                        fontWeight = FontWeight.Medium, fontSize = 10.sp,
+                        maxLines = 1, overflow = TextOverflow.Ellipsis)
                 }
             }
         }
