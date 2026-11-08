@@ -2,6 +2,7 @@ package com.hongguo.rewrite
 
 import android.app.NotificationManager
 import android.app.PendingIntent
+import android.media.AudioManager
 import android.content.Intent
 import android.net.Uri
 import android.os.Bundle
@@ -12,11 +13,14 @@ import androidx.media3.common.MediaItem
 import androidx.media3.common.MediaMetadata
 import androidx.media3.common.C
 import androidx.media3.common.Tracks
+import androidx.media3.common.Format
 import androidx.media3.common.PlaybackException
 import androidx.media3.common.Player
 import androidx.media3.common.util.UnstableApi
 import androidx.media3.datasource.DataSource
 import androidx.media3.exoplayer.ExoPlayer
+import androidx.media3.exoplayer.analytics.AnalyticsListener
+import androidx.media3.exoplayer.DecoderReuseEvaluation
 import androidx.media3.exoplayer.source.ProgressiveMediaSource
 import androidx.media3.session.CommandButton
 import androidx.media3.session.MediaSession
@@ -58,6 +62,28 @@ class BackgroundPlaybackService : MediaSessionService() {
                 .getBoolean("log_enabled", true))
     }
     private lateinit var engine: ExoPlayer
+    private val audioBoost = PlaybackAudioBoost { code ->
+        diagnostics.record("AUDIO_BOOST", code)
+    }
+    private var currentAudioSessionId = -1
+    private var requestedAudioBoostDb = 0
+
+    /** Service-owned effect remains valid when the Compose player view detaches. */
+    fun setAudioBoostDb(db: Int) {
+        if (!AudioBoostPolicy.valid(db)) return
+        requestedAudioBoostDb = db
+        audioBoost.configure(db, currentAudioSessionId)
+    }
+
+    private fun recordSystemMediaVolume() {
+        val audio = getSystemService(AUDIO_SERVICE) as? AudioManager ?: return
+        val current = audio.getStreamVolume(AudioManager.STREAM_MUSIC)
+        val maximum = audio.getStreamMaxVolume(AudioManager.STREAM_MUSIC)
+        diagnostics.record("AUDIO_LEVEL", "MEDIA_${current}_OF_${maximum}")
+        val media3 = if (::engine.isInitialized) engine.volume else 1f
+        diagnostics.record("AUDIO_LEVEL", "PLAYER_${(media3 * 100f).toInt()}PCT")
+    }
+
     private lateinit var session: MediaSession
     private val main = Handler(Looper.getMainLooper())
     private val previousCommand = SessionCommand(PREVIOUS, Bundle.EMPTY)
@@ -105,8 +131,16 @@ class BackgroundPlaybackService : MediaSessionService() {
 
     override fun onCreate() {
         super.onCreate()
+        requestedAudioBoostDb = getSharedPreferences(
+            "web_rewrite_settings", MODE_PRIVATE
+        ).getInt("playback_audio_boost_db", 0)
+            .takeIf(AudioBoostPolicy::valid) ?: 0
         engine = ExoPlayer.Builder(this).build().apply {
-            setAudioAttributes(androidx.media3.common.AudioAttributes.DEFAULT, true)
+            setAudioAttributes(
+                androidx.media3.common.AudioAttributes.Builder()
+                    .setUsage(C.USAGE_MEDIA)
+                    .setContentType(C.AUDIO_CONTENT_TYPE_MOVIE)
+                    .build(), true)
             setHandleAudioBecomingNoisy(true)
             setWakeMode(androidx.media3.common.C.WAKE_MODE_NETWORK)
         }
@@ -171,6 +205,80 @@ class BackgroundPlaybackService : MediaSessionService() {
         // the service itself is in the foreground.
         addSession(session)
         diagnostics.record("BACKGROUND", "MEDIA_SESSION_REGISTERED")
+        recordSystemMediaVolume()
+        engine.addAnalyticsListener(object : AnalyticsListener {
+            override fun onVideoDecoderInitialized(
+                eventTime: AnalyticsListener.EventTime,
+                decoderName: String,
+                initializedTimestampMs: Long,
+                initializationDurationMs: Long,
+            ) {
+                diagnostics.record("VIDEO_RENDER",
+                    "DECODER_" + DiagnosticLog.token(decoderName))
+            }
+
+            override fun onAudioDecoderInitialized(
+                eventTime: AnalyticsListener.EventTime,
+                decoderName: String,
+                initializedTimestampMs: Long,
+                initializationDurationMs: Long,
+            ) {
+                diagnostics.record("AUDIO_RENDER",
+                    "DECODER_" + DiagnosticLog.token(decoderName))
+            }
+
+            override fun onAudioSessionIdChanged(
+                eventTime: AnalyticsListener.EventTime,
+                audioSessionId: Int,
+            ) {
+                currentAudioSessionId = audioSessionId
+                diagnostics.record("AUDIO_RENDER",
+                    if (audioSessionId > 0) "SESSION_AVAILABLE" else "SESSION_UNSET")
+                setAudioBoostDb(requestedAudioBoostDb)
+            }
+
+            override fun onVideoInputFormatChanged(
+                eventTime: AnalyticsListener.EventTime,
+                format: Format,
+                decoderReuseEvaluation: DecoderReuseEvaluation?,
+            ) {
+                diagnostics.record("VIDEO_FORMAT",
+                    "MIME_" + DiagnosticLog.token(format.sampleMimeType ?: "UNKNOWN"))
+                diagnostics.record("VIDEO_FORMAT",
+                    "SIZE_${format.width.coerceAtLeast(0)}X${format.height.coerceAtLeast(0)}")
+                val color = format.colorInfo
+                diagnostics.record("VIDEO_COLOR",
+                    "SPACE_${color?.colorSpace ?: C.NO_VALUE}")
+                diagnostics.record("VIDEO_COLOR",
+                    "RANGE_${color?.colorRange ?: C.NO_VALUE}")
+                diagnostics.record("VIDEO_COLOR",
+                    "TRANSFER_${color?.colorTransfer ?: C.NO_VALUE}")
+                diagnostics.record("VIDEO_COLOR",
+                    "LUMA_BITS_${color?.lumaBitdepth ?: C.NO_VALUE}")
+            }
+
+            override fun onAudioInputFormatChanged(
+                eventTime: AnalyticsListener.EventTime,
+                format: Format,
+                decoderReuseEvaluation: DecoderReuseEvaluation?,
+            ) {
+                diagnostics.record("AUDIO_FORMAT",
+                    "MIME_" + DiagnosticLog.token(format.sampleMimeType ?: "UNKNOWN"))
+                diagnostics.record("AUDIO_FORMAT",
+                    "CHANNELS_${format.channelCount.coerceAtLeast(0)}")
+                diagnostics.record("AUDIO_FORMAT",
+                    "SAMPLE_RATE_${format.sampleRate.coerceAtLeast(0)}")
+                recordSystemMediaVolume()
+            }
+
+            override fun onVolumeChanged(
+                eventTime: AnalyticsListener.EventTime,
+                volume: Float,
+            ) {
+                diagnostics.record("AUDIO_LEVEL",
+                    "PLAYER_${(volume * 100f).toInt().coerceIn(0, 100)}PCT")
+            }
+        })
         engine.addListener(object : Player.Listener {
             override fun onPlayWhenReadyChanged(playWhenReady: Boolean, reason: Int) {
                 lastObservedPlayWhenReady = playWhenReady
@@ -539,6 +647,8 @@ class BackgroundPlaybackService : MediaSessionService() {
         onCheckpoint = null
         onTimer = null
         onNavigate = null
+        audioBoost.clear()
+        currentAudioSessionId = -1
         diagnostics.record("BACKGROUND", "STOP_" + DiagnosticLog.token(reason))
         stopSelf()
     }
@@ -602,6 +712,7 @@ class BackgroundPlaybackService : MediaSessionService() {
                 engine.duration.takeIf { it > 0L } ?: 0L)
         }
         main.removeCallbacks(checkpoint)
+        audioBoost.clear()
         playerFlow.value = null
         if (active === this) active = null
         remoteVideo?.close()
