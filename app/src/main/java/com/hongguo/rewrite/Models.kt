@@ -89,6 +89,8 @@ data class AppState(
     /** Official swipe feed: all recommendations or strictly real-person dramas. */
     val reelsMode: String = "all",
     val feedMode: Boolean = false,
+    /** A series was opened from the swipe feed; Back may restore that queue without seeking. */
+    val returnToFeed: Boolean = false,
     /** A separate, live official swipe stream; never use the three-card home catalog as its pager. */
     val feedItems: List<Drama> = emptyList(),
     val feedIndex: Int = 0,
