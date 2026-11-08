@@ -505,8 +505,7 @@ internal fun MyScreen(state: AppState, model: DramaViewModel, onBack: () -> Unit
                 item { Text(message, color = HongguoColors.accent, fontSize = 13.sp) }
             }
             if (state.offlineEpisodes.isEmpty()) item {
-                Text("还没有已完成的离线保存。播放器选集页可批量保存到手机。",
-                    color = HongguoColors.muted, fontSize = 13.sp)
+                HongguoEmptyState("还没有已完成的离线保存。播放器选集页可批量保存到手机。")
             }
             items(state.offlineEpisodes.size) { index ->
                 val episode = state.offlineEpisodes[index]
@@ -541,8 +540,7 @@ internal fun MyScreen(state: AppState, model: DramaViewModel, onBack: () -> Unit
                 }
             }
             if (state.watchLater.isEmpty()) item {
-                Text("没有稍后看的剧集，可在首页封面右上角添加。",
-                    color = HongguoColors.muted, fontSize = 13.sp)
+                HongguoEmptyState("没有稍后看的剧集，可在首页封面右上角添加。")
             }
             items(state.watchLater.size) { index ->
                 val drama = state.watchLater[index]
