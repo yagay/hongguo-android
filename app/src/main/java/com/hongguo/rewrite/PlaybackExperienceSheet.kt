@@ -73,6 +73,8 @@ internal fun PlaybackExperienceSheet(
     model: DramaViewModel,
     speed: Float,
     fillVideo: Boolean,
+    externalPipEnabled: Boolean,
+    onExternalPipEnabled: (Boolean) -> Unit,
     onDismiss: () -> Unit,
     onSpeed: (Float) -> Unit,
     onFillVideo: (Boolean) -> Unit,
@@ -198,6 +200,28 @@ internal fun PlaybackExperienceSheet(
                                 listOf(false to "适应画面", true to "铺满画面"),
                                 fillVideo, onFillVideo, "video_frame_mode",
                             )
+                            HorizontalDivider(color = Color(0xFF4B4A50))
+                            Row(
+                                Modifier.fillMaxWidth(),
+                                verticalAlignment = Alignment.CenterVertically,
+                            ) {
+                                Column(Modifier.weight(1f)) {
+                                    Text("应用外悬浮播放", fontSize = 13.sp,
+                                        fontWeight = FontWeight.Medium)
+                                    Text("离开应用时自动画中画，也控制播放器上的画中画入口",
+                                        color = secondary, fontSize = 11.sp,
+                                        lineHeight = 15.sp)
+                                }
+                                Switch(
+                                    checked = externalPipEnabled,
+                                    onCheckedChange = onExternalPipEnabled,
+                                    modifier = Modifier.testTag("player_external_pip_enabled"),
+                                    colors = SwitchDefaults.colors(
+                                        checkedTrackColor = HongguoColors.accent,
+                                        checkedThumbColor = Color.White,
+                                    ),
+                                )
+                            }
                             PlaybackHeading("屏幕亮度")
                             PlaybackChoices(
                                 listOf(-1 to "系统", 65 to "65%", 80 to "80%",
