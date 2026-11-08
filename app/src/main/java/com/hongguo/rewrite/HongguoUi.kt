@@ -2,6 +2,9 @@ package com.hongguo.rewrite
 
 import androidx.compose.foundation.clickable
 import androidx.compose.foundation.background
+import androidx.compose.ui.draw.clip
+import androidx.compose.ui.layout.ContentScale
+import coil.compose.AsyncImage
 import androidx.compose.foundation.layout.Arrangement
 import androidx.compose.foundation.layout.Box
 import androidx.compose.foundation.layout.Column
@@ -440,4 +443,21 @@ internal fun HongguoSheetHeader(
         )
         actions()
     }
+}
+
+/** Single reusable cover presentation; caller owns size, click action and data. */
+@Composable
+internal fun HongguoPosterCover(
+    cover: Any?,
+    title: String,
+    modifier: Modifier = Modifier,
+) {
+    AsyncImage(
+        model = cover,
+        contentDescription = title,
+        contentScale = ContentScale.Crop,
+        modifier = modifier
+            .clip(RoundedCornerShape(HongguoUi.controlRadius))
+            .background(HongguoColors.accentSoft),
+    )
 }
