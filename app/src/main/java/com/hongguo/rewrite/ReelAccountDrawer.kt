@@ -324,13 +324,10 @@ private fun RecentWatchTile(
             .testTag("drawer_recent_" + watched.drama.id),
         verticalArrangement = Arrangement.spacedBy(5.dp),
     ) {
-        AsyncImage(
-            model = model.cover(watched.drama.cover),
-            contentDescription = watched.drama.title,
-            contentScale = ContentScale.Crop,
-            modifier = Modifier.fillMaxWidth().aspectRatio(2f / 3f)
-                .clip(RoundedCornerShape(10.dp))
-                .background(HongguoColors.divider),
+        HongguoPosterCover(
+            cover = model.cover(watched.drama.cover),
+            title = watched.drama.title,
+            modifier = Modifier.fillMaxWidth().aspectRatio(2f / 3f),
         )
         Text(watched.drama.title, color = HongguoColors.ink,
             maxLines = 2, overflow = TextOverflow.Ellipsis,
