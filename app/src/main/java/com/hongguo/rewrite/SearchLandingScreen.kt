@@ -29,6 +29,11 @@ import androidx.compose.material.icons.outlined.DeleteOutline
 import androidx.compose.material.icons.outlined.Search
 import androidx.compose.material.icons.outlined.Refresh
 import androidx.compose.material3.CircularProgressIndicator
+import androidx.compose.material3.Button
+import androidx.compose.material3.FilterChip
+import androidx.compose.material3.ModalBottomSheet
+import androidx.compose.material3.ExperimentalMaterial3Api
+import androidx.lifecycle.compose.collectAsStateWithLifecycle
 import androidx.compose.material3.Icon
 import androidx.compose.material3.IconButton
 import androidx.compose.material3.OutlinedTextField
@@ -67,6 +72,7 @@ private val SearchMuted = Color(0xFF969696)
  * Dedicated search discovery page based on the official Android search layout.
  * Ranking is sourced from real native ranking results, never screenshot fixtures.
  */
+@OptIn(ExperimentalMaterial3Api::class)
 @Composable
 internal fun SearchLandingScreen(
     state: AppState,
@@ -88,6 +94,11 @@ internal fun SearchLandingScreen(
     val SearchMuted = if (night) Color(0xFF969696) else Color(0xFF806D63)
     var selectedBoard by remember { mutableIntStateOf(0) }
     var showActors by remember { mutableStateOf(false) }
+    val browse by model.searchBrowse.collectAsStateWithLifecycle()
+    var filtersOpen by remember { mutableStateOf(false) }
+    var filterDraft by remember(browse.genre, filtersOpen) {
+        mutableStateOf(browse.activeFilters)
+    }
     val context = LocalContext.current
     LaunchedEffect(Unit) { model.loadSearchLanding() }
     if (showActors) {
@@ -158,30 +169,109 @@ internal fun SearchLandingScreen(
                     .padding(horizontal = 14.dp),
                 horizontalArrangement = Arrangement.spacedBy(8.dp),
             ) {
-                listOf("识剧" to Section.SEARCH, "排行" to Section.RANK,
-                    "上新" to Section.LATEST, "演员" to Section.SEARCH,
-                    "筛选" to Section.BROWSE).forEach { (name, section) ->
+                listOf("推荐" to Section.RECOMMEND, "排行" to Section.RANK,
+                    "上新" to Section.LATEST, "筛选" to Section.BROWSE,
+                    "演员" to Section.SEARCH).forEach { (name, section) ->
                     Surface(
                         onClick = {
-                            when (name) {
-                                "识剧" -> Toast.makeText(context,
-                                    "图片识剧接口尚未验证", Toast.LENGTH_SHORT).show()
-                                "演员" -> showActors = true
-                                else -> {
-                                    model.section(section)
-                                    onResults()
-                                }
-                            }
+                            if (name == "演员") showActors = true
+                            else model.searchBrowseSection(
+                                if (browse.section == section) null else section)
                         },
                         shape = RoundedCornerShape(12.dp),
-                        color = SearchTile,
+                        color = if (browse.section == section)
+                            (if (night) Color(0xFF4A3530) else Color(0xFFE9D4C5))
+                            else SearchTile,
                     ) {
                         Text(name, Modifier.padding(horizontal = 13.dp, vertical = 11.dp),
-                            color = SearchInk, fontSize = 14.sp)
+                            color = SearchInk, fontSize = 14.sp,
+                            fontWeight = if (browse.section == section)
+                                FontWeight.Bold else FontWeight.Normal)
                     }
                 }
             }
         }
+        if (browse.section != null) {
+            item {
+                Column(Modifier.fillMaxWidth().padding(horizontal = 14.dp),
+                    verticalArrangement = Arrangement.spacedBy(10.dp)) {
+                    Row(Modifier.fillMaxWidth(), verticalAlignment = Alignment.CenterVertically) {
+                        Text(browse.section?.title.orEmpty(), color = SearchInk,
+                            fontSize = 19.sp, fontWeight = FontWeight.Bold,
+                            modifier = Modifier.weight(1f))
+                        TextButton(onClick = model::refreshSearchBrowse) { Text("刷新") }
+                    }
+                    if (browse.section == Section.RANK) {
+                        Row(Modifier.horizontalScroll(rememberScrollState()),
+                            horizontalArrangement = Arrangement.spacedBy(7.dp)) {
+                            (if (state.backend.isBlank()) listOf(
+                                "all" to "综合", "real" to "真人",
+                                "comic" to "漫剧", "ai" to "AI")
+                            else listOf("hot" to "热播", "new" to "新剧",
+                                "recommend" to "推荐")).forEach { (value, label) ->
+                                FilterChip(selected = browse.board == value,
+                                    onClick = { model.searchBrowseBoard(value) },
+                                    label = { Text(label) })
+                            }
+                        }
+                    }
+                    if (browse.section == Section.LATEST || browse.section == Section.BROWSE) {
+                        Row(Modifier.horizontalScroll(rememberScrollState()),
+                            horizontalArrangement = Arrangement.spacedBy(7.dp)) {
+                            listOf("short_play" to "真人", "comic_series" to "漫剧",
+                                "ai_series" to "AI剧").forEach { (value, label) ->
+                                FilterChip(selected = browse.genre == value,
+                                    onClick = { model.searchBrowseGenre(value) },
+                                    label = { Text(label) })
+                            }
+                        }
+                    }
+                    if (browse.section == Section.BROWSE) {
+                        TextButton(onClick = { filtersOpen = true },
+                            modifier = Modifier.testTag("search_browse_filters")) {
+                            Text(if (browse.activeFilters.isEmpty()) "筛选条件"
+                                else "筛选条件 · ${browse.activeFilters.size}")
+                        }
+                    }
+                    if (browse.loading && browse.items.isEmpty())
+                        CircularProgressIndicator(Modifier.size(26.dp))
+                    browse.error?.let { Text(it, color = SearchMuted, fontSize = 13.sp) }
+                    if (!browse.loading && browse.items.isEmpty() && browse.error == null)
+                        Text("这里暂时没有剧集", color = SearchMuted)
+                }
+            }
+            items(browse.items.chunked(3)) { dramas ->
+                Row(Modifier.fillMaxWidth().padding(horizontal = 14.dp),
+                    horizontalArrangement = Arrangement.spacedBy(9.dp)) {
+                    dramas.forEach { drama ->
+                        Column(Modifier.weight(1f)
+                            .clickable { model.open(drama); onClose() }
+                            .testTag("search_browse_drama_" + drama.id),
+                            verticalArrangement = Arrangement.spacedBy(6.dp)) {
+                            AsyncImage(model = model.cover(drama.cover),
+                                contentDescription = drama.title,
+                                contentScale = ContentScale.Crop,
+                                modifier = Modifier.fillMaxWidth().height(150.dp)
+                                    .clip(RoundedCornerShape(11.dp))
+                                    .background(SearchTile))
+                            Text(drama.title, color = SearchInk,
+                                maxLines = 2, overflow = TextOverflow.Ellipsis,
+                                fontSize = 12.sp)
+                        }
+                    }
+                    repeat(3 - dramas.size) { Spacer(Modifier.weight(1f)) }
+                }
+            }
+            if (browse.hasMore) item {
+                Box(Modifier.fillMaxWidth(), contentAlignment = Alignment.Center) {
+                    TextButton(onClick = model::moreSearchBrowse,
+                        enabled = !browse.moreLoading,
+                        modifier = Modifier.testTag("search_browse_more")) {
+                        Text(if (browse.moreLoading) "正在加载…" else "加载更多")
+                    }
+                }
+            }
+        } else {
         if (state.search.isNotBlank() &&
             (state.suggestions.isNotEmpty() || state.suggestionsLoading)) {
             item {
@@ -325,6 +415,45 @@ internal fun SearchLandingScreen(
                     }
                     repeat(3 - dramas.size) { Spacer(Modifier.weight(1f)) }
                 }
+            }
+        }
+        } // Landing content is shown only without a selected discovery tab
+    }
+    if (filtersOpen && browse.section == Section.BROWSE) {
+        ModalBottomSheet(onDismissRequest = { filtersOpen = false },
+            containerColor = SearchBg) {
+            Column(Modifier.fillMaxWidth().padding(horizontal = 16.dp),
+                verticalArrangement = Arrangement.spacedBy(9.dp)) {
+                Row(Modifier.fillMaxWidth(), verticalAlignment = Alignment.CenterVertically) {
+                    Text("筛选短剧", color = SearchInk, fontWeight = FontWeight.Bold,
+                        fontSize = 18.sp, modifier = Modifier.weight(1f))
+                    TextButton(onClick = { filterDraft = emptyMap() }) { Text("重置") }
+                }
+                if (browse.filters.isEmpty())
+                    Text("当前分类没有可用的筛选条件", color = SearchMuted)
+                browse.filters.forEach { group ->
+                    Text(group.name, color = SearchInk, fontSize = 13.sp)
+                    Row(Modifier.horizontalScroll(rememberScrollState()),
+                        horizontalArrangement = Arrangement.spacedBy(6.dp)) {
+                        group.options.forEach { option ->
+                            FilterChip(selected = filterDraft[group.key].orEmpty() == option.value,
+                                onClick = {
+                                    filterDraft = filterDraft.toMutableMap().apply {
+                                        if (option.value.isBlank()) remove(group.key)
+                                        else put(group.key, option.value)
+                                    }
+                                },
+                                label = { Text(option.label) })
+                        }
+                    }
+                }
+                Button(onClick = {
+                    model.searchBrowseApplyFilters(filterDraft)
+                    filtersOpen = false
+                }, modifier = Modifier.fillMaxWidth().testTag("search_browse_apply")) {
+                    Text("查看筛选结果")
+                }
+                Spacer(Modifier.height(12.dp))
             }
         }
     }
