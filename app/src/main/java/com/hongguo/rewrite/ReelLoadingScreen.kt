@@ -53,10 +53,10 @@ internal fun ReelLoadingScreen(
     onExit: () -> Unit,
     exitLabel: String = "退出刷短剧",
 ) {
-    val dark = Color(0xFF111216)
-    val mainText = Color(0xFFF6F3F0)
-    val muted = Color(0xFFACABB2)
-    val accent = Color(0xFFD95132)
+    val dark = HongguoColors.playerBackground
+    val mainText = Color.White
+    val muted = Color(0xFFB7B7BC)
+    val accent = HongguoColors.accent
     val stage = if (drama != null) "episode" else "recommendation"
     var elapsedSeconds by remember(stage, drama?.id, loading) {
         mutableIntStateOf(0)
@@ -106,7 +106,7 @@ internal fun ReelLoadingScreen(
                     contentDescription = drama.title,
                     contentScale = ContentScale.Crop,
                     modifier = Modifier.size(width = 132.dp, height = 178.dp)
-                        .clip(RoundedCornerShape(15.dp))
+                        .clip(RoundedCornerShape(HongguoUi.cardRadius))
                         .background(Color(0xFF29292D)),
                 )
                 Text(drama.title, color = mainText,
@@ -116,7 +116,7 @@ internal fun ReelLoadingScreen(
             } else {
                 Box(
                     Modifier.size(90.dp)
-                        .clip(RoundedCornerShape(24.dp))
+                        .clip(RoundedCornerShape(HongguoUi.cardRadius))
                         .background(Color(0xFF30221F)),
                     contentAlignment = Alignment.Center,
                 ) {
