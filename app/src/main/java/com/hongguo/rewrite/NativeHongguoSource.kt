@@ -83,7 +83,10 @@ class NativeHongguoSource(
         alreadyShown: Set<String> = emptySet(),
         realOnly: Boolean = false,
         comicOnly: Boolean = false,
+        firstItemOnly: Boolean = false,
     ): CatalogPage = withContext(Dispatchers.IO) {
+        // First screen must not wait for several feed pages before showing
+        // the first drama. Subsequent pages are fetched after UI handoff.
         reelsLock.withLock {
             if (restart) {
                 val accountForSession = synchronized(recommendationLock) { accountFeed }
@@ -130,8 +133,9 @@ class NativeHongguoSource(
             if (comicOnly) {
                 val comicItems = mutableListOf<Series>()
                 var failure: Exception? = null
-                repeat(3) {
-                    if (comicItems.size >= 5 || comicReelsEnd) return@repeat
+                repeat(if (firstItemOnly) 1 else 3) {
+                    if (comicItems.size >= (if (firstItemOnly) 1 else 5) ||
+                        comicReelsEnd) return@repeat
                     try {
                         val page = comicReelsFeed.page(comicReelsPageNumber++)
                         if (!page.hasMore) comicReelsEnd = true
@@ -154,8 +158,9 @@ class NativeHongguoSource(
             }
             // Always try dynamic official recommendations first, including in real-only mode.
             // In real-only mode, admit exclusively explicit server-typed real dramas.
-            repeat(if (realOnly) 2 else 3) {
-                if (candidates.size >= 5 || !upstreamMore) return@repeat
+            repeat(if (firstItemOnly) 1 else if (realOnly) 2 else 3) {
+                if (candidates.size >= (if (firstItemOnly) 1 else 5) ||
+                    !upstreamMore) return@repeat
                 try {
                     val page = reelsFeed.page(reelsPageNumber)
                     reelsPageNumber++
@@ -174,8 +179,9 @@ class NativeHongguoSource(
             if (realOnly && candidates.size < 5 && !realReelsEnd) {
                 // Official genre selector is authoritative when general recommendation
                 // cards omit their content type. It also has its own changing cursor.
-                repeat(2) {
-                    if (candidates.size >= 5 || realReelsEnd) return@repeat
+                repeat(if (firstItemOnly) 1 else 2) {
+                    if (candidates.size >= (if (firstItemOnly) 1 else 5) ||
+                        realReelsEnd) return@repeat
                     try {
                         val page = realCategoryPage()
                         candidates += page.items.filter { it.id !in excluded }
