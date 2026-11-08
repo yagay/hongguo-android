@@ -66,6 +66,12 @@ class NativeWebsiteSource(
         return DramaTagParser.website(extractRouter(fetch("player", id)), id)
     }
 
+    /** One read-only official website request supplies all screenshot-specific series fields. */
+    suspend fun publicDetail(id: String): DramaPublicDetail {
+        require(ID.matches(id))
+        return DramaPublicDetailParser.parse(extractRouter(fetch("player", id)), id)
+    }
+
     suspend fun socialStats(id: String): SocialStats {
         require(ID.matches(id))
         val root = extractRouter(fetch("player", id))
