@@ -357,11 +357,11 @@ internal fun SearchLandingScreen(
                 verticalArrangement = Arrangement.spacedBy(15.dp),
             ) {
                 Row(horizontalArrangement = Arrangement.spacedBy(20.dp)) {
+                    val reservationRanking = FeatureAvailability.reservationRankingAction()
                     val boards = buildList {
                         add("热搜榜")
                         add("热点话题榜")
-                        if (FeatureAvailability.hasApi(RemoteFeature.RESERVATION_RANKING))
-                            add("预约榜")
+                        if (reservationRanking != null) add("预约榜")
                     }
                     boards.forEachIndexed { index, title ->
                         Text(title, color = if (selectedBoard == index) SearchInk
@@ -369,7 +369,10 @@ internal fun SearchLandingScreen(
                             fontSize = 15.sp,
                             fontWeight = if (index == selectedBoard) FontWeight.Bold
                                 else FontWeight.Normal,
-                            modifier = Modifier.clickable { selectedBoard = index })
+                            modifier = Modifier.clickable {
+                                if (index == 2) reservationRanking?.invoke()
+                                else selectedBoard = index
+                            })
                     }
                 }
                 if (state.landingLoading && state.landingRank.isEmpty())
