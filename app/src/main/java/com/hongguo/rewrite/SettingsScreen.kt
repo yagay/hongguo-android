@@ -331,10 +331,12 @@ internal fun SettingsScreen(state: AppState, model: DramaViewModel) {
                             Spacer(Modifier.size(5.dp))
                             Text("导出 TXT")
                         }
-                        OutlinedButton(onClick = model::refreshDiagnostics,
-                            shape = RoundedCornerShape(HongguoUi.controlRadius)) { Text("刷新") }
-                        OutlinedButton(onClick = { confirmClear = true },
-                            shape = RoundedCornerShape(HongguoUi.controlRadius)) { Text("清空") }
+                        HongguoAction(
+                            label = "刷新", onClick = model::refreshDiagnostics,
+                        )
+                        HongguoAction(
+                            label = "清空", onClick = { confirmClear = true },
+                        )
                     }
                     state.logNotice?.let { Text(it, color = HongguoColors.accent,
                         fontSize = 12.sp) }
