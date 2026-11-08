@@ -321,9 +321,11 @@ private fun DownloadRows(state: AppState, model: DramaViewModel) {
                 if (task.id.startsWith("local-")) {
                     if (task.status.startsWith("下载中") ||
                         task.status == "等待下载") {
-                        TextButton(onClick = { model.cancelDownload(task.id) }) {
-                            Text("取消")
-                        }
+                        HongguoAction(
+                            label = "取消",
+                            onClick = { model.cancelDownload(task.id) },
+                            style = HongguoActionStyle.QUIET,
+                        )
                     } else if (task.failed.isNotEmpty() ||
                         task.status.startsWith("已取消")) {
                         TextButton(onClick = { model.retryLocalDownload(task.id) },
@@ -364,10 +366,11 @@ private fun ShareInput(model: DramaViewModel) {
         shape = RoundedCornerShape(14.dp),
         minLines = 3, maxLines = 5,
     )
-    Button(
+    HongguoAction(
+        label = "解析并播放",
         onClick = { model.share(shareText) },
         enabled = shareText.isNotBlank(),
         modifier = Modifier.fillMaxWidth().height(48.dp),
-        shape = RoundedCornerShape(HongguoUi.controlRadius),
-    ) { Text("解析并播放") }
+        style = HongguoActionStyle.PRIMARY,
+    )
 }
