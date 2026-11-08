@@ -167,17 +167,18 @@ class BackgroundPlaybackService : MediaSessionService() {
 
     private val checkpoint = object : Runnable {
         override fun run() {
-            if (!::engine.isInitialized || currentKey == null) return
-            val duration = engine.duration.takeIf { it > 0 } ?: 0L
-            if (engine.isPlaying && onTimer?.invoke() == true) engine.pause()
-            if (engine.isPlaying && !outroDone && outroMs > 0L &&
-                duration > outroMs + 5_000L &&
-                engine.currentPosition >= duration - outroMs) {
-                outroDone = true
-                engine.seekTo(duration)
+            if (::engine.isInitialized && currentKey != null) {
+                val duration = engine.duration.takeIf { it > 0 } ?: 0L
+                if (engine.isPlaying && onTimer?.invoke() == true) engine.pause()
+                if (engine.isPlaying && !outroDone && outroMs > 0L &&
+                    duration > outroMs + 5_000L &&
+                    engine.currentPosition >= duration - outroMs) {
+                    outroDone = true
+                    engine.seekTo(duration)
+                }
+                if (++tick % 4 == 0 && duration > 0L)
+                    onCheckpoint?.invoke(engine.currentPosition.coerceAtLeast(0L), duration)
             }
-            if (++tick % 4 == 0 && duration > 0L)
-                onCheckpoint?.invoke(engine.currentPosition.coerceAtLeast(0L), duration)
             main.postDelayed(this, 1000)
         }
     }
@@ -248,6 +249,20 @@ class BackgroundPlaybackService : MediaSessionService() {
         previousAllowed = canPrevious
         nextAllowed = canNext
         onNavigate = action
+    }
+
+    /** Immediately detach the previous video while ViewModel fetches a new episode. */
+    fun pauseForTransition() {
+        if (!::engine.isInitialized || currentKey == null) return
+        onCheckpoint?.invoke(
+            engine.currentPosition.coerceAtLeast(0L),
+            engine.duration.takeIf { it > 0L } ?: 0L)
+        engine.pause()
+        engine.stop()
+        engine.clearMediaItems()
+        currentKey = null
+        remoteVideo?.close()
+        remoteVideo = null
     }
 
     fun stopPlayback() {
