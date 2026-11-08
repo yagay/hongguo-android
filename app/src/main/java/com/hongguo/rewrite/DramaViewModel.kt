@@ -1609,6 +1609,7 @@ class DramaViewModel(application: Application) : AndroidViewModel(application) {
             endingMs = currentState.skipOutroSeconds * 1000L,
             autoRetry = currentState.retryPlaybackAutomatically,
             firstFrame = { firstFrame(current.vid) },
+            backgroundProgress = { confirmedBackgroundPlayback(current.vid) },
             finished = {
                 finishEpisode(current.vid)
                 nextEpisode(current.vid)
@@ -1813,6 +1814,24 @@ class DramaViewModel(application: Application) : AndroidViewModel(application) {
         else preloadFollowingEpisode()
     }
 
+
+    /** Background video has no attached surface, so onRenderedFirstFrame may
+     * never fire. Three seconds of actual progressing ExoPlayer playback is
+     * enough to validate the session for checkpoints, without claiming a frame
+     * was rendered.
+     */
+    fun confirmedBackgroundPlayback(expectedVid: String) {
+        val s = state.value
+        val ep = s.detail?.episodes?.getOrNull(s.episodeIndex) ?: return
+        if (ep.vid != expectedVid || firstFrameFor == ep.vid) return
+        firstFrameFor = ep.vid
+        diagnostics.record("MEDIA", "BACKGROUND_PROGRESS_CONFIRMED")
+        library.record(s.detail.drama, ep.index)
+        updateLibrary()
+        if (s.feedMode && s.episodeIndex == s.detail.episodes.lastIndex)
+            prefetchFollowingFeedItem(s.feedIndex)
+        else preloadFollowingEpisode()
+    }
 
     /** Media3-driven actual progress, persisted independently of history.
      * Do not record before the first decoded frame or for an old episode.
