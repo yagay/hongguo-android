@@ -70,6 +70,50 @@ class OpenHongguoMetadataTest {
         assertTrue(!OpenHongguoMetadataParser.isRating("850万热度"))
     }
 
+    @Test fun onlyOfficialExplicitAuthorDeclarationShowsAiLabel() {
+        val official = JSONObject("""{"code":0,"data":{"video_data":{
+          "series_id_str":"7100000000000101",
+          "secondary_infos":[
+            {"data_type":3,"content":"AI短剧"},
+            {"data_type":55,"content":"作者声明：内容由AI生成"}
+          ]}}}""")
+        val parsed = OpenHongguoMetadataParser.parse(official, id)
+        assertEquals("作者声明：内容由AI生成", parsed.authorAiStatement)
+        assertEquals("AI短剧", parsed.tags.single())
+
+        val genreOnly = JSONObject("""{"code":0,"data":{"video_data":{
+          "series_id_str":"7100000000000101",
+          "secondary_infos":[
+            {"data_type":3,"content":"AI短剧"},
+            {"data_type":55,"content":"作品中含有AI元素"}
+          ]}}}""")
+        assertNull(OpenHongguoMetadataParser.parse(genreOnly, id).authorAiStatement)
+        assertNull(OpenHongguoMetadataParser.confirmedAiAuthorStatement("AI短剧"))
+        assertNull(OpenHongguoMetadataParser.confirmedAiAuthorStatement("疑似使用AI生成技术"))
+        assertEquals("作者声明：内容由AI生成",
+            OpenHongguoMetadataParser.confirmedAiAuthorStatement(
+                "作者声明: 内容由 ai 生成"))
+    }
+
+    @Test fun onlyValidatedSeriesMaySupplyAiAuthorDeclaration() {
+        val other = JSONObject("""{"code":0,"data":{"video_data":{
+          "series_id_str":"7100000000009999",
+          "author_statement":"作者声明：内容由AI生成"
+        }}}""")
+        assertThrows(IOException::class.java) {
+            OpenHongguoMetadataParser.parse(other, id)
+        }
+
+        val first = OpenHongguoMetadata(id, tags = listOf("真人"))
+        val second = OpenHongguoMetadata(id,
+            authorAiStatement = "作者声明：内容由AI生成")
+        assertEquals("作者声明：内容由AI生成",
+            OpenHongguoMetadataParser.merge(first, second).authorAiStatement)
+        assertNull(OpenHongguoMetadataParser.merge(first,
+            OpenHongguoMetadata("7100000000009999",
+                authorAiStatement = "作者声明：内容由AI生成")).authorAiStatement)
+    }
+
     @Test fun rejectsCrossSeriesPayloadAndUnknownId() {
         val body = JSONObject("""{"code":0,"data":{"video_data":{
           "series_id_str":"7100000000009999"
