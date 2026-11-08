@@ -153,7 +153,7 @@ internal fun DramaDetailScreen(state: AppState, model: DramaViewModel) {
                                     text = { Text("播放当前集") },
                                     onClick = {
                                         showMenu = false
-                                        model.play(state.episodeIndex.coerceIn(
+                                        model.playFromDetails(state.episodeIndex.coerceIn(
                                             0, detail.episodes.lastIndex.coerceAtLeast(0)))
                                     },
                                 )
@@ -540,7 +540,7 @@ internal fun DramaDetailScreen(state: AppState, model: DramaViewModel) {
                             val episode = detail.episodes.getOrNull(index)
                             if (episode == null) Spacer(Modifier.weight(1f))
                             else Surface(
-                                onClick = { model.play(index) },
+                                onClick = { model.playFromDetails(index) },
                                 modifier = Modifier.weight(1f)
                                     .testTag("detail_episode_$index"),
                                 color = if (index == state.episodeIndex)
