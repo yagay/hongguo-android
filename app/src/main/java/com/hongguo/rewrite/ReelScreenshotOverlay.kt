@@ -455,7 +455,7 @@ internal fun ReelBottomDock(
     else 0f
 
     Column(
-        Modifier.fillMaxWidth().background(Color(0xFF232325))
+        Modifier.fillMaxWidth().background(HongguoColors.playerChrome)
             .testTag("reel_outside_video_dock"),
         verticalArrangement = Arrangement.spacedBy(0.dp),
     ) {
@@ -463,7 +463,7 @@ internal fun ReelBottomDock(
         // vertical gutter from 16dp to 12dp. The recovered height belongs
         // to the video viewport, not another overlay.
         Canvas(
-            Modifier.fillMaxWidth().height(12.dp)
+            Modifier.fillMaxWidth().height(HongguoUi.playbackSeekTouchHeight)
                 .pointerInput(duration, playback) {
                     detectTapGestures { point ->
                         if (duration > 0L && size.width > 0) {
@@ -497,7 +497,7 @@ internal fun ReelBottomDock(
         ) {
             val y = size.height / 2f
             drawLine(
-                color = Color(0xFF66666B),
+                color = HongguoColors.playerChromeTrack,
                 start = Offset(0f, y), end = Offset(size.width, y),
                 strokeWidth = 2.dp.toPx(),
                 cap = StrokeCap.Round,
@@ -511,12 +511,12 @@ internal fun ReelBottomDock(
             )
         }
         Row(
-            Modifier.fillMaxWidth().height(28.dp)
+            Modifier.fillMaxWidth().height(HongguoUi.playbackDockRowHeight)
                 .clickable(onClick = onEpisodes)
-                .padding(start = 10.dp, end = 8.dp)
+                .padding(start = HongguoUi.pagePadding, end = 12.dp)
                 .testTag("watch_full_drama"),
             verticalAlignment = Alignment.CenterVertically,
-            horizontalArrangement = Arrangement.spacedBy(6.dp),
+            horizontalArrangement = Arrangement.spacedBy(8.dp),
         ) {
             Text(
                 DramaCompletion.episodeLabel(
@@ -525,7 +525,7 @@ internal fun ReelBottomDock(
                     episodeIndex = episode?.index,
                 ),
                 color = Color.White,
-                fontSize = 12.sp,
+                fontSize = HongguoUi.playbackDockTitleSize,
                 fontWeight = FontWeight.Medium,
                 maxLines = 1,
                 overflow = TextOverflow.Ellipsis,
@@ -533,8 +533,9 @@ internal fun ReelBottomDock(
             )
             Text(
                 PlaybackTimeFormatter.label(playback.positionMs, duration),
-                color = Color(0xFFE2E1E5),
-                fontSize = 10.sp,
+                color = HongguoColors.playerChromeMuted,
+                fontSize = HongguoUi.playbackDockTimeSize,
+                fontWeight = FontWeight.Medium,
                 maxLines = 1,
                 modifier = Modifier.testTag("reel_time_label"),
             )
@@ -542,7 +543,7 @@ internal fun ReelBottomDock(
                 Icons.Outlined.KeyboardArrowRight,
                 contentDescription = "打开选集",
                 tint = Color.White,
-                modifier = Modifier.size(16.dp),
+                modifier = Modifier.size(18.dp),
             )
         }
     }
