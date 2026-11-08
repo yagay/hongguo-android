@@ -130,7 +130,9 @@ class BackgroundPlaybackService : MediaSessionService() {
                     (direction > 0 && !nextAllowed)) {
                     return Futures.immediateFuture(SessionResult(SessionResult.RESULT_ERROR_NOT_SUPPORTED))
                 }
-                engine.pause()
+                // The ViewModel pauses only after a real destination is chosen.
+                // If the reel queue needs paging, keep the current drama playing
+                // instead of leaving an idle notification at the queue boundary.
                 onNavigate?.invoke(direction)
                 return Futures.immediateFuture(SessionResult(SessionResult.RESULT_SUCCESS))
             }
