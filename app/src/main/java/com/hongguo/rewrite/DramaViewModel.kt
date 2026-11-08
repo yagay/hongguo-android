@@ -512,6 +512,36 @@ class DramaViewModel(application: Application) : AndroidViewModel(application) {
         }
     }
 
+    /** Screenshot-style search landing; real official rankings and hot terms only.
+     * Failure of either source does not block searching or history.
+     */
+    fun loadSearchLanding(force: Boolean = false) {
+        if (!force && (state.value.landingLoading || state.value.landingRank.isNotEmpty())) return
+        mutable.update { it.copy(landingLoading = true, landingError = null) }
+        viewModelScope.launch {
+            val rank = try {
+                nativeSource.list(Section.RANK, 0, "short_play", "all", "", emptyMap())
+                    .items.take(18)
+            } catch (cancel: CancellationException) { throw cancel }
+            catch (_: Exception) { emptyList() }
+            val hot = try {
+                withContext(Dispatchers.IO) { openHongguo.browse("hot") }
+                    .items.map { row -> row.searchQuery.ifBlank { row.title }.trim() }
+                    .filter { it.isNotBlank() && it.length <= 80 }.distinct().take(12)
+            } catch (cancel: CancellationException) { throw cancel }
+            catch (_: Exception) { emptyList() }
+            mutable.update { it.copy(
+                landingRank = rank,
+                landingTerms = hot,
+                landingLoading = false,
+                landingError = if (rank.isEmpty() && hot.isEmpty())
+                    "热搜数据暂不可用，可直接输入关键词搜索" else null
+            ) }
+            diagnostics.record("SEARCH", if (rank.isEmpty() && hot.isEmpty())
+                "LANDING_UNAVAILABLE" else "LANDING_READY")
+        }
+    }
+
     fun clearSearchHistory() {
         prefs.edit().remove("recent_queries").apply()
         mutable.update { it.copy(recentSearches = emptyList()) }
