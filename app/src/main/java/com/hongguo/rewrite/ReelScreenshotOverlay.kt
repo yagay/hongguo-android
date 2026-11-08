@@ -343,7 +343,11 @@ internal fun ReelScreenshotOverlay(
                     lineHeight = 23.sp,
                     maxLines = if (synopsisExpanded) 4 else 2,
                     overflow = TextOverflow.Ellipsis,
-                    modifier = Modifier.weight(1f).testTag("reel_drama_title"))
+                    // Use the text's natural width. Reserve extra room only
+                    // for long titles, so the chevron stays beside the title
+                    // rather than being pushed to the far edge of the row.
+                    modifier = Modifier.weight(1f, fill = false)
+                        .testTag("reel_drama_title"))
                 Icon(Icons.Outlined.KeyboardArrowRight, "查看剧集详情",
                     tint = white, modifier = Modifier.size(20.dp))
             }
