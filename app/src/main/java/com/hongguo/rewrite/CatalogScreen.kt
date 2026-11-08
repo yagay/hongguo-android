@@ -245,6 +245,7 @@ internal fun CatalogScreen(
 private fun CatalogHeader(state: AppState, model: DramaViewModel,
     onMine: () -> Unit, onSearchOpen: () -> Unit,
     onFilters: () -> Unit) {
+    var selectedCategory by rememberSaveable { mutableStateOf(0) }
     Column(Modifier.fillMaxWidth().background(HongguoColors.surface),
         verticalArrangement = Arrangement.spacedBy(8.dp)) {
         // Search is a single entrypoint. Category selection remains within
@@ -276,14 +277,15 @@ private fun CatalogHeader(state: AppState, model: DramaViewModel,
                 Triple("排行榜", Section.RANK, ""),
                 Triple("上新", Section.LATEST, ""),
             ).forEachIndexed { index, (title, section, genre) ->
-                val selected = state.section == section &&
-                    (section != Section.BROWSE || state.genre == genre) &&
-                    (index != 0 || state.section == Section.BROWSE)
+                val selected = if (section == Section.BROWSE)
+                    state.section == Section.BROWSE && selectedCategory == index
+                else state.section == section
                 Text(title,
                     color = if (selected) HongguoColors.ink else HongguoColors.muted,
                     fontSize = 16.sp,
                     fontWeight = if (selected) FontWeight.Bold else FontWeight.Normal,
                     modifier = Modifier.clickable {
+                        selectedCategory = index
                         if (state.section != section) model.section(section)
                         if (genre.isNotBlank() && state.genre != genre) model.genre(genre)
                     }.padding(vertical = 6.dp).testTag("theater_category_$index"))
@@ -295,7 +297,7 @@ private fun CatalogHeader(state: AppState, model: DramaViewModel,
                 Surface(
                     modifier = Modifier.weight(1f).clickable {
                         when (index) {
-                            0 -> onFilters()
+                            0 -> { selectedCategory = 0; onFilters() }
                             1 -> model.section(Section.RANK)
                             else -> model.section(Section.LATEST)
                         }
