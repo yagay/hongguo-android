@@ -93,26 +93,9 @@ internal fun SearchLandingScreen(
     val SearchTile = if (night) Color(0xFF222222) else Color(0xFFF2EAE3)
     val SearchInk = if (night) Color(0xFFF5F5F5) else Color(0xFF30231F)
     val SearchMuted = if (night) Color(0xFF969696) else Color(0xFF806D63)
-    var selectedBoard by remember { mutableIntStateOf(0) }
-    var showActors by remember { mutableStateOf(false) }
     val browse by model.searchBrowse.collectAsStateWithLifecycle()
-    var filtersOpen by remember { mutableStateOf(false) }
-    var filterDraft by remember(browse.genre, filtersOpen) {
-        mutableStateOf(browse.activeFilters)
-    }
     val context = LocalContext.current
     LaunchedEffect(Unit) { model.loadSearchLanding() }
-    if (showActors) {
-        OpenHongguoExploreScreen(model,
-            onClose = { showActors = false },
-            initialTab = "actor",
-            onOpenDrama = { drama ->
-                onOpenDrama(drama)
-                onClose()
-            })
-        return
-    }
-
     fun submit(text: String) {
         if (text.isBlank()) return
         model.searchBrowseQuery(text)
@@ -166,34 +149,7 @@ internal fun SearchLandingScreen(
                         .testTag("search_landing_submit"))
             }
         }
-        item {
-            Row(
-                Modifier.fillMaxWidth().horizontalScroll(rememberScrollState())
-                    .padding(horizontal = 14.dp),
-                horizontalArrangement = Arrangement.spacedBy(8.dp),
-            ) {
-                listOf("全部" to Section.SEARCH, "推荐" to Section.RECOMMEND,
-                    "排行" to Section.RANK, "上新" to Section.LATEST,
-                    "分类" to Section.BROWSE, "演员" to Section.SEARCH).forEach { (name, section) ->
-                    Surface(
-                        onClick = {
-                            if (name == "演员") showActors = true
-                            else model.searchBrowseSection(section)
-                        },
-                        shape = RoundedCornerShape(12.dp),
-                        color = if (browse.section == section && name != "演员")
-                            (if (night) Color(0xFF4A3530) else Color(0xFFE9D4C5))
-                            else SearchTile,
-                    ) {
-                        Text(name, Modifier.padding(horizontal = 13.dp, vertical = 11.dp),
-                            color = SearchInk, fontSize = 14.sp,
-                            fontWeight = if (browse.section == section && name != "演员")
-                                FontWeight.Bold else FontWeight.Normal)
-                    }
-                }
-            }
-        }
-        if (browse.section != null) {
+        if (browse.section == Section.SEARCH && browse.query.isNotBlank()) {
             item {
                 Column(Modifier.fillMaxWidth().padding(horizontal = 14.dp),
                     verticalArrangement = Arrangement.spacedBy(10.dp)) {
@@ -211,38 +167,6 @@ internal fun SearchLandingScreen(
                         Text(if (browse.query.isBlank()) "浏览当前分类"
                              else "关键词：${browse.query}",
                             color = SearchMuted, fontSize = 12.sp)
-                    }
-                    if (browse.section == Section.RANK) {
-                        Row(Modifier.horizontalScroll(rememberScrollState()),
-                            horizontalArrangement = Arrangement.spacedBy(7.dp)) {
-                            (if (state.backend.isBlank()) listOf(
-                                "all" to "综合", "real" to "真人",
-                                "comic" to "漫剧", "ai" to "AI")
-                            else listOf("hot" to "热播", "new" to "新剧",
-                                "recommend" to "推荐")).forEach { (value, label) ->
-                                FilterChip(selected = browse.board == value,
-                                    onClick = { model.searchBrowseBoard(value) },
-                                    label = { Text(label) })
-                            }
-                        }
-                    }
-                    if (browse.section == Section.LATEST || browse.section == Section.BROWSE) {
-                        Row(Modifier.horizontalScroll(rememberScrollState()),
-                            horizontalArrangement = Arrangement.spacedBy(7.dp)) {
-                            listOf("short_play" to "真人", "comic_series" to "漫剧",
-                                "ai_series" to "AI剧").forEach { (value, label) ->
-                                FilterChip(selected = browse.genre == value,
-                                    onClick = { model.searchBrowseGenre(value) },
-                                    label = { Text(label) })
-                            }
-                        }
-                    }
-                    if (browse.section == Section.BROWSE) {
-                        TextButton(onClick = { filtersOpen = true },
-                            modifier = Modifier.testTag("search_browse_filters")) {
-                            Text(if (browse.activeFilters.isEmpty()) "筛选条件"
-                                else "筛选条件 · ${browse.activeFilters.size}")
-                        }
                     }
                     if (browse.loading && browse.items.isEmpty())
                         CircularProgressIndicator(Modifier.size(26.dp))
@@ -356,123 +280,6 @@ internal fun SearchLandingScreen(
                 }
             }
         }
-        item {
-            Column(
-                Modifier.fillMaxWidth().clip(RoundedCornerShape(topStart = 15.dp,
-                    topEnd = 15.dp))
-                    .background(Brush.verticalGradient(listOf(
-                        if (night) Color(0xFF35251F) else Color(0xFFF4E5D9), SearchBg)))
-                    .padding(top = 15.dp, start = 14.dp, end = 14.dp),
-                verticalArrangement = Arrangement.spacedBy(15.dp),
-            ) {
-                Row(horizontalArrangement = Arrangement.spacedBy(20.dp)) {
-                    val reservationRanking = FeatureAvailability.reservationRankingAction()
-                    val boards = buildList {
-                        add("热搜榜")
-                        add("热点话题榜")
-                        if (reservationRanking != null) add("预约榜")
-                    }
-                    boards.forEachIndexed { index, title ->
-                        Text(title, color = if (selectedBoard == index) SearchInk
-                            else SearchMuted,
-                            fontSize = 15.sp,
-                            fontWeight = if (index == selectedBoard) FontWeight.Bold
-                                else FontWeight.Normal,
-                            modifier = Modifier.clickable {
-                                if (index == 2) reservationRanking?.invoke()
-                                else selectedBoard = index
-                            })
-                    }
-                }
-                if (state.landingLoading && state.landingRank.isEmpty())
-                    CircularProgressIndicator(Modifier.size(23.dp))
-                if (state.landingError != null)
-                    Text(state.landingError, color = SearchMuted, fontSize = 12.sp)
-                if (selectedBoard == 1) {
-                    if (state.landingTerms.isEmpty())
-                        Text("暂无热点话题", color = SearchMuted)
-                    else state.landingTerms.take(8).forEach { term ->
-                        Text(term, color = SearchInk,
-                            modifier = Modifier.fillMaxWidth()
-                                .clickable { submit(term) }.padding(vertical = 6.dp))
-                    }
-                }
-            }
-        }
-        if (selectedBoard == 0) {
-            items(state.landingRank.take(18).chunked(3)) { dramas ->
-                Row(Modifier.fillMaxWidth().padding(horizontal = 14.dp),
-                    horizontalArrangement = Arrangement.spacedBy(9.dp)) {
-                    dramas.forEachIndexed { index, drama ->
-                        val rank = state.landingRank.indexOfFirst { it.id == drama.id } + 1
-                        Column(Modifier.weight(1f).clickable {
-                            onOpenDrama(drama)
-                            onClose()
-                        }, verticalArrangement = Arrangement.spacedBy(7.dp)) {
-                            Box(Modifier.fillMaxWidth().height(160.dp)
-                                .clip(RoundedCornerShape(11.dp))
-                                .background(SearchTile)) {
-                                AsyncImage(
-                                    model = model.cover(drama.cover),
-                                    contentDescription = drama.title,
-                                    contentScale = ContentScale.Crop,
-                                    modifier = Modifier.fillMaxSize(),
-                                )
-                                Text("$rank", color = Color.White, fontSize = 16.sp,
-                                    fontWeight = FontWeight.Bold,
-                                    modifier = Modifier.align(Alignment.TopStart)
-                                        .background(Color(0x66000000))
-                                        .padding(horizontal = 7.dp, vertical = 4.dp))
-                            }
-                            Text(drama.title, maxLines = 1,
-                                overflow = TextOverflow.Ellipsis,
-                                color = SearchInk, fontSize = 13.sp)
-                            Text(if (drama.total > 0) "全${drama.total}集" else "热门短剧",
-                                color = SearchMuted, fontSize = 11.sp)
-                        }
-                    }
-                    repeat(3 - dramas.size) { Spacer(Modifier.weight(1f)) }
-                }
-            }
-        }
-        } // Landing content is shown only without a selected discovery tab
-    }
-    if (filtersOpen && browse.section == Section.BROWSE) {
-        ModalBottomSheet(onDismissRequest = { filtersOpen = false },
-            containerColor = SearchBg) {
-            Column(Modifier.fillMaxWidth().padding(horizontal = 16.dp),
-                verticalArrangement = Arrangement.spacedBy(9.dp)) {
-                Row(Modifier.fillMaxWidth(), verticalAlignment = Alignment.CenterVertically) {
-                    Text("筛选短剧", color = SearchInk, fontWeight = FontWeight.Bold,
-                        fontSize = 18.sp, modifier = Modifier.weight(1f))
-                    TextButton(onClick = { filterDraft = emptyMap() }) { Text("重置") }
-                }
-                if (browse.filters.isEmpty())
-                    Text("当前分类没有可用的筛选条件", color = SearchMuted)
-                browse.filters.forEach { group ->
-                    Text(group.name, color = SearchInk, fontSize = 13.sp)
-                    Row(Modifier.horizontalScroll(rememberScrollState()),
-                        horizontalArrangement = Arrangement.spacedBy(6.dp)) {
-                        group.options.forEach { option ->
-                            FilterChip(selected = filterDraft[group.key].orEmpty() == option.value,
-                                onClick = {
-                                    filterDraft = filterDraft.toMutableMap().apply {
-                                        if (option.value.isBlank()) remove(group.key)
-                                        else put(group.key, option.value)
-                                    }
-                                },
-                                label = { Text(option.label) })
-                        }
-                    }
-                }
-                Button(onClick = {
-                    model.searchBrowseApplyFilters(filterDraft)
-                    filtersOpen = false
-                }, modifier = Modifier.fillMaxWidth().testTag("search_browse_apply")) {
-                    Text("查看筛选结果")
-                }
-                Spacer(Modifier.height(12.dp))
-            }
-        }
+        } // Search suggestions/history, not another catalog tab
     }
 }
