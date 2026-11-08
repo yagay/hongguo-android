@@ -88,6 +88,12 @@ internal fun ReelScreenshotOverlay(
     onReal: () -> Unit,
     onRecommend: () -> Unit,
     onSearch: () -> Unit,
+    showTopButtons: Boolean = true,
+    showSideButtons: Boolean = true,
+    showTitle: Boolean = true,
+    showTags: Boolean = true,
+    showDescription: Boolean = true,
+    showDanmakuControls: Boolean = true,
 ) {
     val white = Color.White
     val muted = Color(0xFFD5D5D5)
@@ -109,7 +115,7 @@ internal fun ReelScreenshotOverlay(
         // different video pages. Only this row changes on mode switch; all
         // title, metrics, icons and playback controls keep their positions.
         val headerShiftPx = with(LocalDensity.current) { 8.dp.roundToPx() }
-        AnimatedContent(
+        if (showTopButtons) AnimatedContent(
             targetState = state.feedMode,
             modifier = Modifier.fillMaxWidth().height(56.dp)
                 .align(Alignment.TopCenter)
@@ -237,7 +243,7 @@ internal fun ReelScreenshotOverlay(
         // Public counts come from series-scoped website data and signed,
         // identity-validated episode detail. Local taps never increment them.
         // An unknown value must remain a label, never a fake zero.
-        Column(
+        if (showSideButtons) Column(
             Modifier.align(Alignment.BottomEnd)
                 .padding(end = 7.dp, bottom = 14.dp),
             horizontalAlignment = Alignment.CenterHorizontally,
@@ -284,7 +290,8 @@ internal fun ReelScreenshotOverlay(
                 .padding(start = 15.dp, end = 90.dp, bottom = 18.dp),
             verticalArrangement = Arrangement.spacedBy(9.dp),
         ) {
-            Row(horizontalArrangement = Arrangement.spacedBy(7.dp),
+            if (showDanmakuControls) Row(
+                horizontalArrangement = Arrangement.spacedBy(7.dp),
                 verticalAlignment = Alignment.CenterVertically) {
                 Row(
                     modifier = Modifier.background(
@@ -325,7 +332,7 @@ internal fun ReelScreenshotOverlay(
                 }
 
             }
-            Row(
+            if (showTitle) Row(
                 Modifier.fillMaxWidth()
                     .clickable(onClick = onDramaDetails)
                     .testTag("open_drama_details_from_title"),
@@ -342,7 +349,7 @@ internal fun ReelScreenshotOverlay(
             }
             val actorAndGenreTags = detail.drama.actors.take(2)
                 .map { "演员 $it" } + detail.drama.categories.take(4)
-            if (actorAndGenreTags.isNotEmpty()) {
+            if (showTags && actorAndGenreTags.isNotEmpty()) {
                 Row(
                     Modifier.fillMaxWidth().horizontalScroll(rememberScrollState())
                         .testTag("reel_actor_genre_tags"),
@@ -361,7 +368,7 @@ internal fun ReelScreenshotOverlay(
                     }
                 }
             }
-            aiAuthorStatement?.let { declaration ->
+            if (showTags) aiAuthorStatement?.let { declaration ->
                 Text(
                     declaration,
                     color = Color(0xFFF0F0F0),
@@ -375,7 +382,7 @@ internal fun ReelScreenshotOverlay(
                         .testTag("reel_ai_author_statement"),
                 )
             }
-            if (detail.drama.synopsis.isNotBlank()) {
+            if (showDescription && detail.drama.synopsis.isNotBlank()) {
                 Text(detail.drama.synopsis, color = muted, fontSize = 12.sp,
                     lineHeight = 17.sp,
                     maxLines = if (synopsisExpanded) 7 else 2,
