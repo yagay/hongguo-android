@@ -95,12 +95,12 @@ import androidx.compose.ui.unit.IntOffset
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
 import androidx.compose.ui.viewinterop.AndroidView
+import androidx.lifecycle.compose.collectAsStateWithLifecycle
 import androidx.media3.exoplayer.ExoPlayer
 import androidx.media3.ui.PlayerView
 import androidx.media3.ui.AspectRatioFrameLayout
 import com.hongguotv.core.RemoteVideo
 import kotlinx.coroutines.delay
-import kotlinx.coroutines.flow.collect
 import kotlinx.coroutines.flow.distinctUntilChanged
 import kotlinx.coroutines.isActive
 import kotlin.math.roundToInt
@@ -141,13 +141,6 @@ internal fun NativePlayer(state: AppState, model: DramaViewModel) {
     val pagerState = rememberPagerState(
         initialPage = activePage,
         pageCount = { if (state.feedMode) feedPages else detail.episodes.size },
-    )
-    val notificationNavigation = BackgroundNavigationPolicy.availability(
-        feedMode = state.feedMode,
-        selectedIndex = state.episodeIndex,
-        episodeCount = detail.episodes.size,
-        previousFeedExists = previousFeedDrama != null,
-        nextFeedAvailableOrPending = nextFeedPage,
     )
     val playback = remember(state.episodeIndex) { ReelPlaybackControls() }
     var speed by remember(detail.drama.id) { mutableFloatStateOf(state.defaultPlaybackSpeed) }
@@ -303,34 +296,9 @@ internal fun NativePlayer(state: AppState, model: DramaViewModel) {
                     val url = state.playbackUrl
                     if (url != null) {
                         Media3Reel(
-                            url = url, speed = speed, fillVideo = fillVideo,
-                            nativeVideo = model.nativeVideoFor(episode.vid),
+                            speed = speed,
+                            fillVideo = fillVideo,
                             controls = playback,
-                            vid = episode.vid,
-                            seriesTitle = detail.drama.title,
-                            episodeNumber = episode.index,
-                            episodeTotal = detail.episodes.size,
-                            cover = model.cover(detail.drama.cover),
-                            canPrevious = notificationNavigation.previous,
-                            canNext = notificationNavigation.next,
-                            onNavigate = { direction ->
-                                if (state.feedMode) model.navigateFeed(direction)
-                                else model.playIfDifferent(state.episodeIndex + direction)
-                            },
-                            onCheckpoint = { position, duration ->
-                                model.savePlaybackPosition(episode.vid, position, duration)
-                            },
-                            onTimer = model::shouldPauseForTimer,
-                            resumeAtMs = state.resumePositionMs,
-                            skipIntroMs = state.skipIntroSeconds * 1000L,
-                            skipOutroMs = state.skipOutroSeconds * 1000L,
-                            autoRetry = state.retryPlaybackAutomatically,
-                            onFirstFrame = { model.firstFrame(episode.vid) },
-                            onFinished = {
-                                model.finishEpisode(episode.vid)
-                                model.nextEpisode(episode.vid)
-                            },
-                            onError = { model.mediaError(episode.vid, it) },
                         )
                         Box(
                             Modifier.fillMaxSize()
@@ -833,98 +801,30 @@ internal class ReelPlaybackControls {
 @androidx.annotation.OptIn(androidx.media3.common.util.UnstableApi::class)
 @Composable
 private fun Media3Reel(
-    url: String,
     speed: Float,
     fillVideo: Boolean,
-    nativeVideo: RemoteVideo?,
     controls: ReelPlaybackControls,
-    vid: String,
-    seriesTitle: String,
-    episodeNumber: Int,
-    episodeTotal: Int,
-    cover: String,
-    canPrevious: Boolean,
-    canNext: Boolean,
-    onNavigate: (Int) -> Unit,
-    onCheckpoint: (Long, Long) -> Unit,
-    onTimer: () -> Boolean,
-    resumeAtMs: Long,
-    skipIntroMs: Long,
-    skipOutroMs: Long,
-    autoRetry: Boolean,
-    onFirstFrame: () -> Unit,
-    onFinished: () -> Unit,
-    onError: (String) -> Unit,
 ) {
-    val context = LocalContext.current
-    val first by rememberUpdatedState(onFirstFrame)
-    val end by rememberUpdatedState(onFinished)
-    val fail by rememberUpdatedState(onError)
-    val save by rememberUpdatedState(onCheckpoint)
-    val timer by rememberUpdatedState(onTimer)
-    val navigate by rememberUpdatedState(onNavigate)
-    var player by remember { mutableStateOf<ExoPlayer?>(null) }
-
-    // MediaSessionService owns ExoPlayer. Compose only attaches a video surface,
-    // so ON_STOP, lock-screen, PiP and Activity recreation do not pause/release
-    // the audio session.
-    LaunchedEffect(context) {
-        try {
-            context.startService(Intent(context, BackgroundPlaybackService::class.java))
-            BackgroundPlaybackService.playerFlow.collect { sessionPlayer ->
-                player = sessionPlayer
-            }
-        } catch (error: Exception) {
-            fail("后台播放服务无法启动：${error.javaClass.simpleName}")
-        }
-    }
-
-    LaunchedEffect(player, url, nativeVideo) {
-        val service = BackgroundPlaybackService.active ?: return@LaunchedEffect
-        service.configure(
-            key = "$vid|$url|${nativeVideo?.hashCode() ?: 0}",
-            vid = vid,
-            url = url,
-            remote = nativeVideo,
-            drama = seriesTitle,
-            episode = episodeNumber,
-            totalEpisodes = episodeTotal,
-            cover = cover,
-            positionMs = resumeAtMs,
-            introMs = skipIntroMs,
-            endingMs = skipOutroMs,
-            autoRetry = autoRetry,
-            firstFrame = { first() },
-            finished = { end() },
-            failed = { fail(it) },
-            checkpoint = { position, duration -> save(position, duration) },
-            timerExpired = { timer() },
-        )
-    }
-
-    LaunchedEffect(player, canPrevious, canNext, vid) {
-        BackgroundPlaybackService.active?.configureNavigation(
-            canPrevious, canNext, { direction -> navigate(direction) })
-    }
+    // ViewModel configures media in the foreground service after each episode
+    // fetch, even while the UI lifecycle is STOPPED. Compose only shows its
+    // video surface and keeps local playback buttons in sync.
+    val player by BackgroundPlaybackService.playerFlow.collectAsStateWithLifecycle()
 
     DisposableEffect(player) {
         controls.player = player
         onDispose {
             if (controls.player === player) controls.player = null
-            // Deliberately do not release the player or native video here:
-            // MediaSessionService is still playing in the background.
+            // A detached PlayerView must not release the background player.
         }
     }
-
     LaunchedEffect(player, speed) { player?.setPlaybackSpeed(speed) }
     LaunchedEffect(player) {
         while (isActive) {
-            val active = player
-            controls.positionMs = active?.currentPosition?.coerceAtLeast(0L) ?: 0L
-            controls.durationMs = active?.duration?.takeIf {
+            controls.positionMs = player?.currentPosition?.coerceAtLeast(0L) ?: 0L
+            controls.durationMs = player?.duration?.takeIf {
                 it > 0L && it != androidx.media3.common.C.TIME_UNSET
             } ?: 0L
-            controls.isPlaying = active?.isPlaying == true
+            controls.isPlaying = player?.isPlaying == true
             delay(250)
         }
     }
