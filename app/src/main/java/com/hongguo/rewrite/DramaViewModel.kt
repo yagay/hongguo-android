@@ -245,12 +245,6 @@ class DramaViewModel(application: Application) : AndroidViewModel(application) {
         mutable.update { it.copy(themeMode = value) }
     }
 
-    fun setNavigationStyle(value: String) {
-        if (value !in setOf("classic", "glass")) return
-        prefs.edit().putString("navigation_style", value).apply()
-        mutable.update { it.copy(navigationStyle = value) }
-    }
-
     /** Opt-in display brightness override; never changes Android global settings. */
     fun setVideoBrightnessPercent(percent: Int) {
         if (percent != -1 && percent !in 40..100) return
@@ -914,7 +908,6 @@ class DramaViewModel(application: Application) : AndroidViewModel(application) {
             hiddenRecommendationIds = prefs.getStringSet("hidden_recommendations_v1", emptySet())?.toSet().orEmpty(),
             themeStyle = prefs.getString("theme_style", "warm")?.takeIf { it in setOf("warm", "immersive", "cards") } ?: "warm",
             themeMode = prefs.getString("theme_mode", "light")?.takeIf { it in setOf("system", "light", "dark") } ?: "light",
-            navigationStyle = prefs.getString("navigation_style", "classic")?.takeIf { it in setOf("classic", "glass") } ?: "classic",
             reelsMode = prefs.getString("reels_mode", "all")
                 ?.takeIf { it == "all" || it == "real" } ?: "all",
             autoPlayNext = prefs.getBoolean("auto_play_next", true),
