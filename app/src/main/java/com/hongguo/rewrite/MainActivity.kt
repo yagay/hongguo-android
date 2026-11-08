@@ -197,7 +197,15 @@ private fun HongguoApp(model: DramaViewModel = viewModel()) {
         state.detail != null && state.modal == Modal.NONE
     val darkPlayer = activeRoute in setOf(
         PlaybackDestination.FEED, PlaybackDestination.SERIES) &&
+        (primaryTab == "home" || activeRoute == PlaybackDestination.SERIES) &&
         state.modal == Modal.NONE
+    // A feed can finish loading after the user has selected another tab.
+    // Convert it to the persistent mini-player exactly once so no hidden
+    // full-screen Surface keeps playing without a visible companion.
+    LaunchedEffect(primaryTab, state.detail?.drama?.id, activeRoute) {
+        if (primaryTab != "home" && activeRoute == PlaybackDestination.FEED &&
+            state.detail != null) model.minimizePlayer()
+    }
     val playerDetailsOverlay = state.detail != null &&
         activeRoute == PlaybackDestination.DETAILS &&
         state.navigation.detailsParent in setOf(
