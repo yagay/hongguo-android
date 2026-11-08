@@ -409,6 +409,38 @@ class BackgroundPlaybackService : MediaSessionService() {
         diagnostics.record("BACKGROUND", "TRANSITION_PENDING")
     }
 
+    /**
+     * Preserve the current Media3 item and its encrypted RemoteVideo while the
+     * user reads this drama's details. Null means no reusable session; a
+     * non-null Boolean remembers whether playback was actually requested.
+     */
+    fun pauseForDetails(vid: String): Boolean? {
+        if (!::engine.isInitialized || currentKey == null ||
+            currentVid != vid || engine.currentMediaItem?.mediaId != vid ||
+            engine.playbackState == Player.STATE_IDLE ||
+            engine.playbackState == Player.STATE_ENDED) return null
+        val wasPlaying = engine.playWhenReady
+        onCheckpoint?.invoke(
+            engine.currentPosition.coerceAtLeast(0L),
+            engine.duration.takeIf { it > 0L } ?: 0L)
+        engine.pause()
+        autoStartPending = false
+        diagnostics.record("BACKGROUND", "DETAIL_PAUSED_RETAINED")
+        return wasPlaying
+    }
+
+    /** Attach the returning UI to the same item without reprepare/reseek. */
+    fun resumeFromDetails(vid: String, shouldPlay: Boolean): Boolean {
+        if (!::engine.isInitialized || currentKey == null ||
+            currentVid != vid || engine.currentMediaItem?.mediaId != vid ||
+            engine.playbackState == Player.STATE_IDLE ||
+            engine.playbackState == Player.STATE_ENDED) return false
+        if (shouldPlay) engine.play()
+        diagnostics.record("BACKGROUND",
+            if (shouldPlay) "DETAIL_RESUMED_REUSED" else "DETAIL_RETURNED_PAUSED")
+        return true
+    }
+
     fun stopPlayback(reason: String = "USER_CLOSE") {
         if (::engine.isInitialized) {
             onCheckpoint?.invoke(
