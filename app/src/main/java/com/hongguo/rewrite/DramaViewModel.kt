@@ -260,6 +260,28 @@ class DramaViewModel(application: Application) : AndroidViewModel(application) {
             if (percent < 0) "BRIGHTNESS_SYSTEM" else "BRIGHTNESS_OVERRIDE")
     }
 
+    /** Adjusts only the Media3 AudioSession effect; phone media volume stays intact. */
+    fun setPlaybackAudioBoostDb(db: Int) {
+        if (!AudioBoostPolicy.valid(db)) return
+        prefs.edit().putInt("playback_audio_boost_db", db).apply()
+        mutable.update { it.copy(playbackAudioBoostDb = db) }
+        BackgroundPlaybackService.active?.setAudioBoostDb(db)
+        diagnostics.record("AUDIO_BOOST", "USER_${db}DB")
+    }
+
+    /** Coarse renderer info, safe for diagnostic exports. */
+    fun recordVideoSurface(type: String) {
+        if (type !in setOf("SURFACE_VIEW", "TEXTURE_VIEW", "OTHER_SURFACE"))
+            return
+        diagnostics.record("VIDEO_RENDER", type)
+    }
+
+    fun recordDisplayState(state: String) {
+        if (state.matches(Regex("(SYSTEM|OVERRIDE_[0-9]{2,3}PCT|RESTORED)"))) {
+            diagnostics.record("VIDEO_DISPLAY", state)
+        }
+    }
+
     fun setDefaultPlaybackSpeed(value: Float) {
         if (value !in setOf(0.75f, 1f, 1.25f, 1.5f, 2f, 3f)) return
         prefs.edit().putFloat("default_playback_speed", value).apply()
@@ -900,6 +922,8 @@ class DramaViewModel(application: Application) : AndroidViewModel(application) {
             defaultPlaybackSpeed = prefs.getFloat("default_playback_speed", 1f).coerceIn(0.75f, 3f),
             videoBrightnessPercent = prefs.getInt("video_brightness_percent", -1)
                 .takeIf { it == -1 || it in 40..100 } ?: -1,
+            playbackAudioBoostDb = prefs.getInt("playback_audio_boost_db", 0)
+                .takeIf(AudioBoostPolicy::valid) ?: 0,
             qualityLimit = prefs.getInt("quality_limit", 0)
                 .takeIf { it in setOf(0, 360, 480, 720, 1080) } ?: 0,
             logEnabled = diagnostics.enabled,
