@@ -20,15 +20,12 @@ import androidx.compose.foundation.layout.Column
 import androidx.compose.foundation.layout.fillMaxSize
 import androidx.compose.foundation.layout.imePadding
 import androidx.compose.foundation.layout.safeDrawingPadding
-import androidx.compose.foundation.layout.WindowInsets
 import androidx.compose.foundation.layout.padding
-import androidx.compose.foundation.layout.fillMaxWidth
 import androidx.compose.material3.CircularProgressIndicator
 import androidx.compose.material3.MaterialTheme
 import androidx.compose.material3.NavigationBar
 import androidx.compose.material3.NavigationBarItem
 import androidx.compose.material3.Icon
-import androidx.compose.material3.Scaffold
 import androidx.compose.material.icons.Icons
 import androidx.compose.material.icons.outlined.Home
 import androidx.compose.material.icons.outlined.PersonOutline
@@ -196,10 +193,8 @@ private fun HongguoApp(model: DramaViewModel = viewModel()) {
     val darkPlayer = state.detail != null && !state.detailPageVisible &&
         !state.miniPlayerVisible && state.modal != Modal.SETTINGS
     val showMini = MiniPlayerPresentation.show(state)
-    val showCatalogBottomNav = state.modal != Modal.SETTINGS &&
-        state.modal != Modal.ACCOUNT && !state.detailPageVisible &&
-        !searchLandingOpen && (state.miniPlayerVisible ||
-            (state.detail == null && !state.preparingDetail))
+    val showCatalogBottomNav =
+        MiniPlayerPresentation.catalogNavigationVisible(state, searchLandingOpen)
     val systemDark = isSystemInDarkTheme()
     val darkTheme = when (state.themeMode) {
         "dark" -> true
@@ -261,8 +256,9 @@ private fun HongguoApp(model: DramaViewModel = viewModel()) {
                 Box(Modifier.weight(1f)) {
                     BackHandler(
                         enabled = state.modal != Modal.NONE ||
-                            state.detailPageVisible || state.preparingDetail ||
-                            (!state.miniPlayerVisible && (state.detail != null || state.feedMode)) ||
+                            state.detailPageVisible ||
+                            (!state.miniPlayerVisible &&
+                                (state.preparingDetail || state.detail != null || state.feedMode)) ||
                             mineOpen || searchLandingOpen,
                     ) {
                         if (state.modal == Modal.ACCOUNT) model.closeAccount()
