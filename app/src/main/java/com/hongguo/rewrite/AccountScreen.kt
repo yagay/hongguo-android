@@ -136,7 +136,7 @@ internal fun AccountScreen(model: DramaViewModel) {
                 }
             }
             if (account.profile == null && account.savedSessionPresent) item {
-                Surface(color = HongguoColors.surface, shape = RoundedCornerShape(HongguoUi.cardRadius)) {
+                HongguoCard() {
                     Column(Modifier.fillMaxWidth().padding(16.dp),
                         verticalArrangement = Arrangement.spacedBy(10.dp)) {
                         Text("已保存的账号等待验证", fontWeight = FontWeight.SemiBold,
@@ -173,7 +173,7 @@ internal fun AccountScreen(model: DramaViewModel) {
                     }
                 }
                 item {
-                    Surface(color = HongguoColors.surface, shape = RoundedCornerShape(HongguoUi.cardRadius)) {
+                    HongguoCard() {
                         Row(Modifier.fillMaxWidth().padding(6.dp),
                             horizontalArrangement = Arrangement.spacedBy(8.dp)) {
                             listOf("手机验证码", "官网登录", "扫码登录").forEachIndexed { index, label ->
@@ -198,7 +198,7 @@ internal fun AccountScreen(model: DramaViewModel) {
                     }
                 }
                 if (loginMethod == 2) item {
-                    Surface(shape = RoundedCornerShape(HongguoUi.cardRadius), color = HongguoColors.surface) {
+                    HongguoCard() {
                         Column(Modifier.fillMaxWidth().padding(16.dp),
                             verticalArrangement = Arrangement.spacedBy(12.dp)) {
                     Text("官方扫码登录", fontWeight = FontWeight.Bold,
@@ -254,7 +254,7 @@ internal fun AccountScreen(model: DramaViewModel) {
                     }
                 }
                 if (loginMethod == 1) item {
-                    Surface(shape = RoundedCornerShape(HongguoUi.cardRadius), color = HongguoColors.surface) {
+                    HongguoCard() {
                         Column(Modifier.fillMaxWidth().padding(16.dp),
                             verticalArrangement = Arrangement.spacedBy(12.dp)) {
                             Text("官网登录", fontSize = 18.sp, fontWeight = FontWeight.SemiBold,
@@ -269,7 +269,7 @@ internal fun AccountScreen(model: DramaViewModel) {
                     }
                 }
                 if (loginMethod == 0) item {
-                    Surface(shape = RoundedCornerShape(HongguoUi.cardRadius), color = HongguoColors.surface) {
+                    HongguoCard() {
                         Column(Modifier.fillMaxWidth().padding(16.dp),
                             verticalArrangement = Arrangement.spacedBy(12.dp)) {
                     Text("手机号验证码登录", fontWeight = FontWeight.Bold,
@@ -325,7 +325,7 @@ internal fun AccountScreen(model: DramaViewModel) {
                     }
                 }
                 item {
-                    Surface(color = HongguoColors.surface, shape = RoundedCornerShape(HongguoUi.cardRadius)) {
+                    HongguoCard() {
                         Column(Modifier.fillMaxWidth().padding(16.dp),
                             verticalArrangement = Arrangement.spacedBy(10.dp)) {
                             TextButton(onClick = {
@@ -605,7 +605,7 @@ private fun AccountRow(
     extraLabel: String? = null,
     onExtra: (() -> Unit)? = null,
 ) {
-    Surface(color = HongguoColors.surface, shape = RoundedCornerShape(10.dp)) {
+    HongguoCard() {
         Column(
             Modifier.fillMaxWidth().padding(12.dp),
             verticalArrangement = Arrangement.spacedBy(5.dp),
