@@ -550,10 +550,10 @@ internal fun HongguoMenuAction(
 }
 
 @Composable
-internal fun HongguoMenuSeparator() {
+internal fun HongguoMenuSeparator(dark: Boolean = false) {
     HorizontalDivider(
         modifier = Modifier.padding(horizontal = HongguoUi.pagePadding, vertical = 4.dp),
-        color = HongguoColors.divider,
+        color = if (dark) Color(0xFF414043) else HongguoColors.divider,
     )
 }
 
