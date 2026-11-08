@@ -357,7 +357,13 @@ internal fun SearchLandingScreen(
                 verticalArrangement = Arrangement.spacedBy(15.dp),
             ) {
                 Row(horizontalArrangement = Arrangement.spacedBy(20.dp)) {
-                    listOf("热搜榜", "热点话题榜", "预约榜").forEachIndexed { index, title ->
+                    val boards = buildList {
+                        add("热搜榜")
+                        add("热点话题榜")
+                        if (FeatureAvailability.hasApi(RemoteFeature.RESERVATION_RANKING))
+                            add("预约榜")
+                    }
+                    boards.forEachIndexed { index, title ->
                         Text(title, color = if (selectedBoard == index) SearchInk
                             else SearchMuted,
                             fontSize = 15.sp,
@@ -378,9 +384,6 @@ internal fun SearchLandingScreen(
                             modifier = Modifier.fillMaxWidth()
                                 .clickable { submit(term) }.padding(vertical = 6.dp))
                     }
-                } else if (selectedBoard == 2) {
-                    Text("暂无已核实的预约榜数据",
-                        color = SearchMuted, fontSize = 13.sp)
                 }
             }
         }
