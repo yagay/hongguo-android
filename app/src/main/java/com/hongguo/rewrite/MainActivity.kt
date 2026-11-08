@@ -207,6 +207,12 @@ private fun HongguoApp(model: DramaViewModel = viewModel()) {
         else -> false
     }
     val activity = LocalContext.current as? Activity
+    PlaybackScreenBrightness(
+        activity = activity,
+        enabled = darkPlayer && !systemPictureInPicture &&
+            state.detail != null && !state.miniPlayerVisible,
+        percent = state.videoBrightnessPercent,
+    )
     SideEffect {
         val selectedVid = state.detail?.episodes
             ?.getOrNull(state.episodeIndex)?.vid
