@@ -72,6 +72,7 @@ internal fun ReelScreenshotOverlay(
     detail: DramaDetail,
     episode: Episode?,
     onPlaybackSettings: () -> Unit,
+    onOpenAccountDrawer: () -> Unit,
     onPictureInPicture: () -> Unit,
     onBack: () -> Unit,
     onDramaDetails: () -> Unit,
@@ -113,9 +114,9 @@ internal fun ReelScreenshotOverlay(
                     .padding(start = 5.dp, end = 5.dp, top = 5.dp),
                 verticalAlignment = Alignment.CenterVertically,
             ) {
-                IconButton(onClick = onPlaybackSettings,
+                IconButton(onClick = onOpenAccountDrawer,
                     modifier = Modifier.size(36.dp).testTag("reel_menu")) {
-                    Icon(Icons.Outlined.Menu, "播放设置", tint = white,
+                    Icon(Icons.Outlined.Menu, "打开账号与隐私侧边栏", tint = white,
                         modifier = Modifier.size(25.dp))
                 }
                 val tabs = listOf(
