@@ -298,6 +298,7 @@ internal fun NativePlayer(state: AppState, model: DramaViewModel) {
                             speed = speed,
                             fillVideo = fillVideo,
                             controls = playback,
+                            expectedVid = episode.vid,
                         )
                         Box(
                             Modifier.fillMaxSize()
@@ -839,13 +840,20 @@ private fun Media3Reel(
     speed: Float,
     fillVideo: Boolean,
     controls: ReelPlaybackControls,
+    expectedVid: String,
 ) {
     // ViewModel configures media in the foreground service after each episode
     // fetch, even while the UI lifecycle is STOPPED. Compose only shows its
     // video surface and keeps local playback buttons in sync.
     val player by BackgroundPlaybackService.playerFlow.collectAsStateWithLifecycle()
 
-    DisposableEffect(player) {
+    // The ExoPlayer belongs to MediaSessionService and is intentionally
+    // reused for every episode. ReelPlaybackControls, however, is recreated
+    // by remember(episodeIndex). Both effects MUST rebind when controls change,
+    // even if the actual ExoPlayer reference stays identical. Otherwise a
+    // previous episode's polling coroutine keeps updating the old controls
+    // and the new bottom dock is stuck at 00:00 / --:--.
+    DisposableEffect(player, controls) {
         controls.player = player
         onDispose {
             if (controls.player === player) controls.player = null
@@ -853,13 +861,21 @@ private fun Media3Reel(
         }
     }
     LaunchedEffect(player, speed) { player?.setPlaybackSpeed(speed) }
-    LaunchedEffect(player) {
+    LaunchedEffect(player, controls, expectedVid) {
+        // Avoid showing the previous episode's time/duration while the service
+        // is resolving or installing the new MediaItem (or after a rapid swipe).
+        controls.positionMs = 0L
+        controls.durationMs = 0L
+        controls.isPlaying = false
         while (isActive) {
-            controls.positionMs = player?.currentPosition?.coerceAtLeast(0L) ?: 0L
-            controls.durationMs = player?.duration?.takeIf {
+            val matches = player?.currentMediaItem?.mediaId == expectedVid
+            controls.player = if (matches) player else null
+            controls.positionMs = if (matches)
+                player?.currentPosition?.coerceAtLeast(0L) ?: 0L else 0L
+            controls.durationMs = if (matches) player?.duration?.takeIf {
                 it > 0L && it != androidx.media3.common.C.TIME_UNSET
-            } ?: 0L
-            controls.isPlaying = player?.isPlaying == true
+            } ?: 0L else 0L
+            controls.isPlaying = matches && player?.isPlaying == true
             delay(250)
         }
     }
