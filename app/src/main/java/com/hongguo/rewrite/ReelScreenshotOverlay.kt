@@ -1,5 +1,6 @@
 package com.hongguo.rewrite
 
+import androidx.compose.animation.AnimatedContent
 import androidx.compose.foundation.background
 import androidx.compose.foundation.clickable
 import androidx.compose.foundation.Canvas
@@ -53,6 +54,7 @@ import androidx.compose.ui.geometry.Offset
 import androidx.compose.ui.graphics.StrokeCap
 import androidx.compose.ui.input.pointer.pointerInput
 import androidx.compose.ui.graphics.vector.ImageVector
+import androidx.compose.ui.platform.LocalDensity
 import androidx.compose.ui.platform.testTag
 import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.text.style.TextOverflow
@@ -86,8 +88,6 @@ internal fun ReelScreenshotOverlay(
     onReal: () -> Unit,
     onRecommend: () -> Unit,
     onSearch: () -> Unit,
-    /** Animation-only chrome mode: it may differ from live route during transition. */
-    feedChrome: Boolean = state.feedMode,
 ) {
     val white = Color.White
     val muted = Color(0xFFD5D5D5)
@@ -106,13 +106,28 @@ internal fun ReelScreenshotOverlay(
     var synopsisExpanded by rememberSaveable(detail.drama.id) { mutableStateOf(false) }
 
     Box(Modifier.fillMaxSize().testTag("reference_video_layout")) {
-        // Feed tabs belong only to the one-drama-per-swipe recommendation stream.
-        // The full-series episode player retains its original Back / PiP / More bar.
+        // Feed and full-series navigation are alternative *headers*, not
+        // different video pages. Only this row changes on mode switch; all
+        // title, metrics, icons and playback controls keep their positions.
+        val headerShiftPx = with(LocalDensity.current) { 8.dp.roundToPx() }
+        AnimatedContent(
+            targetState = state.feedMode,
+            modifier = Modifier.fillMaxWidth().height(56.dp)
+                .align(Alignment.TopCenter)
+                .testTag("feed_series_slide"),
+            transitionSpec = {
+                PlaybackPageSlide.chromeChange(
+                    enteringSeries = !targetState,
+                    shiftPx = headerShiftPx,
+                )
+            },
+            label = "feed_series_header_fade",
+        ) { feedChrome ->
         if (feedChrome) {
             // Official-inspired navigation: only Recommend and Real correspond to
             // live official reel feeds. Other tabs open real existing collections.
             Row(
-                Modifier.fillMaxWidth().align(Alignment.TopCenter)
+                Modifier.fillMaxWidth()
                     .padding(start = 5.dp, end = 5.dp, top = 5.dp),
                 verticalAlignment = Alignment.CenterVertically,
             ) {
@@ -152,7 +167,7 @@ internal fun ReelScreenshotOverlay(
         } else {
             // Minimal header: no duplicate full-title row over the video.
             Row(
-                Modifier.fillMaxWidth().align(Alignment.TopCenter)
+                Modifier.fillMaxWidth()
                     .padding(start = 8.dp, end = 8.dp, top = 8.dp),
                 verticalAlignment = Alignment.CenterVertically,
             ) {
@@ -183,6 +198,7 @@ internal fun ReelScreenshotOverlay(
                 }
             }
         }
+        } // Header-only fade; the persistent video controls never animate offscreen
 
         // Public counts come from series-scoped website data and signed,
         // identity-validated episode detail. Local taps never increment them.
