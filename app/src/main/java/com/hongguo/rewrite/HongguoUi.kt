@@ -255,13 +255,13 @@ internal fun HongguoPrimaryNavigation(
     playingVideo: Boolean,
     onSelect: (String) -> Unit,
 ) {
-    val height = if (playingVideo) 40.dp else 50.dp
-    val backgroundColor = if (playingVideo) Color(0xFF232325)
-        else HongguoColors.surface
-    val activeColor = if (playingVideo) Color.White
-        else HongguoColors.accent
-    val inactiveColor = if (playingVideo) Color(0xFFB7B7BC)
-        else HongguoColors.muted
+    // Keep all three primary destinations visually identical. A separate
+    // browse-style bar made Theater/My taller and changed the selected colors
+    // when navigating away from the reel feed.
+    val height = 40.dp
+    val backgroundColor = Color(0xFF232325)
+    val activeColor = Color.White
+    val inactiveColor = Color(0xFFB7B7BC)
     Surface(color = backgroundColor, shape = RoundedCornerShape(0.dp)) {
         Row(
             modifier = Modifier.fillMaxWidth().height(height),
@@ -282,7 +282,7 @@ internal fun HongguoPrimaryNavigation(
                     Icon(
                         imageVector = icon,
                         contentDescription = label,
-                        modifier = Modifier.size(if (playingVideo) 27.dp else 29.dp),
+                        modifier = Modifier.size(27.dp),
                         tint = if (selectedTab == tab) activeColor else inactiveColor,
                     )
                 }
