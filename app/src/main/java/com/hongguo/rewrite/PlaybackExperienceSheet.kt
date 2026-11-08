@@ -62,7 +62,7 @@ import androidx.compose.ui.unit.sp
  * are behind an explicit fold. Playback and all previous controls are kept.
  */
 private enum class PlaybackQuickSetting {
-    QUALITY, SPEED, BRIGHTNESS, AUDIO, ASPECT, DANMAKU, TIMER
+    VIDEO, SPEED, AUDIO, DANMAKU, TIMER
 }
 
 @OptIn(ExperimentalMaterial3Api::class)
@@ -115,33 +115,24 @@ internal fun PlaybackExperienceSheet(
                 }
             }
 
-            // Eight small tiles are visible at most. The actual selected
-            // values remain legible without showing every options row.
+            // Compact six-tile grid. Video settings group quality, aspect
+            // ratio and brightness behind one quick action.
             Row(Modifier.fillMaxWidth(), horizontalArrangement = Arrangement.spacedBy(7.dp)) {
-                if (qualityAvailable) {
-                    PlaybackQuickTile(
-                        title = "清晰度", value = qualityLabel,
-                        icon = Icons.Outlined.HighQuality,
-                        selected = focused == PlaybackQuickSetting.QUALITY,
-                        onClick = { toggle(PlaybackQuickSetting.QUALITY) },
-                        tag = "quick_quality",
-                    )
-                }
+                PlaybackQuickTile(
+                    title = "画面设置",
+                    value = if (qualityAvailable) "$qualityLabel · ${if (fillVideo) "铺满" else "适应"}"
+                        else if (fillVideo) "铺满" else "适应",
+                    icon = Icons.Outlined.AspectRatio,
+                    selected = focused == PlaybackQuickSetting.VIDEO,
+                    onClick = { toggle(PlaybackQuickSetting.VIDEO) },
+                    tag = "quick_video_settings",
+                )
                 PlaybackQuickTile(
                     title = "倍速", value = speedLabel,
                     icon = Icons.Outlined.Speed,
                     selected = focused == PlaybackQuickSetting.SPEED,
                     onClick = { toggle(PlaybackQuickSetting.SPEED) },
                     tag = "quick_speed",
-                )
-                PlaybackQuickTile(
-                    title = "亮度",
-                    value = if (state.videoBrightnessPercent == -1) "系统"
-                        else "${state.videoBrightnessPercent}%",
-                    icon = Icons.Outlined.Brightness6,
-                    selected = focused == PlaybackQuickSetting.BRIGHTNESS,
-                    onClick = { toggle(PlaybackQuickSetting.BRIGHTNESS) },
-                    tag = "quick_brightness",
                 )
                 PlaybackQuickTile(
                     title = "音效",
@@ -154,14 +145,6 @@ internal fun PlaybackExperienceSheet(
                 )
             }
             Row(Modifier.fillMaxWidth(), horizontalArrangement = Arrangement.spacedBy(7.dp)) {
-                PlaybackQuickTile(
-                    title = "画面比例",
-                    value = if (fillVideo) "铺满" else "适应",
-                    icon = Icons.Outlined.AspectRatio,
-                    selected = focused == PlaybackQuickSetting.ASPECT,
-                    onClick = { toggle(PlaybackQuickSetting.ASPECT) },
-                    tag = "quick_aspect",
-                )
                 PlaybackQuickTile(
                     title = "弹幕",
                     value = if (state.danmakuEnabled) "已开启" else "已关闭",
@@ -194,12 +177,26 @@ internal fun PlaybackExperienceSheet(
                     verticalArrangement = Arrangement.spacedBy(5.dp),
                 ) {
                     when (focused) {
-                        PlaybackQuickSetting.QUALITY -> {
-                            PlaybackHeading("清晰度上限")
+                        PlaybackQuickSetting.VIDEO -> {
+                            if (qualityAvailable) {
+                                PlaybackHeading("清晰度上限")
+                                PlaybackChoices(
+                                    listOf(0 to "自动", 360 to "360P", 480 to "480P",
+                                        720 to "720P", 1080 to "1080P"),
+                                    state.qualityLimit, onQuality, "video_quality",
+                                )
+                            }
+                            PlaybackHeading("画面比例")
                             PlaybackChoices(
-                                listOf(0 to "自动", 360 to "360P", 480 to "480P",
-                                    720 to "720P", 1080 to "1080P"),
-                                state.qualityLimit, onQuality, "video_quality",
+                                listOf(false to "适应画面", true to "铺满画面"),
+                                fillVideo, onFillVideo, "video_frame_mode",
+                            )
+                            PlaybackHeading("屏幕亮度")
+                            PlaybackChoices(
+                                listOf(-1 to "系统", 65 to "65%", 80 to "80%",
+                                    90 to "90%", 100 to "100%"),
+                                state.videoBrightnessPercent,
+                                model::setVideoBrightnessPercent, "player_brightness",
                             )
                         }
                         PlaybackQuickSetting.SPEED -> {
@@ -210,28 +207,12 @@ internal fun PlaybackExperienceSheet(
                                 speed, onSpeed, "video_speed",
                             )
                         }
-                        PlaybackQuickSetting.BRIGHTNESS -> {
-                            PlaybackHeading("屏幕亮度")
-                            PlaybackChoices(
-                                listOf(-1 to "系统", 65 to "65%", 80 to "80%",
-                                    90 to "90%", 100 to "100%"),
-                                state.videoBrightnessPercent,
-                                model::setVideoBrightnessPercent, "player_brightness",
-                            )
-                        }
                         PlaybackQuickSetting.AUDIO -> {
                             PlaybackHeading("声音增强")
                             PlaybackChoices(
                                 listOf(0 to "原音", 3 to "+3dB", 6 to "+6dB"),
                                 state.playbackAudioBoostDb,
                                 model::setPlaybackAudioBoostDb, "audio_boost",
-                            )
-                        }
-                        PlaybackQuickSetting.ASPECT -> {
-                            PlaybackHeading("画面比例")
-                            PlaybackChoices(
-                                listOf(false to "适应画面", true to "铺满画面"),
-                                fillVideo, onFillVideo, "video_frame_mode",
                             )
                         }
                         PlaybackQuickSetting.DANMAKU -> {
