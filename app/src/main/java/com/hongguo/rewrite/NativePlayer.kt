@@ -831,17 +831,12 @@ internal fun NativePlayer(
         onDismissRequest = { showEpisodes = false },
         modifier = Modifier.testTag("reel_episodes_sheet"),
     ) {
-        Column(
-            Modifier.fillMaxWidth().heightIn(max = 630.dp)
-                .verticalScroll(rememberScrollState())
-                .padding(horizontal = HongguoUi.pagePadding, vertical = 12.dp),
-            verticalArrangement = Arrangement.spacedBy(HongguoUi.pageSectionGap),
-        ) {
-            HongguoSheetHeader(
-                title = "选集 · 共 ${detail.episodes.size} 集",
-                icon = Icons.Outlined.FormatListNumbered,
-                dark = true,
-            ) {
+        HongguoPlayerPanel(
+            title = "选集 · 共 ${detail.episodes.size} 集",
+            modifier = Modifier.heightIn(max = 630.dp).verticalScroll(rememberScrollState()),
+            icon = Icons.Outlined.FormatListNumbered,
+            subtitle = "点击集数切换播放 · 当前第 ${detail.episodes.getOrNull(state.episodeIndex)?.index ?: 1} 集",
+            actions = {
                 if (state.backend.isBlank()) {
                     HongguoPlayerSheetAction(
                         label = "下载5集",
@@ -859,11 +854,8 @@ internal fun NativePlayer(
                         },
                     )
                 }
-            }
-            Text(
-                "点击集数切换播放 · 当前第 ${detail.episodes.getOrNull(state.episodeIndex)?.index ?: 1} 集",
-                fontSize = 12.sp, color = HongguoColors.playerChromeMuted,
-            )
+            },
+        ) {
             LazyVerticalGrid(
                 columns = GridCells.Fixed(5),
                 modifier = Modifier.fillMaxWidth().heightIn(max = 460.dp),
