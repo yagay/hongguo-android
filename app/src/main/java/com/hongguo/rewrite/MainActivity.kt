@@ -196,7 +196,10 @@ private fun HongguoApp(model: DramaViewModel = viewModel()) {
     val darkPlayer = state.detail != null && !state.detailPageVisible &&
         !state.miniPlayerVisible && state.modal != Modal.SETTINGS
     val showMini = MiniPlayerPresentation.show(state)
-    val miniInCatalog = MiniPlayerPresentation.inCatalog(state, searchLandingOpen)
+    val showCatalogBottomNav = state.modal != Modal.SETTINGS &&
+        state.modal != Modal.ACCOUNT && !state.detailPageVisible &&
+        !searchLandingOpen && (state.miniPlayerVisible ||
+            (state.detail == null && !state.preparingDetail))
     val systemDark = isSystemInDarkTheme()
     val darkTheme = when (state.themeMode) {
         "dark" -> true
@@ -329,47 +332,46 @@ private fun HongguoApp(model: DramaViewModel = viewModel()) {
                         onClose = { searchLandingOpen = false },
                         onResults = { searchLandingOpen = false; mineOpen = false },
                     )
-                    else -> Scaffold(
-                        containerColor = HongguoColors.background,
-                        contentWindowInsets = WindowInsets(0, 0, 0, 0),
-                        bottomBar = {
-                            Column {
-                                if (miniInCatalog) InAppMiniPlayer(state, model)
-                                Surface(
-                                    modifier = if (state.navigationStyle == "glass")
-                                        Modifier.padding(horizontal = 14.dp, vertical = 7.dp)
-                                    else Modifier,
-                                    shape = RoundedCornerShape(
-                                        if (state.navigationStyle == "glass") 26.dp else 0.dp),
-                                    color = HongguoColors.surface,
-                                    shadowElevation = if (state.navigationStyle == "glass") 8.dp else 0.dp,
-                                ) {
-                                    NavigationBar(containerColor = Color.Transparent) {
-                                        NavigationBarItem(selected = !mineOpen,
-                                            onClick = { mineOpen = false },
-                                            icon = { Icon(Icons.Outlined.Home, contentDescription = null) },
-                                            label = { Text("首页") })
-                                        NavigationBarItem(selected = mineOpen,
-                                            onClick = { mineOpen = true },
-                                            icon = { Icon(Icons.Outlined.PersonOutline, contentDescription = null) },
-                                            label = { Text("我的") })
-                                    }
-                                }
-                            }
-                        },
-                    ) { insets ->
-                        Box(Modifier.fillMaxSize().padding(insets)) {
-                            if (mineOpen) MyScreen(state, model, onBack = { mineOpen = false })
-                            else CatalogScreen(state, model, onMine = { mineOpen = true },
-                                onSearchOpen = { searchLandingOpen = true })
-                        }
+                    else -> Box(Modifier.fillMaxSize()) {
+                        if (mineOpen) MyScreen(state, model, onBack = { mineOpen = false })
+                        else CatalogScreen(state, model, onMine = { mineOpen = true },
+                            onSearchOpen = { searchLandingOpen = true })
                     }
                     }
                     LibrarySheets(state, model)
                 }
-                // Settings, account, search and drama details have no catalog
-                // NavigationBar; their mini player stays fixed at the bottom.
-                if (showMini && !miniInCatalog) InAppMiniPlayer(state, model)
+                // One stable composition slot for the mini PlayerView across
+                // catalog, settings, account, search and drama details. Moving
+                // it into or out of Scaffold.bottomBar used to dispose its
+                // Android Surface, briefly blacking out or hiding the video.
+                if (showMini) InAppMiniPlayer(state, model)
+                if (showCatalogBottomNav) {
+                    Surface(
+                        modifier = if (state.navigationStyle == "glass")
+                            Modifier.padding(horizontal = 14.dp, vertical = 7.dp)
+                        else Modifier,
+                        shape = RoundedCornerShape(
+                            if (state.navigationStyle == "glass") 26.dp else 0.dp),
+                        color = HongguoColors.surface,
+                        shadowElevation = if (state.navigationStyle == "glass") 8.dp else 0.dp,
+                    ) {
+                        NavigationBar(containerColor = Color.Transparent) {
+                            NavigationBarItem(
+                                selected = !mineOpen,
+                                onClick = { mineOpen = false },
+                                icon = { Icon(Icons.Outlined.Home, contentDescription = null) },
+                                label = { Text("首页") },
+                            )
+                            NavigationBarItem(
+                                selected = mineOpen,
+                                onClick = { mineOpen = true },
+                                icon = { Icon(Icons.Outlined.PersonOutline,
+                                    contentDescription = null) },
+                                label = { Text("我的") },
+                            )
+                        }
+                    }
+                }
             }
         }
     }
