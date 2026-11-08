@@ -4,6 +4,7 @@ import android.app.Activity
 import android.app.PictureInPictureParams
 import android.content.pm.PackageManager
 import android.content.res.Configuration
+import android.os.Build
 import android.os.Bundle
 import android.util.Rational
 import coil.compose.AsyncImage
@@ -71,14 +72,18 @@ class MainActivity : ComponentActivity() {
         private set
     private var autoPictureInPictureEligible = false
 
-    private fun videoPiPParams(autoEnter: Boolean): PictureInPictureParams =
-        PictureInPictureParams.Builder()
-            // The source videos are vertical; a portrait ratio gives a compact
-            // width. The OS owns the physical minimum size and user pinch.
-            .setAspectRatio(Rational(VideoPiPPolicy.PORTRAIT_WIDTH, VideoPiPPolicy.PORTRAIT_HEIGHT))
-            .setAutoEnterEnabled(autoEnter)
-            .setSeamlessResizeEnabled(true)
-            .build()
+    private fun videoPiPParams(autoEnter: Boolean): PictureInPictureParams {
+        // Aspect ratio is supported from API 26; auto-enter and seamless
+        // resizing only exist from API 31. This app still supports API 26+.
+        val params = PictureInPictureParams.Builder()
+            .setAspectRatio(Rational(
+                VideoPiPPolicy.PORTRAIT_WIDTH, VideoPiPPolicy.PORTRAIT_HEIGHT))
+        if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.S) {
+            params.setAutoEnterEnabled(autoEnter)
+            params.setSeamlessResizeEnabled(true)
+        }
+        return params.build()
+    }
 
     fun updateVideoPictureInPictureEligibility(enabled: Boolean) {
         autoPictureInPictureEligible = enabled &&
