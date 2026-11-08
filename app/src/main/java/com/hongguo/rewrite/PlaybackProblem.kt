@@ -15,6 +15,13 @@ import java.net.UnknownHostException
  * account information or a raw upstream response in the UI.
  */
 object PlaybackProblem {
+    /** A typed upstream failure, unlike network or decoder errors, is eligible
+     * for one bounded playback-model request retry.
+     */
+    fun isEmptyPlaybackModel(failure: Throwable): Boolean =
+        generateSequence(failure) { it.cause }.take(8)
+            .any { it is EmptyPlaybackResponseException }
+
     fun describe(stage: String, failure: Throwable): String {
         val chain = generateSequence(failure) { it.cause }.take(8).toList()
         val messages = chain.mapNotNull { it.message }
