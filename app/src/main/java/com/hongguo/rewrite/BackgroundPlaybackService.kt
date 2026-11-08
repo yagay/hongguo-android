@@ -309,20 +309,19 @@ class BackgroundPlaybackService : MediaSessionService() {
         publishProgressNotification()
     }
 
-    /** Immediately detach the previous video while ViewModel fetches a new episode. */
+    /** Pause the old episode while the next encrypted source is resolving.
+     * Keep the media item in the session so Android doesn't remove the
+     * notification or stop the foreground service during a slow network fetch.
+     * configure() disposes the old media atomically once the new source is ready.
+     */
     fun pauseForTransition() {
         if (!::engine.isInitialized || currentKey == null) return
         onCheckpoint?.invoke(
             engine.currentPosition.coerceAtLeast(0L),
             engine.duration.takeIf { it > 0L } ?: 0L)
         engine.pause()
-        engine.stop()
-        // Retain the paused media item/notification while the next encrypted
-        // model is resolving; clearing the playlist could stop the foreground
-        // service before the background skip completes.
-        currentKey = null
-        remoteVideo?.close()
-        remoteVideo = null
+        diagnostics.record("BACKGROUND", "TRANSITION_PENDING")
+        publishProgressNotification()
     }
 
     fun stopPlayback() {
