@@ -377,7 +377,25 @@ class DramaViewModel(application: Application) : AndroidViewModel(application) {
             delay(850)
             var remote: RemoteVideo? = null
             try {
-                remote = nativeSource.openVideo(next, qualityLimit = quality)
+                // The upstream playback model intermittently returns an
+                // empty response. Retry at most once for prefetch only, and
+                // only while the target episode and quality are unchanged.
+                remote = try {
+                    nativeSource.openVideo(next, qualityLimit = quality)
+                } catch (first: CancellationException) {
+                    throw first
+                } catch (first: Exception) {
+                    val emptyModel = (first.message ?: "").contains(
+                        "PLAYBACK_EMPTY_RESPONSE", ignoreCase = true)
+                    if (!emptyModel) throw first
+                    diagnostics.record("PLAYBACK", "PREFETCH_EMPTY_RETRY")
+                    delay(1_500)
+                    if (generation != detailId || !state.value.preloadNext ||
+                        state.value.detail?.episodes
+                            ?.getOrNull(state.value.episodeIndex + 1)?.vid != next ||
+                        state.value.qualityLimit != quality) return@launch
+                    nativeSource.openVideo(next, qualityLimit = quality)
+                }
                 if (generation == detailId && state.value.preloadNext &&
                     state.value.detail?.episodes?.getOrNull(state.value.episodeIndex + 1)?.vid == next &&
                     state.value.qualityLimit == quality) {
@@ -1899,7 +1917,7 @@ class DramaViewModel(application: Application) : AndroidViewModel(application) {
     fun showDramaDetails() {
         val s = state.value
         if (s.detail == null || s.detailPageVisible) return
-        BackgroundPlaybackService.stopActive()
+        BackgroundPlaybackService.stopActive("OPEN_DETAIL")
         loadSdkDetails(s.detail.drama.id)
         loadGuesses(s.detail.drama.id)
         ++detailId
@@ -1925,7 +1943,7 @@ class DramaViewModel(application: Application) : AndroidViewModel(application) {
     fun backFromPlayer() = closePlayer()
 
     fun closePlayer() {
-        BackgroundPlaybackService.stopActive()
+        BackgroundPlaybackService.stopActive("CLOSE_PLAYER")
         sdkDetailGeneration++
         sdkDetailJob?.cancel()
         homeFeedExcludedIds = emptySet()
