@@ -37,6 +37,7 @@ import androidx.compose.material.icons.outlined.PlayCircleOutline
 import androidx.compose.material3.AlertDialog
 import androidx.compose.material3.Button
 import androidx.compose.material3.Card
+import androidx.compose.material3.FilterChip
 import androidx.compose.material3.HorizontalDivider
 import androidx.compose.material3.Icon
 import androidx.compose.material3.IconButton
@@ -150,14 +151,19 @@ internal fun SettingsScreen(state: AppState, model: DramaViewModel) {
                             }
                         }
                     }
-                    Text("外观模式", color = HongguoColors.ink, fontWeight = FontWeight.SemiBold)
+                    Text("显示模式", color = HongguoColors.ink,
+                        fontWeight = FontWeight.SemiBold)
+                    Text("白天、夜间和跟随系统。选择后立即应用，重启应用仍会保留。",
+                        color = HongguoColors.muted, fontSize = 12.sp)
                     FlowRow(horizontalArrangement = Arrangement.spacedBy(8.dp)) {
-                        listOf("system" to "跟随系统",
-                            "light" to "浅色", "dark" to "深色").forEach { (key, title) ->
-                            OutlinedButton(onClick = { model.setThemeMode(key) },
-                                modifier = Modifier.testTag("theme_mode_" + key)) {
-                                Text(title + if (state.themeMode == key) " ✓" else "")
-                            }
+                        listOf("light" to "白天模式", "dark" to "夜间模式",
+                            "system" to "跟随系统").forEach { (key, title) ->
+                            FilterChip(
+                                selected = state.themeMode == key,
+                                onClick = { model.setThemeMode(key) },
+                                label = { Text(title, fontSize = 13.sp) },
+                                modifier = Modifier.testTag("theme_mode_" + key),
+                            )
                         }
                     }
                     Text("底栏样式", color = HongguoColors.ink, fontWeight = FontWeight.SemiBold)
@@ -169,7 +175,7 @@ internal fun SettingsScreen(state: AppState, model: DramaViewModel) {
                             }
                         }
                     }
-                    Text("三套配色均支持浅色和深色；沉浸播放画面始终保持深色。",
+                    Text("首页、搜索页和剧集详情跟随显示模式；播放视频区域始终使用深色背景。",
                         color = HongguoColors.muted, fontSize = 12.sp)
                 }
             }
