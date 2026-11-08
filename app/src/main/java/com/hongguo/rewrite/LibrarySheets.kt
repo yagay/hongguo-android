@@ -337,10 +337,9 @@ private fun DownloadRows(state: AppState, model: DramaViewModel) {
         }
         if (state.downloadTasks.isEmpty()) {
             item {
-                Box(Modifier.fillMaxWidth().height(145.dp),
-                    contentAlignment = Alignment.Center) {
-                    Text("暂无下载任务", color = HongguoColors.muted)
-                }
+                HongguoEmptyState(
+                    "暂无下载任务", modifier = Modifier.height(145.dp),
+                )
             }
         }
     }
