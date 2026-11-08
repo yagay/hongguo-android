@@ -1764,14 +1764,16 @@ class DramaViewModel(application: Application) : AndroidViewModel(application) {
      * enters series playback, but its Back button returns to a swipe feed that
      * includes the selected work. No catalog navigation is required.
      */
-    fun openFromFeedSelection(drama: Drama) {
+    fun openFromFeedSelection(drama: Drama, resumeEp: Int? = null) {
         val snapshot = state.value
         if (!snapshot.feedMode) {
             open(drama)
             return
         }
         if (snapshot.detail?.drama?.id == drama.id) {
-            exitFeedToEpisode(snapshot.episodeIndex)
+            val index = snapshot.detail.episodes.indexOfFirst { it.index == resumeEp }
+                .takeIf { it >= 0 } ?: snapshot.episodeIndex
+            exitFeedToEpisode(index)
             return
         }
         val queue = if (snapshot.feedItems.any { it.id == drama.id })
@@ -1783,7 +1785,7 @@ class DramaViewModel(application: Application) : AndroidViewModel(application) {
         pendingFeedAdvance = false
         mutable.update { it.copy(feedItems = queue, feedIndex = selected,
             feedLoading = false) }
-        open(drama)
+        open(drama, resumeEp = resumeEp)
         mutable.update { it.copy(returnToFeed = true, feedItems = queue,
             feedIndex = selected, feedHasMore = snapshot.feedHasMore) }
         diagnostics.record("REELS", "OPEN_DRAWER_OR_SEARCH_SERIES")
