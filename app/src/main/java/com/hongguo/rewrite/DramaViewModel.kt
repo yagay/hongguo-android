@@ -1594,6 +1594,8 @@ class DramaViewModel(application: Application) : AndroidViewModel(application) {
 
     fun open(drama: Drama, resumeEp: Int? = null, feed: Boolean = false,
         showDetails: Boolean = false) {
+        detailPlaybackRetained = false
+        detailPlaybackShouldResume = false
         BackgroundPlaybackService.active?.pauseForTransition()
         sdkDetailGeneration++
         sdkDetailJob?.cancel()
@@ -1772,6 +1774,8 @@ class DramaViewModel(application: Application) : AndroidViewModel(application) {
     }
 
     fun play(index: Int) {
+        detailPlaybackRetained = false
+        detailPlaybackShouldResume = false
         val detail = state.value.detail ?: return
         if (index !in detail.episodes.indices) return
         // Notification commands run while the Activity is STOPPED. Reuse the
@@ -2045,28 +2049,61 @@ class DramaViewModel(application: Application) : AndroidViewModel(application) {
         }
     }
 
-    /** The player title is the only default entry to the full details page. */
+    private var detailPlaybackRetained = false
+    private var detailPlaybackShouldResume = false
+
+    /** Keep the Media3 session and encrypted source while showing details. */
     fun showDramaDetails() {
         val s = state.value
-        if (s.detail == null || s.detailPageVisible) return
-        BackgroundPlaybackService.stopActive("OPEN_DETAIL")
-        loadSdkDetails(s.detail.drama.id)
-        loadGuesses(s.detail.drama.id)
+        val detail = s.detail ?: return
+        if (s.detailPageVisible) return
+        val vid = detail.episodes.getOrNull(s.episodeIndex)?.vid
+        val wasPlaying = vid?.let { BackgroundPlaybackService.active?.pauseForDetails(it) }
+        detailPlaybackRetained = wasPlaying != null && s.playbackUrl != null
+        detailPlaybackShouldResume = wasPlaying == true
+        if (!detailPlaybackRetained) {
+            // No reusable live media item; keep the existing reload fallback.
+            BackgroundPlaybackService.stopActive("OPEN_DETAIL_NO_SESSION")
+            closeNativeVideo()
+            clearPreloadedNext()
+        }
+        loadSdkDetails(detail.drama.id)
+        loadGuesses(detail.drama.id)
         ++detailId
         detailJob?.cancel()
-        closeNativeVideo()
-        clearPreloadedNext()
-        mutable.update { it.copy(detailPageVisible = true, detailEntryEnabled = true,
-            playbackUrl = null, playing = false, playbackError = null) }
+        mutable.update { it.copy(
+            detailPageVisible = true,
+            detailEntryEnabled = true,
+            playbackUrl = if (detailPlaybackRetained) it.playbackUrl else null,
+            playing = if (detailPlaybackRetained) detailPlaybackShouldResume else false,
+            playbackError = null,
+        ) }
+        diagnostics.record("DETAIL",
+            if (detailPlaybackRetained) "SESSION_RETAINED" else "SESSION_UNAVAILABLE")
     }
 
-    /** Back from details resumes the same drama and selected episode. */
+    /** Reattach to the same media item; reload only if its service was lost. */
     fun backFromDramaDetails() {
         sdkDetailGeneration++
         sdkDetailJob?.cancel()
         val s = state.value
         if (!s.detailPageVisible) return
-        if (s.detailEntryEnabled && s.detail != null) {
+        val vid = s.detail?.episodes?.getOrNull(s.episodeIndex)?.vid
+        val resumed = detailPlaybackRetained && s.playbackUrl != null &&
+            vid != null && BackgroundPlaybackService.active
+                ?.resumeFromDetails(vid, detailPlaybackShouldResume) == true
+        val shouldPlay = detailPlaybackShouldResume
+        detailPlaybackRetained = false
+        detailPlaybackShouldResume = false
+        if (resumed) {
+            mutable.update { it.copy(
+                detailPageVisible = false,
+                detailEntryEnabled = false,
+                playing = shouldPlay,
+            ) }
+            diagnostics.record("DETAIL", "RETURN_REUSED_PLAYER")
+        } else if (s.detailEntryEnabled && s.detail != null) {
+            diagnostics.record("DETAIL", "RETURN_RELOAD_FALLBACK")
             play(s.episodeIndex)
         } else closePlayer()
     }
@@ -2075,6 +2112,8 @@ class DramaViewModel(application: Application) : AndroidViewModel(application) {
     fun backFromPlayer() = closePlayer()
 
     fun closePlayer() {
+        detailPlaybackRetained = false
+        detailPlaybackShouldResume = false
         BackgroundPlaybackService.stopActive("CLOSE_PLAYER")
         sdkDetailGeneration++
         sdkDetailJob?.cancel()
