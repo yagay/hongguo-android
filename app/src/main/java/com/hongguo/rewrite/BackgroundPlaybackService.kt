@@ -549,7 +549,21 @@ class BackgroundPlaybackService : MediaSessionService() {
     override fun onGetSession(controllerInfo: MediaSession.ControllerInfo): MediaSession? =
         if (::session.isInitialized) session else null
 
+    override fun onTaskRemoved(rootIntent: Intent?) {
+        diagnostics.record("BACKGROUND", "TASK_REMOVED")
+        // Media3's default behavior retains ongoing playback and stops
+        // the service only when the session is not playing.
+        super.onTaskRemoved(rootIntent)
+    }
+
     override fun onDestroy() {
+        diagnostics.record("BACKGROUND", if (::engine.isInitialized &&
+            engine.isPlaying) "DESTROYED_WHILE_PLAYING" else "DESTROYED_NOT_PLAYING")
+        if (::engine.isInitialized && currentKey != null &&
+            engine.playbackState != Player.STATE_ENDED) {
+            onCheckpoint?.invoke(engine.currentPosition.coerceAtLeast(0L),
+                engine.duration.takeIf { it > 0L } ?: 0L)
+        }
         main.removeCallbacks(checkpoint)
         getSystemService(NotificationManager::class.java)?.cancel(NOTIFICATION_ID)
         playerFlow.value = null
