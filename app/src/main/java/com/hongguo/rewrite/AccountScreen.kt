@@ -405,12 +405,12 @@ internal fun AccountScreen(model: DramaViewModel) {
                             }
                             DropdownMenu(expanded = accountMenu,
                                 onDismissRequest = { accountMenu = false }) {
-                                DropdownMenuItem(text = { Text("账号推荐") },
+                                DropdownMenuItem(text = { Text("刷短剧使用登录账号") },
                                     trailingIcon = { Checkbox(
                                         checked = account.accountRecommendations, onCheckedChange = null) },
                                     onClick = {
                                         accountMenu = false
-                                        model.account.setAccountRecommendations(!account.accountRecommendations)
+                                        model.setAccountRecommendations(!account.accountRecommendations)
                                     })
                                 DropdownMenuItem(text = { Text("自动同步观看进度") },
                                     trailingIcon = { Checkbox(
