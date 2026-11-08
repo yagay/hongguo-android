@@ -100,7 +100,8 @@ class DramaViewModel(application: Application) : AndroidViewModel(application) {
                 playbackUrl = episode.documentUri, playing = true,
                 feedMode = false, preparingDetail = false, playbackError = null,
                 resumePositionMs = library.checkpoint(episode.seriesId, episode.vid),
-                relatedSeries = null, relatedWorks = emptyList())
+                relatedSeries = null, relatedWorks = emptyList(),
+                guessWorks = emptyList(), guessesLoading = false, guessesError = null)
             }
         }
     }
@@ -321,21 +322,6 @@ class DramaViewModel(application: Application) : AndroidViewModel(application) {
                         diagnostics.record("SDK", "SEASONS_READY")
                     }
                 }
-                if (state.value.relatedWorks.isEmpty()) {
-                    runCatching { withContext(Dispatchers.IO) { openHongguo.related(seriesId) } }
-                        .onFailure { if (it is CancellationException) throw it }
-                        .onSuccess { related ->
-                            if (generation == sdkDetailGeneration &&
-                                state.value.detail?.drama?.id == seriesId &&
-                                state.value.relatedWorks.isEmpty() &&
-                                !state.value.relatedLoading) {
-                                mutable.update { it.copy(relatedWorks =
-                                    related.filter { row -> row.id != seriesId }
-                                        .map { row -> RelatedDrama(row, "", false) }) }
-                                diagnostics.record("SDK", "RELATED_FALLBACK_READY")
-                            }
-                        }
-                }
             } catch (e: CancellationException) { throw e }
             catch (_: Exception) { diagnostics.record("SDK", "SERIES_INFO_UNAVAILABLE") }
             finally {
@@ -539,6 +525,8 @@ class DramaViewModel(application: Application) : AndroidViewModel(application) {
     private var labelsGeneration = 0L
     private var relatedJob: Job? = null
     private var relatedGeneration = 0L
+    private var guessesJob: Job? = null
+    private var guessesGeneration = 0L
     private var socialGeneration = 0L
     private data class SocialCache(val stats: SocialStats, val savedAt: Long)
     private val socialCache = linkedMapOf<String, SocialCache>()
@@ -1302,6 +1290,45 @@ class DramaViewModel(application: Application) : AndroidViewModel(application) {
 
     fun cover(image: String): String = source?.coverUrl(image) ?: nativeSource.coverUrl(image)
 
+    /** Separate recommendation plan for 猜你喜欢; never overwrites related-work cell 547. */
+    fun loadGuesses(seriesId: String) {
+        if (!seriesId.matches(Regex("[0-9]{1,30}"))) return
+        guessesJob?.cancel()
+        val generation = ++guessesGeneration
+        mutable.update { it.copy(guessWorks = emptyList(), guessesLoading = true,
+            guessesError = null) }
+        guessesJob = viewModelScope.launch {
+            try {
+                val candidates = withContext(Dispatchers.IO) {
+                    openHongguo.related(seriesId)
+                }
+                if (generation == guessesGeneration &&
+                    state.value.detail?.drama?.id == seriesId) {
+                    val relatedIds = state.value.relatedWorks.mapTo(hashSetOf()) { it.drama.id }
+                    val seasonIds = state.value.openHongguoSeasons.mapTo(hashSetOf()) { it.id }
+                    mutable.update { it.copy(
+                        guessWorks = candidates.filter { row ->
+                            row.id != seriesId && row.id !in relatedIds &&
+                                row.id !in seasonIds
+                        }.distinctBy(Drama::id).take(24),
+                        guessesLoading = false,
+                    ) }
+                    diagnostics.record("RECOMMEND", "GUESS_READY")
+                }
+            } catch (e: CancellationException) {
+                throw e
+            } catch (e: Exception) {
+                if (generation == guessesGeneration &&
+                    state.value.detail?.drama?.id == seriesId) {
+                    mutable.update { it.copy(
+                        guessesLoading = false, guessesError = "暂时无法加载猜你喜欢"
+                    ) }
+                    diagnostics.record("RECOMMEND", "GUESS_UNAVAILABLE")
+                }
+            }
+        }
+    }
+
     fun loadRelated(seriesId: String) {
         if (!seriesId.matches(Regex("[0-9]{1,30}"))) return
         relatedJob?.cancel()
@@ -1316,6 +1343,9 @@ class DramaViewModel(application: Application) : AndroidViewModel(application) {
                 if (generation == relatedGeneration &&
                     state.value.detail?.drama?.id == seriesId) {
                     mutable.update { it.copy(relatedWorks = rows,
+                        guessWorks = it.guessWorks.filterNot { item ->
+                            rows.any { related -> related.drama.id == item.id }
+                        },
                         relatedLoading = false, relatedError = null) }
                     diagnostics.record("RELATED", "SUCCESS")
                 }
@@ -1431,6 +1461,8 @@ class DramaViewModel(application: Application) : AndroidViewModel(application) {
         sdkDetailJob?.cancel()
         ++relatedGeneration
         relatedJob?.cancel()
+        ++guessesGeneration
+        guessesJob?.cancel()
         clearSocial()
         clearEngagement()
         detailJob?.cancel()
@@ -1443,6 +1475,7 @@ class DramaViewModel(application: Application) : AndroidViewModel(application) {
             detailEntryEnabled = false, relatedWorks = emptyList(),
             relatedSeries = null,
             relatedLoading = false, relatedError = null,
+            guessWorks = emptyList(), guessesLoading = false, guessesError = null,
             openHongguoLoading = false, openHongguoSeasons = emptyList(),
             playbackError = null, playbackUrl = null, playing = false) }
         // Official swipe recommendations must use their matching native detail API.
@@ -1474,7 +1507,10 @@ class DramaViewModel(application: Application) : AndroidViewModel(application) {
                 loadSocialStats(resolved.drama.id)
                 if (api == null) loadLabels(resolved.drama.id)
                 loadRelated(resolved.drama.id)
-                if (showDetails) loadSdkDetails(resolved.drama.id)
+                if (showDetails) {
+                    loadSdkDetails(resolved.drama.id)
+                    loadGuesses(resolved.drama.id)
+                }
                 else play(index)
             } catch (e: CancellationException) {
                 throw e
@@ -1693,6 +1729,7 @@ class DramaViewModel(application: Application) : AndroidViewModel(application) {
         val s = state.value
         if (s.detail == null || s.detailPageVisible) return
         loadSdkDetails(s.detail.drama.id)
+        loadGuesses(s.detail.drama.id)
         ++detailId
         detailJob?.cancel()
         closeNativeVideo()
@@ -1727,6 +1764,8 @@ class DramaViewModel(application: Application) : AndroidViewModel(application) {
         prefetchedFeedDetails.clear()
         ++relatedGeneration
         relatedJob?.cancel()
+        ++guessesGeneration
+        guessesJob?.cancel()
         clearSocial()
         clearEngagement()
         ++detailId
@@ -1742,6 +1781,7 @@ class DramaViewModel(application: Application) : AndroidViewModel(application) {
             feedHasMore = false, feedError = null,
             relatedSeries = null, relatedWorks = emptyList(),
             relatedLoading = false, relatedError = null,
+            guessWorks = emptyList(), guessesLoading = false, guessesError = null,
             openHongguoMetadata = null, openHongguoSeasons = emptyList(),
             openHongguoLoading = false,
             resumePositionMs = 0L, playbackError = null,
