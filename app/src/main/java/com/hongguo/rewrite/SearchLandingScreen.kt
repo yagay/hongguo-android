@@ -1,0 +1,290 @@
+package com.hongguo.rewrite
+
+import androidx.compose.foundation.background
+import androidx.compose.foundation.clickable
+import androidx.compose.foundation.horizontalScroll
+import androidx.compose.foundation.layout.Arrangement
+import androidx.compose.foundation.layout.Box
+import androidx.compose.foundation.layout.Column
+import androidx.compose.foundation.layout.PaddingValues
+import androidx.compose.foundation.layout.Row
+import androidx.compose.foundation.layout.Spacer
+import androidx.compose.foundation.layout.fillMaxSize
+import androidx.compose.foundation.layout.fillMaxWidth
+import androidx.compose.foundation.layout.height
+import androidx.compose.foundation.layout.padding
+import androidx.compose.foundation.layout.size
+import androidx.compose.foundation.layout.width
+import androidx.compose.foundation.lazy.LazyColumn
+import androidx.compose.foundation.lazy.items
+import androidx.compose.foundation.rememberScrollState
+import androidx.compose.foundation.shape.RoundedCornerShape
+import androidx.compose.foundation.text.KeyboardActions
+import androidx.compose.foundation.text.KeyboardOptions
+import androidx.compose.material.icons.Icons
+import androidx.compose.material.icons.automirrored.outlined.ArrowBack
+import androidx.compose.material.icons.outlined.DeleteOutline
+import androidx.compose.material.icons.outlined.Search
+import androidx.compose.material.icons.outlined.Refresh
+import androidx.compose.material3.CircularProgressIndicator
+import androidx.compose.material3.Icon
+import androidx.compose.material3.IconButton
+import androidx.compose.material3.OutlinedTextField
+import androidx.compose.material3.Surface
+import androidx.compose.material3.Text
+import androidx.compose.material3.TextButton
+import androidx.compose.runtime.Composable
+import androidx.compose.runtime.LaunchedEffect
+import androidx.compose.runtime.getValue
+import androidx.compose.runtime.mutableIntStateOf
+import androidx.compose.runtime.remember
+import androidx.compose.runtime.setValue
+import androidx.compose.ui.Alignment
+import androidx.compose.ui.Modifier
+import androidx.compose.ui.draw.clip
+import androidx.compose.ui.graphics.Brush
+import androidx.compose.ui.graphics.Color
+import androidx.compose.ui.layout.ContentScale
+import androidx.compose.ui.platform.testTag
+import androidx.compose.ui.text.font.FontWeight
+import androidx.compose.ui.text.input.ImeAction
+import androidx.compose.ui.text.style.TextOverflow
+import androidx.compose.ui.unit.dp
+import androidx.compose.ui.unit.sp
+import coil.compose.AsyncImage
+
+private val SearchBg = Color(0xFF101010)
+private val SearchTile = Color(0xFF222222)
+private val SearchInk = Color(0xFFF5F5F5)
+private val SearchMuted = Color(0xFF969696)
+
+/**
+ * Dedicated search discovery page based on the official Android search layout.
+ * Ranking is sourced from real native ranking results, never screenshot fixtures.
+ */
+@Composable
+internal fun SearchLandingScreen(
+    state: AppState,
+    model: DramaViewModel,
+    onClose: () -> Unit,
+    onResults: () -> Unit,
+) {
+    var selectedBoard by remember { mutableIntStateOf(0) }
+    LaunchedEffect(Unit) { model.loadSearchLanding() }
+
+    fun submit(text: String) {
+        if (text.isBlank()) return
+        model.setSearch(text)
+        model.search()
+        onResults()
+    }
+
+    LazyColumn(
+        modifier = Modifier.fillMaxSize().background(SearchBg)
+            .testTag("search_landing"),
+        contentPadding = PaddingValues(bottom = 30.dp),
+        verticalArrangement = Arrangement.spacedBy(20.dp),
+    ) {
+        item {
+            Row(Modifier.fillMaxWidth().padding(start = 8.dp, end = 12.dp, top = 10.dp),
+                verticalAlignment = Alignment.CenterVertically,
+                horizontalArrangement = Arrangement.spacedBy(6.dp)) {
+                IconButton(onClick = onClose) {
+                    Icon(Icons.AutoMirrored.Outlined.ArrowBack, "返回",
+                        tint = SearchInk)
+                }
+                OutlinedTextField(
+                    value = state.search,
+                    onValueChange = model::setSearch,
+                    modifier = Modifier.weight(1f).height(55.dp)
+                        .testTag("search_landing_input"),
+                    placeholder = {
+                        Text("搜索短剧、演员或关键词",
+                            color = SearchMuted, fontSize = 13.sp,
+                            maxLines = 1)
+                    },
+                    leadingIcon = {
+                        Icon(Icons.Outlined.Search, null, tint = SearchMuted,
+                            modifier = Modifier.size(19.dp))
+                    },
+                    singleLine = true,
+                    shape = RoundedCornerShape(14.dp),
+                    keyboardOptions = KeyboardOptions(imeAction = ImeAction.Search),
+                    keyboardActions = KeyboardActions(onSearch = { submit(state.search) }),
+                )
+                Text("搜索", color = SearchInk, fontSize = 15.sp,
+                    modifier = Modifier.clickable { submit(state.search) }
+                        .padding(horizontal = 6.dp, vertical = 12.dp)
+                        .testTag("search_landing_submit"))
+            }
+        }
+        item {
+            Row(
+                Modifier.fillMaxWidth().horizontalScroll(rememberScrollState())
+                    .padding(horizontal = 14.dp),
+                horizontalArrangement = Arrangement.spacedBy(8.dp),
+            ) {
+                listOf("识剧" to Section.SEARCH, "排行" to Section.RANK,
+                    "上新" to Section.LATEST, "演员" to Section.SEARCH,
+                    "筛选" to Section.BROWSE).forEach { (name, section) ->
+                    Surface(
+                        onClick = {
+                            model.section(section)
+                            onResults()
+                        },
+                        shape = RoundedCornerShape(12.dp),
+                        color = SearchTile,
+                    ) {
+                        Text(name, Modifier.padding(horizontal = 13.dp, vertical = 11.dp),
+                            color = SearchInk, fontSize = 14.sp)
+                    }
+                }
+            }
+        }
+        if (state.search.isNotBlank() &&
+            (state.suggestions.isNotEmpty() || state.suggestionsLoading)) {
+            item {
+                Column(Modifier.padding(horizontal = 16.dp),
+                    verticalArrangement = Arrangement.spacedBy(10.dp)) {
+                    Text("搜索建议", fontSize = 16.sp, fontWeight = FontWeight.SemiBold,
+                        color = SearchInk)
+                    if (state.suggestionsLoading)
+                        Text("正在获取建议…", color = SearchMuted, fontSize = 12.sp)
+                    state.suggestions.take(6).forEach { suggestion ->
+                        Text(suggestion, color = SearchInk,
+                            modifier = Modifier.fillMaxWidth()
+                                .clickable { submit(suggestion) }
+                                .padding(vertical = 5.dp), fontSize = 13.sp)
+                    }
+                }
+            }
+        }
+        if (state.recentSearches.isNotEmpty()) item {
+            Column(Modifier.fillMaxWidth().padding(horizontal = 16.dp),
+                verticalArrangement = Arrangement.spacedBy(10.dp)) {
+                Row(verticalAlignment = Alignment.CenterVertically) {
+                    Text("搜索历史", fontSize = 17.sp,
+                        color = SearchInk, fontWeight = FontWeight.SemiBold,
+                        modifier = Modifier.weight(1f))
+                    IconButton(onClick = model::clearSearchHistory) {
+                        Icon(Icons.Outlined.DeleteOutline, "清空历史",
+                            tint = SearchInk, modifier = Modifier.size(19.dp))
+                    }
+                }
+                state.recentSearches.chunked(2).forEach { pair ->
+                    Row(Modifier.fillMaxWidth(),
+                        horizontalArrangement = Arrangement.spacedBy(16.dp)) {
+                        pair.forEach { term ->
+                            Text(term, modifier = Modifier.weight(1f)
+                                .clickable { submit(term) }
+                                .padding(vertical = 5.dp),
+                                fontSize = 13.sp, color = SearchInk,
+                                maxLines = 1, overflow = TextOverflow.Ellipsis)
+                        }
+                        if (pair.size == 1) Spacer(Modifier.weight(1f))
+                    }
+                }
+            }
+        }
+        if (state.landingTerms.isNotEmpty()) item {
+            Column(Modifier.fillMaxWidth().padding(horizontal = 16.dp),
+                verticalArrangement = Arrangement.spacedBy(12.dp)) {
+                Row(verticalAlignment = Alignment.CenterVertically) {
+                    Text("猜你想搜", color = SearchInk, fontSize = 17.sp,
+                        modifier = Modifier.weight(1f),
+                        fontWeight = FontWeight.SemiBold)
+                    IconButton(onClick = { model.loadSearchLanding(force = true) }) {
+                        Icon(Icons.Outlined.Refresh, "刷新热搜", tint = SearchInk)
+                    }
+                }
+                state.landingTerms.take(6).chunked(2).forEach { pair ->
+                    Row(Modifier.fillMaxWidth(),
+                        horizontalArrangement = Arrangement.spacedBy(16.dp)) {
+                        pair.forEach { term ->
+                            Text(term, Modifier.weight(1f)
+                                .clickable { submit(term) }
+                                .padding(vertical = 5.dp),
+                                fontSize = 13.sp, maxLines = 1,
+                                overflow = TextOverflow.Ellipsis,
+                                color = SearchInk)
+                        }
+                        if (pair.size == 1) Spacer(Modifier.weight(1f))
+                    }
+                }
+            }
+        }
+        item {
+            Column(
+                Modifier.fillMaxWidth().clip(RoundedCornerShape(topStart = 15.dp,
+                    topEnd = 15.dp))
+                    .background(Brush.verticalGradient(listOf(
+                        Color(0xFF35251F), SearchBg)))
+                    .padding(top = 15.dp, start = 14.dp, end = 14.dp),
+                verticalArrangement = Arrangement.spacedBy(15.dp),
+            ) {
+                Row(horizontalArrangement = Arrangement.spacedBy(20.dp)) {
+                    listOf("热搜榜", "热点话题榜", "预约榜").forEachIndexed { index, title ->
+                        Text(title, color = if (selectedBoard == index) SearchInk
+                            else SearchMuted,
+                            fontSize = 15.sp,
+                            fontWeight = if (index == selectedBoard) FontWeight.Bold
+                                else FontWeight.Normal,
+                            modifier = Modifier.clickable { selectedBoard = index })
+                    }
+                }
+                if (state.landingLoading && state.landingRank.isEmpty())
+                    CircularProgressIndicator(Modifier.size(23.dp))
+                if (state.landingError != null)
+                    Text(state.landingError, color = SearchMuted, fontSize = 12.sp)
+                if (selectedBoard == 1) {
+                    if (state.landingTerms.isEmpty())
+                        Text("暂无热点话题", color = SearchMuted)
+                    else state.landingTerms.take(8).forEach { term ->
+                        Text(term, color = SearchInk,
+                            modifier = Modifier.fillMaxWidth()
+                                .clickable { submit(term) }.padding(vertical = 6.dp))
+                    }
+                } else if (selectedBoard == 2) {
+                    Text("暂无已核实的预约榜数据",
+                        color = SearchMuted, fontSize = 13.sp)
+                }
+            }
+        }
+        if (selectedBoard == 0) {
+            items(state.landingRank.take(18).chunked(3)) { dramas ->
+                Row(Modifier.fillMaxWidth().padding(horizontal = 14.dp),
+                    horizontalArrangement = Arrangement.spacedBy(9.dp)) {
+                    dramas.forEachIndexed { index, drama ->
+                        val rank = state.landingRank.indexOfFirst { it.id == drama.id } + 1
+                        Column(Modifier.weight(1f).clickable {
+                            model.open(drama)
+                            onClose()
+                        }, verticalArrangement = Arrangement.spacedBy(7.dp)) {
+                            Box(Modifier.fillMaxWidth().height(160.dp)
+                                .clip(RoundedCornerShape(11.dp))
+                                .background(SearchTile)) {
+                                AsyncImage(
+                                    model = model.cover(drama.cover),
+                                    contentDescription = drama.title,
+                                    contentScale = ContentScale.Crop,
+                                    modifier = Modifier.fillMaxSize(),
+                                )
+                                Text("$rank", color = Color.White, fontSize = 16.sp,
+                                    fontWeight = FontWeight.Bold,
+                                    modifier = Modifier.align(Alignment.TopStart)
+                                        .background(Color(0x66000000))
+                                        .padding(horizontal = 7.dp, vertical = 4.dp))
+                            }
+                            Text(drama.title, maxLines = 1,
+                                overflow = TextOverflow.Ellipsis,
+                                color = SearchInk, fontSize = 13.sp)
+                            Text(if (drama.total > 0) "全${drama.total}集" else "热门短剧",
+                                color = SearchMuted, fontSize = 11.sp)
+                        }
+                    }
+                    repeat(3 - dramas.size) { Spacer(Modifier.weight(1f)) }
+                }
+            }
+        }
+    }
+}
