@@ -133,7 +133,6 @@ data class AppState(
     val hiddenRecommendationIds: Set<String> = emptySet(),
     val themeStyle: String = "warm",
     val themeMode: String = "light",
-    val navigationStyle: String = "classic",
     val autoPlayNext: Boolean = true,
     val preloadNext: Boolean = true,
     val skipIntroSeconds: Int = 0,
