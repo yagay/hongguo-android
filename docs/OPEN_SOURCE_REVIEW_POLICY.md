@@ -139,3 +139,15 @@ Based on the successful on-device test after explicit `MediaSessionService.addSe
 - Shared classification `PlaybackProblem.isEmptyPlaybackModel` with deterministic unit tests ensures that only the explicit upstream exception is eligible. Diagnostics distinguish `PRIMARY_EMPTY_RETRY`, `PRIMARY_EMPTY_RETRY_EXHAUSTED`, and the original `PLAYBACK_EMPTY_RESPONSE`; after the single retry is exhausted the UI retains an honest manual retry option.
 - The registered `MediaSessionService`, native media controls, foreground lifecycle and ordinary-notification removal remain unchanged.
 - These changes require a Debug CI build and on-device verification; upstream server responses can remain empty despite bounded retries.
+
+## Official logged-in reel recommendations (2026-11-08)
+
+The user reported that signing into their official account did not appear to affect the one-drama-per-swipe feed. Code review found two concrete gaps:
+- Account recommendations are **opt-in and off by default**. A validated cloud profile alone never enables sending the saved Cookie to a feed endpoint. `AccountManager.recommendationAccount()` returns `null` until the setting is explicitly enabled, and then creates the minimal read-only `FeedAccount`.
+- The main `RecommendationFeed` was already constructed with that `FeedAccount`, but the **real-only fallback category** `RecommendationFeed(category=REAL)` was created without it. Now both paths use one per-session snapshot of the account context when `officialReelsPage(restart=true)` creates the feed cursors.
+
+A new `DramaViewModel.setAccountRecommendations()` is shared by both Settings and the account menu, instead of letting either edit the pref without invalidating the active anonymous cursor. Turning the setting on/off rebuilds the upcoming feed from an appropriately scoped cursor, while **retaining the currently playing drama and Media3 session**; homepage recommendation refreshes only when browsing the home recommendation section. The toggle has explicit explanatory copy. `OfficialReelsPolicy.retainCurrentOnAccountChange` has deterministic tests.
+
+`REELS/ACCOUNT_REQUEST_MODE` vs `REELS/ANONYMOUS_REQUEST_MODE` confirms only whether the outgoing request is configured with an account Cookie, **not** whether the backend ranks results the same way as the official App. No cookies, device IDs, user IDs, profile data, or drama titles are logged. Server-side personalization cannot be verified here without comparing real authenticated responses. Never automatically opt in a user just because they logged in.
+
+Relevant upstream reference: the independently maintained `tsukiyo-zero/hongguoTV` `RecommendationFeed.kt`, which attaches an opt-in account Cookie to the official distribution feed and its category requests, without behavior reporting or creating a fabricated personal recommendation model. Tests and CI need a Debug run; this edit is not a claim of device-confirmed personalization.
