@@ -166,7 +166,8 @@ private fun LibraryRows(state: AppState, model: DramaViewModel) {
                             selectedIds - entry.drama.id else selectedIds + entry.drama.id
                     } else {
                         model.closeModal()
-                        if (state.feedMode)
+                        if (state.navigation.origin == PlaybackOrigin.SWIPE_FEED &&
+                            state.navigation.destination != PlaybackDestination.CATALOG)
                             model.openFromFeedSelection(entry.drama, entry.episode)
                         else model.open(entry.drama, entry.episode)
                     }
