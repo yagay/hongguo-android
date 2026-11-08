@@ -165,6 +165,12 @@ internal fun NativePlayer(
     // Search uses the exact landing page shared with the home search action.
     // Keep the Media3 surface and current feed mounted behind the sliding page.
     var searchOverlayOpen by remember { mutableStateOf(false) }
+    LaunchedEffect(state.reelSearchRequest) {
+        if (state.reelSearchRequest != 0L) {
+            searchOverlayOpen = true
+            model.consumeReelSearchRequest(state.reelSearchRequest)
+        }
+    }
     val accountDrawerState = rememberDrawerState(DrawerValue.Closed)
     val accountDrawerScope = rememberCoroutineScope()
     var showHeart by remember { mutableStateOf(false) }
