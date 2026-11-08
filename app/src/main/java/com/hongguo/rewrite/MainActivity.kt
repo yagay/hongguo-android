@@ -219,10 +219,13 @@ private fun HongguoApp(model: DramaViewModel = viewModel()) {
     // second PlayerView to the same ExoPlayer (which would steal its Surface).
     // Explicit catalog details keep the existing mini player.
     val showMini = MiniPlayerPresentation.show(state) && !playerDetailsOverlay
+    // Both recommendation reels and the episode player reserve the same
+    // compact navigation strip. Hiding it in SERIES changed the available
+    // viewport height after entering a drama, invalidating the saved
+    // uncropped portrait calibration and creating letterboxing/jumps.
     val showPrimaryNavigation =
         state.modal == Modal.NONE && !searchLandingOpen &&
-            !playerDetailsOverlay && activeRoute != PlaybackDestination.DETAILS &&
-            activeRoute != PlaybackDestination.SERIES
+            !playerDetailsOverlay && activeRoute != PlaybackDestination.DETAILS
 
     fun selectPrimaryTab(tab: String) {
         if (tab == primaryTab) return
