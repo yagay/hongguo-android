@@ -299,9 +299,9 @@ internal fun ReelAccountDrawer(
                     .padding(horizontal = 23.dp, vertical = 16.dp),
                     verticalAlignment = Alignment.CenterVertically) {
                     Icon(Icons.Outlined.Settings, contentDescription = null,
-                        tint = Color(0xFF242424), modifier = Modifier.size(23.dp))
+                        tint = HongguoColors.ink, modifier = Modifier.size(23.dp))
                     Spacer(Modifier.width(12.dp))
-                    Text("设置", color = Color(0xFF242424), fontSize = 16.sp,
+                    Text("设置", color = HongguoColors.ink, fontSize = 16.sp,
                         fontWeight = FontWeight.SemiBold, modifier = Modifier.weight(1f))
                     Icon(Icons.Outlined.ChevronRight, contentDescription = null,
                         tint = HongguoColors.muted)
@@ -345,16 +345,10 @@ private fun DrawerAction(
     icon: androidx.compose.ui.graphics.vector.ImageVector,
     onClick: () -> Unit,
     tag: String,
-) {
-    Row(
-        Modifier.fillMaxWidth().clickable(onClick = onClick)
-            .padding(vertical = 11.dp).testTag(tag),
-        verticalAlignment = Alignment.CenterVertically,
-        horizontalArrangement = Arrangement.spacedBy(11.dp),
-    ) {
-        Icon(icon, null, tint = HongguoColors.ink, modifier = Modifier.size(23.dp))
-        Text(title, color = Color(0xFF202020), fontSize = 15.sp,
-            modifier = Modifier.weight(1f))
-        Icon(Icons.Outlined.ChevronRight, null, tint = Color.LightGray)
-    }
-}
+) = HongguoNavigationRow(
+    icon = icon,
+    title = title,
+    subtitle = "",
+    tag = tag,
+    onClick = onClick,
+)
