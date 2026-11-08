@@ -464,57 +464,13 @@ internal fun ReelBottomDock(
             .testTag("reel_outside_video_dock"),
         verticalArrangement = Arrangement.spacedBy(0.dp),
     ) {
-        // Keep the 2dp line and seek gestures, but reduce the empty
-        // vertical gutter from 16dp to 12dp. The recovered height belongs
-        // to the video viewport, not another overlay.
-        Canvas(
-            Modifier.fillMaxWidth().height(HongguoUi.playbackSeekTouchHeight)
-                .pointerInput(duration, playback) {
-                    detectTapGestures { point ->
-                        if (duration > 0L && size.width > 0) {
-                            val value = (point.x / size.width).coerceIn(0f, 1f)
-                            playback.seekTo((duration * value).toLong())
-                        }
-                    }
-                }
-                .pointerInput(duration, playback) {
-                    detectDragGestures(
-                        onDragStart = { start ->
-                            if (duration > 0L && size.width > 0)
-                                seeking = (start.x / size.width).coerceIn(0f, 1f)
-                        },
-                        onDragEnd = {
-                            seeking?.let { position ->
-                                if (duration > 0L) playback.seekTo((duration * position).toLong())
-                            }
-                            seeking = null
-                        },
-                        onDragCancel = { seeking = null },
-                        onDrag = { change, _ ->
-                            if (duration > 0L && size.width > 0) {
-                                seeking = (change.position.x / size.width).coerceIn(0f, 1f)
-                            }
-                            change.consume()
-                        },
-                    )
-                }
-                .testTag("reel_seek"),
-        ) {
-            val y = size.height / 2f
-            drawLine(
-                color = HongguoColors.playerChromeTrack,
-                start = Offset(0f, y), end = Offset(size.width, y),
-                strokeWidth = 2.dp.toPx(),
-                cap = StrokeCap.Round,
-            )
-            drawLine(
-                color = HongguoColors.accent,
-                start = Offset(0f, y),
-                end = Offset(size.width * (seeking ?: fraction), y),
-                strokeWidth = 2.dp.toPx(),
-                cap = StrokeCap.Round,
-            )
-        }
+        HongguoPlayerSeekTrack(
+            durationMs = duration,
+            playedFraction = fraction,
+            onSeek = playback::seekTo,
+            onPreview = { seeking = it },
+            modifier = Modifier.testTag("reel_seek"),
+        )
         Row(
             modifier = Modifier.fillMaxWidth()
                 .height(HongguoUi.playbackDockRowHeight)
