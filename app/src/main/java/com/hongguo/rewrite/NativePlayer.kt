@@ -5,6 +5,8 @@ import androidx.activity.compose.rememberLauncherForActivityResult
 import androidx.activity.result.contract.ActivityResultContracts
 import android.provider.DocumentsContract
 import android.content.Intent
+import android.view.SurfaceView
+import android.view.TextureView
 import androidx.compose.animation.AnimatedVisibility
 import androidx.compose.animation.slideInHorizontally
 import androidx.compose.animation.slideOutHorizontally
@@ -388,6 +390,7 @@ internal fun NativePlayer(
                         fillVideo = fillVideo,
                         controls = playback,
                         expectedVid = episode.vid,
+                        onSurfaceType = model::recordVideoSurface,
                     )
                     if (url != null) {
                         Box(
@@ -969,6 +972,7 @@ private fun Media3Reel(
     fillVideo: Boolean,
     controls: ReelPlaybackControls,
     expectedVid: String,
+    onSurfaceType: (String) -> Unit,
 ) {
     // ViewModel configures media in the foreground service after each episode
     // fetch, even while the UI lifecycle is STOPPED. Compose only shows its
@@ -1019,6 +1023,11 @@ private fun Media3Reel(
                 setKeepContentOnPlayerReset(true)
                 resizeMode = if (fillVideo) AspectRatioFrameLayout.RESIZE_MODE_ZOOM
                     else AspectRatioFrameLayout.RESIZE_MODE_FIT
+                onSurfaceType(when (videoSurfaceView) {
+                    is SurfaceView -> "SURFACE_VIEW"
+                    is TextureView -> "TEXTURE_VIEW"
+                    else -> "OTHER_SURFACE"
+                })
                 keepScreenOn = true
             }
         },
