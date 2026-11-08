@@ -2,6 +2,7 @@ package com.hongguo.rewrite
 
 import android.content.Intent
 import android.widget.Toast
+import androidx.compose.foundation.isSystemInDarkTheme
 import androidx.compose.foundation.background
 import androidx.compose.foundation.clickable
 import androidx.compose.foundation.horizontalScroll
@@ -37,6 +38,7 @@ import androidx.compose.material3.DropdownMenu
 import androidx.compose.material3.DropdownMenuItem
 import androidx.compose.material3.Icon
 import androidx.compose.material3.IconButton
+import androidx.compose.material3.MaterialTheme
 import androidx.compose.material3.Surface
 import androidx.compose.material3.Text
 import androidx.compose.material3.TextButton
@@ -72,6 +74,20 @@ private val DetailChip = Color(0xFF755544)
 
 @Composable
 internal fun DramaDetailScreen(state: AppState, model: DramaViewModel) {
+    val systemDark = isSystemInDarkTheme()
+    val night = when (state.themeMode) {
+        "dark" -> true
+        "system" -> systemDark
+        else -> false
+    }
+    // Warm immersive browns in night mode; warm paper colors for daytime.
+    val DetailBackground = if (night) Color(0xFF472613) else Color(0xFFFFF6EE)
+    val DetailTop = if (night) Color(0xFF6A4939) else Color(0xFFEED7C6)
+    val DetailCard = if (night) Color(0xFF66432F) else Color(0xFFF0E0D3)
+    val DetailCardLight = if (night) Color(0xFF765340) else Color(0xFFE4CEBB)
+    val DetailText = if (night) Color(0xFFF9F3ED) else Color(0xFF37251D)
+    val DetailMuted = if (night) Color(0xFFC0A79A) else Color(0xFF80675B)
+    val DetailChip = if (night) Color(0xFF755544) else Color(0xFFE8D6C6)
     val detail = state.detail ?: return
     val drama = detail.drama
     val context = LocalContext.current
@@ -529,7 +545,7 @@ internal fun DramaDetailScreen(state: AppState, model: DramaViewModel) {
         }
 
         Row(
-            Modifier.fillMaxWidth().background(Color(0xEF24140E))
+            Modifier.fillMaxWidth().background(if (night) Color(0xEF24140E) else Color(0xFFF2E5D9))
                 .padding(horizontal = 15.dp, vertical = 6.dp),
             horizontalArrangement = Arrangement.spacedBy(12.dp),
         ) {
@@ -563,6 +579,6 @@ internal fun DramaDetailScreen(state: AppState, model: DramaViewModel) {
 
 @Composable
 private fun DetailHeader(title: String) {
-    Text(title, color = DetailText, fontSize = 17.sp,
+    Text(title, color = MaterialTheme.colorScheme.onBackground, fontSize = 17.sp,
         fontWeight = FontWeight.SemiBold)
 }
