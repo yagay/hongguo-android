@@ -182,7 +182,8 @@ internal fun NativePlayer(
     var fillVideo by rememberSaveable { mutableStateOf(false) }
     var showComments by remember { mutableStateOf(false) }
     var showEpisodes by remember { mutableStateOf(false) }
-    var showPlaybackSettings by remember { mutableStateOf(false) }
+    var focusedPlaybackSetting by remember { mutableStateOf<PlaybackQuickSetting?>(null) }
+
     // Observe the actual decoded stream dimensions. Only portrait videos
     // use the measured-size layout; landscape videos retain normal FIT.
     val activeMediaPlayer by BackgroundPlaybackService.playerFlow.collectAsStateWithLifecycle()
@@ -304,12 +305,12 @@ internal fun NativePlayer(
     }
     BackHandler(enabled = state.navigation.destination != PlaybackDestination.DETAILS &&
         !searchOverlayOpen && accountDrawerState.isClosed && clearScreenEnabled &&
-        !showPlaybackSettings && !showComments && !showEpisodes) {
+        focusedPlaybackSetting == null && !showComments && !showEpisodes) {
         setHiddenChromeMask(0)
     }
     BackHandler(enabled = state.navigation.destination != PlaybackDestination.DETAILS &&
         !searchOverlayOpen && accountDrawerState.isClosed && !clearScreenEnabled &&
-        !showPlaybackSettings && !showComments && !showEpisodes) {
+        focusedPlaybackSetting == null && !showComments && !showEpisodes) {
         flushThenClose()
     }
 
@@ -350,7 +351,7 @@ internal fun NativePlayer(
         }
         showComments = false
         showEpisodes = false
-        showPlaybackSettings = false
+        focusedPlaybackSetting = null
     }
     LaunchedEffect(showComments, state.episodeIndex) {
         if (showComments) model.ensureCommentsLoaded()
@@ -472,7 +473,7 @@ internal fun NativePlayer(
             state = pagerState,
             beyondViewportPageCount = 1,
             userScrollEnabled = !pagerRecenterPending && !searchOverlayOpen &&
-                !showComments && !showEpisodes && !showPlaybackSettings,
+                !showComments && !showEpisodes && focusedPlaybackSetting == null,
             modifier = Modifier.fillMaxSize().testTag("episode_vertical_pager"),
         ) { page ->
             val episode = detail.episodes.getOrNull(
@@ -667,7 +668,8 @@ internal fun NativePlayer(
             state = state,
             detail = detail,
             episode = selected,
-            onPlaybackSettings = { showPlaybackSettings = true },
+            onPlaybackSettings = { focusedPlaybackSetting = it },
+            onDownload = downloadSelected,
             onOpenAccountDrawer = {
                 accountDrawerScope.launch { accountDrawerState.open() }
             },
@@ -795,7 +797,7 @@ internal fun NativePlayer(
         modifier = Modifier.testTag("player_clear_screen_dialog"),
     )
 
-    if (showPlaybackSettings) {
+    focusedPlaybackSetting?.let { currentSetting ->
         PlaybackExperienceSheet(
             state = state,
             model = model,
@@ -803,7 +805,7 @@ internal fun NativePlayer(
             fillVideo = fillVideo,
             externalPipEnabled = externalPipEnabled,
             onExternalPipEnabled = onExternalPipEnabled,
-            onDismiss = { showPlaybackSettings = false },
+            onDismiss = { focusedPlaybackSetting = null },
             onSpeed = {
                 speed = it
                 model.setDefaultPlaybackSpeed(it)
@@ -811,9 +813,10 @@ internal fun NativePlayer(
             onFillVideo = { fillVideo = it },
             onQuality = {
                 model.setQualityLimit(it, playback.positionMs, playback.durationMs)
-                showPlaybackSettings = false
+                focusedPlaybackSetting = null
             },
             onDownload = downloadSelected,
+            initialSection = currentSetting,
         )
     }
 
