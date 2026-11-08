@@ -198,19 +198,27 @@ internal fun DramaDetailScreen(state: AppState, model: DramaViewModel) {
                 Column(Modifier.padding(horizontal = 15.dp),
                     verticalArrangement = Arrangement.spacedBy(9.dp)) {
                     DetailHeader("剧情简介")
-                    Text(
-                        drama.synopsis,
-                        color = DetailMuted, fontSize = 13.sp,
-                        lineHeight = 22.sp,
-                        maxLines = if (expanded) Int.MAX_VALUE else 2,
-                        overflow = TextOverflow.Ellipsis,
-                        modifier = Modifier.clickable { expanded = !expanded }
-                            .testTag("detail_synopsis"),
-                    )
-                    if (drama.synopsis.length > 40)
-                        TextButton(onClick = { expanded = !expanded }) {
-                            Text(if (expanded) "收起" else "展开", color = DetailMuted)
-                        }
+                    Row(Modifier.fillMaxWidth(),
+                        horizontalArrangement = Arrangement.spacedBy(4.dp),
+                        verticalAlignment = Alignment.Bottom) {
+                        Text(
+                            drama.synopsis,
+                            color = DetailMuted, fontSize = 13.sp,
+                            lineHeight = 22.sp,
+                            maxLines = if (expanded) Int.MAX_VALUE else 2,
+                            overflow = TextOverflow.Ellipsis,
+                            modifier = Modifier.weight(1f)
+                                .clickable { expanded = !expanded }
+                                .testTag("detail_synopsis"),
+                        )
+                        if (drama.synopsis.length > 40)
+                            Text(
+                                if (expanded) "收起" else "展开",
+                                modifier = Modifier.clickable { expanded = !expanded }
+                                    .padding(bottom = 2.dp),
+                                color = Color(0xFF91B6DB), fontSize = 12.sp,
+                            )
+                    }
                 }
             }
 
