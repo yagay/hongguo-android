@@ -325,7 +325,7 @@ internal fun PlaybackExperienceSheet(
                     )
                     PlaybackHeading("轨道数量")
                     PlaybackChoices(
-                        (1..5).map { it to "$it轨" },
+                        (1..5).map { it to "${it}轨" },
                         state.danmakuDensity, model::setDanmakuDensity,
                         "danmaku_lanes",
                     )
