@@ -246,14 +246,44 @@ class WebContractClient(
         return url("img", mapOf("url" to image)).toString()
     }
 
+    /** Preserve only the labels the backend actually supplied. An empty
+     * result is not replaced by guessed tags from a drama's title. */
+    private fun parseDramaLabels(json: JSONObject): List<String> {
+        val candidates = listOf("tags", "categories", "category_list", "genre_tags")
+        val labels = buildList {
+            candidates.forEach { key ->
+                when (val raw = json.opt(key)) {
+                    is JSONArray -> for (i in 0 until minOf(raw.length(), 30)) {
+                        when (val item = raw.opt(i)) {
+                            is String -> add(item)
+                            is JSONObject -> add(item.optString("name")
+                                .ifBlank { item.optString("label") }
+                                .ifBlank { item.optString("category_name") })
+                        }
+                    }
+                    is String -> addAll(raw.split("、", "，", ",", " · ", "|", "/"))
+                }
+            }
+        }
+        return labels.map(String::trim)
+            .filter { it.isNotBlank() && it.length <= 24 }
+            .distinct().take(6)
+    }
+
     private fun parseDrama(json: JSONObject): Drama? {
         val id = json.optString("series_id")
         if (!id.matches(Regex("[0-9]{1,30}"))) return null
-        return Drama(id,
-            json.optString("title", json.optString("series_title", "未命名短剧")),
-            json.optString("cover", json.optString("series_cover")),
-            json.optInt("episode_cnt", json.optInt("total")),
-            json.optString("abstract", json.optString("series_intro")),
+        val status = DramaCompletion.fromOfficialText(
+            json.optString("badge").ifBlank { json.optString("completion_status") }
+                .ifBlank { json.optString("status_label") })
+        return Drama(
+            id = id,
+            title = json.optString("title", json.optString("series_title", "未命名短剧")),
+            cover = json.optString("cover", json.optString("series_cover")),
+            total = json.optInt("episode_cnt", json.optInt("total")),
+            synopsis = json.optString("abstract", json.optString("series_intro")),
+            completionStatus = status,
+            categories = parseDramaLabels(json),
         )
     }
 
