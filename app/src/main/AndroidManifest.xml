@@ -23,7 +23,9 @@
             </intent-filter>
         </service>
         <activity android:name=".MainActivity" android:exported="true"
-            android:configChanges="keyboardHidden|orientation|screenSize">
+            android:supportsPictureInPicture="true"
+            android:resizeableActivity="true"
+            android:configChanges="keyboardHidden|orientation|screenSize|smallestScreenSize|screenLayout">
             <intent-filter>
                 <action android:name="android.intent.action.MAIN" />
                 <category android:name="android.intent.category.LAUNCHER" />
