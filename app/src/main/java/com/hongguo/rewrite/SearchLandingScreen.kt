@@ -63,10 +63,6 @@ import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
 import coil.compose.AsyncImage
 
-private val SearchBg = Color(0xFF101010)
-private val SearchTile = Color(0xFF222222)
-private val SearchInk = Color(0xFFF5F5F5)
-private val SearchMuted = Color(0xFF969696)
 
 /**
  * Dedicated search discovery page based on the official Android search layout.
@@ -81,18 +77,12 @@ internal fun SearchLandingScreen(
     onResults: () -> Unit,
     onOpenDrama: (Drama) -> Unit = { model.open(it) },
 ) {
-    val systemDark = isSystemInDarkTheme()
-    val night = when (state.themeMode) {
-        "dark" -> true
-        "system" -> systemDark
-        else -> false
-    }
-    // The search page honors the saved appearance mode independently of the
-    // content theme preset. Values shadow the original dark screenshot palette.
-    val SearchBg = if (night) Color(0xFF101010) else Color(0xFFFFFBF7)
-    val SearchTile = if (night) Color(0xFF222222) else Color(0xFFF2EAE3)
-    val SearchInk = if (night) Color(0xFFF5F5F5) else Color(0xFF30231F)
-    val SearchMuted = if (night) Color(0xFF969696) else Color(0xFF806D63)
+    // Follow the same selected palette as Theater/My/Settings instead of
+    // maintaining an unrelated hard-coded search light/dark palette.
+    val SearchBg = HongguoColors.background
+    val SearchTile = HongguoColors.surface
+    val SearchInk = HongguoColors.ink
+    val SearchMuted = HongguoColors.muted
     val browse by model.searchBrowse.collectAsStateWithLifecycle()
     val context = LocalContext.current
     LaunchedEffect(Unit) { model.loadSearchLanding() }
@@ -104,11 +94,11 @@ internal fun SearchLandingScreen(
     LazyColumn(
         modifier = Modifier.fillMaxSize().background(SearchBg)
             .testTag("search_landing"),
-        contentPadding = PaddingValues(bottom = 30.dp),
-        verticalArrangement = Arrangement.spacedBy(20.dp),
+        contentPadding = PaddingValues(bottom = 28.dp),
+        verticalArrangement = Arrangement.spacedBy(HongguoUi.pageSectionGap),
     ) {
         item {
-            Row(Modifier.fillMaxWidth().padding(start = 8.dp, end = 12.dp, top = 10.dp),
+            Row(Modifier.fillMaxWidth().padding(start = 8.dp, end = HongguoUi.pagePadding, top = 8.dp),
                 verticalAlignment = Alignment.CenterVertically,
                 horizontalArrangement = Arrangement.spacedBy(6.dp)) {
                 HongguoIconAction(onClick = onClose) {
@@ -130,7 +120,7 @@ internal fun SearchLandingScreen(
                             modifier = Modifier.size(19.dp))
                     },
                     singleLine = true,
-                    shape = RoundedCornerShape(HongguoUi.cardRadius),
+                    shape = RoundedCornerShape(HongguoUi.controlRadius),
                     colors = OutlinedTextFieldDefaults.colors(
                         focusedTextColor = SearchInk,
                         unfocusedTextColor = SearchInk,
