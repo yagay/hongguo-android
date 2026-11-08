@@ -383,8 +383,9 @@ private fun PictureInPictureVideo(state: AppState, model: DramaViewModel) {
     val expectedVid = detail?.episodes?.getOrNull(state.episodeIndex)?.vid
     val hasCurrentItem = expectedVid != null &&
         player?.currentMediaItem?.mediaId == expectedVid
-    val showCover = !hasCurrentItem ||
-        player?.playbackState != Player.STATE_READY
+    // Preserve the decoded frame while the same item buffers. A mismatched
+    // item still uses artwork so PiP never shows the previous episode as new.
+    val showCover = !hasCurrentItem
     Box(Modifier.fillMaxSize().background(Color.Black),
         contentAlignment = Alignment.Center) {
         // Keep the same PlayerView throughout PiP next-episode transitions:
