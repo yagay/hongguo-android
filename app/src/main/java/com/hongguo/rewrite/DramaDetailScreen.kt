@@ -394,37 +394,17 @@ internal fun DramaDetailScreen(state: AppState, model: DramaViewModel) {
                 }
             } }
 
-            if (state.openHongguoSeasons.isNotEmpty()) item {
+            if (state.relatedWorks.isNotEmpty() || state.relatedLoading ||
+                state.relatedError != null) item {
                 Column(Modifier.padding(horizontal = 16.dp),
                     verticalArrangement = Arrangement.spacedBy(9.dp)) {
                     DetailHeader("相关作品")
-                    Row(Modifier.fillMaxWidth().horizontalScroll(rememberScrollState()),
-                        horizontalArrangement = Arrangement.spacedBy(12.dp)) {
-                        state.openHongguoSeasons.forEach { season ->
-                            Column(Modifier.width(94.dp).clickable { model.open(season) },
-                                verticalArrangement = Arrangement.spacedBy(6.dp)) {
-                                AsyncImage(model = model.cover(season.cover),
-                                    contentDescription = season.title,
-                                    contentScale = ContentScale.Crop,
-                                    modifier = Modifier.width(90.dp).height(122.dp)
-                                        .clip(RoundedCornerShape(8.dp)))
-                                Text(season.title, color = DetailText,
-                                    fontSize = 12.sp, maxLines = 2,
-                                    overflow = TextOverflow.Ellipsis)
-                            }
-                        }
-                    }
-                }
-            }
-
-            item {
-                Column(Modifier.padding(horizontal = 16.dp),
-                    verticalArrangement = Arrangement.spacedBy(12.dp)) {
-                    DetailHeader("猜你喜欢")
+                    if (state.relatedLoading && state.relatedWorks.isEmpty())
+                        Text("正在加载相关作品…", color = DetailMuted, fontSize = 12.sp)
                     if (state.relatedWorks.isEmpty() && !state.relatedLoading)
                         Text(state.relatedError ?: "暂无相关作品",
                             color = DetailMuted, fontSize = 12.sp)
-                    Row(Modifier.horizontalScroll(rememberScrollState()),
+                    Row(Modifier.fillMaxWidth().horizontalScroll(rememberScrollState()),
                         horizontalArrangement = Arrangement.spacedBy(12.dp)) {
                         state.relatedWorks.take(18).forEach { work ->
                             Column(Modifier.width(94.dp)
@@ -436,6 +416,10 @@ internal fun DramaDetailScreen(state: AppState, model: DramaViewModel) {
                                     contentScale = ContentScale.Crop,
                                     modifier = Modifier.width(90.dp).height(122.dp)
                                         .clip(RoundedCornerShape(8.dp)))
+                                if (work.season.isNotBlank() || work.upcoming)
+                                    Text(if (work.upcoming) "待上线" else work.season,
+                                        color = DetailMuted, fontSize = 11.sp,
+                                        maxLines = 1, overflow = TextOverflow.Ellipsis)
                                 Text(work.drama.title, color = DetailText,
                                     fontSize = 12.sp, maxLines = 2,
                                     overflow = TextOverflow.Ellipsis)
@@ -445,6 +429,54 @@ internal fun DramaDetailScreen(state: AppState, model: DramaViewModel) {
                 }
             }
 
+            if (state.openHongguoSeasons.isNotEmpty()) item {
+                Column(Modifier.padding(horizontal = 16.dp),
+                    verticalArrangement = Arrangement.spacedBy(9.dp)) {
+                    DetailHeader("系列剧 · 其他季")
+                    Row(Modifier.fillMaxWidth().horizontalScroll(rememberScrollState()),
+                        horizontalArrangement = Arrangement.spacedBy(12.dp)) {
+                        state.openHongguoSeasons.forEach { season ->
+                            Column(Modifier.width(94.dp).clickable { model.open(season) },
+                                verticalArrangement = Arrangement.spacedBy(6.dp)) {
+                                AsyncImage(model = model.cover(season.cover),
+                                    contentDescription = season.title,
+                                    contentScale = ContentScale.Crop,
+                                    modifier = Modifier.width(90.dp).height(122.dp)
+                                        .clip(RoundedCornerShape(8.dp)))
+                                Text(season.title, color = DetailText, fontSize = 12.sp,
+                                    maxLines = 2, overflow = TextOverflow.Ellipsis)
+                            }
+                        }
+                    }
+                }
+            }
+
+            item {
+                Column(Modifier.padding(horizontal = 16.dp),
+                    verticalArrangement = Arrangement.spacedBy(12.dp)) {
+                    DetailHeader("猜你喜欢")
+                    if (state.guessesLoading && state.guessWorks.isEmpty())
+                        Text("正在加载推荐…", color = DetailMuted, fontSize = 12.sp)
+                    if (state.guessWorks.isEmpty() && !state.guessesLoading)
+                        Text(state.guessesError ?: "暂无猜你喜欢推荐",
+                            color = DetailMuted, fontSize = 12.sp)
+                    Row(Modifier.horizontalScroll(rememberScrollState()),
+                        horizontalArrangement = Arrangement.spacedBy(12.dp)) {
+                        state.guessWorks.take(18).forEach { guess ->
+                            Column(Modifier.width(94.dp).clickable { model.open(guess) },
+                                verticalArrangement = Arrangement.spacedBy(6.dp)) {
+                                AsyncImage(model = model.cover(guess.cover),
+                                    contentDescription = guess.title,
+                                    contentScale = ContentScale.Crop,
+                                    modifier = Modifier.width(90.dp).height(122.dp)
+                                        .clip(RoundedCornerShape(8.dp)))
+                                Text(guess.title, color = DetailText, fontSize = 12.sp,
+                                    maxLines = 2, overflow = TextOverflow.Ellipsis)
+                            }
+                        }
+                    }
+                }
+            }
 
             item {
                 Column(Modifier.padding(horizontal = 16.dp),
