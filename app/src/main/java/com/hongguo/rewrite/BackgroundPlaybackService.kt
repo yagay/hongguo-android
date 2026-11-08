@@ -375,9 +375,9 @@ class BackgroundPlaybackService : MediaSessionService() {
         val previousRemote = remoteVideo
         val previousVid = currentVid
         val previousQuality = currentQuality
-        // Install the replacement media before disposing the prior encrypted
-        // stream. A slow network transition keeps the old media session alive.
-        engine.stop()
+        // setMediaSource/setMediaItem already replace the previous timeline.
+        // An explicit stop() first adds an unnecessary STATE_IDLE transition
+        // and can blank the retained video surface during every episode switch.
         remoteVideo = remote
         currentQuality = qualityLimit
         currentKey = key
