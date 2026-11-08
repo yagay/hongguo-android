@@ -1784,35 +1784,46 @@ class DramaViewModel(application: Application) : AndroidViewModel(application) {
         loadOfficialReels(restart = true)
     }
 
-    /** A deliberate selection made inside the swipe drawer/search overlay
-     * enters series playback, but its Back button returns to a swipe feed that
-     * includes the selected work. No catalog navigation is required.
+    /**
+     * One entry point for every linked series chosen from the reel drawer,
+     * search, related works, other seasons or "猜你喜欢". The current
+     * route's explicit origin is retained even inside a details page.
+     */
+    fun openRelatedDrama(drama: Drama) {
+        if (state.value.navigation.origin == PlaybackOrigin.SWIPE_FEED)
+            openFromFeedSelection(drama)
+        else open(drama)
+    }
+
+    /** A selected work becomes the current reel without opening the old home
+     * catalog. Series mode has the original header; Back returns to its feed.
      */
     fun openFromFeedSelection(drama: Drama, resumeEp: Int? = null) {
         val snapshot = state.value
-        if (!snapshot.feedMode) {
-            open(drama)
+        if (snapshot.navigation.origin != PlaybackOrigin.SWIPE_FEED) {
+            open(drama, resumeEp = resumeEp)
             return
         }
         if (snapshot.detail?.drama?.id == drama.id) {
             val index = snapshot.detail.episodes.indexOfFirst { it.index == resumeEp }
                 .takeIf { it >= 0 } ?: snapshot.episodeIndex
-            exitFeedToEpisode(index)
+            if (snapshot.feedMode) exitFeedToEpisode(index)
+            else {
+                if (snapshot.detailPageVisible) backFromDramaDetails()
+                if (index != state.value.episodeIndex) play(index)
+            }
             return
         }
         val queue = if (snapshot.feedItems.any { it.id == drama.id })
-            snapshot.feedItems
-        else snapshot.feedItems + drama
+            snapshot.feedItems else snapshot.feedItems + drama
         val selected = queue.indexOfFirst { it.id == drama.id }
         officialFeedJob?.cancel()
         officialFeedGeneration++
         pendingFeedAdvance = false
         mutable.update { it.copy(feedItems = queue, feedIndex = selected,
-            feedLoading = false) }
-        open(drama, resumeEp = resumeEp)
-        mutable.update { it.copy(returnToFeed = true, feedItems = queue,
-            feedIndex = selected, feedHasMore = snapshot.feedHasMore) }
-        diagnostics.record("REELS", "OPEN_DRAWER_OR_SEARCH_SERIES")
+            feedLoading = false, feedError = null) }
+        open(drama, resumeEp = resumeEp, origin = PlaybackOrigin.SWIPE_FEED)
+        diagnostics.record("NAVIGATION", "RELATED_SERIES_FROM_FEED")
     }
 
     /** Both manual vertical swipe and natural episode end use the live official queue. */
@@ -1918,7 +1929,9 @@ class DramaViewModel(application: Application) : AndroidViewModel(application) {
     }
 
     fun open(drama: Drama, resumeEp: Int? = null, feed: Boolean = false,
-        showDetails: Boolean = false) {
+        showDetails: Boolean = false,
+        origin: PlaybackOrigin = if (feed) PlaybackOrigin.SWIPE_FEED
+            else PlaybackOrigin.CATALOG) {
         // Auto-advancing to the next drama should not unexpectedly expand a
         // minimized reel. Explicit new selections outside the current feed
         // still open fullscreen as usual.
@@ -1943,9 +1956,10 @@ class DramaViewModel(application: Application) : AndroidViewModel(application) {
         // coroutine. Otherwise we briefly publish detail=null, and Compose
         // displays a full-screen "reading episodes" loading page even though
         // we already have the episodes in memory.
-        val api = if (feed) null else source
+        val api = if (origin == PlaybackOrigin.SWIPE_FEED) null else source
         val prefetched = if (api == null) prefetchedFeedDetails.remove(drama.id) else null
-        val cached = if (feed) visitedFeedDetails[drama.id] else null
+        val cached = if (origin == PlaybackOrigin.SWIPE_FEED)
+            visitedFeedDetails[drama.id] else null
         val immediate = prefetched ?: cached
         fun resolvedDetail(result: DramaDetail) = result.copy(drama = result.drama.copy(
             title = result.drama.title.ifBlank { drama.title },
@@ -1973,10 +1987,13 @@ class DramaViewModel(application: Application) : AndroidViewModel(application) {
             episodeIndex = readyIndex ?: it.episodeIndex,
             preparingDetail = ready == null,
             feedMode = feed,
-            returnToFeed = false,
+            navigation = when {
+                showDetails -> it.navigation.toSeries(origin).toDetails()
+                feed -> it.navigation.toFeed()
+                else -> it.navigation.toSeries(origin)
+            },
             detailPageVisible = showDetails,
             miniPlayerVisible = retainMini,
-            detailEntryEnabled = false,
             relatedWorks = emptyList(),
             relatedSeries = null,
             relatedLoading = false,
@@ -1994,7 +2011,7 @@ class DramaViewModel(application: Application) : AndroidViewModel(application) {
 
         fun displayAndPlay(resolved: DramaDetail, index: Int) {
             if (version != detailId) return
-            if (feed) rememberFeedDetail(resolved)
+            if (origin == PlaybackOrigin.SWIPE_FEED) rememberFeedDetail(resolved)
             mutable.update { it.copy(detail = resolved, episodeIndex = index,
                 preparingDetail = false) }
             loadSocialStats(resolved.drama.id)
