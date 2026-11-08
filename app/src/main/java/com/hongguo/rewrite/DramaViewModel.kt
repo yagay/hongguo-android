@@ -686,8 +686,9 @@ class DramaViewModel(application: Application) : AndroidViewModel(application) {
                     pendingFeedAdvance = false
                     mutable.update { it.copy(feedLoading = false,
                         preparingDetail = if (needsFirstDrama) false else it.preparingDetail,
-                        feedError = errorText("官方刷剧推荐", error)) }
-                    diagnostics.record("REELS", "OFFICIAL_BATCH_FAILED")
+                        feedError = OfficialReelsFailure.userMessage(error)) }
+                    diagnostics.record("REELS",
+                        "OFFICIAL_FAIL_" + OfficialReelsFailure.code(error))
                 }
             }
         }
