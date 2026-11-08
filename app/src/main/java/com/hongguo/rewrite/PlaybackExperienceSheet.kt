@@ -98,25 +98,21 @@ internal fun PlaybackExperienceSheet(
         onDismissRequest = onDismiss,
         modifier = Modifier.testTag("playback_settings_sheet"),
     ) {
-        Column(
-            Modifier.fillMaxWidth()
-                .heightIn(max = 530.dp)
-                .verticalScroll(rememberScrollState())
-                .padding(start = 16.dp, end = 16.dp, bottom = 16.dp),
-            verticalArrangement = Arrangement.spacedBy(9.dp),
-        ) {
-            HongguoSheetHeader(title = when (focused) {
+        HongguoPlayerPanel(
+            modifier = Modifier.heightIn(max = 530.dp)
+                .verticalScroll(rememberScrollState()),
+            title = when (focused) {
                 PlaybackQuickSetting.VIDEO -> "画面设置"
                 PlaybackQuickSetting.SPEED -> "倍速"
                 PlaybackQuickSetting.AUDIO -> "音效"
                 PlaybackQuickSetting.DANMAKU -> "弹幕设置"
                 PlaybackQuickSetting.TIMER -> "定时停止"
                 PlaybackQuickSetting.PREFERENCES -> "播放偏好"
-            }, dark = true) {
-                HongguoAction(label = "完成", onClick = onDismiss,
-                    style = HongguoActionStyle.QUIET)
-            }
-
+            },
+            actions = {
+                HongguoPlayerSheetAction(label = "完成", onClick = onDismiss)
+            },
+        ) {
                 Column(
                     Modifier.fillMaxWidth()
                         .background(Color(0xFF302E35),
