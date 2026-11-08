@@ -1,29 +1,20 @@
 package com.hongguo.rewrite
 
-/** Keep mini-player placement deterministic across all top-level app pages. */
+/** Video surfaces are a presentation detail, never the navigation back stack. */
 internal object MiniPlayerPresentation {
-    // The prior video's metadata remains available while the next series
-    // loads; preparingDetail must NOT unmount the existing video surface.
     fun show(state: AppState): Boolean =
-        state.miniPlayerVisible && state.detail != null
+        state.miniPlayerVisible && state.detail != null &&
+            state.navigation.destination in setOf(
+                PlaybackDestination.DETAILS, PlaybackDestination.CATALOG)
 
-    /** The catalog's navigation bar is a sibling below the mini dock, never
-     * a parent for the PlayerView. This prevents Surface destruction when
-     * navigating between catalog, settings, search and drama details.
-     */
+    /** The bottom catalog bar exists only after explicit Browse Home. */
     fun catalogNavigationVisible(state: AppState, searchLandingOpen: Boolean): Boolean =
-        state.modal != Modal.SETTINGS &&
-            state.modal != Modal.ACCOUNT &&
-            !state.detailPageVisible &&
-            !searchLandingOpen &&
-            (show(state) || (state.detail == null && !state.preparingDetail &&
-                !state.feedMode))
+        state.navigation.destination == PlaybackDestination.CATALOG &&
+            state.modal !in setOf(Modal.SETTINGS, Modal.ACCOUNT) &&
+            !searchLandingOpen
 
-    /** Put the mini row above the catalog NavigationBar whenever one exists. */
     fun inCatalog(state: AppState, searchLandingOpen: Boolean): Boolean =
-        show(state) &&
-            state.modal != Modal.SETTINGS &&
-            state.modal != Modal.ACCOUNT &&
-            !state.detailPageVisible &&
+        show(state) && state.navigation.destination == PlaybackDestination.CATALOG &&
+            state.modal !in setOf(Modal.SETTINGS, Modal.ACCOUNT) &&
             !searchLandingOpen
 }
