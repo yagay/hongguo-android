@@ -68,7 +68,7 @@ class OfficialReelsPolicyTest {
     @Test fun userCanSwipeBackAfterAutoplayWhileHiddenIdsAreSkipped() {
         val q = (1..7).map { title(it.toString()) }
         assertEquals(5, OfficialReelsPolicy.nextIndex(q, 3, 1, setOf("5")))
-        assertEquals(2, OfficialReelsPolicy.nextIndex(q, 3, -1, setOf("3")))
+        assertEquals(1, OfficialReelsPolicy.nextIndex(q, 3, -1, setOf("3")))
         assertNull(OfficialReelsPolicy.nextIndex(q, 6, 1, emptySet()))
         assertNull(OfficialReelsPolicy.nextIndex(q, 0, -1, emptySet()))
         assertNull(OfficialReelsPolicy.nextIndex(q, 0, 0, emptySet()))
