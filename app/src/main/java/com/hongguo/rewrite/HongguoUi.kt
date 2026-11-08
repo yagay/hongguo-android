@@ -11,6 +11,7 @@ import androidx.compose.foundation.layout.Column
 import androidx.compose.foundation.layout.FlowRow
 import androidx.compose.foundation.layout.Row
 import androidx.compose.foundation.layout.RowScope
+import androidx.compose.foundation.layout.ColumnScope
 import androidx.compose.foundation.layout.fillMaxWidth
 import androidx.compose.foundation.layout.heightIn
 import androidx.compose.foundation.layout.height
@@ -21,6 +22,8 @@ import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.foundation.shape.CircleShape
 import androidx.compose.material.icons.Icons
 import androidx.compose.material.icons.outlined.ChevronRight
+import androidx.compose.material.icons.outlined.ExpandLess
+import androidx.compose.material.icons.outlined.ExpandMore
 import androidx.compose.material.icons.outlined.Home
 import androidx.compose.material.icons.outlined.Theaters
 import androidx.compose.material.icons.outlined.PersonOutline
@@ -43,6 +46,7 @@ import androidx.compose.material3.HorizontalDivider
 import androidx.compose.material3.ModalBottomSheet
 import androidx.compose.material3.ExperimentalMaterial3Api
 import androidx.compose.material3.Text
+import androidx.compose.material3.AlertDialog
 import androidx.compose.runtime.Composable
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
@@ -244,18 +248,29 @@ internal fun HongguoAction(
     modifier: Modifier = Modifier,
     enabled: Boolean = true,
     style: HongguoActionStyle = HongguoActionStyle.OUTLINE,
+    icon: ImageVector? = null,
 ) {
     val shape = RoundedCornerShape(HongguoUi.controlRadius)
+    val buttonContent: @Composable RowScope.() -> Unit = {
+        if (icon != null) {
+            Icon(icon, contentDescription = null,
+                modifier = Modifier.size(HongguoUi.leadingIconSize))
+        }
+        Text(label)
+    }
     when (style) {
         HongguoActionStyle.PRIMARY -> Button(
             onClick = onClick, modifier = modifier, enabled = enabled, shape = shape,
-        ) { Text(label) }
+            content = buttonContent,
+        )
         HongguoActionStyle.OUTLINE -> OutlinedButton(
             onClick = onClick, modifier = modifier, enabled = enabled, shape = shape,
-        ) { Text(label) }
+            content = buttonContent,
+        )
         HongguoActionStyle.QUIET -> TextButton(
             onClick = onClick, modifier = modifier, enabled = enabled, shape = shape,
-        ) { Text(label) }
+            content = buttonContent,
+        )
     }
 }
 
@@ -610,4 +625,89 @@ internal fun HongguoEpisodeCell(
             fontWeight = if (selected) FontWeight.Bold else FontWeight.Medium,
             maxLines = 1)
     }
+}
+
+/** The only ordinary settings group: one title + theme card + consistent spacing. */
+@Composable
+internal fun HongguoSettingsSection(
+    title: String,
+    modifier: Modifier = Modifier,
+    content: @Composable ColumnScope.() -> Unit,
+) {
+    Column(modifier, verticalArrangement = Arrangement.spacedBy(HongguoUi.pageSectionGap)) {
+        Text(
+            title,
+            modifier = Modifier.padding(start = 2.dp, top = 6.dp),
+            fontSize = 14.sp,
+            fontWeight = FontWeight.Medium,
+            color = HongguoColors.muted,
+        )
+        HongguoCard(modifier = Modifier.fillMaxWidth()) {
+            Column(
+                Modifier.fillMaxWidth().padding(HongguoUi.pagePadding),
+                verticalArrangement = Arrangement.spacedBy(10.dp),
+                content = content,
+            )
+        }
+    }
+}
+
+/** Full-width expand/collapse row, including a single consistent trailing chevron. */
+@Composable
+internal fun HongguoExpandableRow(
+    title: String,
+    expanded: Boolean,
+    onClick: () -> Unit,
+    modifier: Modifier = Modifier,
+) {
+    Row(
+        modifier = modifier.fillMaxWidth().heightIn(min = 48.dp)
+            .clickable(onClick = onClick)
+            .padding(horizontal = 4.dp),
+        verticalAlignment = Alignment.CenterVertically,
+        horizontalArrangement = Arrangement.spacedBy(HongguoUi.chipGap),
+    ) {
+        Text(title, modifier = Modifier.weight(1f), fontSize = 14.sp,
+            fontWeight = FontWeight.Medium, color = HongguoColors.ink)
+        Icon(
+            if (expanded) Icons.Outlined.ExpandLess else Icons.Outlined.ExpandMore,
+            contentDescription = if (expanded) "收起" else "展开",
+            modifier = Modifier.size(HongguoUi.leadingIconSize),
+            tint = HongguoColors.muted,
+        )
+    }
+}
+
+/** Reusable confirmation surface; caller controls dismissal and side effects. */
+@Composable
+internal fun HongguoConfirmDialog(
+    title: String,
+    message: String,
+    confirmLabel: String,
+    onConfirm: () -> Unit,
+    onDismiss: () -> Unit,
+    destructive: Boolean = false,
+) {
+    AlertDialog(
+        onDismissRequest = onDismiss,
+        title = { Text(title, color = HongguoColors.ink) },
+        text = { Text(message, color = HongguoColors.muted) },
+        confirmButton = {
+            if (destructive) {
+                TextButton(onClick = onConfirm,
+                    shape = RoundedCornerShape(HongguoUi.controlRadius)) {
+                    Text(confirmLabel, color = Color(0xFFD94B40))
+                }
+            } else {
+                HongguoAction(label = confirmLabel, onClick = onConfirm,
+                    style = HongguoActionStyle.PRIMARY)
+            }
+        },
+        dismissButton = {
+            HongguoAction(label = "取消", onClick = onDismiss,
+                style = HongguoActionStyle.QUIET)
+        },
+        shape = RoundedCornerShape(HongguoUi.cardRadius),
+        containerColor = HongguoColors.surface,
+    )
 }
