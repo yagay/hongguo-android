@@ -109,12 +109,9 @@ internal fun PlaybackExperienceSheet(
                 .padding(start = 16.dp, end = 16.dp, bottom = 16.dp),
             verticalArrangement = Arrangement.spacedBy(9.dp),
         ) {
-            Row(Modifier.fillMaxWidth(), verticalAlignment = Alignment.CenterVertically) {
-                Text("播放设置", fontSize = 17.sp, fontWeight = FontWeight.Bold,
-                    modifier = Modifier.weight(1f))
-                TextButton(onClick = onDismiss) {
-                    Text("完成", color = HongguoColors.accent, fontSize = 13.sp)
-                }
+            HongguoSheetHeader(title = "播放设置", dark = true) {
+                HongguoAction(label = "完成", onClick = onDismiss,
+                    style = HongguoActionStyle.QUIET)
             }
 
             // Compact six-tile grid. Video settings group quality, aspect
@@ -181,7 +178,8 @@ internal fun PlaybackExperienceSheet(
             AnimatedVisibility(visible = focused != null) {
                 Column(
                     Modifier.fillMaxWidth()
-                        .background(Color(0xFF302E35), RoundedCornerShape(12.dp))
+                        .background(Color(0xFF302E35),
+                            RoundedCornerShape(HongguoUi.controlRadius))
                         .padding(horizontal = 11.dp, vertical = 7.dp),
                     verticalArrangement = Arrangement.spacedBy(5.dp),
                 ) {
