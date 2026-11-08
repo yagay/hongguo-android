@@ -1598,7 +1598,8 @@ class DramaViewModel(application: Application) : AndroidViewModel(application) {
     fun closeAccount() {
         account.closeScreen()
         show(if (accountReturnModal == Modal.SETTINGS) Modal.SETTINGS else Modal.NONE)
-        if (state.value.detail == null && !state.value.preparingDetail &&
+        if (state.value.navigation.destination == PlaybackDestination.CATALOG &&
+            state.value.detail == null && !state.value.preparingDetail &&
             state.value.section == Section.RECOMMEND) refresh()
     }
 
@@ -2461,22 +2462,26 @@ class DramaViewModel(application: Application) : AndroidViewModel(application) {
         }
     }
 
-    /** Switch to the catalog without stopping the service-owned player. */
+    /** Explicit Browse Home action; never used as an implicit Back target. */
     fun minimizePlayer() {
         val snapshot = state.value
         if (snapshot.detail == null || snapshot.detailPageVisible) return
-        mutable.update { it.copy(miniPlayerVisible = true, modal = Modal.NONE) }
-        diagnostics.record("PLAYER", "MINI_ENTER")
+        mutable.update { it.copy(miniPlayerVisible = true, modal = Modal.NONE,
+            navigation = it.navigation.toCatalog()) }
+        diagnostics.record("NAVIGATION", "EXPLICIT_BROWSE_HOME")
+        // Home data is not loaded at cold start now that reels is the root.
+        if (state.value.section == Section.RECOMMEND && state.value.items.isEmpty())
+            refresh()
     }
 
-    /** The expanded video surface reattaches to the existing ExoPlayer. */
+    /** Restore the video without changing its Media3 item or position. */
     fun restorePlayer() {
         val snapshot = state.value
         if (snapshot.detail == null) return
         mutable.update { it.copy(
             miniPlayerVisible = false,
             detailPageVisible = false,
-            detailEntryEnabled = false,
+            navigation = it.navigation.restorePlayer(it.feedMode),
             modal = Modal.NONE,
         ) }
         diagnostics.record("PLAYER", "MINI_RESTORE")
@@ -2495,25 +2500,29 @@ class DramaViewModel(application: Application) : AndroidViewModel(application) {
         loadGuesses(detail.drama.id)
         mutable.update { it.copy(
             detailPageVisible = true,
-            detailEntryEnabled = true,
-            // Keep a previously visible mini player when a new episode is
-            // loading and playbackUrl has briefly been cleared.
+            navigation = it.navigation.toDetails(),
+            // The mini surface is a visual companion inside details, not a
+            // navigation source. Back always goes to full player.
             miniPlayerVisible = it.miniPlayerVisible || it.playbackUrl != null,
         ) }
         diagnostics.record("DETAIL", "OPEN_WITH_MINI")
     }
 
-    /** Restore the full player without resetting the video or its position. */
+    /** Back from details never chooses the legacy catalog based on mini UI. */
     fun backFromDramaDetails() {
         sdkDetailGeneration++
         sdkDetailJob?.cancel()
         val snapshot = state.value
-        if (!snapshot.detailPageVisible) return
-        if (snapshot.miniPlayerVisible) restorePlayer()
-        else if (snapshot.detailEntryEnabled && snapshot.detail != null) {
-            diagnostics.record("DETAIL", "RETURN_LOAD_FROM_DETAIL")
-            play(snapshot.episodeIndex)
-        } else closePlayer()
+        if (snapshot.navigation.destination != PlaybackDestination.DETAILS) return
+        mutable.update { it.copy(
+            navigation = it.navigation.fromDetails(),
+            detailPageVisible = false, miniPlayerVisible = false,
+            modal = Modal.NONE,
+        ) }
+        diagnostics.record("NAVIGATION", "DETAILS_TO_FULL_SERIES")
+        // Reuse the current playing item. Only recover if the service died.
+        if (snapshot.playing && snapshot.playbackUrl != null &&
+            BackgroundPlaybackService.active == null) recoverPlaybackAfterServiceLoss()
     }
 
     /** Explicit episode selection from details opens fullscreen, unlike
@@ -2534,7 +2543,7 @@ class DramaViewModel(application: Application) : AndroidViewModel(application) {
         }
     }
 
-    /** Series entered from the swipe feed returns there; other playback minimizes. */
+    /** The route, not a mini-player flag, owns Back for full-series video. */
     fun backFromPlayer() {
         if (restoreReelFeed()) return
         // Offline playback opened from the swipe drawer cannot simply
@@ -2549,7 +2558,15 @@ class DramaViewModel(application: Application) : AndroidViewModel(application) {
             startFeed(previous)
             return
         }
-        if (state.value.detail == null) closePlayer() else minimizePlayer()
+        if (snapshot.navigation.origin == PlaybackOrigin.SWIPE_FEED) {
+            // A broken or stale return queue must not unexpectedly open home.
+            val previous = snapshot.feedItems.getOrNull(snapshot.feedIndex)
+                ?.takeIf { it.id !in snapshot.hiddenRecommendationIds }
+            closePlayer()
+            startFeed(previous)
+            diagnostics.record("NAVIGATION", "RESTORE_FEED_NEW_SESSION")
+        } else if (snapshot.detail == null) closePlayer()
+        else minimizePlayer()
     }
 
     fun closePlayer() {
