@@ -42,35 +42,11 @@ class DramaViewModel(application: Application) : AndroidViewModel(application) {
     internal val account = AccountManager(application, viewModelScope)
     private val prefs = application.getSharedPreferences("web_rewrite_settings", 0)
     private var source: WebContractClient? = null
-
-    private fun readOfflineEpisodes(): List<OfflineEpisode> {
-        val data = runCatching { JSONArray(prefs.getString("offline_episodes_v1", "[]")) }
-            .getOrElse { JSONArray() }
-        return (0 until minOf(data.length(), 200)).mapNotNull { i ->
-            val row = data.optJSONObject(i) ?: return@mapNotNull null
-            val id = row.optString("id")
-            val vid = row.optString("vid")
-            val uri = row.optString("uri")
-            if (!id.matches(Regex("[0-9]{1,30}")) ||
-                !vid.matches(Regex("[0-9]{1,30}")) || !uri.startsWith("content://")) {
-                return@mapNotNull null
-            }
-            OfflineEpisode(id, row.optString("title").take(200), row.optString("cover").take(2048),
-                row.optInt("episode", 1).coerceAtLeast(1), vid, uri,
-                row.optLong("savedAt"))
-        }.distinctBy { it.documentUri }
-    }
+    private val localContent = LocalContentStore(prefs)
 
     private fun saveOfflineEpisodes(rows: List<OfflineEpisode>) {
-        val data = JSONArray()
-        rows.distinctBy { it.documentUri }.take(200).forEach { row ->
-            data.put(org.json.JSONObject().put("id", row.seriesId)
-                .put("title", row.title).put("cover", row.cover)
-                .put("episode", row.episode).put("vid", row.vid)
-                .put("uri", row.documentUri).put("savedAt", row.savedAt))
-        }
-        prefs.edit().putString("offline_episodes_v1", data.toString()).apply()
-        mutable.update { it.copy(offlineEpisodes = rows.distinctBy { row -> row.documentUri }.take(200)) }
+        val saved = localContent.saveOfflineEpisodes(rows)
+        mutable.update { it.copy(offlineEpisodes = saved) }
     }
 
     fun removeOfflineEpisode(documentUri: String) {
@@ -118,19 +94,6 @@ class DramaViewModel(application: Application) : AndroidViewModel(application) {
             play(0)
         }
     }
-
-    private fun readWatchLater(): List<Drama> {
-        val rows = runCatching { JSONArray(prefs.getString("watch_later_v1", "[]")) }
-            .getOrElse { JSONArray() }
-        return (0 until minOf(rows.length(), 200)).mapNotNull { i ->
-            val item = rows.optJSONObject(i) ?: return@mapNotNull null
-            val id = item.optString("id")
-            if (!id.matches(Regex("[0-9]{1,30}"))) return@mapNotNull null
-            Drama(id, item.optString("title"), item.optString("cover"),
-                item.optInt("total").coerceAtLeast(0))
-        }.distinctBy { it.id }
-    }
-
 
     /** Explicit user-triggered update check, never pretends to be a background notification. */
     fun setEpisodeUpdateNotifications(enabled: Boolean) {
@@ -195,15 +158,11 @@ class DramaViewModel(application: Application) : AndroidViewModel(application) {
     fun toggleWatchLater(drama: Drama) {
         if (!drama.id.matches(Regex("[0-9]{1,30}"))) return
         val old = state.value.watchLater
-        val updated = if (old.any { it.id == drama.id }) old.filterNot { it.id == drama.id }
-            else (listOf(drama) + old).take(200)
-        val data = JSONArray()
-        updated.forEach {
-            data.put(org.json.JSONObject().put("id", it.id).put("title", it.title)
-                .put("cover", it.cover).put("total", it.total))
-        }
-        prefs.edit().putString("watch_later_v1", data.toString()).apply()
-        mutable.update { it.copy(watchLater = updated) }
+        val updated = if (old.any { it.id == drama.id })
+            old.filterNot { it.id == drama.id }
+        else listOf(drama) + old
+        val saved = localContent.saveWatchLater(updated)
+        mutable.update { it.copy(watchLater = saved) }
     }
 
     fun hideRecommendation(drama: Drama) {
@@ -459,20 +418,9 @@ class DramaViewModel(application: Application) : AndroidViewModel(application) {
     }
     private var searchJob: Job? = null
     private var suggestionVersion = 0L
-    private fun recentQueries(): List<String> {
-        val data = runCatching {
-            JSONArray(prefs.getString("recent_queries", "[]"))
-        }.getOrElse { JSONArray() }
-        return (0 until data.length()).map { data.optString(it) }
-            .filter { it.isNotBlank() && it.length <= 80 }.distinct().take(12)
-    }
     private fun rememberQuery(value: String) {
-        val clean = value.trim().take(80)
-        if (clean.isEmpty()) return
-        val values = (listOf(clean) + recentQueries()).distinct().take(12)
-        prefs.edit().putString("recent_queries",
-            JSONArray().apply { values.forEach(::put) }.toString()).apply()
-        mutable.update { it.copy(recentSearches = values) }
+        val updated = localContent.rememberQuery(value)
+        mutable.update { it.copy(recentSearches = updated) }
     }
 
     /** Portable local lists only. Never include cookies, account secrets or API credentials. */
@@ -637,20 +585,6 @@ class DramaViewModel(application: Application) : AndroidViewModel(application) {
     private val localDownloadSlots = Semaphore(2)
     private var requestId = 0L
     private var detailId = 0L
-    /** Recent reel IDs are content IDs only, never account identifiers or cookies. */
-    private fun recentlySwiped(): List<String> = runCatching {
-        val stored = JSONArray(prefs.getString("recent_official_reels_v1", "[]"))
-        (0 until minOf(stored.length(), 120)).map { stored.optString(it) }
-            .filter { it.matches(Regex("[0-9]{1,30}")) }
-    }.getOrDefault(emptyList())
-
-    private fun rememberSwiped(id: String) {
-        if (!id.matches(Regex("[0-9]{1,30}"))) return
-        val last = (recentlySwiped().filterNot { it == id } + id).takeLast(120)
-        prefs.edit().putString("recent_official_reels_v1",
-            JSONArray(last).toString()).apply()
-    }
-
     private var pendingFeedAdvance = false
     private var feedPrefetchJob: Job? = null
     private var officialFeedJob: Job? = null
@@ -670,7 +604,7 @@ class DramaViewModel(application: Application) : AndroidViewModel(application) {
             .apply {
                 addAll(snapshot.hiddenRecommendationIds)
                 addAll(homeFeedExcludedIds)
-                addAll(recentlySwiped())
+                addAll(localContent.recentlySwiped())
             }
         mutable.update { it.copy(feedLoading = true, feedError = null) }
         officialFeedJob = viewModelScope.launch {
@@ -689,7 +623,7 @@ class DramaViewModel(application: Application) : AndroidViewModel(application) {
                     val merged = OfficialReelsPolicy.append(
                         current.feedItems, result.items,
                         current.hiddenRecommendationIds + homeFeedExcludedIds +
-                            recentlySwiped().toSet())
+                            localContent.recentlySwiped().toSet())
                     current.copy(feedItems = merged,
                         feedHasMore = result.hasMore,
                         feedLoading = false,
@@ -701,7 +635,7 @@ class DramaViewModel(application: Application) : AndroidViewModel(application) {
                 if (needsFirstDrama && state.value.feedMode) {
                     val first = state.value.feedItems.firstOrNull()
                     if (first != null) {
-                        rememberSwiped(first.id)
+                        localContent.rememberSwiped(first.id)
                         open(first, resumeEp = 1, feed = true)
                     } else {
                         mutable.update { it.copy(preparingDetail = false,
@@ -901,8 +835,8 @@ class DramaViewModel(application: Application) : AndroidViewModel(application) {
         AppState(backend = prefs.getString("backend", "").orEmpty(),
             library = library.list(false), favorites = library.list(true),
             likedDramaIds = prefs.getStringSet("local_liked_dramas", emptySet())?.toSet().orEmpty(),
-            watchLater = readWatchLater(),
-            offlineEpisodes = readOfflineEpisodes(),
+            watchLater = localContent.watchLater(),
+            offlineEpisodes = localContent.offlineEpisodes(),
             favoriteGroups = library.favoriteGroups(),
             completedDramaIds = prefs.getStringSet("completed_drama_ids_v1", emptySet())?.toSet().orEmpty(),
             hiddenRecommendationIds = prefs.getStringSet("hidden_recommendations_v1", emptySet())?.toSet().orEmpty(),
@@ -916,7 +850,7 @@ class DramaViewModel(application: Application) : AndroidViewModel(application) {
             skipIntroSeconds = prefs.getInt("skip_intro_seconds", 0).coerceIn(0, 120),
             skipOutroSeconds = prefs.getInt("skip_outro_seconds", 0).coerceIn(0, 120),
             retryPlaybackAutomatically = prefs.getBoolean("playback_auto_retry", true),
-            recentSearches = recentQueries(),
+            recentSearches = localContent.recentQueries(),
             defaultPlaybackSpeed = prefs.getFloat("default_playback_speed", 1f).coerceIn(0.75f, 3f),
             videoBrightnessPercent = prefs.getInt("video_brightness_percent", -1)
                 .takeIf { it == -1 || it in 40..100 } ?: -1,
@@ -1851,7 +1785,7 @@ class DramaViewModel(application: Application) : AndroidViewModel(application) {
             preparingDetail = drama == null,
         ) }
         if (drama != null) {
-            rememberSwiped(drama.id)
+            localContent.rememberSwiped(drama.id)
             open(drama, resumeEp = 1, feed = true)
         }
         loadOfficialReels(restart = true)
@@ -1913,7 +1847,7 @@ class DramaViewModel(application: Application) : AndroidViewModel(application) {
             pendingFeedAdvance = false
             mutable.update { it.copy(feedIndex = index) }
             updateNotificationNavigation()
-            rememberSwiped(selected.id)
+            localContent.rememberSwiped(selected.id)
             open(selected, resumeEp = 1, feed = true)
             prefetchFollowingFeedItem(index)
             if (direction > 0 && OfficialReelsPolicy.needsMore(
