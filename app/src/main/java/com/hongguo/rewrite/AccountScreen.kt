@@ -116,7 +116,8 @@ internal fun AccountScreen(model: DramaViewModel) {
     ) { padding ->
         LazyColumn(
             Modifier.fillMaxSize().padding(padding).testTag("account_screen"),
-            contentPadding = PaddingValues(horizontal = 20.dp, vertical = 12.dp),
+            contentPadding = PaddingValues(
+                horizontal = HongguoUi.pagePadding, vertical = 12.dp),
             verticalArrangement = Arrangement.spacedBy(12.dp),
         ) {
             webError?.let { error -> item { Text(error, color = HongguoColors.accent,
