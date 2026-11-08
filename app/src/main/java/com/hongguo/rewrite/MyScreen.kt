@@ -176,7 +176,7 @@ internal fun MyScreen(state: AppState, model: DramaViewModel, onBack: () -> Unit
             }
         }
         item {
-            Surface(shape = RoundedCornerShape(16.dp), color = HongguoColors.surface) {
+            HongguoCard() {
                 Row(
                     Modifier.fillMaxWidth().testTag("my_account_card")
                         .padding(horizontal = 14.dp, vertical = 12.dp),
@@ -476,7 +476,7 @@ internal fun MyScreen(state: AppState, model: DramaViewModel, onBack: () -> Unit
             }
         }
         item {
-            Surface(shape = RoundedCornerShape(16.dp), color = HongguoColors.surface) {
+            HongguoCard() {
                 Column(Modifier.fillMaxWidth().padding(16.dp),
                     verticalArrangement = Arrangement.spacedBy(8.dp)) {
                     Row(Modifier.fillMaxWidth(), verticalAlignment = Alignment.CenterVertically) {
