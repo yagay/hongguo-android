@@ -191,11 +191,12 @@ private fun HongguoApp(model: DramaViewModel = viewModel()) {
     LaunchedEffect(state.detail, state.section) {
         if (state.detail == null && state.section == Section.SEARCH) mineOpen = false
     }
-    val detailImmersive = state.detailPageVisible && state.detail != null &&
+    val activeRoute = state.navigation.destination
+    val detailImmersive = activeRoute == PlaybackDestination.DETAILS &&
+        state.detail != null && state.modal == Modal.NONE
+    val darkPlayer = activeRoute in setOf(
+        PlaybackDestination.FEED, PlaybackDestination.SERIES) &&
         state.modal == Modal.NONE
-    val darkPlayer = (state.detail != null || state.feedMode) &&
-        !state.detailPageVisible && !state.miniPlayerVisible &&
-        state.modal != Modal.SETTINGS && state.modal != Modal.ACCOUNT
     val showMini = MiniPlayerPresentation.show(state)
     val showCatalogBottomNav =
         MiniPlayerPresentation.catalogNavigationVisible(state, searchLandingOpen)
@@ -260,42 +261,43 @@ private fun HongguoApp(model: DramaViewModel = viewModel()) {
                 Box(Modifier.weight(1f)) {
                     BackHandler(
                         enabled = state.modal != Modal.NONE ||
-                            state.detailPageVisible ||
-                            (!state.miniPlayerVisible &&
-                                (state.preparingDetail || state.detail != null || state.feedMode)) ||
+                            activeRoute != PlaybackDestination.CATALOG ||
+                            (activeRoute == PlaybackDestination.CATALOG &&
+                                state.navigation.origin == PlaybackOrigin.SWIPE_FEED) ||
                             mineOpen || searchLandingOpen,
                     ) {
-                        if (state.modal == Modal.ACCOUNT) model.closeAccount()
-                        else if (state.modal != Modal.NONE) model.closeModal()
-                        else if (state.detailPageVisible) model.backFromDramaDetails()
-                        else if (state.miniPlayerVisible) {
-                            // Navigate within the catalog without stopping the
-                            // mini video; root Back falls through to Android.
-                            if (searchLandingOpen) searchLandingOpen = false
-                            else if (mineOpen) mineOpen = false
-                        } else if (state.feedMode)
-                            confirmExitFeed = true
-                        else if (state.detail != null || state.preparingDetail)
-                            model.backFromPlayer()
-                        else if (searchLandingOpen) searchLandingOpen = false
-                        else mineOpen = false
+                        when {
+                            state.modal == Modal.ACCOUNT -> model.closeAccount()
+                            state.modal != Modal.NONE -> model.closeModal()
+                            activeRoute == PlaybackDestination.DETAILS ->
+                                model.backFromDramaDetails()
+                            activeRoute == PlaybackDestination.FEED ->
+                                confirmExitFeed = true
+                            activeRoute == PlaybackDestination.SERIES ->
+                                model.backFromPlayer()
+                            searchLandingOpen -> searchLandingOpen = false
+                            mineOpen -> mineOpen = false
+                            activeRoute == PlaybackDestination.CATALOG &&
+                                state.navigation.origin == PlaybackOrigin.SWIPE_FEED -> {
+                                if (state.detail != null) model.restorePlayer()
+                                else model.startFeed()
+                            }
+                        }
                     }
                 when {
                     state.modal == Modal.SETTINGS -> SettingsScreen(state, model)
                     state.modal == Modal.ACCOUNT -> AccountScreen(model)
-                    state.detailPageVisible && state.detail != null ->
-                        DramaDetailScreen(state, model)
-                    state.detail != null && !state.miniPlayerVisible ->
-                        // Do not discard the whole Compose player when the same
-                        // video switches between swipe feed and full-series mode.
+                    activeRoute == PlaybackDestination.DETAILS &&
+                        state.detail != null -> DramaDetailScreen(state, model)
+                    activeRoute in setOf(PlaybackDestination.FEED,
+                        PlaybackDestination.SERIES) && state.detail != null ->
+                        // UI mode changes do not destroy the active Media3 item.
                         key(state.detail?.drama?.id) {
                             NativePlayer(state, model,
                                 onExitFeed = { confirmExitFeed = true })
                         }
-                    // A minimized feed stays on its browsing page while the
-                    // next drama's metadata is loading; never replace it with
-                    // the fullscreen loading scene.
-                    (state.preparingDetail || state.feedMode) && !state.miniPlayerVisible -> {
+                    activeRoute in setOf(PlaybackDestination.FEED,
+                        PlaybackDestination.SERIES) -> {
                         val upcoming = if (state.feedMode)
                             state.feedItems.getOrNull(state.feedIndex) else null
                         Box(
@@ -318,7 +320,10 @@ private fun HongguoApp(model: DramaViewModel = viewModel()) {
                             ) {
                                 if (upcoming == null) {
                                     CircularProgressIndicator(color = HongguoColors.accent)
-                                    Text("正在读取剧集…")
+                                    Text(if (state.preparingDetail || state.feedLoading)
+                                        "正在获取短剧…" else
+                                        state.playbackError ?: state.feedError
+                                            ?: "短剧暂时无法加载")
                                 } else {
                                     Text(upcoming.title, color = Color.White)
                                     Text("正在准备播放", color = Color.White.copy(alpha = 0.84f))
@@ -334,6 +339,11 @@ private fun HongguoApp(model: DramaViewModel = viewModel()) {
                                     ) { Text("重试推荐", color = Color.White) }
                                     TextButton(onClick = { confirmExitFeed = true }) {
                                         Text("退出刷短剧", color = Color.White)
+                                    }
+                                } else if (state.navigation.origin ==
+                                    PlaybackOrigin.SWIPE_FEED) {
+                                    TextButton(onClick = model::backFromPlayer) {
+                                        Text("返回刷短剧", color = HongguoColors.accent)
                                     }
                                 } else {
                                     TextButton(onClick = model::closePlayer) {
