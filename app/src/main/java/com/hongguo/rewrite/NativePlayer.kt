@@ -5,6 +5,7 @@ import androidx.activity.compose.rememberLauncherForActivityResult
 import androidx.activity.result.contract.ActivityResultContracts
 import android.provider.DocumentsContract
 import android.content.Intent
+import android.content.Context
 import android.view.SurfaceView
 import android.view.TextureView
 import androidx.compose.foundation.background
@@ -140,6 +141,14 @@ internal fun NativePlayer(
         return
     }
     val context = LocalContext.current
+    // One device-specific portrait viewport calibration, retained across
+    // episodes and cold launches. It is never overwritten by later videos.
+    val playerLayoutPrefs = remember(context) {
+        context.getSharedPreferences("portrait_player_layout", Context.MODE_PRIVATE)
+    }
+    var fixedPortraitHeightDp by remember {
+        mutableFloatStateOf(playerLayoutPrefs.getFloat("portrait_height_dp_v1", 0f))
+    }
     val selected = detail.episodes.getOrNull(state.episodeIndex)
     val previousFeedDrama = if (state.feedMode) state.feedItems.take(state.feedIndex)
         .lastOrNull { it.id !in state.hiddenRecommendationIds } else null
@@ -396,20 +405,32 @@ internal fun NativePlayer(
     Box(Modifier.fillMaxSize()) {
     BoxWithConstraints(Modifier.fillMaxSize().testTag("reels_player")) {
         val rotated = activeVideoSize.unappliedRotationDegrees % 180 != 0
-        val frameWidth = if (rotated) activeVideoSize.height else activeVideoSize.width
-        val frameHeight = if (rotated) activeVideoSize.width else activeVideoSize.height
         val pixelRatio = activeVideoSize.pixelWidthHeightRatio
-        val portraitVideo = frameWidth > 0 && frameHeight > 0 &&
-            pixelRatio > 0f && frameWidth * pixelRatio < frameHeight
+        val frameWidthPx = if (rotated) activeVideoSize.height.toFloat()
+            else activeVideoSize.width * pixelRatio
+        val frameHeightPx = if (rotated) activeVideoSize.width * pixelRatio
+            else activeVideoSize.height.toFloat()
+        val portraitVideo = frameWidthPx > 0f && frameHeightPx > 0f &&
+            pixelRatio > 0f && frameWidthPx < frameHeightPx
         val desiredHeight = if (portraitVideo)
-            maxWidth * (frameHeight.toFloat() / (frameWidth * pixelRatio))
+            maxWidth * (frameHeightPx / frameWidthPx)
         else 0.dp
-        // The seek/episode dock is 40dp and remains outside the frame.
-        // Use the stream's actual dimensions only if the uncropped frame
-        // fits. When it cannot fit, preserve FIT without resizing or cropping.
-        val measuredPortraitHeight = desiredHeight.takeIf {
-            portraitVideo && it > 0.dp && it <= maxHeight - 40.dp
+        // The first valid portrait video calibrates this phone's viewport.
+        // Future portrait episodes keep that exact dp height without
+        // jumping at different source resolutions or aspect ratios.
+        // Landscape streams always bypass the portrait height.
+        LaunchedEffect(portraitVideo, desiredHeight, maxHeight,
+            fixedPortraitHeightDp) {
+            if (fixedPortraitHeightDp <= 0f && portraitVideo &&
+                desiredHeight > 0.dp && desiredHeight <= maxHeight - 40.dp) {
+                fixedPortraitHeightDp = desiredHeight.value
+                playerLayoutPrefs.edit()
+                    .putFloat("portrait_height_dp_v1", desiredHeight.value).apply()
+            }
         }
+        val measuredPortraitHeight = fixedPortraitHeightDp.takeIf {
+            portraitVideo && it > 0f && it.dp <= maxHeight - 40.dp
+        }?.dp
         Column(Modifier.fillMaxSize().background(Color(0xFF232325))) {
         Box((if (measuredPortraitHeight != null)
                 Modifier.fillMaxWidth().height(measuredPortraitHeight)
