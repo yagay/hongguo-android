@@ -226,9 +226,9 @@ class BackgroundPlaybackService : MediaSessionService() {
         skipIntroMs = introMs
         retryAutomatically = autoRetry
         val metadata = MediaMetadata.Builder()
-            .setTitle("$drama · 第${episode}集")
-            .setDisplayTitle("$drama · 第${episode}集")
-            .setArtist("第${episode}集 / 共${totalEpisodes}集")
+            .setTitle(BackgroundNavigationPolicy.title(drama, episode))
+            .setDisplayTitle(BackgroundNavigationPolicy.title(drama, episode))
+            .setArtist(BackgroundNavigationPolicy.episodeLabel(episode, totalEpisodes))
             .setAlbumTitle(drama)
             .apply {
                 if (cover.startsWith("https://")) setArtworkUri(Uri.parse(cover))
