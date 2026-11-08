@@ -8,11 +8,15 @@ import androidx.compose.foundation.layout.FlowRow
 import androidx.compose.foundation.layout.Row
 import androidx.compose.foundation.layout.fillMaxWidth
 import androidx.compose.foundation.layout.heightIn
+import androidx.compose.foundation.layout.height
 import androidx.compose.foundation.layout.padding
 import androidx.compose.foundation.layout.size
 import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.material.icons.Icons
 import androidx.compose.material.icons.outlined.ChevronRight
+import androidx.compose.material.icons.outlined.Home
+import androidx.compose.material.icons.outlined.Theaters
+import androidx.compose.material.icons.outlined.PersonOutline
 import androidx.compose.material3.FilterChip
 import androidx.compose.material3.FilterChipDefaults
 import androidx.compose.material3.Button
@@ -239,4 +243,50 @@ internal fun HongguoIconAction(
         modifier = modifier.size(HongguoUi.iconButtonSize),
         content = content,
     )
+}
+
+/**
+ * One reusable icon-only primary navigation surface. The shell owns selected
+ * route and all navigation actions, while this component owns only layout.
+ */
+@Composable
+internal fun HongguoPrimaryNavigation(
+    selectedTab: String,
+    playingVideo: Boolean,
+    onSelect: (String) -> Unit,
+) {
+    val height = if (playingVideo) 40.dp else 50.dp
+    val backgroundColor = if (playingVideo) Color(0xFF232325)
+        else HongguoColors.surface
+    val activeColor = if (playingVideo) Color.White
+        else HongguoColors.accent
+    val inactiveColor = if (playingVideo) Color(0xFFB7B7BC)
+        else HongguoColors.muted
+    Surface(color = backgroundColor, shape = RoundedCornerShape(0.dp)) {
+        Row(
+            modifier = Modifier.fillMaxWidth().height(height),
+            horizontalArrangement = Arrangement.SpaceEvenly,
+            verticalAlignment = Alignment.CenterVertically,
+        ) {
+            listOf(
+                Triple("home", "首页", Icons.Outlined.Home),
+                Triple("theater", "剧场", Icons.Outlined.Theaters),
+                Triple("mine", "我的", Icons.Outlined.PersonOutline),
+            ).forEach { (tab, label, icon) ->
+                Box(
+                    modifier = Modifier.weight(1f).height(height)
+                        .clickable { onSelect(tab) }
+                        .testTag("primary_tab_" + tab),
+                    contentAlignment = Alignment.Center,
+                ) {
+                    Icon(
+                        imageVector = icon,
+                        contentDescription = label,
+                        modifier = Modifier.size(if (playingVideo) 27.dp else 29.dp),
+                        tint = if (selectedTab == tab) activeColor else inactiveColor,
+                    )
+                }
+            }
+        }
+    }
 }
