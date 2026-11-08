@@ -30,6 +30,7 @@ import androidx.compose.material3.NavigationBarItem
 import androidx.compose.material3.Icon
 import androidx.compose.material.icons.Icons
 import androidx.compose.material.icons.outlined.Home
+import androidx.compose.material.icons.outlined.Theaters
 import androidx.compose.material.icons.outlined.PersonOutline
 import androidx.compose.material3.Text
 import androidx.compose.material3.TextButton
@@ -184,12 +185,12 @@ private fun HongguoApp(model: DramaViewModel = viewModel()) {
         lifecycleOwner.lifecycle.addObserver(observer)
         onDispose { lifecycleOwner.lifecycle.removeObserver(observer) }
     }
-    var mineOpen by rememberSaveable { mutableStateOf(false) }
+    var primaryTab by rememberSaveable { mutableStateOf("home") }
     var searchLandingOpen by rememberSaveable { mutableStateOf(false) }
     var confirmExitFeed by rememberSaveable { mutableStateOf(false) }
-    // A detail tag may originate from the My tab; search results must be visible.
-    LaunchedEffect(state.detail, state.section) {
-        if (state.detail == null && state.section == Section.SEARCH) mineOpen = false
+    // A tag search opened from any primary tab belongs to the theater.
+    LaunchedEffect(state.section) {
+        if (state.section == Section.SEARCH) primaryTab = "theater"
     }
     val activeRoute = state.navigation.destination
     val detailImmersive = activeRoute == PlaybackDestination.DETAILS &&
@@ -205,8 +206,30 @@ private fun HongguoApp(model: DramaViewModel = viewModel()) {
     // second PlayerView to the same ExoPlayer (which would steal its Surface).
     // Explicit catalog details keep the existing mini player.
     val showMini = MiniPlayerPresentation.show(state) && !playerDetailsOverlay
-    val showCatalogBottomNav =
-        MiniPlayerPresentation.catalogNavigationVisible(state, searchLandingOpen)
+    val showPrimaryNavigation =
+        state.modal == Modal.NONE && !searchLandingOpen &&
+            !playerDetailsOverlay && activeRoute != PlaybackDestination.DETAILS &&
+            activeRoute != PlaybackDestination.SERIES
+
+    fun selectPrimaryTab(tab: String) {
+        if (tab == primaryTab) return
+        primaryTab = tab
+        if (tab == "home") {
+            if (state.detail != null &&
+                state.navigation.origin == PlaybackOrigin.SWIPE_FEED) {
+                model.restorePlayer()
+            } else {
+                model.startFeed()
+            }
+        } else {
+            if (activeRoute in setOf(PlaybackDestination.FEED,
+                    PlaybackDestination.SERIES) && state.detail != null) {
+                model.minimizePlayer()
+            }
+            if (tab == "theater" && state.section == Section.RECOMMEND)
+                model.section(Section.BROWSE)
+        }
+    }
     val systemDark = isSystemInDarkTheme()
     val darkTheme = when (state.themeMode) {
         "dark" -> true
@@ -290,7 +313,7 @@ private fun HongguoApp(model: DramaViewModel = viewModel()) {
                             activeRoute != PlaybackDestination.CATALOG ||
                             (activeRoute == PlaybackDestination.CATALOG &&
                                 state.navigation.origin == PlaybackOrigin.SWIPE_FEED) ||
-                            mineOpen || searchLandingOpen,
+                            primaryTab != "home" || searchLandingOpen,
                     ) {
                         when {
                             state.modal == Modal.ACCOUNT -> model.closeAccount()
@@ -302,7 +325,7 @@ private fun HongguoApp(model: DramaViewModel = viewModel()) {
                             activeRoute == PlaybackDestination.SERIES ->
                                 model.backFromPlayer()
                             searchLandingOpen -> searchLandingOpen = false
-                            mineOpen -> mineOpen = false
+                            primaryTab != "home" -> selectPrimaryTab("home")
                             activeRoute == PlaybackDestination.CATALOG &&
                                 state.navigation.origin == PlaybackOrigin.SWIPE_FEED -> {
                                 if (state.detail != null) model.restorePlayer()
@@ -318,19 +341,20 @@ private fun HongguoApp(model: DramaViewModel = viewModel()) {
                         state.detail != null && !playerDetailsOverlay ->
                         // Details opened from the old catalog slide over the
                         // catalog, preserving its already-visible mini player.
-                        if (mineOpen) MyScreen(state, model, onBack = { mineOpen = false })
-                        else CatalogScreen(state, model, onMine = { mineOpen = true },
+                        if (primaryTab == "mine") MyScreen(state, model, onBack = { selectPrimaryTab("home") })
+                        else CatalogScreen(state, model, onMine = { selectPrimaryTab("mine") },
                             onSearchOpen = { searchLandingOpen = true })
                     (activeRoute in setOf(PlaybackDestination.FEED,
                         PlaybackDestination.SERIES) || playerDetailsOverlay) &&
-                        state.detail != null ->
+                        state.detail != null && (primaryTab == "home" ||
+                            activeRoute == PlaybackDestination.SERIES || playerDetailsOverlay) ->
                         // UI mode changes do not destroy the active Media3 item.
                         key(state.detail?.drama?.id) {
                             NativePlayer(state, model,
                                 onExitFeed = { confirmExitFeed = true })
                         }
                     activeRoute in setOf(PlaybackDestination.FEED,
-                        PlaybackDestination.SERIES) -> {
+                        PlaybackDestination.SERIES) && primaryTab == "home" -> {
                         val upcoming = if (state.feedMode)
                             state.feedItems.getOrNull(state.feedIndex) else null
                         ReelLoadingScreen(
@@ -361,11 +385,13 @@ private fun HongguoApp(model: DramaViewModel = viewModel()) {
                     searchLandingOpen -> SearchLandingScreen(
                         state, model,
                         onClose = { searchLandingOpen = false },
-                        onResults = { searchLandingOpen = false; mineOpen = false },
+                        onResults = { searchLandingOpen = false; primaryTab = "theater" },
                     )
                     else -> Box(Modifier.fillMaxSize()) {
-                        if (mineOpen) MyScreen(state, model, onBack = { mineOpen = false })
-                        else CatalogScreen(state, model, onMine = { mineOpen = true },
+                        if (primaryTab == "mine") MyScreen(state, model,
+                            onBack = { selectPrimaryTab("home") })
+                        else CatalogScreen(state, model,
+                            onMine = { selectPrimaryTab("mine") },
                             onSearchOpen = { searchLandingOpen = true })
                     }
                     }
@@ -389,7 +415,7 @@ private fun HongguoApp(model: DramaViewModel = viewModel()) {
                 // it into or out of Scaffold.bottomBar used to dispose its
                 // Android Surface, briefly blacking out or hiding the video.
                 if (showMini) InAppMiniPlayer(state, model)
-                if (showCatalogBottomNav) {
+                if (showPrimaryNavigation) {
                     Surface(
                         modifier = if (state.navigationStyle == "glass")
                             Modifier.padding(horizontal = 14.dp, vertical = 7.dp)
@@ -401,14 +427,20 @@ private fun HongguoApp(model: DramaViewModel = viewModel()) {
                     ) {
                         NavigationBar(containerColor = Color.Transparent) {
                             NavigationBarItem(
-                                selected = !mineOpen,
-                                onClick = { mineOpen = false },
+                                selected = primaryTab == "home",
+                                onClick = { selectPrimaryTab("home") },
                                 icon = { Icon(Icons.Outlined.Home, contentDescription = null) },
                                 label = { Text("首页") },
                             )
                             NavigationBarItem(
-                                selected = mineOpen,
-                                onClick = { mineOpen = true },
+                                selected = primaryTab == "theater",
+                                onClick = { selectPrimaryTab("theater") },
+                                icon = { Icon(Icons.Outlined.Theaters, contentDescription = null) },
+                                label = { Text("剧场") },
+                            )
+                            NavigationBarItem(
+                                selected = primaryTab == "mine",
+                                onClick = { selectPrimaryTab("mine") },
                                 icon = { Icon(Icons.Outlined.PersonOutline,
                                     contentDescription = null) },
                                 label = { Text("我的") },
