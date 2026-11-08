@@ -684,7 +684,9 @@ internal fun HongguoPlayerEpisodeEntry(
             fontSize = HongguoUi.playbackDockTitleSize,
             fontWeight = FontWeight.Medium,
             color = Color.White,
+            modifier = Modifier.weight(1f),
             maxLines = 1,
+            overflow = androidx.compose.ui.text.style.TextOverflow.Ellipsis,
         )
         Icon(
             Icons.Outlined.ChevronRight,
