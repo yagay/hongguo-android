@@ -276,25 +276,8 @@ internal fun NativePlayer(state: AppState, model: DramaViewModel) {
             showHeart = false
         }
     }
-    // Periodic exact resume checkpoints, without writing while the media is
-    // still preparing; changes in episode invalidate the old writer.
-    LaunchedEffect(detail.drama.id, selected?.vid, state.playbackUrl) {
-        val vid = selected?.vid
-        if (vid != null && state.playbackUrl != null) {
-            while (isActive) {
-                delay(4_000)
-                model.savePlaybackPosition(vid, playback.positionMs, playback.durationMs)
-            }
-        }
-    }
-    LaunchedEffect(detail.drama.id) {
-        while (isActive) {
-            delay(1_000)
-            if (model.shouldPauseForTimer()) {
-                playback.player?.pause()
-            }
-        }
-    }
+    // MediaSessionService now owns checkpoints and the sleep timer, including
+    // when the Activity has stopped. Avoid two competing periodic writers.
     LaunchedEffect(state.danmakuEnabled, state.episodeIndex, playback.durationMs) {
         if (state.danmakuEnabled) {
             while (isActive) {
