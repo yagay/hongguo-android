@@ -40,3 +40,10 @@ Missing official write protocols are not silently simulated: local 收藏 genuin
 - **猜你喜欢**: from `openhongguo.seriesRecommend(id)`, a distinct plan-feed request with `from=select_panel_recommend`, `scene=10`. Its preferred cell is `show_type = 160`; the SDK documents that anonymous users may instead receive a generic changing `show_type = 401` “更多好剧” cell. Label it a recommendation, never claim that generic anonymous results are personalized.
 - Each flow has its own loading state, error, and list. On navigation, cancel outstanding requests, discard stale results, and prevent exact duplicate IDs across recommendation and related-work sections where possible.
 - This distinction is based on inspected source implementations, not a live authenticated capture of every version of the official mobile application.
+
+## Detail label navigation (2026-11-08)
+
+- Every rendered genre/category chip is tappable. The detail screen forwards its exact visible label to `DramaViewModel.openTagResults`, which closes the current player session and opens the existing catalogue search with that query. This avoids inventing a category ID or a new, unverified endpoint.
+- Actor name and role labels use the same search navigation as a safe fallback; they are not presented as authenticated actor-profile API links. Verified actor-ID-based navigation can replace this after a stable profile destination is available.
+- All available detail labels are shown in the horizontal row (subject to the bounded twelve-tag model), instead of silently displaying only the first six. Search results depend on what the upstream source indexes and may be empty.
+- A search initiated from a detail opened through My must switch the shell to catalog results instead of remaining behind the My screen.
