@@ -115,6 +115,8 @@ data class AppState(
     val defaultPlaybackSpeed: Float = 1f,
     /** Full-screen playback-only display brightness: -1 follows Android system. */
     val videoBrightnessPercent: Int = -1,
+    /** 0 dB is unmodified; optional loudness enhancement targets only app audio. */
+    val playbackAudioBoostDb: Int = 0,
     val sleepTimerLabel: String = "关闭",
     val playbackError: String? = null,
     val library: List<Watched> = emptyList(),
