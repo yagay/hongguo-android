@@ -143,7 +143,7 @@ internal fun AccountScreen(model: DramaViewModel) {
                 }
             }
             if (account.profile == null && account.savedSessionPresent) item {
-                Surface(color = HongguoColors.surface, shape = RoundedCornerShape(16.dp)) {
+                Surface(color = HongguoColors.surface, shape = RoundedCornerShape(HongguoUi.cardRadius)) {
                     Column(Modifier.fillMaxWidth().padding(16.dp),
                         verticalArrangement = Arrangement.spacedBy(10.dp)) {
                         Text("已保存的账号等待验证", fontWeight = FontWeight.SemiBold,
@@ -179,18 +179,22 @@ internal fun AccountScreen(model: DramaViewModel) {
                         Row(Modifier.fillMaxWidth().padding(6.dp),
                             horizontalArrangement = Arrangement.spacedBy(8.dp)) {
                             listOf("手机验证码", "官网登录", "扫码登录").forEachIndexed { index, label ->
-                                FilterChip(selected = loginMethod == index, onClick = {
-                                    if (loginMethod != index) {
-                                        model.account.cancelActiveLogin()
-                                        loginMethod = index
-                                    }
-                                }, label = { Text(label) },
+                                HongguoChoiceChip(
+                                    label = label,
+                                    selected = loginMethod == index,
+                                    onClick = {
+                                        if (loginMethod != index) {
+                                            model.account.cancelActiveLogin()
+                                            loginMethod = index
+                                        }
+                                    },
                                     modifier = Modifier.weight(1f).testTag(
                                         when (index) {
                                             0 -> "account_method_sms"
                                             1 -> "account_method_web"
                                             else -> "account_method_qr"
-                                        }))
+                                        }),
+                                )
                             }
                         }
                     }
@@ -319,7 +323,7 @@ internal fun AccountScreen(model: DramaViewModel) {
                     }
                 }
                 item {
-                    Surface(color = HongguoColors.surface, shape = RoundedCornerShape(16.dp)) {
+                    Surface(color = HongguoColors.surface, shape = RoundedCornerShape(HongguoUi.cardRadius)) {
                         Column(Modifier.fillMaxWidth().padding(16.dp),
                             verticalArrangement = Arrangement.spacedBy(10.dp)) {
                             TextButton(onClick = {
@@ -433,7 +437,7 @@ internal fun AccountScreen(model: DramaViewModel) {
                 // counts. No placeholder dashes are shown before data exists.
                 FeatureAvailability.socialCounts()?.let { counts ->
                     item {
-                        Surface(shape = RoundedCornerShape(16.dp),
+                        Surface(shape = RoundedCornerShape(HongguoUi.cardRadius),
                             color = HongguoColors.surface,
                             modifier = Modifier.fillMaxWidth().testTag("account_stats")) {
                             Row(Modifier.fillMaxWidth().padding(vertical = 15.dp)) {
