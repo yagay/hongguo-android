@@ -143,6 +143,13 @@ internal fun NativePlayer(state: AppState, model: DramaViewModel) {
         initialPage = activePage,
         pageCount = { if (state.feedMode) feedPages else detail.episodes.size },
     )
+    val notificationNavigation = BackgroundNavigationPolicy.availability(
+        feedMode = state.feedMode,
+        selectedIndex = state.episodeIndex,
+        episodeCount = detail.episodes.size,
+        previousFeedExists = previousFeedDrama != null,
+        nextFeedAvailableOrPending = nextFeedPage,
+    )
     val playback = remember(state.episodeIndex) { ReelPlaybackControls() }
     var speed by remember(detail.drama.id) { mutableFloatStateOf(state.defaultPlaybackSpeed) }
     // Full-bleed video as in the reference screenshot; users can switch to
@@ -322,10 +329,8 @@ internal fun NativePlayer(state: AppState, model: DramaViewModel) {
                             episodeNumber = episode.index,
                             episodeTotal = detail.episodes.size,
                             cover = model.cover(detail.drama.cover),
-                            canPrevious = if (state.feedMode) previousFeedDrama != null
-                                else state.episodeIndex > 0,
-                            canNext = if (state.feedMode) nextFeedPage
-                                else state.episodeIndex < detail.episodes.lastIndex,
+                            canPrevious = notificationNavigation.previous,
+                            canNext = notificationNavigation.next,
                             onNavigate = { direction ->
                                 if (state.feedMode) model.navigateFeed(direction)
                                 else model.playIfDifferent(state.episodeIndex + direction)
