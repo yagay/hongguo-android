@@ -101,10 +101,14 @@ internal fun CatalogScreen(
         contentWindowInsets = WindowInsets(0, 0, 0, 0),
         containerColor = HongguoColors.background,
         topBar = { CatalogHeader(state, model, onMine,
-            onSearchOpen = onSearchOpen) },
+            onSearchOpen = onSearchOpen,
+            onFilters = {
+                if (state.section != Section.BROWSE) model.section(Section.BROWSE)
+                filtersOpen = true
+            }) },
     ) { insets ->
         LazyVerticalGrid(
-            columns = GridCells.Adaptive(minSize = 100.dp),
+            columns = GridCells.Fixed(2),
             state = grid,
             modifier = Modifier.fillMaxSize().padding(insets).testTag("web_catalog"),
             contentPadding = PaddingValues(start = 12.dp, top = 14.dp, end = 12.dp, bottom = 28.dp),
@@ -239,61 +243,69 @@ internal fun CatalogScreen(
 
 @Composable
 private fun CatalogHeader(state: AppState, model: DramaViewModel,
-    onMine: () -> Unit, onSearchOpen: () -> Unit) {
-    var moreOpen by remember { mutableStateOf(false) }
-    Column(Modifier.fillMaxWidth().background(HongguoColors.surface)) {
-        Row(Modifier.fillMaxWidth().height(54.dp).padding(start = 15.dp, end = 5.dp),
-            verticalAlignment = Alignment.CenterVertically) {
-            Column(Modifier.weight(1f)) {
-                Text("红果短剧", fontSize = 20.sp, fontWeight = FontWeight.ExtraBold,
-                    color = HongguoColors.accent)
-                Text("发现好故事", fontSize = 10.sp, color = HongguoColors.muted)
-            }
-            HeaderIcon(Icons.Outlined.Search, "搜索") { onSearchOpen() }
-            HeaderIcon(Icons.Outlined.PersonOutline, "我的") { onMine() }
-            HeaderIcon(Icons.Outlined.Settings, "设置") { model.show(Modal.SETTINGS) }
-            Box {
-                HeaderIcon(Icons.Outlined.MoreVert, "更多操作") { moreOpen = true }
-                DropdownMenu(expanded = moreOpen,
-                    onDismissRequest = { moreOpen = false }) {
-                    DropdownMenuItem(text = { Text("播放历史") }, onClick = {
-                        moreOpen = false
-                        model.show(Modal.HISTORY)
-                    })
-                    DropdownMenuItem(text = { Text("收藏") }, onClick = {
-                        moreOpen = false
-                        model.show(Modal.FAVORITES)
-                    })
-                    DropdownMenuItem(text = { Text("下载") }, onClick = {
-                        moreOpen = false
-                        model.updateDownloads()
-                        model.show(Modal.DOWNLOAD)
-                    })
-                    DropdownMenuItem(text = { Text("分享解析") }, onClick = {
-                        moreOpen = false
-                        model.show(Modal.SHARE)
-                    })
-                }
+    onMine: () -> Unit, onSearchOpen: () -> Unit,
+    onFilters: () -> Unit) {
+    Column(Modifier.fillMaxWidth().background(HongguoColors.surface),
+        verticalArrangement = Arrangement.spacedBy(8.dp)) {
+        // Search is a single entrypoint. Category selection remains within
+        // the theater; it never replaces or restarts the swipe-feed player.
+        Surface(
+            modifier = Modifier.fillMaxWidth().padding(horizontal = 12.dp, vertical = 5.dp)
+                .clickable(onClick = onSearchOpen).testTag("theater_search"),
+            shape = RoundedCornerShape(12.dp),
+            color = HongguoColors.background,
+        ) {
+            Row(Modifier.fillMaxWidth().padding(horizontal = 14.dp, vertical = 12.dp),
+                verticalAlignment = Alignment.CenterVertically,
+                horizontalArrangement = Arrangement.spacedBy(9.dp)) {
+                Icon(Icons.Outlined.Search, contentDescription = null,
+                    tint = HongguoColors.muted, modifier = Modifier.size(21.dp))
+                Text("搜索短剧、演员或关键词", color = HongguoColors.muted,
+                    fontSize = 14.sp, modifier = Modifier.weight(1f))
             }
         }
-        Row(Modifier.fillMaxWidth().height(44.dp),
-            horizontalArrangement = Arrangement.SpaceEvenly) {
-            Section.entries.filter { it != Section.SEARCH }.forEach { item ->
-                val selected = state.section == item
-                Column(
-                    Modifier.weight(1f).clickable { model.section(item) }
-                        .testTag("tab_" + item.name.lowercase()),
-                    horizontalAlignment = Alignment.CenterHorizontally,
-                    verticalArrangement = Arrangement.Bottom,
+        Row(Modifier.fillMaxWidth().horizontalScroll(rememberScrollState())
+                .padding(horizontal = 12.dp),
+            horizontalArrangement = Arrangement.spacedBy(19.dp),
+            verticalAlignment = Alignment.CenterVertically) {
+            listOf(
+                Triple("找剧", Section.BROWSE, "short_play"),
+                Triple("真人剧", Section.BROWSE, "short_play"),
+                Triple("漫剧", Section.BROWSE, "comic_series"),
+                Triple("AI剧", Section.BROWSE, "ai_series"),
+                Triple("排行榜", Section.RANK, ""),
+                Triple("上新", Section.LATEST, ""),
+            ).forEachIndexed { index, (title, section, genre) ->
+                val selected = state.section == section &&
+                    (section != Section.BROWSE || state.genre == genre) &&
+                    (index != 0 || state.section == Section.BROWSE)
+                Text(title,
+                    color = if (selected) HongguoColors.ink else HongguoColors.muted,
+                    fontSize = 16.sp,
+                    fontWeight = if (selected) FontWeight.Bold else FontWeight.Normal,
+                    modifier = Modifier.clickable {
+                        if (state.section != section) model.section(section)
+                        if (genre.isNotBlank() && state.genre != genre) model.genre(genre)
+                    }.padding(vertical = 6.dp).testTag("theater_category_$index"))
+            }
+        }
+        Row(Modifier.fillMaxWidth().padding(horizontal = 12.dp),
+            horizontalArrangement = Arrangement.spacedBy(8.dp)) {
+            listOf("筛选", "排行榜", "新剧").forEachIndexed { index, title ->
+                Surface(
+                    modifier = Modifier.weight(1f).clickable {
+                        when (index) {
+                            0 -> onFilters()
+                            1 -> model.section(Section.RANK)
+                            else -> model.section(Section.LATEST)
+                        }
+                    }.testTag("theater_quick_$index"),
+                    shape = RoundedCornerShape(12.dp),
+                    color = HongguoColors.background,
                 ) {
-                    Spacer(Modifier.weight(1f))
-                    Text(item.title, fontSize = 15.sp,
-                        fontWeight = if (selected) FontWeight.Bold else FontWeight.Medium,
-                        color = if (selected) HongguoColors.accent else HongguoColors.ink)
-                    Spacer(Modifier.height(8.dp))
-                    Box(Modifier.width(28.dp).height(3.dp)
-                        .clip(RoundedCornerShape(3.dp))
-                        .background(if (selected) HongguoColors.accent else Color.Transparent))
+                    Text(title, modifier = Modifier.padding(vertical = 11.dp),
+                        color = HongguoColors.ink, fontSize = 14.sp,
+                        fontWeight = FontWeight.Medium, textAlign = androidx.compose.ui.text.style.TextAlign.Center)
                 }
             }
         }
