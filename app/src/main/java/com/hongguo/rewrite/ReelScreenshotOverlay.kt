@@ -127,13 +127,16 @@ internal fun ReelScreenshotOverlay(
             // live official reel feeds. Other tabs open real existing collections.
             Row(
                 Modifier.fillMaxWidth()
-                    .padding(start = 5.dp, end = 5.dp, top = 5.dp),
+                    .height(52.dp)
+                    .padding(horizontal = 8.dp, vertical = 4.dp),
                 verticalAlignment = Alignment.CenterVertically,
             ) {
+                // Equal-sized outer slots keep the category tabs visually
+                // centred even when optional feed categories appear.
                 IconButton(onClick = onOpenAccountDrawer,
-                    modifier = Modifier.size(36.dp).testTag("reel_menu")) {
+                    modifier = Modifier.size(40.dp).testTag("reel_menu")) {
                     Icon(Icons.Outlined.Menu, "打开账号与隐私侧边栏", tint = white,
-                        modifier = Modifier.size(25.dp))
+                        modifier = Modifier.size(24.dp))
                 }
                 // Future verified providers can register a real following
                 // feed action. Compose recomposes and exposes the tab without
@@ -163,9 +166,9 @@ internal fun ReelScreenshotOverlay(
                     }
                 }
                 IconButton(onClick = onSearch,
-                    modifier = Modifier.size(36.dp).testTag("reel_search")) {
+                    modifier = Modifier.size(40.dp).testTag("reel_search")) {
                     Icon(Icons.Outlined.Search, "搜索短剧", tint = white,
-                        modifier = Modifier.size(27.dp))
+                        modifier = Modifier.size(24.dp))
                 }
             }
         } else {
