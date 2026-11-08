@@ -1500,6 +1500,7 @@ class DramaViewModel(application: Application) : AndroidViewModel(application) {
 
     fun open(drama: Drama, resumeEp: Int? = null, feed: Boolean = false,
         showDetails: Boolean = false) {
+        BackgroundPlaybackService.active?.pauseForTransition()
         sdkDetailGeneration++
         sdkDetailJob?.cancel()
         ++relatedGeneration
@@ -1570,6 +1571,7 @@ class DramaViewModel(application: Application) : AndroidViewModel(application) {
     fun play(index: Int) {
         val detail = state.value.detail ?: return
         if (index !in detail.episodes.indices) return
+        BackgroundPlaybackService.active?.pauseForTransition()
         mutable.update { it.copy(detailPageVisible = false) }
         if (state.value.offlinePlaybackUri != null) {
             mutable.update { it.copy(episodeIndex = index,
@@ -1771,6 +1773,7 @@ class DramaViewModel(application: Application) : AndroidViewModel(application) {
     fun showDramaDetails() {
         val s = state.value
         if (s.detail == null || s.detailPageVisible) return
+        BackgroundPlaybackService.stopActive()
         loadSdkDetails(s.detail.drama.id)
         loadGuesses(s.detail.drama.id)
         ++detailId
@@ -1796,6 +1799,7 @@ class DramaViewModel(application: Application) : AndroidViewModel(application) {
     fun backFromPlayer() = closePlayer()
 
     fun closePlayer() {
+        BackgroundPlaybackService.stopActive()
         sdkDetailGeneration++
         sdkDetailJob?.cancel()
         homeFeedExcludedIds = emptySet()
