@@ -14,7 +14,6 @@ import com.hongguotv.core.Series
 import com.hongguotv.core.SleepTimer
 import java.io.File
 import java.io.IOException
-import java.io.EOFException
 import org.json.JSONArray
 import kotlinx.coroutines.delay
 import kotlinx.coroutines.ensureActive
@@ -35,7 +34,6 @@ import kotlinx.coroutines.flow.update
 import kotlinx.coroutines.launch
 import kotlinx.coroutines.withContext
 import kotlinx.coroutines.coroutineScope
-import kotlinx.coroutines.sync.Semaphore
 
 class DramaViewModel(application: Application) : AndroidViewModel(application) {
     private val library = LibraryStore(application)
@@ -576,14 +574,27 @@ class DramaViewModel(application: Application) : AndroidViewModel(application) {
     private var danmakuJob: Job? = null
     private var commentsGeneration = 0L
     private var danmakuGeneration = 0L
-    private val localDownloadJobs = mutableMapOf<String, Job>()
-    private data class LocalDownloadTarget(
-        val vid: String, val uri: Uri, val drama: Drama?, val episode: Episode?,
-    )
-    /** Retry destinations exist only while this process is alive. Never persist an expired URI. */
-    private val retryableDownloads = mutableMapOf<String, LocalDownloadTarget>()
-    /** Avoid overloading upstream decryption/network when batch saving episodes. */
-    private val localDownloadSlots = Semaphore(2)
+    // One worker coordinator owns per-download jobs and decrypted file streams.
+    private val localDownloader by lazy {
+        LocalDownloadManager(
+            resolver = getApplication<Application>().contentResolver,
+            scope = viewModelScope,
+            source = nativeSource,
+            diagnostics = diagnostics,
+            onTask = { task ->
+                mutable.update { current ->
+                    current.copy(downloadTasks = (
+                        listOf(task) + current.downloadTasks.filterNot { it.id == task.id }
+                    ).take(40))
+                }
+            },
+            onSaved = { entry ->
+                saveOfflineEpisodes(listOf(entry) + state.value.offlineEpisodes.filterNot {
+                    it.documentUri == entry.documentUri
+                })
+            },
+        )
+    }
     private var requestId = 0L
     private var detailId = 0L
     private var pendingFeedAdvance = false
@@ -2794,123 +2805,24 @@ class DramaViewModel(application: Application) : AndroidViewModel(application) {
         }
     }
 
-    /** Export a single decrypted MP4 to the user-chosen SAF document.
-     * Foreground-process task: not resumable after process death.
-     */
+    /** Foreground SAF export; the manager owns all jobs and stream handles. */
     fun downloadNative(vid: String, uri: Uri, previousTaskId: String? = null) {
-        if (!vid.matches(Regex("[0-9]{1,30}"))) return
-        val existing = previousTaskId?.let { retryableDownloads[it] }
-        if (previousTaskId != null && (existing == null || existing.vid != vid ||
-            existing.uri != uri)) return
-        val currentDetail = state.value.detail
-        val savedDrama = existing?.drama ?: currentDetail?.drama
-        val savedEpisode = existing?.episode ?: currentDetail?.episodes?.firstOrNull { it.vid == vid }
-        runCatching {
-            getApplication<Application>().contentResolver.takePersistableUriPermission(
-                uri, Intent.FLAG_GRANT_READ_URI_PERMISSION)
-        }
-        val taskId = previousTaskId ?: ("local-" + java.util.UUID.randomUUID().toString())
-        synchronized(retryableDownloads) {
-            retryableDownloads[taskId] = LocalDownloadTarget(vid, uri, savedDrama, savedEpisode)
-        }
-        mutable.update { s ->
-            s.copy(downloadTasks = (
-                listOf(DownloadTask(taskId, "等待下载", 0, 1, emptyList())) +
-                    s.downloadTasks.filterNot { it.id == taskId }
-            ).take(40), modal = Modal.DOWNLOAD)
-        }
-        val job = viewModelScope.launch(Dispatchers.IO) {
-            var acquired = false
-            var video: RemoteVideo? = null
-            val started = System.nanoTime()
-            diagnostics.record("DOWNLOAD", "START")
-            try {
-                localDownloadSlots.acquire()
-                acquired = true
-                video = nativeSource.openVideo(vid)
-                val total = video.total
-                if (total <= 0) throw IOException("下载资源长度无效")
-                val output = getApplication<Application>()
-                    .contentResolver.openOutputStream(uri, "wt")
-                    ?: throw IOException("无法打开目标文件")
-                output.use { stream ->
-                    var offset = 0L
-                    var shownPercent = -1
-                    val buffer = ByteArray(32 * 1024)
-                    while (offset < total) {
-                        currentCoroutineContext().ensureActive()
-                        val count = minOf(512 * 1024L, total - offset).toInt()
-                        video.openRead(offset, count).use { input ->
-                            var copied = 0
-                            while (copied < count) {
-                                currentCoroutineContext().ensureActive()
-                                val n = input.read(buffer, 0, minOf(buffer.size, count - copied))
-                                if (n <= 0) throw EOFException("下载片段读取中断")
-                                stream.write(buffer, 0, n)
-                                copied += n
-                            }
-                        }
-                        offset += count
-                        val percent = (offset * 100 / total).toInt()
-                        if (percent != shownPercent) {
-                            shownPercent = percent
-                            val label = "下载中 " + percent + "%"
-                            mutable.update { s -> s.copy(downloadTasks = s.downloadTasks.map {
-                                if (it.id == taskId) it.copy(status = label) else it
-                            }) }
-                        }
-                    }
-                    stream.flush()
-                }
-                diagnostics.record("DOWNLOAD", "COMPLETE", elapsed(started))
-                synchronized(retryableDownloads) { retryableDownloads.remove(taskId) }
-                if (savedDrama != null && savedEpisode != null) {
-                    val entry = OfflineEpisode(savedDrama.id, savedDrama.title, savedDrama.cover,
-                        savedEpisode.index, vid, uri.toString(), System.currentTimeMillis())
-                    saveOfflineEpisodes(listOf(entry) + state.value.offlineEpisodes.filterNot {
-                        it.documentUri == uri.toString()
-                    })
-                }
-                mutable.update { s -> s.copy(downloadTasks = s.downloadTasks.map {
-                    if (it.id == taskId) it.copy(status = "已保存到所选文件", done = 1) else it
-                }) }
-            } catch (e: CancellationException) {
-                diagnostics.record("DOWNLOAD", "CANCELLED")
-                mutable.update { s -> s.copy(downloadTasks = s.downloadTasks.map {
-                    if (it.id == taskId) it.copy(status = "已取消 · 可重试（文件未完成）") else it
-                }) }
-                throw e
-            } catch (e: Exception) {
-                diagnostics.record("DOWNLOAD", "FAILED", elapsed(started))
-                val label = PlaybackProblem.describe("本机下载", e)
-                mutable.update { s -> s.copy(downloadTasks = s.downloadTasks.map {
-                    if (it.id == taskId) it.copy(status = label, failed = listOf(1)) else it
-                }) }
-            } finally {
-                video?.close()
-                if (acquired) localDownloadSlots.release()
-                val finishedJob = currentCoroutineContext()[Job]
-                synchronized(localDownloadJobs) {
-                    if (localDownloadJobs[taskId] === finishedJob) {
-                        localDownloadJobs.remove(taskId)
-                    }
-                }
-            }
-        }
-        synchronized(localDownloadJobs) { localDownloadJobs[taskId] = job }
+        val details = state.value.detail
+        val taskId = localDownloader.start(
+            vid = vid,
+            uri = uri,
+            drama = details?.drama,
+            episode = details?.episodes?.firstOrNull { it.vid == vid },
+            previousTaskId = previousTaskId,
+        )
+        if (taskId != null) mutable.update { it.copy(modal = Modal.DOWNLOAD) }
     }
 
-    fun cancelDownload(taskId: String) {
-        synchronized(localDownloadJobs) { localDownloadJobs[taskId] }?.cancel()
-    }
+    fun cancelDownload(taskId: String) = localDownloader.cancel(taskId)
 
     fun retryLocalDownload(taskId: String) {
-        val active = synchronized(localDownloadJobs) {
-            localDownloadJobs[taskId]?.isActive == true
-        }
-        if (active) return
-        val request = synchronized(retryableDownloads) { retryableDownloads[taskId] } ?: return
-        downloadNative(request.vid, request.uri, taskId)
+        if (localDownloader.retry(taskId))
+            mutable.update { it.copy(modal = Modal.DOWNLOAD) }
     }
 
     fun updateDownloads() {
