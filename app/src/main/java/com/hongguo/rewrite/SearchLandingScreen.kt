@@ -172,23 +172,22 @@ internal fun SearchLandingScreen(
                     .padding(horizontal = 14.dp),
                 horizontalArrangement = Arrangement.spacedBy(8.dp),
             ) {
-                listOf("推荐" to Section.RECOMMEND, "排行" to Section.RANK,
-                    "上新" to Section.LATEST, "筛选" to Section.BROWSE,
-                    "演员" to Section.SEARCH).forEach { (name, section) ->
+                listOf("全部" to Section.SEARCH, "推荐" to Section.RECOMMEND,
+                    "排行" to Section.RANK, "上新" to Section.LATEST,
+                    "分类" to Section.BROWSE, "演员" to Section.SEARCH).forEach { (name, section) ->
                     Surface(
                         onClick = {
                             if (name == "演员") showActors = true
-                            else model.searchBrowseSection(
-                                if (browse.section == section) null else section)
+                            else model.searchBrowseSection(section)
                         },
                         shape = RoundedCornerShape(12.dp),
-                        color = if (browse.section == section)
+                        color = if (browse.section == section && name != "演员")
                             (if (night) Color(0xFF4A3530) else Color(0xFFE9D4C5))
                             else SearchTile,
                     ) {
                         Text(name, Modifier.padding(horizontal = 13.dp, vertical = 11.dp),
                             color = SearchInk, fontSize = 14.sp,
-                            fontWeight = if (browse.section == section)
+                            fontWeight = if (browse.section == section && name != "演员")
                                 FontWeight.Bold else FontWeight.Normal)
                     }
                 }
@@ -203,6 +202,15 @@ internal fun SearchLandingScreen(
                             fontSize = 19.sp, fontWeight = FontWeight.Bold,
                             modifier = Modifier.weight(1f))
                         TextButton(onClick = model::refreshSearchBrowse) { Text("刷新") }
+                    }
+                    if (browse.query.isNotBlank() && browse.section != Section.SEARCH) {
+                        Text("按关键词逐页筛选当前范围；继续加载可检查后续作品",
+                            color = SearchMuted, fontSize = 12.sp)
+                    }
+                    Row(Modifier.fillMaxWidth(), verticalAlignment = Alignment.CenterVertically) {
+                        Text(if (browse.query.isBlank()) "浏览当前分类"
+                             else "关键词：${browse.query}",
+                            color = SearchMuted, fontSize = 12.sp)
                     }
                     if (browse.section == Section.RANK) {
                         Row(Modifier.horizontalScroll(rememberScrollState()),
@@ -240,7 +248,8 @@ internal fun SearchLandingScreen(
                         CircularProgressIndicator(Modifier.size(26.dp))
                     browse.error?.let { Text(it, color = SearchMuted, fontSize = 13.sp) }
                     if (!browse.loading && browse.items.isEmpty() && browse.error == null)
-                        Text("这里暂时没有剧集", color = SearchMuted)
+                        Text(if (browse.hasMore) "当前页没有匹配作品，可加载更多"
+                             else "没有找到匹配作品", color = SearchMuted)
                 }
             }
             items(browse.items.chunked(3)) { dramas ->
