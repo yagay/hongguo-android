@@ -27,6 +27,7 @@ import androidx.compose.material.icons.outlined.Favorite
 import androidx.compose.material.icons.outlined.FavoriteBorder
 import androidx.compose.material.icons.outlined.KeyboardArrowRight
 import androidx.compose.material.icons.outlined.MoreVert
+import androidx.compose.material.icons.outlined.PictureInPictureAlt
 import androidx.compose.material.icons.outlined.Star
 import androidx.compose.material.icons.outlined.StarBorder
 import androidx.compose.material.icons.outlined.Subtitles
@@ -67,6 +68,7 @@ internal fun ReelScreenshotOverlay(
     detail: DramaDetail,
     episode: Episode?,
     onPlaybackSettings: () -> Unit,
+    onPictureInPicture: () -> Unit,
     onBack: () -> Unit,
     onDramaDetails: () -> Unit,
     onFavorite: () -> Unit,
@@ -105,6 +107,15 @@ internal fun ReelScreenshotOverlay(
                     tint = white, modifier = Modifier.size(24.dp))
             }
             Spacer(Modifier.weight(1f))
+            IconButton(
+                onClick = onPictureInPicture,
+                modifier = Modifier.size(44.dp)
+                    .background(Color.Black.copy(alpha = 0.25f), CircleShape)
+                    .testTag("reel_system_pip"),
+            ) {
+                Icon(Icons.Outlined.PictureInPictureAlt, "跨应用画中画",
+                    tint = white, modifier = Modifier.size(23.dp))
+            }
             IconButton(
                 onClick = onPlaybackSettings,
                 modifier = Modifier.size(44.dp)
