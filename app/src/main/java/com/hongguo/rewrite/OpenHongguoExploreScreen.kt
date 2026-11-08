@@ -272,7 +272,7 @@ internal fun OpenHongguoExploreScreen(
             }
         }
         if (actorId.isBlank() && tab in setOf("search", "discover",
-                "calendar", "category")) {
+                "calendar", "category", "activity")) {
             Row(Modifier.fillMaxWidth().padding(horizontal = 12.dp, vertical = 6.dp),
                 verticalAlignment = Alignment.CenterVertically,
                 horizontalArrangement = Arrangement.spacedBy(8.dp)) {
@@ -284,6 +284,7 @@ internal fun OpenHongguoExploreScreen(
                         "search" -> "搜索关键词"
                         "discover" -> "频道（空为推荐）"
                         "calendar" -> "日期 YYYYMMDD"
+                        "activity" -> "活动ID:榜单ID（留空使用 SDK 默认值）"
                         else -> "书籍分类 ID"
                     }) },
                 )
