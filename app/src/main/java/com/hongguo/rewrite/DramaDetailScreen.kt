@@ -63,30 +63,19 @@ import coil.compose.AsyncImage
 import java.util.Locale
 
 // Deliberately local to the detail page: the rest of the app keeps its selected theme.
-private val DetailBackground = Color(0xFF472613)
-private val DetailTop = Color(0xFF6A4939)
-private val DetailCard = Color(0xFF66432F)
-private val DetailCardLight = Color(0xFF765340)
-private val DetailText = Color(0xFFF9F3ED)
-private val DetailMuted = Color(0xFFC0A79A)
-private val DetailChip = Color(0xFF755544)
 
 @Composable
 internal fun DramaDetailScreen(state: AppState, model: DramaViewModel) {
-    val systemDark = isSystemInDarkTheme()
-    val night = when (state.themeMode) {
-        "dark" -> true
-        "system" -> systemDark
-        else -> false
-    }
-    // Warm immersive browns in night mode; warm paper colors for daytime.
-    val DetailBackground = if (night) Color(0xFF472613) else Color(0xFFFFF6EE)
-    val DetailTop = if (night) Color(0xFF6A4939) else Color(0xFFEED7C6)
-    val DetailCard = if (night) Color(0xFF66432F) else Color(0xFFF0E0D3)
-    val DetailCardLight = if (night) Color(0xFF765340) else Color(0xFFE4CEBB)
-    val DetailText = if (night) Color(0xFFF9F3ED) else Color(0xFF37251D)
-    val DetailMuted = if (night) Color(0xFFC0A79A) else Color(0xFF80675B)
-    val DetailChip = if (night) Color(0xFF755544) else Color(0xFFE8D6C6)
+    // Use the global theme across normal content, even on the detail route.
+    // The hero still has a subtle gradient, but is no longer an unrelated
+    // brown-only design system that clashes with Theater and My.
+    val DetailBackground = HongguoColors.background
+    val DetailTop = HongguoColors.accentSoft
+    val DetailCard = HongguoColors.surface
+    val DetailCardLight = HongguoColors.accentSoft
+    val DetailText = HongguoColors.ink
+    val DetailMuted = HongguoColors.muted
+    val DetailChip = HongguoColors.accentSoft
     val detail = state.detail ?: return
     val drama = detail.drama
     val context = LocalContext.current
@@ -119,7 +108,7 @@ internal fun DramaDetailScreen(state: AppState, model: DramaViewModel) {
         LazyColumn(
             Modifier.fillMaxWidth().weight(1f),
             contentPadding = PaddingValues(bottom = 14.dp),
-            verticalArrangement = Arrangement.spacedBy(19.dp),
+            verticalArrangement = Arrangement.spacedBy(HongguoUi.pageSectionGap),
         ) {
             item {
                 Column(
@@ -127,7 +116,7 @@ internal fun DramaDetailScreen(state: AppState, model: DramaViewModel) {
                         Brush.verticalGradient(listOf(DetailTop, DetailBackground)))
                 ) {
                     Row(
-                        Modifier.fillMaxWidth().height(62.dp)
+                        Modifier.fillMaxWidth().height(HongguoUi.pageTopBarHeight)
                             .padding(horizontal = 12.dp),
                         verticalAlignment = Alignment.CenterVertically,
                     ) {
@@ -250,7 +239,7 @@ internal fun DramaDetailScreen(state: AppState, model: DramaViewModel) {
                                 if (expanded) "收起" else "展开",
                                 modifier = Modifier.clickable { expanded = !expanded }
                                     .padding(bottom = 2.dp),
-                                color = Color(0xFF91B6DB), fontSize = 12.sp,
+                                color = HongguoColors.accent, fontSize = 12.sp,
                             )
                     }
                 }
@@ -558,7 +547,7 @@ internal fun DramaDetailScreen(state: AppState, model: DramaViewModel) {
         }
 
         Row(
-            Modifier.fillMaxWidth().background(if (night) Color(0xEF24140E) else Color(0xFFF2E5D9))
+            Modifier.fillMaxWidth().background(HongguoColors.surface)
                 .padding(horizontal = 15.dp, vertical = 6.dp),
             horizontalArrangement = Arrangement.spacedBy(12.dp),
         ) {
