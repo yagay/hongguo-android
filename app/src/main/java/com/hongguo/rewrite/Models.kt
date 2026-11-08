@@ -161,6 +161,8 @@ data class AppState(
     val commentsLimited: Boolean = false,
     val danmakuForVid: String? = null,
     val danmakuItems: List<DanmakuEntry> = emptyList(),
+    /** Start of the currently cached timestamp window (seek-safe). */
+    val danmakuWindowStartMs: Long = 0L,
     val danmakuLoadedUntilMs: Long = 0L,
     val danmakuLoading: Boolean = false,
     val danmakuError: String? = null,
