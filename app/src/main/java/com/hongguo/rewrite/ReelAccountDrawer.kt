@@ -111,7 +111,7 @@ internal fun ReelAccountDrawer(
                         Text("还没有稍后看的短剧", color = Color.Gray, fontSize = 13.sp)
                     }
                     items(state.watchLater, key = { "later_" + it.id }) { drama ->
-                        Card(shape = RoundedCornerShape(14.dp)) {
+                        Card(shape = RoundedCornerShape(HongguoUi.cardRadius)) {
                             Row(Modifier.fillMaxWidth().padding(12.dp),
                                 verticalAlignment = Alignment.CenterVertically) {
                                 AsyncImage(model = model.cover(drama.cover),
@@ -145,7 +145,7 @@ internal fun ReelAccountDrawer(
                     }
                     items(state.offlineEpisodes,
                         key = { "offline_" + it.documentUri }) { episode ->
-                        Card(shape = RoundedCornerShape(14.dp)) {
+                        Card(shape = RoundedCornerShape(HongguoUi.cardRadius)) {
                             Row(Modifier.fillMaxWidth().padding(12.dp),
                                 verticalAlignment = Alignment.CenterVertically) {
                                 Column(Modifier.weight(1f).clickable {
