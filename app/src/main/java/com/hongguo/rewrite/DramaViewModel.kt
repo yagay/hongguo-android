@@ -2002,6 +2002,9 @@ class DramaViewModel(application: Application) : AndroidViewModel(application) {
             },
             detailPageVisible = showDetails,
             miniPlayerVisible = retainMini,
+            // A deliberate series selection dismisses account/settings/share
+            // overlays. Automatic feed advance never closes the user's sheet.
+            modal = if (feed) it.modal else Modal.NONE,
             relatedWorks = emptyList(),
             relatedSeries = null,
             relatedLoading = false,
