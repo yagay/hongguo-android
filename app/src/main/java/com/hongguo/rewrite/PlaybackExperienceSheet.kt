@@ -25,6 +25,7 @@ import androidx.compose.material.icons.outlined.ExpandLess
 import androidx.compose.material.icons.outlined.ExpandMore
 import androidx.compose.material.icons.outlined.HighQuality
 import androidx.compose.material.icons.outlined.Speed
+import androidx.compose.material.icons.outlined.Tune
 import androidx.compose.material.icons.outlined.Subtitles
 import androidx.compose.material.icons.outlined.Timer
 import androidx.compose.material.icons.outlined.VolumeUp
@@ -62,7 +63,7 @@ import androidx.compose.ui.unit.sp
  * are behind an explicit fold. Playback and all previous controls are kept.
  */
 private enum class PlaybackQuickSetting {
-    VIDEO, SPEED, AUDIO, DANMAKU, TIMER
+    VIDEO, SPEED, AUDIO, DANMAKU, TIMER, PREFERENCES
 }
 
 @OptIn(ExperimentalMaterial3Api::class)
@@ -80,7 +81,6 @@ internal fun PlaybackExperienceSheet(
 ) {
     val account by model.account.state.collectAsStateWithLifecycle()
     var focused by remember { mutableStateOf<PlaybackQuickSetting?>(null) }
-    var advancedExpanded by remember { mutableStateOf(false) }
 
     val white = Color.White
     val secondary = Color(0xFFC5C3C9)
@@ -142,6 +142,13 @@ internal fun PlaybackExperienceSheet(
                     selected = focused == PlaybackQuickSetting.AUDIO,
                     onClick = { toggle(PlaybackQuickSetting.AUDIO) },
                     tag = "quick_audio",
+                )
+                PlaybackQuickTile(
+                    title = "播放偏好", value = "连播 · 跳过",
+                    icon = Icons.Outlined.Tune,
+                    selected = focused == PlaybackQuickSetting.PREFERENCES,
+                    onClick = { toggle(PlaybackQuickSetting.PREFERENCES) },
+                    tag = "quick_playback_preferences",
                 )
             }
             Row(Modifier.fillMaxWidth(), horizontalArrangement = Arrangement.spacedBy(7.dp)) {
@@ -249,57 +256,7 @@ internal fun PlaybackExperienceSheet(
                                 "danmaku_font",
                             )
                         }
-                        PlaybackQuickSetting.TIMER -> {
-                            Row(Modifier.fillMaxWidth(),
-                                verticalAlignment = Alignment.CenterVertically) {
-                                PlaybackHeading("定时停止")
-                                Spacer(Modifier.weight(1f))
-                                Text("当前：${state.sleepTimerLabel}", fontSize = 11.sp,
-                                    color = secondary)
-                            }
-                            PlaybackChoices(
-                                listOf(0 to "关闭", 15 to "15分", 30 to "30分",
-                                    60 to "60分"),
-                                if (state.sleepTimerLabel == "关闭") 0 else -1,
-                                model::sleepAfterMinutes, "sleep_timer",
-                            )
-                            TextButton(
-                                onClick = { model.sleepAfterEpisodes(1) },
-                                modifier = Modifier.testTag("sleep_after_episode"),
-                            ) {
-                                Text("播完本集后停止", color = white, fontSize = 12.sp)
-                            }
-                        }
-                        null -> Unit
-                    }
-                }
-            }
-
-            // Advanced settings are preserved rather than removed, but do
-            // not occupy space in the default three-dot popup.
-            Row(
-                Modifier.fillMaxWidth()
-                    .clickable { advancedExpanded = !advancedExpanded }
-                    .padding(vertical = 5.dp)
-                    .testTag("player_more_settings"),
-                verticalAlignment = Alignment.CenterVertically,
-                horizontalArrangement = Arrangement.spacedBy(7.dp),
-            ) {
-                Text(if (advancedExpanded) "收起更多设置" else "更多设置",
-                    fontSize = 13.sp, color = secondary,
-                    modifier = Modifier.weight(1f))
-                Icon(
-                    if (advancedExpanded) Icons.Outlined.ExpandLess
-                    else Icons.Outlined.ExpandMore,
-                    contentDescription = null, tint = secondary,
-                    modifier = Modifier.size(19.dp),
-                )
-            }
-            AnimatedVisibility(visible = advancedExpanded) {
-                Column(
-                    Modifier.fillMaxWidth().padding(bottom = 8.dp),
-                    verticalArrangement = Arrangement.spacedBy(9.dp),
-                ) {
+                        PlaybackQuickSetting.PREFERENCES -> {
                     if (state.feedMode) {
                         PlaybackHeading("刷剧内容")
                         PlaybackChoices(
@@ -330,7 +287,6 @@ internal fun PlaybackExperienceSheet(
                         "player_skip_outro",
                     )
 
-                    HorizontalDivider(color = Color(0xFF4B4A50))
                     if (account.profile != null && state.detail != null) {
                         HorizontalDivider(color = Color(0xFF4B4A50))
                         val currentId = state.detail.drama.id
@@ -356,8 +312,34 @@ internal fun PlaybackExperienceSheet(
                             Text(account.message, color = secondary, fontSize = 11.sp)
                         }
                     }
+                        }
+                        PlaybackQuickSetting.TIMER -> {
+                            Row(Modifier.fillMaxWidth(),
+                                verticalAlignment = Alignment.CenterVertically) {
+                                PlaybackHeading("定时停止")
+                                Spacer(Modifier.weight(1f))
+                                Text("当前：${state.sleepTimerLabel}", fontSize = 11.sp,
+                                    color = secondary)
+                            }
+                            PlaybackChoices(
+                                listOf(0 to "关闭", 15 to "15分", 30 to "30分",
+                                    60 to "60分"),
+                                if (state.sleepTimerLabel == "关闭") 0 else -1,
+                                model::sleepAfterMinutes, "sleep_timer",
+                            )
+                            TextButton(
+                                onClick = { model.sleepAfterEpisodes(1) },
+                                modifier = Modifier.testTag("sleep_after_episode"),
+                            ) {
+                                Text("播完本集后停止", color = white, fontSize = 12.sp)
+                            }
+                        }
+                        null -> Unit
+                    }
                 }
             }
+
+
         }
     }
 }
