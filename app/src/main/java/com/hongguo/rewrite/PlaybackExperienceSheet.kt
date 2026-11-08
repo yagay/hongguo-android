@@ -406,24 +406,7 @@ private fun PlaybackToggle(
     checked: Boolean,
     onCheckedChange: (Boolean) -> Unit,
     tag: String,
-) {
-    Row(
-        Modifier.fillMaxWidth().height(38.dp),
-        verticalAlignment = Alignment.CenterVertically,
-    ) {
-        Text(title, modifier = Modifier.weight(1f),
-            color = Color.White, fontSize = 13.sp)
-        Switch(
-            checked = checked,
-            onCheckedChange = onCheckedChange,
-            modifier = Modifier.testTag(tag),
-            colors = SwitchDefaults.colors(
-                checkedTrackColor = HongguoColors.accent,
-                checkedThumbColor = Color.White,
-            ),
-        )
-    }
-}
+) = HongguoToggleRow(title, checked, onCheckedChange, tag, dark = true)
 
 @Composable
 private fun PlaybackHeading(title: String) {
