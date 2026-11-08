@@ -868,14 +868,17 @@ private fun Media3Reel(
         controls.durationMs = 0L
         controls.isPlaying = false
         while (isActive) {
-            val matches = player?.currentMediaItem?.mediaId == expectedVid
-            controls.player = if (matches) player else null
-            controls.positionMs = if (matches)
-                player?.currentPosition?.coerceAtLeast(0L) ?: 0L else 0L
-            controls.durationMs = if (matches) player?.duration?.takeIf {
-                it > 0L && it != androidx.media3.common.C.TIME_UNSET
-            } ?: 0L else 0L
-            controls.isPlaying = matches && player?.isPlaying == true
+            val sample = ReelClockPolicy.sample(
+                expectedVid = expectedVid,
+                actualMediaId = player?.currentMediaItem?.mediaId,
+                positionMs = player?.currentPosition ?: 0L,
+                durationMs = player?.duration ?: 0L,
+                isPlaying = player?.isPlaying == true,
+            )
+            controls.player = if (sample.currentItem) player else null
+            controls.positionMs = sample.positionMs
+            controls.durationMs = sample.durationMs
+            controls.isPlaying = sample.playing
             delay(250)
         }
     }
