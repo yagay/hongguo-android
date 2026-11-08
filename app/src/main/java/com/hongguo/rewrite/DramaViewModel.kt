@@ -385,9 +385,7 @@ class DramaViewModel(application: Application) : AndroidViewModel(application) {
                 } catch (first: CancellationException) {
                     throw first
                 } catch (first: Exception) {
-                    val emptyModel = generateSequence(first as Throwable) { it.cause }
-                        .take(8).any { it is com.hongguotv.core.EmptyPlaybackResponseException }
-                    if (!emptyModel) throw first
+                    if (!PlaybackProblem.isEmptyPlaybackModel(first)) throw first
                     diagnostics.record("PLAYBACK", "PREFETCH_EMPTY_RETRY")
                     delay(1_500)
                     if (generation != detailId || !state.value.preloadNext ||
@@ -1782,7 +1780,36 @@ class DramaViewModel(application: Application) : AndroidViewModel(application) {
                         detail, index, url, null, checkpoint, version)
                 } else {
                     val ahead = detail.episodes.getOrNull(index + 1)?.vid
-                    val video = cachedNative ?: nativeSource.openVideo(vid, ahead, state.value.qualityLimit)
+                    val quality = state.value.qualityLimit
+                    val video = cachedNative ?: try {
+                        nativeSource.openVideo(vid, ahead, quality)
+                    } catch (cancelled: CancellationException) {
+                        throw cancelled
+                    } catch (first: Exception) {
+                        if (!PlaybackProblem.isEmptyPlaybackModel(first)) throw first
+                        // A transient empty playback-model response should not
+                        // immediately strand the reel on its error screen.
+                        // Retry once without metadata-ahead, to reduce work
+                        // on the upstream request. Never retry codecs, 403s or
+                        // other unrelated failures automatically.
+                        diagnostics.record("PLAYBACK", "PRIMARY_EMPTY_RETRY")
+                        delay(1_500L)
+                        val current = state.value
+                        if (version != detailId ||
+                            current.detail?.episodes
+                                ?.getOrNull(current.episodeIndex)?.vid != vid ||
+                            current.qualityLimit != quality) return@launch
+                        try {
+                            nativeSource.openVideo(vid, null, quality)
+                        } catch (cancelled: CancellationException) {
+                            throw cancelled
+                        } catch (again: Exception) {
+                            if (PlaybackProblem.isEmptyPlaybackModel(again)) {
+                                diagnostics.record("PLAYBACK", "PRIMARY_EMPTY_RETRY_EXHAUSTED")
+                            }
+                            throw again
+                        }
+                    }
                     if (version != detailId) {
                         video.close()
                         return@launch
