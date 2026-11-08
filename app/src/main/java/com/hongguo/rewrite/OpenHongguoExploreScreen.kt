@@ -358,19 +358,26 @@ internal fun OpenHongguoExploreScreen(
                 }
             }
         }
+        // The SDK may return informational records with no valid navigation
+        // target. Default browse results include only entries users can open.
+        val actionableRows = rows.filter { row ->
+            FeatureAvailability.browseEntryActionable(
+                tab = tab, rankCell = rankCell, id = row.id,
+                searchQuery = row.searchQuery, actorUserId = row.actorUserId,
+                playable = row.playable,
+            )
+        }
+        val actionableWorks = works.filter {
+            it.seriesId.matches(Regex("[1-9][0-9]{0,29}"))
+        }
         LazyColumn(Modifier.fillMaxSize(), verticalArrangement = Arrangement.spacedBy(10.dp)) {
             if (actorId.isBlank()) {
-                items(rows, key = { "browse_${tab}_${it.id}_${it.title}" }) { row ->
+                items(actionableRows, key = { "browse_${tab}_${it.id}_${it.title}" }) { row ->
                     BrowseEntry(
                         title = row.title, cover = model.cover(row.cover),
                         subtitle = row.subtitle.ifBlank {
                             if (row.episodes > 0) "全 ${row.episodes} 集" else ""
                         },
-                        enabled = (tab == "rankGroups" && rankCell.isBlank() &&
-                                row.id.isNotBlank()) ||
-                            row.searchQuery.isNotBlank() ||
-                            row.actorUserId.isNotBlank() ||
-                            (row.playable && row.id.matches(Regex("[1-9][0-9]{0,29}"))),
                         onClick = {
                             if (row.searchQuery.isNotBlank()) {
                                 tab = "search"
@@ -399,11 +406,10 @@ internal fun OpenHongguoExploreScreen(
                     )
                 }
             } else {
-                items(works, key = { "work_${it.seriesId}" }) { work ->
+                items(actionableWorks, key = { "work_${it.seriesId}" }) { work ->
                     BrowseEntry(
                         title = work.title, cover = model.cover(work.coverUrl),
                         subtitle = work.tags.joinToString(" · "),
-                        enabled = work.seriesId.matches(Regex("[1-9][0-9]{0,29}")),
                         onClick = {
                             onClose()
                             onOpenDrama(Drama(work.seriesId, work.title,
@@ -411,6 +417,12 @@ internal fun OpenHongguoExploreScreen(
                         },
                     )
                 }
+            }
+            if (!loading && !worksLoading && error == null &&
+                (if (actorId.isBlank()) rows.isNotEmpty() && actionableRows.isEmpty()
+                 else works.isNotEmpty() && actionableWorks.isEmpty())) item {
+                Text("当前没有可打开的作品", color = HongguoColors.muted,
+                    fontSize = 13.sp, modifier = Modifier.padding(18.dp))
             }
             if (loading || worksLoading) item {
                 Box(Modifier.fillMaxWidth().padding(22.dp),
@@ -450,9 +462,9 @@ internal fun OpenHongguoExploreScreen(
 @Composable
 private fun BrowseEntry(
     title: String, cover: String, subtitle: String,
-    enabled: Boolean, onClick: () -> Unit,
+    onClick: () -> Unit,
 ) {
-    Row(Modifier.fillMaxWidth().clickable(enabled = enabled, onClick = onClick)
+    Row(Modifier.fillMaxWidth().clickable(onClick = onClick)
         .padding(horizontal = 16.dp, vertical = 6.dp),
         horizontalArrangement = Arrangement.spacedBy(13.dp),
         verticalAlignment = Alignment.CenterVertically) {
@@ -467,8 +479,6 @@ private fun BrowseEntry(
             if (subtitle.isNotBlank()) Text(subtitle,
                 fontSize = 12.sp, color = HongguoColors.muted,
                 maxLines = 2, overflow = TextOverflow.Ellipsis)
-            if (!enabled) Text("尚未上线 / 无可用入口",
-                color = HongguoColors.muted, fontSize = 11.sp)
         }
     }
 }
