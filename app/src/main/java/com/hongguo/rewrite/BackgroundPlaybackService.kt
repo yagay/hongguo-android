@@ -265,6 +265,11 @@ class BackgroundPlaybackService : MediaSessionService() {
 
     private val checkpoint = object : Runnable {
         override fun run() {
+            if (recentVideo != null &&
+                android.os.SystemClock.elapsedRealtime() - recentSavedAtMs > recentTtlMs) {
+                clearRecentVideo()
+                diagnostics.record("BACKGROUND", "RECENT_STREAM_EXPIRED")
+            }
             if (::engine.isInitialized && currentKey != null) {
                 val duration = engine.duration.takeIf { it > 0 } ?: 0L
                 if (engine.isPlaying && onTimer?.invoke() == true) engine.pause()
@@ -427,6 +432,8 @@ class BackgroundPlaybackService : MediaSessionService() {
             recentQuality = previousQuality
             recentSavedAtMs = android.os.SystemClock.elapsedRealtime()
             diagnostics.record("BACKGROUND", "RECENT_STREAM_STORED")
+        } else if (previousRemote != null && previousRemote !== remote) {
+            previousRemote.close()
         }
         diagnostics.record("BACKGROUND", "NEXT_SOURCE_PLAY_REQUESTED")
     }
