@@ -77,3 +77,13 @@ Observed on a device: a media player appeared in the system media area, but not 
 - Swiping past the fetched reel queue triggers a page load **without immediately pausing the current stream**. When the new drama arrives, the existing ViewModel transition loads its media into the service. Normal episode transitions use the same single service player.
 - Sanitized diagnostic events now include `BACKGROUND/SERVICE_CREATED`, `SOURCE_CONFIGURED`, `MEDIA_PREVIOUS`, `MEDIA_NEXT`, `MEDIA_ENDED`, `NOTIFICATION_PERMISSION_DENIED`, and `NOTIFICATION_BLOCKED`. The diagnostics never contain media URLs or drama titles.
 - Validate foreground-service notification behavior, OPPO/OnePlus-specific notification settings, screen-off continuity, first episode/last episode, last reel awaiting discovery, audio focus, and real seekbar behavior on a phone. These changes were not confirmed by a successful current CI build in this review.
+
+## 2026-11-08 next-episode stall and 1-second clock correction
+
+- Checked the actual `BackgroundPlaybackService.configure()`, `Player.STATE_ENDED` callback and `DramaViewModel.closeNativeVideo()` handoff against the Media3 service-owned-player model.
+- `DramaViewModel` now detaches its pointer instead of closing an encrypted `RemoteVideo` still owned by `BackgroundPlaybackService`. The service closes the prior source **after** it installs and starts the replacement (or on explicit stop).
+- The Media3 `STATE_ENDED` callback schedules navigation on the next main-loop turn to avoid reentrant `stop()/setMediaSource()` while ExoPlayer dispatches listeners; it skips stale transitions when the media key has already changed.
+- Explicit autoplay is armed before `prepare()`, followed by `play()`; a bounded `STATE_READY` recovery attempts to restore playback if the expected autoplay intent was lost. Playback events record `NEXT_SOURCE_PLAY_REQUESTED`, `AUTO_START_RECOVERY`, and `PLAYING`.
+- Do not checkpoint the old stream after it has reached `STATE_ENDED`; that would recreate a completed-episode resume point after `finishEpisode` cleared it.
+- The **ordinary** notification calls its time/progress refresh every 1000 ms; updates are skipped if the media second is unchanged while playing. MediaSession controls manage their own native clock. Android/OxygenOS can still throttle/redraw notifications independently, so exactly one visible redraw per second cannot be guaranteed.
+- This is static-code remediation pending Debug CI and phone testing, especially next episode with screen on/off and end-of-series autoplay.
