@@ -23,6 +23,8 @@ import androidx.compose.material.icons.Icons
 import androidx.compose.material.icons.outlined.ChevronRight
 import androidx.compose.material.icons.outlined.Download
 import androidx.compose.material.icons.outlined.MoreVert
+import androidx.compose.material.icons.outlined.Refresh
+import androidx.compose.material.icons.outlined.Logout
 import androidx.compose.material.icons.outlined.Menu
 import androidx.compose.material.icons.outlined.History
 import androidx.compose.material.icons.outlined.BookmarkBorder
@@ -93,86 +95,70 @@ internal fun MyScreen(state: AppState, model: DramaViewModel, onBack: () -> Unit
                 Text("我的", fontSize = HongguoUi.pageTitleSize, fontWeight = FontWeight.Bold,
                     color = HongguoColors.ink, modifier = Modifier.weight(1f))
                 Box {
-                    Icon(
-                        Icons.Outlined.Menu, contentDescription = "管理菜单",
-                        modifier = Modifier.size(40.dp)
-                            .clickable { managementMenuOpen = true }
-                            .padding(7.dp).testTag("my_management_menu"),
-                        tint = HongguoColors.ink,
-                    )
-                    DropdownMenu(
+                    HongguoIconAction(
+                        onClick = { managementMenuOpen = true },
+                        modifier = Modifier.testTag("my_management_menu"),
+                    ) {
+                        Icon(Icons.Outlined.Menu, contentDescription = "管理菜单",
+                            tint = HongguoColors.ink)
+                    }
+                    HongguoActionMenu(
                         expanded = managementMenuOpen,
                         onDismissRequest = { managementMenuOpen = false },
                     ) {
-                        DropdownMenuItem(
-                            text = { Text("稍后看 · ${state.watchLater.size} 部") },
-                            leadingIcon = { Icon(Icons.Outlined.BookmarkBorder, null) },
+                        HongguoMenuAction(
+                            label = "稍后看 · ${state.watchLater.size} 部",
+                            icon = Icons.Outlined.BookmarkBorder,
                             onClick = {
                                 managementMenuOpen = false
                                 offlineOpen = false
                                 watchLaterOpen = true
                             },
                         )
-                        DropdownMenuItem(
-                            text = { Text("下载任务") },
-                            leadingIcon = { Icon(Icons.Outlined.Download, null) },
-                            onClick = {
-                                managementMenuOpen = false
-                                model.updateDownloads()
-                                model.show(Modal.DOWNLOAD)
-                            },
-                        )
-                        DropdownMenuItem(
-                            text = { Text("本机离线 · ${state.offlineEpisodes.size} 集") },
-                            leadingIcon = { Icon(Icons.Outlined.Download, null) },
+                        HongguoMenuAction("下载任务", Icons.Outlined.Download, {
+                            managementMenuOpen = false
+                            model.updateDownloads()
+                            model.show(Modal.DOWNLOAD)
+                        })
+                        HongguoMenuAction(
+                            label = "本机离线 · ${state.offlineEpisodes.size} 集",
+                            icon = Icons.Outlined.Download,
                             onClick = {
                                 managementMenuOpen = false
                                 watchLaterOpen = false
                                 offlineOpen = true
                             },
                         )
-                        HorizontalDivider()
-                        DropdownMenuItem(
-                            text = { Text("本机收藏 · ${state.favorites.size}") },
-                            leadingIcon = { Icon(Icons.Outlined.StarBorder, null) },
+                        HongguoMenuSeparator()
+                        HongguoMenuAction(
+                            label = "本机收藏 · ${state.favorites.size}",
+                            icon = Icons.Outlined.StarBorder,
                             onClick = {
                                 managementMenuOpen = false
                                 model.show(Modal.FAVORITES)
                             },
                         )
-                        DropdownMenuItem(
-                            text = { Text("本机看过 · ${state.library.size}") },
-                            leadingIcon = { Icon(Icons.Outlined.History, null) },
+                        HongguoMenuAction(
+                            label = "本机看过 · ${state.library.size}",
+                            icon = Icons.Outlined.History,
                             onClick = {
                                 managementMenuOpen = false
                                 model.show(Modal.HISTORY)
                             },
                         )
-                        DropdownMenuItem(
-                            text = { Text("分享解析") },
-                            leadingIcon = { Icon(Icons.Outlined.Share, null) },
-                            onClick = {
-                                managementMenuOpen = false
-                                model.show(Modal.SHARE)
-                            },
-                        )
-                        HorizontalDivider()
-                        DropdownMenuItem(
-                            text = { Text("账号与隐私") },
-                            leadingIcon = { Icon(Icons.Outlined.PrivacyTip, null) },
-                            onClick = {
-                                managementMenuOpen = false
-                                openAccount()
-                            },
-                        )
-                        DropdownMenuItem(
-                            text = { Text("设置") },
-                            leadingIcon = { Icon(Icons.Outlined.Settings, null) },
-                            onClick = {
-                                managementMenuOpen = false
-                                model.show(Modal.SETTINGS)
-                            },
-                        )
+                        HongguoMenuAction("分享解析", Icons.Outlined.Share, {
+                            managementMenuOpen = false
+                            model.show(Modal.SHARE)
+                        })
+                        HongguoMenuSeparator()
+                        HongguoMenuAction("账号与隐私", Icons.Outlined.PrivacyTip, {
+                            managementMenuOpen = false
+                            openAccount()
+                        })
+                        HongguoMenuAction("设置", Icons.Outlined.Settings, {
+                            managementMenuOpen = false
+                            model.show(Modal.SETTINGS)
+                        })
                     }
                 }
             }
@@ -230,54 +216,55 @@ internal fun MyScreen(state: AppState, model: DramaViewModel, onBack: () -> Unit
                     }
                     if (account.profile != null) {
                         Box {
-                            IconButton(
+                            HongguoIconAction(
                                 onClick = { accountOperationsOpen = true },
                                 modifier = Modifier.testTag("my_account_menu"),
                             ) {
                                 Icon(Icons.Outlined.MoreVert, "账号操作",
                                     tint = HongguoColors.ink)
                             }
-                            DropdownMenu(
+                            HongguoActionMenu(
                                 expanded = accountOperationsOpen,
                                 onDismissRequest = { accountOperationsOpen = false },
                             ) {
-                                DropdownMenuItem(
-                                    text = { Text("刷短剧使用登录账号") },
-                                    trailingIcon = { Checkbox(
-                                        checked = account.accountRecommendations,
-                                        onCheckedChange = null) },
+                                HongguoMenuAction(
+                                    label = "刷短剧使用登录账号",
+                                    icon = Icons.Outlined.PersonOutline,
+                                    checked = account.accountRecommendations,
                                     onClick = {
                                         accountOperationsOpen = false
                                         model.setAccountRecommendations(
                                             !account.accountRecommendations)
                                     },
                                 )
-                                DropdownMenuItem(
-                                    text = { Text("自动同步观看进度") },
-                                    trailingIcon = { Checkbox(
-                                        checked = account.syncEnabled,
-                                        onCheckedChange = null) },
+                                HongguoMenuAction(
+                                    label = "自动同步观看进度",
+                                    icon = Icons.Outlined.History,
+                                    checked = account.syncEnabled,
+                                    modifier = Modifier.testTag("my_account_sync_switch"),
                                     onClick = {
                                         accountOperationsOpen = false
                                         model.account.setProgressSync(!account.syncEnabled)
                                     },
-                                    modifier = Modifier.testTag("my_account_sync_switch"),
                                 )
-                                DropdownMenuItem(
-                                    text = { Text("刷新账号资料") },
+                                HongguoMenuAction(
+                                    label = "刷新账号资料",
+                                    icon = Icons.Outlined.Refresh,
                                     onClick = {
                                         accountOperationsOpen = false
                                         model.account.refresh()
                                     },
                                 )
-                                HorizontalDivider()
-                                DropdownMenuItem(
-                                    text = { Text("退出账号") },
+                                HongguoMenuSeparator()
+                                HongguoMenuAction(
+                                    label = "退出账号",
+                                    icon = Icons.Outlined.Logout,
+                                    destructive = true,
+                                    modifier = Modifier.testTag("my_account_logout"),
                                     onClick = {
                                         accountOperationsOpen = false
                                         confirmAccountLogout = true
                                     },
-                                    modifier = Modifier.testTag("my_account_logout"),
                                 )
                             }
                         }
