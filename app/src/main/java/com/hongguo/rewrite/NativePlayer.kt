@@ -467,6 +467,29 @@ internal fun NativePlayer(state: AppState, model: DramaViewModel) {
             onRetryDanmaku = {
                 model.retryDanmaku(playback.positionMs, playback.durationMs)
             },
+            onFollowing = {
+                model.minimizePlayer()
+                model.show(Modal.FAVORITES)
+            },
+            onComic = {
+                model.closePlayer()
+                model.genre("comic_series")
+                model.section(Section.BROWSE)
+            },
+            onReal = { model.setReelsMode("real") },
+            onRecommend = { model.setReelsMode("all") },
+            onSearch = {
+                model.closePlayer()
+                model.section(Section.SEARCH)
+            },
+            onShare = {
+                val text = detail.drama.title
+                val send = Intent(Intent.ACTION_SEND).apply {
+                    type = "text/plain"
+                    putExtra(Intent.EXTRA_TEXT, text)
+                }
+                context.startActivity(Intent.createChooser(send, "分享短剧"))
+            },
         )
         }
         ReelBottomDock(
