@@ -78,13 +78,14 @@ internal fun ReelAccountDrawer(
     }
     var recentExpanded by rememberSaveable { mutableStateOf(false) }
     var drawerPage by rememberSaveable { mutableStateOf<String?>(null) }
-    Column(Modifier.fillMaxSize().background(Color(0xFFF8F8F8))
+    Column(Modifier.fillMaxSize().background(HongguoColors.background)
         .testTag("reel_account_drawer")) {
         LazyColumn(
             modifier = Modifier.weight(1f).fillMaxWidth(),
-            contentPadding = PaddingValues(start = 14.dp, end = 14.dp,
+            contentPadding = PaddingValues(start = HongguoUi.pagePadding,
+                end = HongguoUi.pagePadding,
                 top = 24.dp, bottom = 24.dp),
-            verticalArrangement = Arrangement.spacedBy(14.dp),
+            verticalArrangement = Arrangement.spacedBy(HongguoUi.pageSectionGap),
         ) {
             if (drawerPage == "watch_later" || drawerPage == "offline") {
                 item {
@@ -95,23 +96,23 @@ internal fun ReelAccountDrawer(
                             .testTag("drawer_library_back"),
                             verticalAlignment = Alignment.CenterVertically) {
                             Icon(Icons.AutoMirrored.Outlined.ArrowBack,
-                                "返回常用功能", tint = Color(0xFF222222),
+                                "返回常用功能", tint = HongguoColors.ink,
                                 modifier = Modifier.size(22.dp))
                             Spacer(Modifier.width(6.dp))
-                            Text("返回", color = Color(0xFF222222), fontSize = 14.sp)
+                            Text("返回", color = HongguoColors.ink, fontSize = 14.sp)
                         }
                         Spacer(Modifier.weight(1f))
                         Text(if (drawerPage == "watch_later") "稍后看" else "本机离线",
-                            color = Color(0xFF222222), fontWeight = FontWeight.SemiBold,
+                            color = HongguoColors.ink, fontWeight = FontWeight.SemiBold,
                             fontSize = 18.sp)
                     }
                 }
                 if (drawerPage == "watch_later") {
                     if (state.watchLater.isEmpty()) item {
-                        Text("还没有稍后看的短剧", color = Color.Gray, fontSize = 13.sp)
+                        Text("还没有稍后看的短剧", color = HongguoColors.muted, fontSize = 13.sp)
                     }
                     items(state.watchLater, key = { "later_" + it.id }) { drama ->
-                        Card(shape = RoundedCornerShape(HongguoUi.cardRadius)) {
+                        HongguoCard() {
                             Row(Modifier.fillMaxWidth().padding(12.dp),
                                 verticalAlignment = Alignment.CenterVertically) {
                                 AsyncImage(model = model.cover(drama.cover),
@@ -126,8 +127,8 @@ internal fun ReelAccountDrawer(
                                     Text(drama.title, fontWeight = FontWeight.SemiBold,
                                         fontSize = 14.sp, maxLines = 2,
                                         overflow = TextOverflow.Ellipsis,
-                                        color = Color(0xFF222222))
-                                    Text("点击继续观看", fontSize = 11.sp, color = Color.Gray)
+                                        color = HongguoColors.ink)
+                                    Text("点击继续观看", fontSize = 11.sp, color = HongguoColors.muted)
                                 }
                                 TextButton(onClick = { model.toggleWatchLater(drama) },
                                     modifier = Modifier.testTag("drawer_later_remove_" + drama.id)) {
@@ -138,24 +139,24 @@ internal fun ReelAccountDrawer(
                     }
                 } else {
                     state.offlineLibraryMessage?.let { notice ->
-                        item { Text(notice, color = Color(0xFF8F4E3C), fontSize = 12.sp) }
+                        item { Text(notice, color = HongguoColors.accent, fontSize = 12.sp) }
                     }
                     if (state.offlineEpisodes.isEmpty()) item {
-                        Text("还没有保存到本机的离线视频", color = Color.Gray, fontSize = 13.sp)
+                        Text("还没有保存到本机的离线视频", color = HongguoColors.muted, fontSize = 13.sp)
                     }
                     items(state.offlineEpisodes,
                         key = { "offline_" + it.documentUri }) { episode ->
-                        Card(shape = RoundedCornerShape(HongguoUi.cardRadius)) {
+                        HongguoCard() {
                             Row(Modifier.fillMaxWidth().padding(12.dp),
                                 verticalAlignment = Alignment.CenterVertically) {
                                 Column(Modifier.weight(1f).clickable {
                                     onOfflineEpisode(episode)
                                 }.testTag("drawer_offline_open_" + episode.vid)) {
-                                    Text(episode.title, color = Color(0xFF222222),
+                                    Text(episode.title, color = HongguoColors.ink,
                                         fontWeight = FontWeight.SemiBold, fontSize = 14.sp,
                                         maxLines = 2, overflow = TextOverflow.Ellipsis)
                                     Text("第 ${episode.episode} 集 · 本机播放",
-                                        color = Color.Gray, fontSize = 12.sp)
+                                        color = HongguoColors.muted, fontSize = 12.sp)
                                 }
                                 TextButton(onClick = {
                                     model.removeOfflineEpisode(episode.documentUri)
@@ -186,29 +187,29 @@ internal fun ReelAccountDrawer(
                 } else {
                     androidx.compose.foundation.layout.Box(
                         Modifier.size(56.dp).clip(CircleShape)
-                            .background(Color(0xFFE8E8E8)),
+                            .background(HongguoColors.accentSoft),
                         contentAlignment = Alignment.Center,
                     ) {
                         Icon(Icons.Outlined.PersonOutline, null,
-                            tint = Color.DarkGray, modifier = Modifier.size(30.dp))
+                            tint = HongguoColors.muted, modifier = Modifier.size(30.dp))
                     }
                 }
                 Column(Modifier.weight(1f)) {
                     Text(account.profile?.nickname ?: "登录红果账号",
-                        color = Color(0xFF161616), fontWeight = FontWeight.SemiBold,
+                        color = HongguoColors.ink, fontWeight = FontWeight.SemiBold,
                         fontSize = 18.sp, maxLines = 1, overflow = TextOverflow.Ellipsis)
-                    Text("账号与隐私", color = Color(0xFF777777), fontSize = 12.sp)
+                    Text("账号与隐私", color = HongguoColors.muted, fontSize = 12.sp)
                 }
-                Icon(Icons.Outlined.ChevronRight, null, tint = Color.Gray)
+                Icon(Icons.Outlined.ChevronRight, null, tint = HongguoColors.muted)
             }
         }
         item {
-            Card(shape = RoundedCornerShape(18.dp)) {
+            HongguoCard() {
                 Column(Modifier.fillMaxWidth().padding(14.dp),
                     verticalArrangement = Arrangement.spacedBy(12.dp)) {
                     Row(Modifier.fillMaxWidth(), verticalAlignment = Alignment.CenterVertically) {
                         Text("最近在看", fontWeight = FontWeight.SemiBold,
-                            fontSize = 17.sp, color = Color(0xFF222222),
+                            fontSize = 17.sp, color = HongguoColors.ink,
                             modifier = Modifier.weight(1f))
                         if (recentlyWatched.size > 2) {
                             Text(if (recentExpanded) "收起" else "展开更多 · ${recentlyWatched.size}部",
@@ -216,11 +217,11 @@ internal fun ReelAccountDrawer(
                                     recentExpanded = !recentExpanded
                                 }.padding(vertical = 7.dp)
                                     .testTag("drawer_recent_expand"),
-                                color = Color(0xFF8F4E3C), fontSize = 12.sp)
+                                color = HongguoColors.accent, fontSize = 12.sp)
                         }
                     }
                     if (recentlyWatched.isEmpty()) {
-                        Text("还没有观看记录", color = Color.Gray, fontSize = 13.sp)
+                        Text("还没有观看记录", color = HongguoColors.muted, fontSize = 13.sp)
                     } else if (!recentExpanded) {
                         // One horizontal row contains ALL watched dramas. The next
                         // poster remains partially visible to indicate swiping.
@@ -236,7 +237,7 @@ internal fun ReelAccountDrawer(
                             }
                         }
                         if (recentlyWatched.size > 2) {
-                            Text("左右滑动查看更多", color = Color.Gray, fontSize = 11.sp)
+                            Text("左右滑动查看更多", color = HongguoColors.muted, fontSize = 11.sp)
                         }
                     }
                 }
@@ -262,11 +263,11 @@ internal fun ReelAccountDrawer(
             }
         }
         item {
-            Card(shape = RoundedCornerShape(18.dp)) {
+            HongguoCard() {
                 Column(Modifier.fillMaxWidth().padding(14.dp),
                     verticalArrangement = Arrangement.spacedBy(6.dp)) {
                     Text("常用功能", fontSize = 17.sp, fontWeight = FontWeight.SemiBold,
-                        color = Color(0xFF222222))
+                        color = HongguoColors.ink)
                     DrawerAction("我的预约", Icons.Outlined.EventAvailable,
                         onReservations, "drawer_reservations")
                     DrawerAction("稍后看 · ${state.watchLater.size}部",
@@ -290,9 +291,9 @@ internal fun ReelAccountDrawer(
         }
         } // Drawer main menu
         } // Scrollable content: settings stays pinned below
-        Surface(color = Color(0xFFF8F8F8), shadowElevation = 8.dp) {
+        Surface(color = HongguoColors.background, shadowElevation = 8.dp) {
             Column(Modifier.fillMaxWidth()) {
-                HorizontalDivider(color = Color(0xFFE5E5E5))
+                HorizontalDivider(color = HongguoColors.divider)
                 Row(Modifier.fillMaxWidth().clickable(onClick = onSettings)
                     .testTag("drawer_settings")
                     .padding(horizontal = 23.dp, vertical = 16.dp),
@@ -303,7 +304,7 @@ internal fun ReelAccountDrawer(
                     Text("设置", color = Color(0xFF242424), fontSize = 16.sp,
                         fontWeight = FontWeight.SemiBold, modifier = Modifier.weight(1f))
                     Icon(Icons.Outlined.ChevronRight, contentDescription = null,
-                        tint = Color(0xFF777777))
+                        tint = HongguoColors.muted)
                 }
             }
         }
@@ -329,12 +330,12 @@ private fun RecentWatchTile(
             contentScale = ContentScale.Crop,
             modifier = Modifier.fillMaxWidth().aspectRatio(2f / 3f)
                 .clip(RoundedCornerShape(10.dp))
-                .background(Color(0xFFE5E5E5)),
+                .background(HongguoColors.divider),
         )
-        Text(watched.drama.title, color = Color(0xFF222222),
+        Text(watched.drama.title, color = HongguoColors.ink,
             maxLines = 2, overflow = TextOverflow.Ellipsis,
             fontSize = 12.sp, lineHeight = 16.sp)
-        Text("第${watched.episode}集", color = Color.Gray, fontSize = 11.sp)
+        Text("第${watched.episode}集", color = HongguoColors.muted, fontSize = 11.sp)
     }
 }
 
@@ -351,7 +352,7 @@ private fun DrawerAction(
         verticalAlignment = Alignment.CenterVertically,
         horizontalArrangement = Arrangement.spacedBy(11.dp),
     ) {
-        Icon(icon, null, tint = Color(0xFF222222), modifier = Modifier.size(23.dp))
+        Icon(icon, null, tint = HongguoColors.ink, modifier = Modifier.size(23.dp))
         Text(title, color = Color(0xFF202020), fontSize = 15.sp,
             modifier = Modifier.weight(1f))
         Icon(Icons.Outlined.ChevronRight, null, tint = Color.LightGray)
