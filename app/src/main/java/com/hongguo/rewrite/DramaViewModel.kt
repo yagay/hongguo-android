@@ -1167,6 +1167,10 @@ class DramaViewModel(application: Application) : AndroidViewModel(application) {
                                     )
                                 }
                                 diagnostics.record("METADATA", "OPENHONGGUO_DETAIL_READY")
+                                diagnostics.record("METADATA",
+                                    if (metadata.authorAiStatement != null)
+                                        "AI_AUTHOR_DECLARATION_PRESENT"
+                                    else "AI_AUTHOR_DECLARATION_ABSENT")
                             }
                         } catch (e: CancellationException) {
                             throw e
