@@ -6,6 +6,7 @@ import androidx.compose.foundation.layout.Box
 import androidx.compose.foundation.layout.Column
 import androidx.compose.foundation.layout.FlowRow
 import androidx.compose.foundation.layout.Row
+import androidx.compose.foundation.layout.RowScope
 import androidx.compose.foundation.layout.fillMaxWidth
 import androidx.compose.foundation.layout.heightIn
 import androidx.compose.foundation.layout.height
@@ -17,6 +18,7 @@ import androidx.compose.material.icons.outlined.ChevronRight
 import androidx.compose.material.icons.outlined.Home
 import androidx.compose.material.icons.outlined.Theaters
 import androidx.compose.material.icons.outlined.PersonOutline
+import androidx.compose.material.icons.automirrored.outlined.ArrowBack
 import androidx.compose.material3.FilterChip
 import androidx.compose.material3.FilterChipDefaults
 import androidx.compose.material3.Button
@@ -53,6 +55,11 @@ internal object HongguoUi {
     val rowDescriptionSize = 12.sp
     val chipTextSize = 12.sp
     val chipGap = 8.dp
+    val pagePadding = 16.dp
+    val pageTopBarHeight = 56.dp
+    val pageTitleSize = 22.sp
+    val sectionTitleSize = 18.sp
+    val pageSectionGap = 12.dp
 }
 
 @Composable
@@ -288,4 +295,49 @@ internal fun HongguoPrimaryNavigation(
             }
         }
     }
+}
+
+/**
+ * Common app-page title bar. Search/immersive video may replace the center
+ * slot, but ordinary pages must not each implement independent title sizes
+ * and header heights.
+ */
+@Composable
+internal fun HongguoPageHeader(
+    title: String,
+    onBack: (() -> Unit)? = null,
+    modifier: Modifier = Modifier,
+    actions: @Composable RowScope.() -> Unit = {},
+) {
+    Row(
+        modifier = modifier.fillMaxWidth()
+            .height(HongguoUi.pageTopBarHeight)
+            .padding(horizontal = HongguoUi.pagePadding),
+        verticalAlignment = Alignment.CenterVertically,
+        horizontalArrangement = Arrangement.spacedBy(8.dp),
+    ) {
+        if (onBack != null) {
+            HongguoIconAction(onClick = onBack) {
+                Icon(Icons.AutoMirrored.Outlined.ArrowBack, contentDescription = "返回",
+                    tint = HongguoColors.ink)
+            }
+        }
+        Text(
+            title,
+            modifier = Modifier.weight(1f),
+            fontSize = HongguoUi.pageTitleSize,
+            fontWeight = FontWeight.Bold,
+            color = HongguoColors.ink,
+        )
+        actions()
+    }
+}
+
+/** Shared section title styling across normal (non-video) pages. */
+@Composable
+internal fun HongguoSectionTitle(title: String, modifier: Modifier = Modifier) {
+    Text(
+        title, modifier = modifier, fontSize = HongguoUi.sectionTitleSize,
+        fontWeight = FontWeight.SemiBold, color = HongguoColors.ink,
+    )
 }
