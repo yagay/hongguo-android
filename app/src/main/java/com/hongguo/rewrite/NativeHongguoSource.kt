@@ -404,6 +404,8 @@ class NativeHongguoSource(
      */
     suspend fun websiteSocial(id: String): SocialStats = websiteCovers.socialStats(id)
 
+    suspend fun publicDetail(id: String): DramaPublicDetail = websiteCovers.publicDetail(id)
+
     suspend fun websiteLabels(id: String): DramaLabels = websiteCovers.labels(id)
 
     /**
