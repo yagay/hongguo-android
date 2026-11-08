@@ -156,6 +156,7 @@ internal fun SettingsScreen(state: AppState, model: DramaViewModel) {
                         selected = state.themeStyle,
                         onSelect = model::setThemeStyle,
                         tag = "theme_style",
+                        tagByValue = true,
                     )
                     Text("显示模式", color = HongguoColors.ink,
                         fontWeight = FontWeight.SemiBold)
@@ -167,6 +168,7 @@ internal fun SettingsScreen(state: AppState, model: DramaViewModel) {
                         selected = state.themeMode,
                         onSelect = model::setThemeMode,
                         tag = "theme_mode",
+                        tagByValue = true,
                     )
                     Text("底栏样式", color = HongguoColors.ink, fontWeight = FontWeight.SemiBold)
                     HongguoChoiceGroup(
@@ -174,6 +176,7 @@ internal fun SettingsScreen(state: AppState, model: DramaViewModel) {
                         selected = state.navigationStyle,
                         onSelect = model::setNavigationStyle,
                         tag = "navbar_style",
+                        tagByValue = true,
                     )
                     Text("首页、搜索页和剧集详情跟随显示模式；播放视频区域始终使用深色背景。",
                         color = HongguoColors.muted, fontSize = 12.sp)
@@ -189,6 +192,7 @@ internal fun SettingsScreen(state: AppState, model: DramaViewModel) {
                         selected = state.videoBrightnessPercent,
                         onSelect = model::setVideoBrightnessPercent,
                         tag = "settings_video_brightness",
+                        tagByValue = true,
                     )
                     Text("只对全屏刷短剧和正式剧集播放生效，离开播放器自动恢复系统亮度；" +
                         "不修改视频颜色、伽马或全局屏幕设置。",
@@ -200,6 +204,7 @@ internal fun SettingsScreen(state: AppState, model: DramaViewModel) {
                         selected = state.playbackAudioBoostDb,
                         onSelect = model::setPlaybackAudioBoostDb,
                         tag = "settings_audio_boost",
+                        tagByValue = true,
                     )
                     Text("增强仅针对本应用音频，不会修改手机全局媒体音量。" +
                         "系统不支持音效时自动保留原声，出现失真可恢复原音。",
