@@ -45,6 +45,7 @@ import androidx.compose.runtime.SideEffect
 import androidx.compose.runtime.getValue
 import androidx.compose.runtime.mutableStateOf
 import androidx.compose.runtime.key
+import androidx.compose.runtime.remember
 import androidx.compose.runtime.setValue
 import androidx.compose.runtime.saveable.rememberSaveable
 import androidx.compose.ui.Alignment
@@ -55,6 +56,8 @@ import androidx.compose.ui.unit.dp
 import androidx.compose.ui.viewinterop.AndroidView
 import androidx.media3.ui.AspectRatioFrameLayout
 import androidx.media3.ui.PlayerView
+import androidx.media3.common.Player
+import androidx.media3.common.MediaItem
 import androidx.core.view.WindowCompat
 import androidx.lifecycle.compose.collectAsStateWithLifecycle
 import androidx.lifecycle.Lifecycle
@@ -72,7 +75,7 @@ class MainActivity : ComponentActivity() {
         PictureInPictureParams.Builder()
             // The source videos are vertical; a portrait ratio gives a compact
             // width. The OS owns the physical minimum size and user pinch.
-            .setAspectRatio(Rational(9, 16))
+            .setAspectRatio(Rational(VideoPiPPolicy.PORTRAIT_WIDTH, VideoPiPPolicy.PORTRAIT_HEIGHT))
             .setAutoEnterEnabled(autoEnter)
             .setSeamlessResizeEnabled(true)
             .build()
@@ -140,6 +143,26 @@ class MainActivity : ComponentActivity() {
 @Composable
 private fun HongguoApp(model: DramaViewModel = viewModel()) {
     val state by model.state.collectAsStateWithLifecycle()
+    val livePlayer by BackgroundPlaybackService.playerFlow.collectAsStateWithLifecycle()
+    var liveVideoIsPlaying by remember(livePlayer) {
+        mutableStateOf(livePlayer?.isPlaying == true)
+    }
+    var liveVideoMediaId by remember(livePlayer) {
+        mutableStateOf(livePlayer?.currentMediaItem?.mediaId)
+    }
+    DisposableEffect(livePlayer) {
+        val observed = livePlayer
+        val listener = object : Player.Listener {
+            override fun onIsPlayingChanged(isPlaying: Boolean) {
+                liveVideoIsPlaying = isPlaying
+            }
+            override fun onMediaItemTransition(mediaItem: MediaItem?, reason: Int) {
+                liveVideoMediaId = mediaItem?.mediaId
+            }
+        }
+        observed?.addListener(listener)
+        onDispose { observed?.removeListener(listener) }
+    }
     val mainActivity = LocalContext.current as? MainActivity
     val systemPictureInPicture = mainActivity?.videoInPictureInPicture == true
     val lifecycleOwner = LocalLifecycleOwner.current
@@ -173,11 +196,16 @@ private fun HongguoApp(model: DramaViewModel = viewModel()) {
     SideEffect {
         val selectedVid = state.detail?.episodes
             ?.getOrNull(state.episodeIndex)?.vid
-        val media = BackgroundPlaybackService.playerFlow.value
-        val canEnter = selectedVid != null && state.playbackUrl != null &&
-            !state.preparingDetail && media?.currentMediaItem?.mediaId == selectedVid &&
-            media?.isPlaying == true
-        mainActivity?.updateVideoPictureInPictureEligibility(canEnter)
+        mainActivity?.updateVideoPictureInPictureEligibility(
+            VideoPiPPolicy.canAutoEnter(
+                hasDetail = state.detail != null,
+                preparingDetail = state.preparingDetail,
+                hasPlaybackSource = state.playbackUrl != null,
+                expectedVid = selectedVid,
+                actualMediaId = liveVideoMediaId,
+                isPlaying = liveVideoIsPlaying,
+            )
+        )
         HongguoColors.applyTheme(state.themeStyle, state.themeMode, systemDark)
         activity?.let {
             val bars = WindowCompat.getInsetsController(it.window, it.window.decorView)
