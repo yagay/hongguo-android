@@ -80,20 +80,16 @@ import coil.compose.AsyncImage
  * UI-only: paging, search and filters continue to use the existing ViewModel.
  */
 @Composable
-internal fun CatalogScreen(state: AppState, model: DramaViewModel, onMine: () -> Unit = {}) {
+internal fun CatalogScreen(
+    state: AppState, model: DramaViewModel,
+    onMine: () -> Unit = {}, onSearchOpen: () -> Unit = {},
+) {
     var filtersOpen by rememberSaveable { mutableStateOf(false) }
-    var searchLandingOpen by rememberSaveable { mutableStateOf(false) }
     var openSourceExplore by rememberSaveable { mutableStateOf(false) }
     val grid = rememberLazyGridState()
     LaunchedEffect(state.section, state.board, state.genre) {
         grid.scrollToItem(0)
         filtersOpen = false
-    }
-    if (searchLandingOpen) {
-        SearchLandingScreen(state, model,
-            onClose = { searchLandingOpen = false },
-            onResults = { searchLandingOpen = false })
-        return
     }
     if (openSourceExplore) {
         OpenHongguoExploreScreen(model, onClose = { openSourceExplore = false })
@@ -105,7 +101,7 @@ internal fun CatalogScreen(state: AppState, model: DramaViewModel, onMine: () ->
         contentWindowInsets = WindowInsets(0, 0, 0, 0),
         containerColor = HongguoColors.background,
         topBar = { CatalogHeader(state, model, onMine,
-            onSearchOpen = { searchLandingOpen = true }) },
+            onSearchOpen = onSearchOpen) },
     ) { insets ->
         LazyVerticalGrid(
             columns = GridCells.Adaptive(minSize = 100.dp),
