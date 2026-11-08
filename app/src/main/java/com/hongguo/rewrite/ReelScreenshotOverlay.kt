@@ -10,6 +10,7 @@ import androidx.compose.foundation.horizontalScroll
 import androidx.compose.foundation.rememberScrollState
 import androidx.compose.foundation.layout.Arrangement
 import androidx.compose.foundation.layout.Box
+import androidx.compose.foundation.layout.BoxWithConstraints
 import androidx.compose.foundation.layout.Column
 import androidx.compose.foundation.layout.Row
 import androidx.compose.foundation.layout.Spacer
@@ -125,50 +126,64 @@ internal fun ReelScreenshotOverlay(
         if (feedChrome) {
             // Official-inspired navigation: only Recommend and Real correspond to
             // live official reel feeds. Other tabs open real existing collections.
-            Row(
-                Modifier.fillMaxWidth()
-                    .height(52.dp)
-                    .padding(horizontal = 8.dp, vertical = 4.dp),
-                verticalAlignment = Alignment.CenterVertically,
+            // Keep the edge controls independent of tab count. The reference
+            // screenshot places the menu/search near the edges while the
+            // category labels form a compact, centred group, not weighted
+            // columns stretched over the entire available width.
+            val tabs = buildList {
+                FeatureAvailability.followingAction()?.let { openFollowing ->
+                    add(Triple("关注", false, openFollowing))
+                }
+                add(Triple("漫剧", state.reelsMode == "comic", onComic))
+                add(Triple("真人剧", state.reelsMode == "real", onReal))
+                add(Triple("推荐", state.reelsMode == "all", onRecommend))
+            }
+            BoxWithConstraints(
+                Modifier.fillMaxWidth().height(56.dp)
+                    .padding(horizontal = 8.dp),
             ) {
-                // Equal-sized outer slots keep the category tabs visually
-                // centred even when optional feed categories appear.
-                IconButton(onClick = onOpenAccountDrawer,
-                    modifier = Modifier.size(40.dp).testTag("reel_menu")) {
-                    Icon(Icons.Outlined.Menu, "打开账号与隐私侧边栏", tint = white,
-                        modifier = Modifier.size(24.dp))
+                val tabWidth = minOf(60.dp, (maxWidth - 88.dp) / tabs.size)
+                IconButton(
+                    onClick = onOpenAccountDrawer,
+                    modifier = Modifier.align(Alignment.TopStart)
+                        .size(40.dp).testTag("reel_menu"),
+                ) {
+                    Icon(Icons.Outlined.Menu, "打开账号与隐私侧边栏",
+                        tint = white, modifier = Modifier.size(23.dp))
                 }
-                // Future verified providers can register a real following
-                // feed action. Compose recomposes and exposes the tab without
-                // any additional changes in this screen.
-                val tabs = buildList {
-                    FeatureAvailability.followingAction()?.let { openFollowing ->
-                        add(Triple("关注", false, openFollowing))
+                Row(
+                    modifier = Modifier.align(Alignment.TopCenter)
+                        .height(52.dp),
+                    verticalAlignment = Alignment.Top,
+                    horizontalArrangement = Arrangement.Center,
+                ) {
+                    tabs.forEach { (label, active, action) ->
+                        Column(
+                            modifier = Modifier.width(tabWidth)
+                                .clickable(onClick = action)
+                                .padding(top = 3.dp)
+                                .testTag("reel_tab_" + label),
+                            horizontalAlignment = Alignment.CenterHorizontally,
+                            verticalArrangement = Arrangement.spacedBy(4.dp),
+                        ) {
+                            Text(label,
+                                color = if (active) white else Color(0xFFE3E3E3),
+                                fontSize = 18.sp, lineHeight = 23.sp,
+                                fontWeight = if (active) FontWeight.Bold else FontWeight.Medium,
+                                maxLines = 1, overflow = TextOverflow.Clip)
+                            Box(Modifier.width(20.dp).height(2.dp)
+                                .background(if (active) white else Color.Transparent,
+                                    RoundedCornerShape(2.dp)))
+                        }
                     }
-                    add(Triple("漫剧", state.reelsMode == "comic", onComic))
-                    add(Triple("真人剧", state.reelsMode == "real", onReal))
-                    add(Triple("推荐", state.reelsMode == "all", onRecommend))
                 }
-                tabs.forEach { (label, active, action) ->
-                    Column(
-                        modifier = Modifier.weight(1f).clickable(onClick = action)
-                            .testTag("reel_tab_" + label),
-                        horizontalAlignment = Alignment.CenterHorizontally,
-                        verticalArrangement = Arrangement.spacedBy(3.dp),
-                    ) {
-                        Text(label, color = if (active) white else Color(0xFFE3E3E3),
-                            fontSize = 16.sp, lineHeight = 19.sp,
-                            fontWeight = if (active) FontWeight.Bold else FontWeight.Medium,
-                            maxLines = 1, overflow = TextOverflow.Clip)
-                        Box(Modifier.width(22.dp).height(3.dp)
-                            .background(if (active) white else Color.Transparent,
-                                RoundedCornerShape(2.dp)))
-                    }
-                }
-                IconButton(onClick = onSearch,
-                    modifier = Modifier.size(40.dp).testTag("reel_search")) {
-                    Icon(Icons.Outlined.Search, "搜索短剧", tint = white,
-                        modifier = Modifier.size(24.dp))
+                IconButton(
+                    onClick = onSearch,
+                    modifier = Modifier.align(Alignment.TopEnd)
+                        .size(40.dp).testTag("reel_search"),
+                ) {
+                    Icon(Icons.Outlined.Search, "搜索短剧",
+                        tint = white, modifier = Modifier.size(27.dp))
                 }
             }
         } else {
