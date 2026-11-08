@@ -127,6 +127,7 @@ import java.time.format.DateTimeFormatter
 internal fun NativePlayer(
     state: AppState,
     model: DramaViewModel,
+    onExitFeed: () -> Unit,
 ) {
     val detail = state.detail ?: return
     if (detail.episodes.isEmpty()) {
@@ -233,7 +234,8 @@ internal fun NativePlayer(
         selected?.let { model.savePlaybackPosition(
             it.vid, playback.positionMs, playback.durationMs
         ) }
-        model.backFromPlayer()
+        if (state.feedMode) onExitFeed()
+        else model.backFromPlayer()
     }
     BackHandler(enabled = searchOverlayOpen) {
         searchOverlayOpen = false
@@ -318,32 +320,27 @@ internal fun NativePlayer(
                     model = model,
                     onAccount = {
                         accountDrawerScope.launch { accountDrawerState.close() }
-                        model.minimizePlayer()
                         model.show(Modal.ACCOUNT)
                     },
                     onHistoryItem = { drama ->
                         accountDrawerScope.launch { accountDrawerState.close() }
-                        model.open(drama)
+                        model.openFromFeedSelection(drama)
                     },
                     onReservations = {
                         accountDrawerScope.launch { accountDrawerState.close() }
-                        model.minimizePlayer()
                         model.show(Modal.ACCOUNT)
                     },
                     onDownloads = {
                         accountDrawerScope.launch { accountDrawerState.close() }
-                        model.minimizePlayer()
                         model.updateDownloads()
                         model.show(Modal.DOWNLOAD)
                     },
                     onShare = {
                         accountDrawerScope.launch { accountDrawerState.close() }
-                        model.minimizePlayer()
                         model.show(Modal.SHARE)
                     },
                     onSettings = {
                         accountDrawerScope.launch { accountDrawerState.close() }
-                        model.minimizePlayer()
                         model.show(Modal.SETTINGS)
                     },
                     onOfflineEpisode = { episode ->
@@ -548,9 +545,8 @@ internal fun NativePlayer(
                 model.retryDanmaku(playback.positionMs, playback.durationMs)
             },
             onFollowing = {
-                // Following has no verified public reel endpoint: open the
-                // authenticated account rather than mislabelling local favorites.
-                model.minimizePlayer()
+                // The account screen overlays the reel, rather than
+                // unexpectedly sending the user to the home catalog.
                 model.show(Modal.ACCOUNT)
             },
             onComic = { model.setReelsMode("comic") },
@@ -583,9 +579,10 @@ internal fun NativePlayer(
             state = state,
             model = model,
             onClose = { searchOverlayOpen = false },
-            onResults = {
+            onResults = { /* Results render in this slide-over page. */ },
+            onOpenDrama = { drama ->
                 searchOverlayOpen = false
-                model.minimizePlayer()
+                model.openFromFeedSelection(drama)
             },
         )
     }
