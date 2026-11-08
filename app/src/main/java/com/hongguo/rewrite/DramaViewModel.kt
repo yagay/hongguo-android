@@ -1220,8 +1220,8 @@ class DramaViewModel(application: Application) : AndroidViewModel(application) {
                 commentsLoading = false, commentsError = null,
                 commentsLimited = false,
                 danmakuForVid = null, danmakuItems = emptyList(),
-                danmakuLoadedUntilMs = 0L, danmakuLoading = false,
-                danmakuError = null)
+                danmakuWindowStartMs = 0L, danmakuLoadedUntilMs = 0L,
+                danmakuLoading = false, danmakuError = null)
         }
     }
 
@@ -1236,6 +1236,22 @@ class DramaViewModel(application: Application) : AndroidViewModel(application) {
         mutable.update { it.copy(danmakuEnabled = enabled,
             danmakuError = if (enabled) null else it.danmakuError) }
         if (!enabled) danmakuJob?.cancel()
+    }
+
+    /** Explicit retry after a failed or empty provider response. Do not invent
+     * bullet comments or retry the upstream endpoint in an unbounded loop.
+     */
+    fun retryDanmaku(positionMs: Long, durationMs: Long) {
+        if (!state.value.danmakuEnabled) return
+        danmakuGeneration++
+        danmakuJob?.cancel()
+        mutable.update { it.copy(
+            danmakuForVid = null, danmakuItems = emptyList(),
+            danmakuWindowStartMs = 0L, danmakuLoadedUntilMs = 0L,
+            danmakuLoading = false, danmakuError = null,
+        ) }
+        diagnostics.record("DANMAKU", "MANUAL_RETRY")
+        ensureDanmaku(positionMs, durationMs)
     }
 
     fun setDanmakuSpeed(value: Int) {
@@ -1319,36 +1335,60 @@ class DramaViewModel(application: Application) : AndroidViewModel(application) {
         }
     }
 
-    /** Fetch timed comments ahead of the current player position, only on demand. */
+    /** Fetch the actual official timed-comment window near the current Media3
+     * clock. An explicit seek or autoplay may jump across many pages; always
+     * reset the window instead of crawling from 00:00 for minutes.
+     */
+    private var danmakuDurationWaitForVid: String? = null
+
     fun ensureDanmaku(positionMs: Long, durationMs: Long) {
         val s = state.value
-        // Stop retrying a rejected anonymous endpoint every few seconds.
-        // An explicit off/on toggle allows another attempt.
-        if (!s.danmakuEnabled || s.danmakuLoading || s.danmakuError != null ||
-            durationMs !in 1000L..86_400_000L) return
+        // Preserve the one-shot error state. A visible retry action can re-arm
+        // it, without making repeated rejected requests every 3.5 seconds.
+        if (!s.danmakuEnabled || s.danmakuLoading || s.danmakuError != null) return
         val detail = s.detail ?: return
         val vid = detail.episodes.getOrNull(s.episodeIndex)?.vid ?: return
-        val sid = detail.drama.id
-        val same = s.danmakuForVid == vid
-        val start = if (same) s.danmakuLoadedUntilMs else 0L
-        if (start >= durationMs || (same && positionMs + 15_000 < start)) return
+        if (durationMs !in 1_000L..86_400_000L) {
+            if (danmakuDurationWaitForVid != vid) {
+                danmakuDurationWaitForVid = vid
+                diagnostics.record("DANMAKU", "WAIT_MEDIA_DURATION")
+            }
+            return
+        }
+        danmakuDurationWaitForVid = null
+        val request = DanmakuWindowPolicy.next(
+            positionMs = positionMs,
+            durationMs = durationMs,
+            sameEpisode = s.danmakuForVid == vid,
+            loadedFromMs = s.danmakuWindowStartMs,
+            loadedUntilMs = s.danmakuLoadedUntilMs,
+        ) ?: return
+        val start = request.startMs
         val generation = danmakuGeneration
+        val sid = detail.drama.id
         mutable.update { it.copy(danmakuForVid = vid, danmakuLoading = true,
             danmakuError = null) }
         danmakuJob = viewModelScope.launch {
-            diagnostics.record("DANMAKU", "FETCH_START")
+            diagnostics.record("DANMAKU",
+                if (request.replaceWindow) "FETCH_SEEK_WINDOW" else "FETCH_NEXT_WINDOW")
             try {
                 val page = nativeSource.danmaku(sid, vid, start, durationMs)
                 if (generation != danmakuGeneration ||
                     state.value.detail?.episodes?.getOrNull(state.value.episodeIndex)?.vid != vid)
                     return@launch
-                mutable.update { it.copy(
-                    danmakuForVid = vid,
-                    danmakuItems = (it.danmakuItems + page.items)
-                        .distinctBy(DanmakuEntry::id).takeLast(600),
-                    danmakuLoadedUntilMs = page.nextMs.coerceAtMost(durationMs),
-                    danmakuLoading = false,
-                ) }
+                mutable.update {
+                    val previous = if (request.replaceWindow) emptyList()
+                        else it.danmakuItems
+                    it.copy(
+                        danmakuForVid = vid,
+                        danmakuItems = (previous + page.items)
+                            .distinctBy(DanmakuEntry::id).takeLast(600),
+                        danmakuWindowStartMs = if (request.replaceWindow)
+                            start else it.danmakuWindowStartMs,
+                        danmakuLoadedUntilMs = page.nextMs.coerceAtMost(durationMs),
+                        danmakuLoading = false,
+                    )
+                }
                 diagnostics.record("DANMAKU",
                     if (page.items.isEmpty()) "READ_EMPTY" else "READ_NONEMPTY")
             } catch (e: CancellationException) {
@@ -1356,7 +1396,8 @@ class DramaViewModel(application: Application) : AndroidViewModel(application) {
             } catch (e: Exception) {
                 if (generation == danmakuGeneration) {
                     val problem = PlaybackProblem.describe("读取弹幕", e)
-                    diagnostics.record("DANMAKU", "READ_FAIL_" + problem.substringBefore(" · "))
+                    diagnostics.record("DANMAKU",
+                        "READ_FAIL_" + problem.substringBefore(" · "))
                     mutable.update { it.copy(danmakuError = problem, danmakuLoading = false) }
                 }
             }
