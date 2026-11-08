@@ -2,6 +2,7 @@ package com.hongguo.rewrite
 
 import android.app.Activity
 import android.app.PictureInPictureParams
+import android.content.Context
 import android.content.pm.PackageManager
 import android.content.res.Configuration
 import android.os.Build
@@ -73,6 +74,13 @@ import androidx.lifecycle.LifecycleEventObserver
 import androidx.lifecycle.compose.LocalLifecycleOwner
 import androidx.lifecycle.viewmodel.compose.viewModel
 
+private const val EXTERNAL_PIP_PREFERENCES = "external_picture_in_picture"
+private const val EXTERNAL_PIP_ENABLED = "enabled"
+
+private fun externalPipEnabled(context: Context): Boolean =
+    context.getSharedPreferences(EXTERNAL_PIP_PREFERENCES, Context.MODE_PRIVATE)
+        .getBoolean(EXTERNAL_PIP_ENABLED, true)
+
 class MainActivity : ComponentActivity() {
     /** PiP is a display mode for the existing Media3 session, not a second service. */
     var videoInPictureInPicture by mutableStateOf(false)
@@ -93,7 +101,7 @@ class MainActivity : ComponentActivity() {
     }
 
     fun updateVideoPictureInPictureEligibility(enabled: Boolean) {
-        autoPictureInPictureEligible = enabled &&
+        autoPictureInPictureEligible = enabled && externalPipEnabled(this) &&
             packageManager.hasSystemFeature(PackageManager.FEATURE_PICTURE_IN_PICTURE)
         if (!videoInPictureInPicture) {
             // PiP can be disabled per app by the user, and OEM framework
@@ -108,6 +116,7 @@ class MainActivity : ComponentActivity() {
 
     /** Explicit PiP action in both the full and in-app mini players. */
     fun enterVideoPictureInPicture(expectedVid: String): Boolean {
+        if (!externalPipEnabled(this)) return false
         if (!packageManager.hasSystemFeature(
                 PackageManager.FEATURE_PICTURE_IN_PICTURE)) return false
         val player = BackgroundPlaybackService.playerFlow.value ?: return false
@@ -161,6 +170,16 @@ class MainActivity : ComponentActivity() {
 @Composable
 private fun HongguoApp(model: DramaViewModel = viewModel()) {
     val state by model.state.collectAsStateWithLifecycle()
+    val appContext = LocalContext.current
+    var externalPipEnabled by remember(appContext) {
+        mutableStateOf(externalPipEnabled(appContext))
+    }
+    val setExternalPipEnabled: (Boolean) -> Unit = { enabled ->
+        externalPipEnabled = enabled
+        appContext.getSharedPreferences(
+            EXTERNAL_PIP_PREFERENCES, Context.MODE_PRIVATE
+        ).edit().putBoolean(EXTERNAL_PIP_ENABLED, enabled).apply()
+    }
     val livePlayer by BackgroundPlaybackService.playerFlow.collectAsStateWithLifecycle()
     var liveVideoIsPlaying by remember(livePlayer) {
         mutableStateOf(livePlayer?.isPlaying == true)
@@ -278,7 +297,7 @@ private fun HongguoApp(model: DramaViewModel = viewModel()) {
         val selectedVid = state.detail?.episodes
             ?.getOrNull(state.episodeIndex)?.vid
         mainActivity?.updateVideoPictureInPictureEligibility(
-            VideoPiPPolicy.canAutoEnter(
+            externalPipEnabled && VideoPiPPolicy.canAutoEnter(
                 hasDetail = state.detail != null,
                 preparingDetail = state.preparingDetail,
                 hasPlaybackSource = state.playbackUrl != null,
@@ -371,7 +390,9 @@ private fun HongguoApp(model: DramaViewModel = viewModel()) {
                         // UI mode changes do not destroy the active Media3 item.
                         key(state.detail?.drama?.id) {
                             NativePlayer(state, model,
-                                onExitFeed = { confirmExitFeed = true })
+                                onExitFeed = { confirmExitFeed = true },
+                                externalPipEnabled = externalPipEnabled,
+                                onExternalPipEnabled = setExternalPipEnabled)
                         }
                     activeRoute in setOf(PlaybackDestination.FEED,
                         PlaybackDestination.SERIES) && primaryTab == "home" -> {
