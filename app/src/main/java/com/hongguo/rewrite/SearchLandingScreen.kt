@@ -1,5 +1,6 @@
 package com.hongguo.rewrite
 
+import android.widget.Toast
 import androidx.compose.foundation.background
 import androidx.compose.foundation.clickable
 import androidx.compose.foundation.horizontalScroll
@@ -38,6 +39,7 @@ import androidx.compose.runtime.Composable
 import androidx.compose.runtime.LaunchedEffect
 import androidx.compose.runtime.getValue
 import androidx.compose.runtime.mutableIntStateOf
+import androidx.compose.runtime.mutableStateOf
 import androidx.compose.runtime.remember
 import androidx.compose.runtime.setValue
 import androidx.compose.ui.Alignment
@@ -46,6 +48,7 @@ import androidx.compose.ui.draw.clip
 import androidx.compose.ui.graphics.Brush
 import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.layout.ContentScale
+import androidx.compose.ui.platform.LocalContext
 import androidx.compose.ui.platform.testTag
 import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.text.input.ImeAction
@@ -71,7 +74,15 @@ internal fun SearchLandingScreen(
     onResults: () -> Unit,
 ) {
     var selectedBoard by remember { mutableIntStateOf(0) }
+    var showActors by remember { mutableStateOf(false) }
+    val context = LocalContext.current
     LaunchedEffect(Unit) { model.loadSearchLanding() }
+    if (showActors) {
+        OpenHongguoExploreScreen(model,
+            onClose = { showActors = false },
+            initialTab = "actor")
+        return
+    }
 
     fun submit(text: String) {
         if (text.isBlank()) return
@@ -139,13 +150,14 @@ internal fun SearchLandingScreen(
                     "筛选" to Section.BROWSE).forEach { (name, section) ->
                     Surface(
                         onClick = {
-                            if (section == Section.SEARCH) {
-                                // Image-based drama recognition has no verified backend.
-                                // Stay on this page with its functional text search.
-                                model.setSearch("")
-                            } else {
-                                model.section(section)
-                                onResults()
+                            when (name) {
+                                "识剧" -> Toast.makeText(context,
+                                    "图片识剧接口尚未验证", Toast.LENGTH_SHORT).show()
+                                "演员" -> showActors = true
+                                else -> {
+                                    model.section(section)
+                                    onResults()
+                                }
                             }
                         },
                         shape = RoundedCornerShape(12.dp),
