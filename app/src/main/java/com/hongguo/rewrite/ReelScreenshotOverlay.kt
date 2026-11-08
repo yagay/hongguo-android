@@ -176,7 +176,16 @@ internal fun ReelScreenshotOverlay(
                     ?: if (state.socialStatsLoading) "…" else null,
                 scope = likeMetric?.second?.takeIf { it == "全剧" },
             )
-            ReferenceAction(Icons.Outlined.Share, "分享", "reel_share", onShare)
+            // The provider's series_play_cnt is a series-wide view metric.
+            // It is display-only and must not behave like a clickable action
+            // or be inflated from local playback history.
+            ReferenceMetric(
+                icon = Icons.Outlined.Visibility,
+                label = "全剧播放量",
+                count = social?.playCount?.let(SocialCountFormatter::format)
+                    ?: if (state.socialStatsLoading) "…" else null,
+                tag = "reel_play_count",
+            )
         }
 
         // Left caption area deliberately does not span beneath the action rail.
@@ -326,39 +335,6 @@ internal fun ReelBottomDock(
     ) {
         // A truly thin 2dp progress LINE, not the full Material Slider thumb.
         // 16dp invisible hit target keeps both taps and drag-to-seek usable.
-        Row(
-            Modifier.fillMaxWidth().height(34.dp)
-                .clickable(onClick = onEpisodes)
-                .padding(start = 10.dp, end = 8.dp)
-                .testTag("watch_full_drama"),
-            verticalAlignment = Alignment.CenterVertically,
-            horizontalArrangement = Arrangement.spacedBy(6.dp),
-        ) {
-            Icon(Icons.Outlined.PlayCircleOutline, "观看完整短剧",
-                tint = Color.White, modifier = Modifier.size(20.dp))
-            Text(
-                "观看完整短剧 · 全${detail.episodes.size}集",
-                color = Color.White,
-                fontSize = 13.sp,
-                fontWeight = FontWeight.Medium,
-                maxLines = 1,
-                overflow = TextOverflow.Ellipsis,
-                modifier = Modifier.weight(1f).testTag("reel_episode_status"),
-            )
-            Text(
-                PlaybackTimeFormatter.label(playback.positionMs, duration),
-                color = Color(0xFFE2E1E5),
-                fontSize = 10.sp,
-                maxLines = 1,
-                modifier = Modifier.testTag("reel_time_label"),
-            )
-            Icon(
-                Icons.Outlined.KeyboardArrowRight,
-                contentDescription = "打开选集",
-                tint = Color.White,
-                modifier = Modifier.size(16.dp),
-            )
-        }
         Canvas(
             Modifier.fillMaxWidth().height(16.dp)
                 .pointerInput(duration, playback) {
@@ -407,7 +383,41 @@ internal fun ReelBottomDock(
                 cap = StrokeCap.Round,
             )
         }
-
+        Row(
+            Modifier.fillMaxWidth().height(34.dp)
+                .clickable(onClick = onEpisodes)
+                .padding(start = 10.dp, end = 8.dp)
+                .testTag("watch_full_drama"),
+            verticalAlignment = Alignment.CenterVertically,
+            horizontalArrangement = Arrangement.spacedBy(6.dp),
+        ) {
+            Text(
+                DramaCompletion.episodeLabel(
+                    total = detail.episodes.size,
+                    status = detail.drama.completionStatus,
+                    episodeIndex = episode?.index,
+                ),
+                color = Color.White,
+                fontSize = 12.sp,
+                fontWeight = FontWeight.Medium,
+                maxLines = 1,
+                overflow = TextOverflow.Ellipsis,
+                modifier = Modifier.weight(1f).testTag("reel_episode_status"),
+            )
+            Text(
+                PlaybackTimeFormatter.label(playback.positionMs, duration),
+                color = Color(0xFFE2E1E5),
+                fontSize = 10.sp,
+                maxLines = 1,
+                modifier = Modifier.testTag("reel_time_label"),
+            )
+            Icon(
+                Icons.Outlined.KeyboardArrowRight,
+                contentDescription = "打开选集",
+                tint = Color.White,
+                modifier = Modifier.size(16.dp),
+            )
+        }
     }
 }
 
