@@ -250,6 +250,15 @@ class DramaViewModel(application: Application) : AndroidViewModel(application) {
         mutable.update { it.copy(navigationStyle = value) }
     }
 
+    /** Opt-in display brightness override; never changes Android global settings. */
+    fun setVideoBrightnessPercent(percent: Int) {
+        if (percent != -1 && percent !in 40..100) return
+        prefs.edit().putInt("video_brightness_percent", percent).apply()
+        mutable.update { it.copy(videoBrightnessPercent = percent) }
+        diagnostics.record("VIDEO_DISPLAY",
+            if (percent < 0) "BRIGHTNESS_SYSTEM" else "BRIGHTNESS_OVERRIDE")
+    }
+
     fun setDefaultPlaybackSpeed(value: Float) {
         if (value !in setOf(0.75f, 1f, 1.25f, 1.5f, 2f, 3f)) return
         prefs.edit().putFloat("default_playback_speed", value).apply()
@@ -867,6 +876,8 @@ class DramaViewModel(application: Application) : AndroidViewModel(application) {
             retryPlaybackAutomatically = prefs.getBoolean("playback_auto_retry", true),
             recentSearches = recentQueries(),
             defaultPlaybackSpeed = prefs.getFloat("default_playback_speed", 1f).coerceIn(0.75f, 3f),
+            videoBrightnessPercent = prefs.getInt("video_brightness_percent", -1)
+                .takeIf { it == -1 || it in 40..100 } ?: -1,
             qualityLimit = prefs.getInt("quality_limit", 0)
                 .takeIf { it in setOf(0, 360, 480, 720, 1080) } ?: 0,
             logEnabled = diagnostics.enabled,
