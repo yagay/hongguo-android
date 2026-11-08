@@ -127,6 +127,7 @@ class NativeHongguoSource(
                     throw cancel
                 } catch (failure: Exception) {
                     officialFailure = failure
+                    diagnostics?.record("REELS", "MAIN_" + OfficialReelsFailure.code(failure))
                     upstreamMore = false
                 }
             }
@@ -144,6 +145,7 @@ class NativeHongguoSource(
                         throw cancel
                     } catch (failure: Exception) {
                         realCategoryFailure = failure
+                        diagnostics?.record("REELS", "REAL_" + OfficialReelsFailure.code(failure))
                         // Keep the same cursor for manual retry; no invented fixed list.
                         return@repeat
                     }
