@@ -387,7 +387,7 @@ class DramaViewModel(application: Application) : AndroidViewModel(application) {
                 // empty response. Retry at most once for prefetch only, and
                 // only while the target episode and quality are unchanged.
                 remote = try {
-                    nativeSource.openVideo(next, qualityLimit = quality)
+                    nativeSource.openVideo(next, qualityLimit = quality, preload = true)
                 } catch (first: CancellationException) {
                     throw first
                 } catch (first: Exception) {
@@ -398,7 +398,7 @@ class DramaViewModel(application: Application) : AndroidViewModel(application) {
                         state.value.detail?.episodes
                             ?.getOrNull(state.value.episodeIndex + 1)?.vid != next ||
                         state.value.qualityLimit != quality) return@launch
-                    nativeSource.openVideo(next, qualityLimit = quality)
+                    nativeSource.openVideo(next, qualityLimit = quality, preload = true)
                 }
                 if (generation == detailId && state.value.preloadNext &&
                     state.value.detail?.episodes?.getOrNull(state.value.episodeIndex + 1)?.vid == next &&
@@ -439,11 +439,19 @@ class DramaViewModel(application: Application) : AndroidViewModel(application) {
         if (!snapshot.preloadNext || snapshot.offlinePlaybackUri != null ||
             firstFrameFor != currentEpisode.vid) return
 
-        if (snapshot.episodeIndex < detail.episodes.lastIndex) {
+        val episodeDecision = SeamlessPrefetchPolicy.choose(
+            enabled = snapshot.preloadNext,
+            autoPlayNext = snapshot.autoPlayNext,
+            inSwipeFeed = snapshot.feedMode,
+            offline = snapshot.offlinePlaybackUri != null,
+            hasNextEpisode = snapshot.episodeIndex < detail.episodes.lastIndex,
+            hasQueuedNextDrama = false,
+        )
+        if (episodeDecision == SeamlessPrefetchPolicy.Next.NEXT_EPISODE) {
             preloadFollowingEpisode()
             return
         }
-        if (!snapshot.autoPlayNext) return
+        if (episodeDecision == SeamlessPrefetchPolicy.Next.NONE) return
 
         val continuation = OfficialReelsPolicy.continuationAfterCompletedSeries(
             finishedDrama = detail.drama,
@@ -468,11 +476,20 @@ class DramaViewModel(application: Application) : AndroidViewModel(application) {
             current.feedItems, current.feedIndex, 1,
             current.hiddenRecommendationIds,
         )
-        if (nextIndex != null) {
+        val plan = SeamlessPrefetchPolicy.choose(
+            enabled = current.preloadNext,
+            autoPlayNext = current.autoPlayNext,
+            inSwipeFeed = current.feedMode,
+            offline = current.offlinePlaybackUri != null,
+            hasNextEpisode = false,
+            hasQueuedNextDrama = nextIndex != null,
+        )
+        if (plan == SeamlessPrefetchPolicy.Next.NEXT_DRAMA) {
             prefetchFollowingFeedItem(current.feedIndex)
             return
         }
-        if (current.feedLoading) return // Existing request is in flight.
+        if (plan != SeamlessPrefetchPolicy.Next.FETCH_RECOMMENDATIONS ||
+            current.feedLoading) return // The official request is already in flight.
         deferRestoredFeedRecommendations = false
         if (current.feedMode) {
             if (!current.feedHasMore) mutable.update { it.copy(feedHasMore = true) }
@@ -980,7 +997,7 @@ class DramaViewModel(application: Application) : AndroidViewModel(application) {
                 }
                 val first = detail.episodes.first().vid
                 val quality = state.value.qualityLimit
-                warming = nativeSource.openVideo(first, qualityLimit = quality)
+                warming = nativeSource.openVideo(first, qualityLimit = quality, preload = true)
                 if (!isUpcomingReel(next.id) || !state.value.preloadNext ||
                     state.value.qualityLimit != quality) return@launch
                 clearReelWarmVideo()

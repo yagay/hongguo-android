@@ -20,6 +20,7 @@ import com.hongguotv.core.RankBoard
 import com.hongguotv.core.RemoteVideo
 import com.hongguotv.core.Rendition
 import kotlinx.coroutines.Dispatchers
+import kotlinx.coroutines.CancellationException
 import kotlinx.coroutines.withContext
 import java.io.IOException
 
@@ -562,7 +563,8 @@ class NativeHongguoSource(
      * when available; VVC/bytevc2 is never sent to the decoder.
      */
     suspend fun openVideo(
-        vid: String, nextVid: String? = null, qualityLimit: Int = 0
+        vid: String, nextVid: String? = null, qualityLimit: Int = 0,
+        preload: Boolean = false,
     ): RemoteVideo =
         withContext(Dispatchers.IO) {
         diagnostics?.record("PLAYBACK", "REGISTER_AND_MODEL_START")
@@ -596,13 +598,23 @@ class NativeHongguoSource(
         for (candidate in candidates) {
             val video = RemoteVideo(repository.http, candidate.toStreamInfo())
             try {
-                video.prepare(initialBytes = 64 * 1024)
-                diagnostics?.record("PLAYBACK", "RANGE_PREPARED")
+                // Preloaded next items keep a slightly larger byte range
+                // ready. The actively playing item remains at the original
+                // 64 KiB startup budget; no parallel decoder is created.
+                video.prepare(initialBytes = if (preload) 192 * 1024 else 64 * 1024)
+                diagnostics?.record("PLAYBACK",
+                    if (preload) "NEXT_RANGE_PREPARED" else "RANGE_PREPARED")
                 return@withContext video
+            } catch (cancel: CancellationException) {
+                video.close()
+                throw cancel
             } catch (error: IOException) {
                 video.close()
                 last = error
                 diagnostics?.record("PLAYBACK", "RANGE_FAIL")
+            } catch (error: Exception) {
+                video.close()
+                throw error
             }
         }
         throw last ?: IOException("MEDIA_PREPARATION_FAILED")
