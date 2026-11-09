@@ -78,6 +78,14 @@ import java.time.format.DateTimeFormatter
 internal fun SettingsScreen(state: AppState, model: DramaViewModel) {
     var address by remember(state.backend) { mutableStateOf(state.backend) }
     var confirmClear by remember { mutableStateOf(false) }
+    var confirmDiskCacheClear by rememberSaveable { mutableStateOf(false) }
+    var diskCacheEnabled by rememberSaveable { mutableStateOf(model.diskCacheEnabled()) }
+    var wifiPreload by rememberSaveable {
+        mutableStateOf(model.wifiBackgroundPreloadEnabled())
+    }
+    var mobilePreload by rememberSaveable {
+        mutableStateOf(model.mobileBackgroundPreloadEnabled())
+    }
     var pendingRestore by remember { mutableStateOf<Uri?>(null) }
     var showLogPreview by rememberSaveable { mutableStateOf(false) }
     var backendExpanded by rememberSaveable { mutableStateOf(false) }
@@ -219,6 +227,52 @@ internal fun SettingsScreen(state: AppState, model: DramaViewModel) {
                             "公网 API 请使用 HTTPS；127.0.0.1 不指向电脑。",
                             color = HongguoColors.muted, fontSize = 11.sp,
                         )
+                    }
+                }
+            }
+            item {
+                CompactSettingsSection("视频缓存与预加载") {
+                    SettingToggle(
+                        "磁盘缓存",
+                        "私有缓存 · 最多 2 GiB · 7 天后过期；重复播放优先读取本地片段",
+                        diskCacheEnabled,
+                        { enabled ->
+                            diskCacheEnabled = enabled
+                            model.setDiskCacheEnabled(enabled)
+                        },
+                        "settings_disk_cache_enabled",
+                    )
+                    CompactSettingsDivider()
+                    SettingToggle(
+                        "Wi-Fi 积极预加载",
+                        "非计费 Wi-Fi 下提前准备下一集、下下集和下一部",
+                        wifiPreload,
+                        { enabled ->
+                            wifiPreload = enabled
+                            model.setWifiBackgroundPreload(enabled)
+                        },
+                        "settings_wifi_preload",
+                    )
+                    CompactSettingsDivider()
+                    SettingToggle(
+                        "移动网络额外预加载",
+                        "默认关闭；关闭不影响当前视频正常播放",
+                        mobilePreload,
+                        { enabled ->
+                            mobilePreload = enabled
+                            model.setMobileBackgroundPreload(enabled)
+                        },
+                        "settings_mobile_preload",
+                    )
+                    CompactSettingsDivider()
+                    CompactSettingsRow(
+                        title = "清理磁盘视频缓存",
+                        subtitle = "已缓存约 ${model.diskCacheSizeMiB()} MiB；停止播放后可清理",
+                        tag = "settings_clear_disk_video_cache",
+                        onClick = { confirmDiskCacheClear = true },
+                    )
+                    state.settingsMessage?.let {
+                        Text(it, color = HongguoColors.muted, fontSize = 11.sp)
                     }
                 }
             }
@@ -398,6 +452,19 @@ internal fun SettingsScreen(state: AppState, model: DramaViewModel) {
                 model.importLocalBackup(uri)
             },
             onDismiss = { pendingRestore = null },
+        )
+    }
+    if (confirmDiskCacheClear) {
+        HongguoConfirmDialog(
+            title = "清理视频缓存？",
+            message = "删除已缓存在本机的流媒体片段。不会删除收藏、历史或单独下载的离线文件。",
+            confirmLabel = "清理",
+            destructive = true,
+            onConfirm = {
+                confirmDiskCacheClear = false
+                model.clearDiskVideoCache()
+            },
+            onDismiss = { confirmDiskCacheClear = false },
         )
     }
     if (confirmClear) {
