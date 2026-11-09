@@ -290,6 +290,13 @@ private fun HongguoApp(model: DramaViewModel = viewModel()) {
     val darkPlayer =
         videoLayer == AppShellNavigationPolicy.VideoLayer.FULL &&
             state.modal == Modal.NONE
+    // Startup/loading uses the same dark chrome as the feed player so the
+    // status-bar background and icon contrast do not flash on refresh.
+    val darkSystemChrome = darkPlayer || (
+        state.feedMode && activeRoute == PlaybackDestination.FEED &&
+            videoLayer == AppShellNavigationPolicy.VideoLayer.NONE &&
+            state.modal == Modal.NONE && primaryTab == "home"
+    )
     // New series opened from Theater or My: select Home to represent the
     // full-player destination. An asynchronously completed swipe feed while
     // browsing elsewhere is minimized instead of stealing the foreground.
@@ -385,8 +392,8 @@ private fun HongguoApp(model: DramaViewModel = viewModel()) {
             val bars = WindowCompat.getInsetsController(it.window, it.window.decorView)
             // Full-screen search and details use light/dark palettes, not
             // permanently dark surfaces; system-bar icon contrast must follow.
-            bars.isAppearanceLightStatusBars = !darkPlayer && !darkTheme
-            bars.isAppearanceLightNavigationBars = !darkPlayer && !darkTheme
+            bars.isAppearanceLightStatusBars = !darkSystemChrome && !darkTheme
+            bars.isAppearanceLightNavigationBars = !darkSystemChrome && !darkTheme
         }
     }
     val palette = (if (darkTheme) darkColorScheme(
@@ -421,7 +428,7 @@ private fun HongguoApp(model: DramaViewModel = viewModel()) {
                 Spacer(Modifier.fillMaxWidth()
                     .background(
                         when {
-                            darkPlayer -> HongguoColors.playerBackground
+                            darkSystemChrome -> HongguoColors.playerBackground
                             // "My" is drawn directly on the page background,
                             // while catalog and Settings have a surface header.
                             primaryTab == "mine" && state.modal == Modal.NONE &&
@@ -484,10 +491,14 @@ private fun HongguoApp(model: DramaViewModel = viewModel()) {
                                     externalPipEnabled = externalPipEnabled,
                                     onExternalPipEnabled = setExternalPipEnabled)
                             }
-                        AppShellNavigationPolicy.shouldShowLoading(state, primaryTab) -> {
+                        AppShellNavigationPolicy.shouldShowLoading(state, primaryTab) &&
+                            !searchLandingOpen -> {
                             val upcoming = if (state.feedMode)
                                 state.feedItems.getOrNull(state.feedIndex) else null
                             ReelLoadingScreen(
+                                state = state,
+                                model = model,
+                                onSearch = { searchLandingOpen = true },
                                 drama = upcoming,
                                 coverUrl = upcoming?.cover?.takeIf(String::isNotBlank)
                                     ?.let(model::cover),
