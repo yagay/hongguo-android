@@ -11,6 +11,15 @@ on:
         required: false
         default: false
         type: boolean
+    secrets:
+      HG_RELEASE_KEYSTORE_BASE64:
+        required: true
+      HG_RELEASE_STORE_PASSWORD:
+        required: true
+      HG_RELEASE_KEY_ALIAS:
+        required: true
+      HG_RELEASE_KEY_PASSWORD:
+        required: true
   workflow_dispatch:
     inputs:
       signed_release:
