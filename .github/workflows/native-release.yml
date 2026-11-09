@@ -1,0 +1,18 @@
+# This lightweight launcher exists on the default branch so GitHub can
+# display "Run workflow". All app code and signing logic remain on
+# rewrite-web-native and are not merged into main.
+name: Hongguo native signed Release
+on:
+  workflow_dispatch:
+permissions:
+  contents: read
+jobs:
+  signed_release:
+    uses: yagay/hongguo-android/.github/workflows/debug.yml@rewrite-web-native
+    with:
+      signed_release: true
+    secrets:
+      HG_RELEASE_KEYSTORE_BASE64: ${{ secrets.HG_RELEASE_KEYSTORE_BASE64 }}
+      HG_RELEASE_STORE_PASSWORD: ${{ secrets.HG_RELEASE_STORE_PASSWORD }}
+      HG_RELEASE_KEY_ALIAS: ${{ secrets.HG_RELEASE_KEY_ALIAS }}
+      HG_RELEASE_KEY_PASSWORD: ${{ secrets.HG_RELEASE_KEY_PASSWORD }}
