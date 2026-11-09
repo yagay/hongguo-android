@@ -646,12 +646,12 @@ private fun CatalogFiltersSheet(
                                     }
                                 }
                             }
-                            // Stable three-column cells avoid the uneven chip
-                            // widths and excessive FlowRow line breaks.
-                            options.chunked(3).forEach { rowOptions ->
+                            // Five equal-width cells per row. Even when the
+                            // label is long, ellipsis keeps the grid aligned.
+                            options.chunked(TheaterFilterLayoutPolicy.COLUMNS).forEach { rowOptions ->
                                 Row(
                                     Modifier.fillMaxWidth(),
-                                    horizontalArrangement = Arrangement.spacedBy(6.dp),
+                                    horizontalArrangement = Arrangement.spacedBy(4.dp),
                                     verticalAlignment = Alignment.CenterVertically,
                                 ) {
                                     rowOptions.forEach { option ->
@@ -669,7 +669,7 @@ private fun CatalogFiltersSheet(
                                                 .testTag("catalog_filter_option_${group.key}_${optionIndex}"),
                                         )
                                     }
-                                    repeat(3 - rowOptions.size) {
+                                    repeat(TheaterFilterLayoutPolicy.COLUMNS - rowOptions.size) {
                                         Spacer(Modifier.weight(1f))
                                     }
                                 }
@@ -717,7 +717,7 @@ private fun CatalogFilterOptionCell(
         ),
     ) {
         Box(
-            Modifier.fillMaxSize().padding(horizontal = 4.dp),
+            Modifier.fillMaxSize().padding(horizontal = 2.dp),
             contentAlignment = Alignment.Center,
         ) {
             Text(

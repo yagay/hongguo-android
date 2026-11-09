@@ -1,12 +1,14 @@
 package com.yagay.hongguo
 
 /**
- * Collapsed theater filters preview two three-column rows. When the chosen
+ * Collapsed theater filters preview two five-column rows. When the chosen
  * option is outside those rows, keep it visible in the final preview slot.
  * All conditions are still accessible by expanding the category.
  */
 internal object TheaterFilterLayoutPolicy {
-    const val PREVIEW_COUNT = 6
+    const val COLUMNS = 5
+    const val PREVIEW_ROWS = 2
+    const val PREVIEW_COUNT = COLUMNS * PREVIEW_ROWS
 
     fun hasMore(options: List<FilterOption>): Boolean =
         options.size > PREVIEW_COUNT

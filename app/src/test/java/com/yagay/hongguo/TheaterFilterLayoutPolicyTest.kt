@@ -15,17 +15,23 @@ class TheaterFilterLayoutPolicyTest {
         FilterOption("e", "家庭"),
         FilterOption("f", "历史"),
         FilterOption("g", "都市"),
+        FilterOption("h", "悬疑"),
+        FilterOption("i", "喜剧"),
+        FilterOption("j", "科幻"),
+        FilterOption("k", "青春"),
     )
 
-    @Test fun initialPreviewIsTwoThreeColumnRows() {
-        assertEquals(options.take(6),
+    @Test fun initialPreviewIsTwoFiveColumnRows() {
+        assertEquals(5, TheaterFilterLayoutPolicy.COLUMNS)
+        assertEquals(10, TheaterFilterLayoutPolicy.PREVIEW_COUNT)
+        assertEquals(options.take(10),
             TheaterFilterLayoutPolicy.visibleOptions(options, "", false))
         assertTrue(TheaterFilterLayoutPolicy.hasMore(options))
     }
 
     @Test fun selectedOptionBeyondPreviewRemainsVisible() {
-        val preview = TheaterFilterLayoutPolicy.visibleOptions(options, "g", false)
-        assertEquals(6, preview.size)
+        val preview = TheaterFilterLayoutPolicy.visibleOptions(options, "k", false)
+        assertEquals(10, preview.size)
         assertEquals(options.first(), preview.first())
         assertEquals(options.last(), preview.last())
     }
@@ -36,8 +42,11 @@ class TheaterFilterLayoutPolicyTest {
     }
 
     @Test fun shortGroupsHaveNoUnnecessaryExpansion() {
-        assertFalse(TheaterFilterLayoutPolicy.hasMore(options.take(4)))
-        assertEquals(options.take(4),
-            TheaterFilterLayoutPolicy.visibleOptions(options.take(4), "b", false))
+        assertFalse(TheaterFilterLayoutPolicy.hasMore(options.take(9)))
+        assertEquals(options.take(9),
+            TheaterFilterLayoutPolicy.visibleOptions(options.take(9), "b", false))
+        assertFalse(TheaterFilterLayoutPolicy.hasMore(options.take(10)))
+        assertEquals(options.take(10),
+            TheaterFilterLayoutPolicy.visibleOptions(options.take(10), "i", false))
     }
 }
