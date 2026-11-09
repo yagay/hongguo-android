@@ -3038,7 +3038,9 @@ class DramaViewModel(application: Application) : AndroidViewModel(application) {
                     if (serviceStarted) launchBackgroundMedia(
                         detail, index, url, null, checkpoint, version)
                 } else {
-                    val ahead = detail.episodes.getOrNull(index + 1)?.vid
+                    val ahead = if (state.value.preloadNext &&
+                        NativeDiskVideoCache.mayBackgroundPreload(getApplication()))
+                        detail.episodes.getOrNull(index + 1)?.vid else null
                     val quality = state.value.qualityLimit
                     // A rapid advance may catch the N+1 model still in flight.
                     // Give it a short bounded handoff window before issuing
