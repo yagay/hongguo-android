@@ -12,7 +12,7 @@ on:
         default: false
         type: boolean
 concurrency:
-  group: native-rewrite-debug-${{ github.ref }}
+  group: native-rewrite-${{ github.ref }}-${{ (github.event_name == 'workflow_dispatch' && inputs.signed_release) && 'release' || 'debug' }}
   cancel-in-progress: true
 jobs:
   debug:
