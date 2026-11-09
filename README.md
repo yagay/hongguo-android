@@ -438,3 +438,12 @@ Kotlin/Compose/Media3 工程及 Debug-only CI。
 ## Release 签名及发布
 
 Release APK 使用独立 PKCS#12 密钥，`com.yagay.hongguo` 包名；私钥不入库。详细步骤见 [docs/RELEASE_SIGNING.md](docs/RELEASE_SIGNING.md)。GitHub Actions 默认仍运行 Debug，仅手动勾选 **Build signed Release APK** 时编译、签名并校验 Release。
+
+## 连续播放预加载强化（2026-11-09）
+
+- Media3 仍由 `BackgroundPlaybackService` 独占。播放器在原生视频源准备完毕后，提前安排下一集的播放模型与首段字节；首帧到达后不会再人为等待 850ms。
+- 相同目标的预加载任务不会因为首帧回调重复提交而被取消。预加载仅在剧集 ID、画质、预算及内容代际仍一致时发布，避免快速滑动后把旧视频交给当前播放器。
+- N+1 继续按用户选定的 1/2/4/8/16 MiB 预算预热；新增独立的 N+2 低优先级 2 MiB 预热槽位。进入 N+1 时，若 N+2 已准备，直接提升为下一集缓存；若尚在加载则等待已有任务，不重复取流。
+- 完结集的视频模型准备后，在延迟 1.2 秒的低干扰窗口中启动下一部官方推荐预取。即便首帧回调迟到，也不需要等到播放结束才开始查询下一部；真正跨剧衔接仍取决于官方推荐、取址与真实设备网络。
+- 关闭预加载、切换画质或预算、退出播放及跨剧导航时会释放不再适用的 N+2 资源；通过 `PREFETCH_CACHE_HIT/MISS`、`CACHE_PREFIX_KIB_*`、`SWITCH_TO_FIRST_FRAME`、`LATER_VIDEO_PREPARED/WARMED`、`FINALE_EARLY_WARMUP` 等本地诊断事件区分预加载命中与临时取流。
+- 这是一套边界严格的内存预热，不会整集离线下载；HTTP 后端仍按原有播放逻辑工作，原生预加载针对 native source。现有 Debug CI 会在推送时运行，实际无缝切换仍需真机验证。
