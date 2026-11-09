@@ -420,139 +420,146 @@ private fun HongguoApp(model: DramaViewModel = viewModel()) {
             Column(Modifier.fillMaxSize().imePadding()) {
                 Spacer(Modifier.fillMaxWidth()
                     .background(
-                        if (darkPlayer) HongguoColors.playerBackground
-                        else HongguoColors.surface
+                        when {
+                            darkPlayer -> HongguoColors.playerBackground
+                            // "My" is drawn directly on the page background,
+                            // while catalog and Settings have a surface header.
+                            primaryTab == "mine" && state.modal == Modal.NONE &&
+                                activeRoute == PlaybackDestination.CATALOG ->
+                                HongguoColors.background
+                            else -> HongguoColors.surface
+                        }
                     )
                     .windowInsetsTopHeight(WindowInsets.safeDrawing))
                 Column(Modifier.weight(1f).fillMaxWidth()
                     .windowInsetsPadding(
                         WindowInsets.safeDrawing.only(WindowInsetsSides.Horizontal)
                     )) {
-                Box(Modifier.weight(1f)) {
-                    BackHandler(
-                        enabled = state.modal != Modal.NONE ||
-                            activeRoute != PlaybackDestination.CATALOG ||
-                            (activeRoute == PlaybackDestination.CATALOG &&
-                                state.navigation.origin == PlaybackOrigin.SWIPE_FEED) ||
-                            primaryTab != "home" || searchLandingOpen,
-                    ) {
-                        when {
-                            state.modal == Modal.ACCOUNT -> model.closeAccount()
-                            state.modal != Modal.NONE -> model.closeModal()
-                            activeRoute == PlaybackDestination.DETAILS ->
-                                model.backFromDramaDetails()
-                            searchLandingOpen -> searchLandingOpen = false
-                            primaryTab != "home" ->
-                                selectPrimaryTab("home")
-                            activeRoute == PlaybackDestination.FEED ->
-                                confirmExitFeed = true
-                            activeRoute == PlaybackDestination.SERIES ->
-                                model.backFromPlayer()
-                            activeRoute == PlaybackDestination.CATALOG &&
-                                state.navigation.origin == PlaybackOrigin.SWIPE_FEED -> {
-                                if (state.detail != null) model.restorePlayer()
-                                else model.startFeed()
+                    Box(Modifier.weight(1f)) {
+                        BackHandler(
+                            enabled = state.modal != Modal.NONE ||
+                                activeRoute != PlaybackDestination.CATALOG ||
+                                (activeRoute == PlaybackDestination.CATALOG &&
+                                    state.navigation.origin == PlaybackOrigin.SWIPE_FEED) ||
+                                primaryTab != "home" || searchLandingOpen,
+                        ) {
+                            when {
+                                state.modal == Modal.ACCOUNT -> model.closeAccount()
+                                state.modal != Modal.NONE -> model.closeModal()
+                                activeRoute == PlaybackDestination.DETAILS ->
+                                    model.backFromDramaDetails()
+                                searchLandingOpen -> searchLandingOpen = false
+                                primaryTab != "home" ->
+                                    selectPrimaryTab("home")
+                                activeRoute == PlaybackDestination.FEED ->
+                                    confirmExitFeed = true
+                                activeRoute == PlaybackDestination.SERIES ->
+                                    model.backFromPlayer()
+                                activeRoute == PlaybackDestination.CATALOG &&
+                                    state.navigation.origin == PlaybackOrigin.SWIPE_FEED -> {
+                                    if (state.detail != null) model.restorePlayer()
+                                    else model.startFeed()
+                                }
+                            }
+                        }
+                    Box(Modifier.fillMaxSize()) {
+                    when {
+                        state.modal == Modal.SETTINGS -> SettingsScreen(state, model)
+                        state.modal == Modal.ACCOUNT -> AccountScreen(model)
+                        activeRoute == PlaybackDestination.DETAILS &&
+                            state.detail != null && !playerDetailsOverlay ->
+                            // Details opened from the old catalog slide over the
+                            // catalog, preserving its already-visible mini player.
+                            if (primaryTab == "mine") MyScreen(state, model, onBack = { selectPrimaryTab("home") })
+                            else CatalogScreen(state, model, onMine = { selectPrimaryTab("mine") },
+                                onSearchOpen = { searchLandingOpen = true })
+                        videoLayer in setOf(
+                            AppShellNavigationPolicy.VideoLayer.FULL,
+                            AppShellNavigationPolicy.VideoLayer.BEHIND_DETAILS,
+                        ) && state.detail != null ->
+                            // UI mode changes do not destroy the active Media3 item.
+                            key(state.detail?.drama?.id) {
+                                NativePlayer(state, model,
+                                    onExitFeed = { confirmExitFeed = true },
+                                    externalPipEnabled = externalPipEnabled,
+                                    onExternalPipEnabled = setExternalPipEnabled)
+                            }
+                        AppShellNavigationPolicy.shouldShowLoading(state, primaryTab) -> {
+                            val upcoming = if (state.feedMode)
+                                state.feedItems.getOrNull(state.feedIndex) else null
+                            ReelLoadingScreen(
+                                drama = upcoming,
+                                coverUrl = upcoming?.cover?.takeIf(String::isNotBlank)
+                                    ?.let(model::cover),
+                                loading = state.feedLoading || state.preparingDetail,
+                                preparingSeries = state.preparingDetail,
+                                error = state.playbackError ?: state.feedError,
+                                onRetry = {
+                                    when {
+                                        state.feedMode && upcoming != null ->
+                                            model.open(upcoming, resumeEp = 1, feed = true)
+                                        state.feedMode -> model.retryOfficialReels()
+                                        state.navigation.origin == PlaybackOrigin.SWIPE_FEED ->
+                                            model.startFeed()
+                                        else -> model.closePlayer()
+                                    }
+                                },
+                                onExit = {
+                                    if (state.feedMode) confirmExitFeed = true
+                                    else model.backFromPlayer()
+                                },
+                                exitLabel = if (state.feedMode) "退出刷短剧"
+                                    else "返回",
+                            )
+                        }
+                        searchLandingOpen -> SearchLandingScreen(
+                            state, model,
+                            onClose = { searchLandingOpen = false },
+                            onResults = { searchLandingOpen = false; primaryTab = "theater" },
+                        )
+                        else -> Box(Modifier.fillMaxSize()) {
+                            if (primaryTab == "mine") MyScreen(state, model,
+                                onBack = { selectPrimaryTab("home") })
+                            else CatalogScreen(state, model,
+                                onMine = { selectPrimaryTab("mine") },
+                                onSearchOpen = { searchLandingOpen = true })
+                        }
+                        }
+                        // Keep the player below the animated detail route. Closing
+                        // the page slides it back to the right without disposing the
+                        // playing video, reloading Media3, or showing the old Home.
+                        if (state.detail != null) {
+                            RightSlidePage(
+                                visible = activeRoute == PlaybackDestination.DETAILS &&
+                                    state.modal == Modal.NONE,
+                                tag = "drama_detail_slide_page",
+                            ) {
+                                DramaDetailScreen(state, model)
                             }
                         }
                     }
-                Box(Modifier.fillMaxSize()) {
-                when {
-                    state.modal == Modal.SETTINGS -> SettingsScreen(state, model)
-                    state.modal == Modal.ACCOUNT -> AccountScreen(model)
-                    activeRoute == PlaybackDestination.DETAILS &&
-                        state.detail != null && !playerDetailsOverlay ->
-                        // Details opened from the old catalog slide over the
-                        // catalog, preserving its already-visible mini player.
-                        if (primaryTab == "mine") MyScreen(state, model, onBack = { selectPrimaryTab("home") })
-                        else CatalogScreen(state, model, onMine = { selectPrimaryTab("mine") },
-                            onSearchOpen = { searchLandingOpen = true })
-                    videoLayer in setOf(
-                        AppShellNavigationPolicy.VideoLayer.FULL,
-                        AppShellNavigationPolicy.VideoLayer.BEHIND_DETAILS,
-                    ) && state.detail != null ->
-                        // UI mode changes do not destroy the active Media3 item.
-                        key(state.detail?.drama?.id) {
-                            NativePlayer(state, model,
-                                onExitFeed = { confirmExitFeed = true },
-                                externalPipEnabled = externalPipEnabled,
-                                onExternalPipEnabled = setExternalPipEnabled)
-                        }
-                    AppShellNavigationPolicy.shouldShowLoading(state, primaryTab) -> {
-                        val upcoming = if (state.feedMode)
-                            state.feedItems.getOrNull(state.feedIndex) else null
-                        ReelLoadingScreen(
-                            drama = upcoming,
-                            coverUrl = upcoming?.cover?.takeIf(String::isNotBlank)
-                                ?.let(model::cover),
-                            loading = state.feedLoading || state.preparingDetail,
-                            preparingSeries = state.preparingDetail,
-                            error = state.playbackError ?: state.feedError,
-                            onRetry = {
-                                when {
-                                    state.feedMode && upcoming != null ->
-                                        model.open(upcoming, resumeEp = 1, feed = true)
-                                    state.feedMode -> model.retryOfficialReels()
-                                    state.navigation.origin == PlaybackOrigin.SWIPE_FEED ->
-                                        model.startFeed()
-                                    else -> model.closePlayer()
-                                }
+                        LibrarySheets(state, model)
+                        // Floating video-only window: overlay the page rather than
+                        // consuming an entire row above the bottom navigation.
+                        // Its fixed slot stays stable across catalog/My/settings.
+                        if (showMini) InAppMiniPlayer(
+                            state = state,
+                            model = model,
+                            modifier = Modifier.align(Alignment.BottomEnd)
+                                .padding(end = 12.dp, bottom = 12.dp),
+                            onExpand = {
+                                primaryTab = "home"
+                                searchLandingOpen = false
+                                model.restorePlayer()
                             },
-                            onExit = {
-                                if (state.feedMode) confirmExitFeed = true
-                                else model.backFromPlayer()
-                            },
-                            exitLabel = if (state.feedMode) "退出刷短剧"
-                                else "返回",
                         )
                     }
-                    searchLandingOpen -> SearchLandingScreen(
-                        state, model,
-                        onClose = { searchLandingOpen = false },
-                        onResults = { searchLandingOpen = false; primaryTab = "theater" },
-                    )
-                    else -> Box(Modifier.fillMaxSize()) {
-                        if (primaryTab == "mine") MyScreen(state, model,
-                            onBack = { selectPrimaryTab("home") })
-                        else CatalogScreen(state, model,
-                            onMine = { selectPrimaryTab("mine") },
-                            onSearchOpen = { searchLandingOpen = true })
+                    if (showPrimaryNavigation) {
+                        HongguoPrimaryNavigation(
+                            selectedTab = primaryTab,
+                            onSelect = ::selectPrimaryTab,
+                        )
                     }
-                    }
-                    // Keep the player below the animated detail route. Closing
-                    // the page slides it back to the right without disposing the
-                    // playing video, reloading Media3, or showing the old Home.
-                    if (state.detail != null) {
-                        RightSlidePage(
-                            visible = activeRoute == PlaybackDestination.DETAILS &&
-                                state.modal == Modal.NONE,
-                            tag = "drama_detail_slide_page",
-                        ) {
-                            DramaDetailScreen(state, model)
-                        }
-                    }
-                }
-                    LibrarySheets(state, model)
-                    // Floating video-only window: overlay the page rather than
-                    // consuming an entire row above the bottom navigation.
-                    // Its fixed slot stays stable across catalog/My/settings.
-                    if (showMini) InAppMiniPlayer(
-                        state = state,
-                        model = model,
-                        modifier = Modifier.align(Alignment.BottomEnd)
-                            .padding(end = 12.dp, bottom = 12.dp),
-                        onExpand = {
-                            primaryTab = "home"
-                            searchLandingOpen = false
-                            model.restorePlayer()
-                        },
-                    )
-                }
-                if (showPrimaryNavigation) {
-                    HongguoPrimaryNavigation(
-                        selectedTab = primaryTab,
-                        onSelect = ::selectPrimaryTab,
-                    )
-                }
                 }
                 // Unlike the old safeDrawingPadding(), the bottom system
                 // navigation area now uses the SAME background as the app's
