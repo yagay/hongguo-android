@@ -132,6 +132,8 @@ internal fun NativePlayer(
     state: AppState,
     model: DramaViewModel,
     onExitFeed: () -> Unit,
+    onBackFromSeries: () -> Unit,
+    onEnterSeries: (Int) -> Unit,
     externalPipEnabled: Boolean,
     onExternalPipEnabled: (Boolean) -> Unit,
 ) {
@@ -294,7 +296,7 @@ internal fun NativePlayer(
             it.vid, playback.positionMs, playback.durationMs
         ) }
         if (state.feedMode) onExitFeed()
-        else model.backFromPlayer()
+        else onBackFromSeries()
     }
     BackHandler(enabled = state.navigation.destination != PlaybackDestination.DETAILS &&
         searchOverlayOpen) {
@@ -506,7 +508,7 @@ internal fun NativePlayer(
                                     detectTapGestures(
                                         onTap = {
                                             if (state.feedMode)
-                                                model.exitFeedToEpisode(state.episodeIndex)
+                                                onEnterSeries(state.episodeIndex)
                                             else playback.toggle()
                                         },
                                         onDoubleTap = {
@@ -714,7 +716,7 @@ internal fun NativePlayer(
             episode = selected,
             playback = playback,
             onEpisodes = {
-                if (state.feedMode) model.exitFeedToEpisode(state.episodeIndex)
+                if (state.feedMode) onEnterSeries(state.episodeIndex)
                 else showEpisodes = true
             },
         )
@@ -849,7 +851,7 @@ internal fun NativePlayer(
             }
         },
         onSelectEpisode = { index ->
-            if (state.feedMode) model.exitFeedToEpisode(index)
+            if (state.feedMode) onEnterSeries(index)
             else model.play(index)
             showEpisodes = false
         },

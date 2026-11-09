@@ -60,6 +60,7 @@ import androidx.compose.runtime.getValue
 import androidx.compose.runtime.mutableStateOf
 import androidx.compose.runtime.key
 import androidx.compose.runtime.remember
+import androidx.compose.runtime.rememberCoroutineScope
 import androidx.compose.runtime.setValue
 import androidx.compose.runtime.saveable.rememberSaveable
 import androidx.compose.ui.Alignment
@@ -81,6 +82,7 @@ import androidx.lifecycle.Lifecycle
 import androidx.lifecycle.LifecycleEventObserver
 import androidx.lifecycle.compose.LocalLifecycleOwner
 import androidx.lifecycle.viewmodel.compose.viewModel
+import kotlinx.coroutines.launch
 
 private const val EXTERNAL_PIP_PREFERENCES = "external_picture_in_picture"
 private const val EXTERNAL_PIP_ENABLED = "enabled"
@@ -284,6 +286,17 @@ private fun HongguoApp(model: DramaViewModel = viewModel()) {
         if (state.section == Section.SEARCH) primaryTab = "theater"
     }
     val activeRoute = state.navigation.destination
+    val reelModeSlide = remember(state.detail?.drama?.id) { ReelModeSlideState() }
+    val reelSlideScope = rememberCoroutineScope()
+    fun returnFromSeries() {
+        if (ReelReturnPolicy.canRestore(state)) {
+            reelSlideScope.launch {
+                reelModeSlide.exitRightThen { model.backFromPlayer() }
+            }
+        } else {
+            model.backFromPlayer()
+        }
+    }
     val videoLayer = AppShellNavigationPolicy.videoLayer(state)
     val playerDetailsOverlay =
         videoLayer == AppShellNavigationPolicy.VideoLayer.BEHIND_DETAILS
@@ -461,7 +474,7 @@ private fun HongguoApp(model: DramaViewModel = viewModel()) {
                                 activeRoute == PlaybackDestination.FEED ->
                                     confirmExitFeed = true
                                 activeRoute == PlaybackDestination.SERIES ->
-                                    model.backFromPlayer()
+                                    returnFromSeries()
                                 activeRoute == PlaybackDestination.CATALOG &&
                                     state.navigation.origin == PlaybackOrigin.SWIPE_FEED -> {
                                     if (state.detail != null) model.restorePlayer()
@@ -486,10 +499,22 @@ private fun HongguoApp(model: DramaViewModel = viewModel()) {
                         ) && state.detail != null ->
                             // UI mode changes do not destroy the active Media3 item.
                             key(state.detail?.drama?.id) {
-                                NativePlayer(state, model,
-                                    onExitFeed = { confirmExitFeed = true },
-                                    externalPipEnabled = externalPipEnabled,
-                                    onExternalPipEnabled = setExternalPipEnabled)
+                                ReelModeSlidePlayer(
+                                    state = state,
+                                    model = model,
+                                    slide = reelModeSlide,
+                                ) {
+                                    NativePlayer(state, model,
+                                        onExitFeed = { confirmExitFeed = true },
+                                        onBackFromSeries = ::returnFromSeries,
+                                        onEnterSeries = { episodeIndex ->
+                                            if (state.feedMode)
+                                                reelModeSlide.prepareSeriesEntry()
+                                            model.exitFeedToEpisode(episodeIndex)
+                                        },
+                                        externalPipEnabled = externalPipEnabled,
+                                        onExternalPipEnabled = setExternalPipEnabled)
+                                }
                             }
                         AppShellNavigationPolicy.shouldShowLoading(state, primaryTab) &&
                             !searchLandingOpen -> {

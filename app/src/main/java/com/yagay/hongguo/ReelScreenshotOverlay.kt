@@ -1,6 +1,5 @@
 package com.yagay.hongguo
 
-import androidx.compose.animation.AnimatedContent
 import androidx.compose.foundation.background
 import androidx.compose.foundation.clickable
 import androidx.compose.foundation.Canvas
@@ -61,7 +60,6 @@ import androidx.compose.ui.geometry.Offset
 import androidx.compose.ui.graphics.StrokeCap
 import androidx.compose.ui.input.pointer.pointerInput
 import androidx.compose.ui.graphics.vector.ImageVector
-import androidx.compose.ui.platform.LocalDensity
 import androidx.compose.ui.platform.testTag
 import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.text.style.TextOverflow
@@ -119,24 +117,13 @@ internal fun ReelScreenshotOverlay(
     var playerMenuOpen by remember { mutableStateOf(false) }
 
     Box(Modifier.fillMaxSize().testTag("reference_video_layout")) {
-        // Feed and full-series navigation are alternative *headers*, not
-        // different video pages. Only this row changes on mode switch; all
-        // title, metrics, icons and playback controls keep their positions.
-        val headerShiftPx = with(LocalDensity.current) { 8.dp.roundToPx() }
-        if (showTopButtons) AnimatedContent(
-            targetState = state.feedMode,
-            modifier = Modifier.fillMaxWidth().height(56.dp)
-                .align(Alignment.TopCenter)
-                .testTag("feed_series_slide"),
-            transitionSpec = {
-                PlaybackPageSlide.chromeChange(
-                    enteringSeries = !targetState,
-                    shiftPx = headerShiftPx,
-                )
-            },
-            label = "feed_series_header_fade",
-        ) { feedChrome ->
-        if (feedChrome) {
+        // The whole Media3/Compose player now slides as ONE page. Header
+        // content switches with the mode without a separate text-only motion.
+        if (showTopButtons) Box(
+            Modifier.fillMaxWidth().height(56.dp)
+                .align(Alignment.TopCenter).testTag("feed_series_slide")
+        ) {
+        if (state.feedMode) {
             ReelFeedHeader(
                 reelsMode = state.reelsMode,
                 onComic = onComic,
@@ -219,7 +206,7 @@ internal fun ReelScreenshotOverlay(
                 }
             }
         }
-        } // Header-only fade; the persistent video controls never animate offscreen
+        } // Header belongs to the full moving player page.
 
         // Public counts come from series-scoped website data and signed,
         // identity-validated episode detail. Local taps never increment them.
