@@ -214,6 +214,10 @@ class DramaViewModel(application: Application) : AndroidViewModel(application) {
         prefs.edit().putBoolean("auto_play_next", enabled).apply()
         mutable.update { it.copy(autoPlayNext = enabled) }
         if (!enabled) {
+            // Even a retry that was already queued by the series finale
+            // must stop immediately when the user disables autoplay.
+            pendingFeedAdvance = false
+            clearFinaleAdvance()
             // Manual episode selection remains supported, but no longer
             // issue background official requests for automatic finale play.
             cancelFinaleRecommendationWarmup()
@@ -1086,6 +1090,15 @@ class DramaViewModel(application: Application) : AndroidViewModel(application) {
     /** Explicit retry after a temporary upstream failure; never silently change to a fixed list. */
     fun retryOfficialReels() {
         if (!state.value.feedMode) return
+        // A retry from an already-ended video must actually advance after
+        // discovery. Previously it fetched cards but kept the old final frame.
+        val ended = BackgroundPlaybackService.playerFlow.value
+            ?.playbackState == androidx.media3.common.Player.STATE_ENDED
+        if (ended) {
+            state.value.detail?.drama?.id?.let(::markFinaleAdvance)
+            pendingFeedAdvance = true
+            diagnostics.record("REELS", "FINALE_MANUAL_RETRY")
+        }
         // If the current upstream call is stuck, the visible retry must be
         // actionable. Invalidate its generation first so its completion
         // cannot overwrite the replacement request.
@@ -1100,7 +1113,10 @@ class DramaViewModel(application: Application) : AndroidViewModel(application) {
         }
         // A manual retry starts new upstream cursors but does not discard
         // any already playing item or valid part of the swipe queue.
-        loadOfficialReels(restart = true)
+        loadOfficialReels(
+            restart = true,
+            relaxRecentExclusions = ended,
+        )
     }
     private val prefetchedFeedDetails = linkedMapOf<String, DramaDetail>()
     /** Reuse the last few series details on reverse swipes, without refetching. */
@@ -2365,6 +2381,10 @@ class DramaViewModel(application: Application) : AndroidViewModel(application) {
         showDetails: Boolean = false,
         origin: PlaybackOrigin = if (feed) PlaybackOrigin.SWIPE_FEED
             else PlaybackOrigin.CATALOG) {
+        if (finaleAdvanceFor != null && finaleAdvanceFor != drama.id) {
+            pendingFeedAdvance = false
+            clearFinaleAdvance()
+        }
         if (finaleRecommendationRequestFor != null &&
             finaleRecommendationRequestFor != drama.id)
             cancelFinaleRecommendationWarmup()
