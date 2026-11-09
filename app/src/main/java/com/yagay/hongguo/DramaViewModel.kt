@@ -427,6 +427,18 @@ class DramaViewModel(application: Application) : AndroidViewModel(application) {
         preloadedNextVid = null
     }
 
+    private fun isNextWarmupUseful(
+        vid: String, quality: Int, bufferMiB: Int, generation: Long,
+    ): Boolean {
+        val s = state.value
+        if (!s.preloadNext || s.qualityLimit != quality ||
+            s.preloadBufferMiB != bufferMiB) return false
+        val episodes = s.detail?.episodes ?: return false
+        return (generation == detailId &&
+            episodes.getOrNull(s.episodeIndex + 1)?.vid == vid) ||
+            episodes.getOrNull(s.episodeIndex)?.vid == vid
+    }
+
     private fun isActivePreloadJobForEpisode(
         vid: String, quality: Int, bufferMiB: Int,
     ): Boolean = state.value.preloadNext &&
@@ -477,11 +489,8 @@ class DramaViewModel(application: Application) : AndroidViewModel(application) {
             // Start ahead of the first frame if the source is already resolved.
             // Once a first frame exists, never insert an artificial delay.
             if (firstFrameFor != originatingVid) delay(1_200)
-            if (generation != detailId ||
-                state.value.detail?.episodes
-                    ?.getOrNull(state.value.episodeIndex + 1)?.vid != next ||
-                state.value.qualityLimit != quality ||
-                !state.value.preloadNext) return@launch
+            if (!isNextWarmupUseful(next, quality, s.preloadBufferMiB, generation))
+                return@launch
             var remote: RemoteVideo? = null
             try {
                 // The upstream playback model intermittently returns an
@@ -496,17 +505,13 @@ class DramaViewModel(application: Application) : AndroidViewModel(application) {
                     if (!PlaybackProblem.isEmptyPlaybackModel(first)) throw first
                     diagnostics.record("PLAYBACK", "PREFETCH_EMPTY_RETRY")
                     delay(1_500)
-                    if (generation != detailId || !state.value.preloadNext ||
-                        state.value.detail?.episodes
-                            ?.getOrNull(state.value.episodeIndex + 1)?.vid != next ||
-                        state.value.qualityLimit != quality) return@launch
+                    if (!isNextWarmupUseful(
+                            next, quality, s.preloadBufferMiB, generation)) return@launch
                     nativeSource.openVideo(next, qualityLimit = quality,
                         preload = true, preloadBytes = targetBytes)
                 }
-                if (generation == detailId && state.value.preloadNext &&
-                    state.value.detail?.episodes?.getOrNull(state.value.episodeIndex + 1)?.vid == next &&
-                    state.value.qualityLimit == quality &&
-                    state.value.preloadBufferMiB == s.preloadBufferMiB) {
+                if (isNextWarmupUseful(
+                        next, quality, s.preloadBufferMiB, generation)) {
                     preloadedNextVideo = remote
                     preloadedNextVid = next
                     preloadedNextQuality = quality
@@ -2917,9 +2922,14 @@ class DramaViewModel(application: Application) : AndroidViewModel(application) {
             reelWarmVid = null
             reelWarmSeriesId = null
         }
-        preloadEpisodeJob?.cancel()
-        preloadEpisodeJob = null
-        preloadEpisodeTargetVid = null
+        val pendingNextJob = if (cachedNative == null &&
+            preloadEpisodeTargetVid == vid && preloadEpisodeJob?.isActive == true &&
+            api == null) preloadEpisodeJob else null
+        if (pendingNextJob == null) preloadEpisodeJob?.cancel()
+        if (pendingNextJob == null) {
+            preloadEpisodeJob = null
+            preloadEpisodeTargetVid = null
+        }
         if (cachedNative !== preloadedNextVideo) preloadedNextVideo?.close()
         preloadedNextVideo = null
         preloadedNextVid = null
@@ -2945,7 +2955,36 @@ class DramaViewModel(application: Application) : AndroidViewModel(application) {
                 } else {
                     val ahead = detail.episodes.getOrNull(index + 1)?.vid
                     val quality = state.value.qualityLimit
-                    val video = cachedNative ?: playbackResolver.resolve(
+                    // A rapid advance may catch the N+1 model still in flight.
+                    // Give it a short bounded handoff window before issuing
+                    // another network request for the same video ID.
+                    val inFlightVideo = if (pendingNextJob != null)
+                        kotlinx.coroutines.withTimeoutOrNull(2_500L) {
+                            while (preloadedNextVid != vid && pendingNextJob.isActive) {
+                                delay(40)
+                            }
+                            if (preloadedNextVid == vid) {
+                                val prepared = preloadedNextVideo
+                                preloadedNextVideo = null
+                                preloadedNextVid = null
+                                preloadEpisodeJob?.cancel()
+                                preloadEpisodeJob = null
+                                preloadEpisodeTargetVid = null
+                                if (prepared != null)
+                                    diagnostics.record("PLAYBACK", "INFLIGHT_PRELOAD_REUSED")
+                                prepared
+                            } else null
+                        } else null
+                    if (pendingNextJob != null && inFlightVideo == null) {
+                        diagnostics.record("PLAYBACK", "INFLIGHT_PRELOAD_TIMEOUT")
+                        preloadEpisodeJob?.cancel()
+                        preloadEpisodeJob = null
+                        preloadEpisodeTargetVid = null
+                        preloadedNextVideo?.close()
+                        preloadedNextVideo = null
+                        preloadedNextVid = null
+                    }
+                    val video = cachedNative ?: inFlightVideo ?: playbackResolver.resolve(
                         vid, ahead, quality,
                         isCurrent = {
                             val current = state.value
