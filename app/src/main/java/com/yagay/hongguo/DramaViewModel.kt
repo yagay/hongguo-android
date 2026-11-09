@@ -182,6 +182,15 @@ class DramaViewModel(application: Application) : AndroidViewModel(application) {
             clearPreloadedNext()
             feedPrefetchJob?.cancel()
             clearReelWarmVideo()
+            cancelFinaleRecommendationWarmup()
+        } else {
+            // Switching preload ON while a video is already playing should
+            // work immediately, not only after another first-frame callback.
+            val snapshot = state.value
+            val currentVid = snapshot.detail?.episodes
+                ?.getOrNull(snapshot.episodeIndex)?.vid
+            if (currentVid != null && currentVid == firstFrameFor)
+                prepareUpcomingPlayback(snapshot)
         }
     }
 
@@ -602,6 +611,33 @@ class DramaViewModel(application: Application) : AndroidViewModel(application) {
     private var feedPrefetchJob: Job? = null
     private var officialFeedJob: Job? = null
     private var officialFeedGeneration = 0L
+    /** Background official-page request while the full-series finale plays. */
+    private var finaleRecommendationRequestFor: String? = null
+
+    private fun cancelFinaleRecommendationWarmup() {
+        if (finaleRecommendationRequestFor == null) return
+        finaleRecommendationRequestFor = null
+        officialFeedJob?.cancel()
+        officialFeedGeneration++
+        pendingFeedAdvance = false
+        mutable.update { it.copy(feedLoading = false) }
+    }
+
+    private fun activeFinaleRecommendation(seriesId: String): Boolean {
+        val s = state.value
+        val detail = s.detail ?: return false
+        return detail.drama.id == seriesId && s.offlinePlaybackUri == null &&
+            (s.feedMode || s.episodeIndex == detail.episodes.lastIndex)
+    }
+
+    /** A full-series finale is allowed to warm its saved official queue. */
+    private fun mayPreloadFollowingDrama(s: AppState): Boolean {
+        if (s.feedMode) return true
+        val detail = s.detail ?: return false
+        return s.autoPlayNext && s.offlinePlaybackUri == null &&
+            s.episodeIndex == detail.episodes.lastIndex &&
+            s.feedItems.getOrNull(s.feedIndex)?.id == detail.drama.id
+    }
     /** Titles shown by the home recommendation grid are excluded from this swipe session. */
     private var homeFeedExcludedIds: Set<String> = emptySet()
     /** Startup restores the last confirmed video, not a fresh official reel. */
@@ -636,10 +672,16 @@ class DramaViewModel(application: Application) : AndroidViewModel(application) {
         startFeed()
     }
 
-    private fun loadOfficialReels(restart: Boolean = false) {
+    private fun loadOfficialReels(
+        restart: Boolean = false,
+        warmingFinaleId: String? = null,
+    ) {
         val snapshot = state.value
-        if (!snapshot.feedMode || snapshot.feedLoading) return
+        if ((!snapshot.feedMode &&
+                (warmingFinaleId == null || !activeFinaleRecommendation(warmingFinaleId))) ||
+            snapshot.feedLoading) return
         val needsFirstDrama = snapshot.feedItems.isEmpty()
+        if (warmingFinaleId != null) finaleRecommendationRequestFor = warmingFinaleId
         val generation = if (restart) ++officialFeedGeneration else officialFeedGeneration
         // Non-restart continuation may be queued by the just-completed batch
         // coroutine itself. Cancelling it here would cancel the caller.
@@ -662,7 +704,10 @@ class DramaViewModel(application: Application) : AndroidViewModel(application) {
                         comicOnly = snapshot.reelsMode == "comic",
                         firstItemOnly = needsFirstDrama)
                 }
-                if (generation != officialFeedGeneration || !state.value.feedMode) return@launch
+                if (generation != officialFeedGeneration ||
+                    (warmingFinaleId == null && !state.value.feedMode) ||
+                    (warmingFinaleId != null &&
+                        !activeFinaleRecommendation(warmingFinaleId))) return@launch
                 mutable.update { current ->
                     val merged = OfficialReelsPolicy.append(
                         current.feedItems, result.items,
@@ -691,7 +736,8 @@ class DramaViewModel(application: Application) : AndroidViewModel(application) {
                     // A duplicate-only upstream response must not repeatedly
                     // page forever while the user remains on the last reel.
                     if (state.value.feedItems.size > snapshot.feedItems.size) navigateFeed(1)
-                } else prefetchFollowingFeedItem(state.value.feedIndex)
+                } else if (mayPreloadFollowingDrama(state.value))
+                    prefetchFollowingFeedItem(state.value.feedIndex)
                 val latest = state.value
                 if (!needsFirstDrama && OfficialReelsPolicy.needsMore(
                         latest.feedItems, latest.feedIndex, latest.hiddenRecommendationIds,
@@ -701,7 +747,10 @@ class DramaViewModel(application: Application) : AndroidViewModel(application) {
                     loadOfficialReels()
                 }
             } catch (timeout: TimeoutCancellationException) {
-                if (generation == officialFeedGeneration && state.value.feedMode) {
+                if (generation == officialFeedGeneration &&
+                    (state.value.feedMode ||
+                        (warmingFinaleId != null &&
+                            activeFinaleRecommendation(warmingFinaleId)))) {
                     pendingFeedAdvance = false
                     mutable.update { it.copy(feedLoading = false,
                         preparingDetail = if (needsFirstDrama) false else it.preparingDetail,
@@ -711,7 +760,10 @@ class DramaViewModel(application: Application) : AndroidViewModel(application) {
             } catch (cancel: CancellationException) {
                 throw cancel
             } catch (error: Exception) {
-                if (generation == officialFeedGeneration && state.value.feedMode) {
+                if (generation == officialFeedGeneration &&
+                    (state.value.feedMode ||
+                        (warmingFinaleId != null &&
+                            activeFinaleRecommendation(warmingFinaleId)))) {
                     pendingFeedAdvance = false
                     mutable.update { it.copy(feedLoading = false,
                         preparingDetail = if (needsFirstDrama) false else it.preparingDetail,
@@ -719,6 +771,10 @@ class DramaViewModel(application: Application) : AndroidViewModel(application) {
                     diagnostics.record("REELS",
                         "OFFICIAL_FAIL_" + OfficialReelsFailure.code(error))
                 }
+            } finally {
+                if (generation == officialFeedGeneration &&
+                    finaleRecommendationRequestFor == warmingFinaleId)
+                    finaleRecommendationRequestFor = null
             }
         }
     }
@@ -813,7 +869,7 @@ class DramaViewModel(application: Application) : AndroidViewModel(application) {
 
     private fun prefetchFollowingFeedItem(index: Int) {
         val current = state.value
-        if (!current.feedMode) return
+        if (!mayPreloadFollowingDrama(current)) return
         val next = current.feedItems.drop(index + 1)
             .firstOrNull { it.id !in current.hiddenRecommendationIds } ?: return
         if (reelWarmSeriesId == next.id && reelWarmVideo != null) return
@@ -869,8 +925,9 @@ class DramaViewModel(application: Application) : AndroidViewModel(application) {
 
     private fun isUpcomingReel(seriesId: String): Boolean {
         val current = state.value
-        return current.feedMode && current.feedItems.drop(current.feedIndex + 1)
-            .firstOrNull { it.id !in current.hiddenRecommendationIds }?.id == seriesId
+        return mayPreloadFollowingDrama(current) &&
+            current.feedItems.drop(current.feedIndex + 1)
+                .firstOrNull { it.id !in current.hiddenRecommendationIds }?.id == seriesId
     }
     private var firstFrameFor: String? = null
     private var startEpisodeHint: Int? = null
@@ -1810,6 +1867,7 @@ class DramaViewModel(application: Application) : AndroidViewModel(application) {
         deferRestoredFeedRecommendations = deferRecommendations && drama != null
         officialFeedJob?.cancel()
         officialFeedGeneration++
+        finaleRecommendationRequestFor = null
         pendingFeedAdvance = false
         feedPrefetchJob?.cancel()
         clearReelWarmVideo()
@@ -1924,9 +1982,14 @@ class DramaViewModel(application: Application) : AndroidViewModel(application) {
         }
         officialFeedJob?.cancel()
         officialFeedGeneration++
+        finaleRecommendationRequestFor = null
         pendingFeedAdvance = false
-        feedPrefetchJob?.cancel()
-        clearReelWarmVideo()
+        // Keep the prepared following drama while switching only the UI from
+        // reel to episode mode; the sole Media3 item does not change.
+        if (index != snapshot.detail?.episodes?.lastIndex || !snapshot.preloadNext) {
+            feedPrefetchJob?.cancel()
+            clearReelWarmVideo()
+        }
         val currentMediaMatches = snapshot.playbackUrl != null &&
             index == snapshot.episodeIndex &&
             BackgroundPlaybackService.playerFlow.value?.currentMediaItem?.mediaId == target.vid
@@ -2018,6 +2081,9 @@ class DramaViewModel(application: Application) : AndroidViewModel(application) {
         showDetails: Boolean = false,
         origin: PlaybackOrigin = if (feed) PlaybackOrigin.SWIPE_FEED
             else PlaybackOrigin.CATALOG) {
+        if (finaleRecommendationRequestFor != null &&
+            finaleRecommendationRequestFor != drama.id)
+            cancelFinaleRecommendationWarmup()
         // Auto-advancing to the next drama should not unexpectedly expand a
         // minimized reel. Explicit new selections outside the current feed
         // still open fullscreen as usual.
@@ -2262,6 +2328,14 @@ class DramaViewModel(application: Application) : AndroidViewModel(application) {
     fun play(index: Int) {
         val detail = state.value.detail ?: return
         if (index !in detail.episodes.indices) return
+        if (finaleRecommendationRequestFor != null &&
+            index != detail.episodes.lastIndex)
+            cancelFinaleRecommendationWarmup()
+        // A different episode should not retain a prepared next-drama stream.
+        if (index != detail.episodes.lastIndex && !state.value.feedMode) {
+            feedPrefetchJob?.cancel()
+            clearReelWarmVideo()
+        }
         // Notification commands run while the Activity is STOPPED. Reuse the
         // running foreground service rather than making a forbidden background
         // service start request on Android 12+.
@@ -2743,6 +2817,7 @@ class DramaViewModel(application: Application) : AndroidViewModel(application) {
         pendingFeedAdvance = false
         officialFeedJob?.cancel()
         officialFeedGeneration++
+        finaleRecommendationRequestFor = null
         feedPrefetchJob?.cancel()
         clearReelWarmVideo()
         prefetchedFeedDetails.clear()
