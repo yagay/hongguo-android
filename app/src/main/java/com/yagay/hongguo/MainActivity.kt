@@ -286,7 +286,7 @@ private fun HongguoApp(model: DramaViewModel = viewModel()) {
         if (state.section == Section.SEARCH) primaryTab = "theater"
     }
     val activeRoute = state.navigation.destination
-    val reelModeSlide = remember(state.detail?.drama?.id) { ReelModeSlideState() }
+    val reelModeSlide = remember { ReelModeSlideState() }
     val reelSlideScope = rememberCoroutineScope()
     fun returnFromSeries() {
         if (ReelReturnPolicy.canRestore(state)) {
