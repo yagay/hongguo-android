@@ -68,6 +68,7 @@ class DramaViewModel(application: Application) : AndroidViewModel(application) {
             ++detailId
             detailJob?.cancel()
             clearPreloadedNext()
+            clearPreloadedLater()
             closeNativeVideo()
             clearSocial()
             clearEngagement()
@@ -387,15 +388,18 @@ class DramaViewModel(application: Application) : AndroidViewModel(application) {
     private var preloadedNextQuality = 0
     private var preloadedNextVideo: RemoteVideo? = null
     private var preloadEpisodeJob: Job? = null
+    private var preloadEpisodeTargetVid: String? = null
     /** Low-priority N+2 stream: separate from N+1 so advancing doesn't discard it. */
     private var preloadedLaterVid: String? = null
     private var preloadedLaterQuality = 0
     private var preloadedLaterVideo: RemoteVideo? = null
     private var preloadLaterJob: Job? = null
+    private var preloadLaterTargetVid: String? = null
 
     private fun clearPreloadedLater() {
         preloadLaterJob?.cancel()
         preloadLaterJob = null
+        preloadLaterTargetVid = null
         preloadedLaterVideo?.close()
         preloadedLaterVideo = null
         preloadedLaterVid = null
@@ -417,6 +421,7 @@ class DramaViewModel(application: Application) : AndroidViewModel(application) {
     private fun clearPreloadedNext() {
         preloadEpisodeJob?.cancel()
         preloadEpisodeJob = null
+        preloadEpisodeTargetVid = null
         preloadedNextVideo?.close()
         preloadedNextVideo = null
         preloadedNextVid = null
@@ -439,12 +444,15 @@ class DramaViewModel(application: Application) : AndroidViewModel(application) {
             preloadFurtherEpisode(s)
             return
         }
+        if (preloadEpisodeTargetVid == next && preloadEpisodeJob?.isActive == true)
+            return
         // Promote an already prepared N+2 after advancing to N+1.
         if (next == preloadedLaterVid && preloadedLaterQuality == s.qualityLimit &&
             preloadedLaterVideo != null) {
             clearPreloadedNext()
             preloadLaterJob?.cancel()
             preloadLaterJob = null
+            preloadLaterTargetVid = null
             preloadedNextVideo = preloadedLaterVideo
             preloadedNextVid = preloadedLaterVid
             preloadedNextQuality = preloadedLaterQuality
@@ -460,6 +468,7 @@ class DramaViewModel(application: Application) : AndroidViewModel(application) {
         val targetBytes = VideoPreloadPolicy.bytes(s.preloadBufferMiB)
         val originatingVid = s.detail?.episodes?.getOrNull(s.episodeIndex)?.vid
         diagnostics.record("PLAYBACK", "NEXT_PREFETCH_SCHEDULED")
+        preloadEpisodeTargetVid = next
         preloadEpisodeJob = viewModelScope.launch {
             // Start ahead of the first frame if the source is already resolved.
             // Once a first frame exists, never insert an artificial delay.
@@ -562,10 +571,12 @@ class DramaViewModel(application: Application) : AndroidViewModel(application) {
         val later = detail.episodes.getOrNull(snapshot.episodeIndex + 2)?.vid ?: return
         if (preloadedNextVid != next || preloadedNextVideo == null) return
         if (preloadedLaterVid == later && preloadedLaterQuality == snapshot.qualityLimit) return
+        if (preloadLaterTargetVid == later && preloadLaterJob?.isActive == true) return
         clearPreloadedLater()
         val generation = detailId
         val quality = snapshot.qualityLimit
         val bufferMiB = snapshot.preloadBufferMiB
+        preloadLaterTargetVid = later
         preloadLaterJob = viewModelScope.launch {
             var remote: RemoteVideo? = null
             try {
@@ -2795,6 +2806,7 @@ class DramaViewModel(application: Application) : AndroidViewModel(application) {
                     // The next media load performs the existing authenticated
                     // stream request rather than reopening a stale data source.
                     clearPreloadedNext()
+                    clearPreloadedLater()
                     diagnostics.record("BACKGROUND", "FOREGROUND_RECONNECT")
                     play(current.episodeIndex)
                 }
@@ -2870,6 +2882,7 @@ class DramaViewModel(application: Application) : AndroidViewModel(application) {
         if (cachedNative != null && cachedNative === preloadedLaterVideo) {
             preloadLaterJob?.cancel()
             preloadLaterJob = null
+            preloadLaterTargetVid = null
             preloadedLaterVideo = null
             preloadedLaterVid = null
             diagnostics.record("PLAYBACK", "LATER_STREAM_REUSED")
@@ -2882,6 +2895,7 @@ class DramaViewModel(application: Application) : AndroidViewModel(application) {
         }
         preloadEpisodeJob?.cancel()
         preloadEpisodeJob = null
+        preloadEpisodeTargetVid = null
         if (cachedNative !== preloadedNextVideo) preloadedNextVideo?.close()
         preloadedNextVideo = null
         preloadedNextVid = null
@@ -2932,8 +2946,7 @@ class DramaViewModel(application: Application) : AndroidViewModel(application) {
                 // Begin preparing the upcoming stream while the current item
                 // is buffering. The job checks its generation after a grace
                 // period so it cannot replace a rapid swipe's target.
-                if (version == detailId && cachedNative !== null || 
-                    version == detailId && api == null) {
+                if (version == detailId && api == null) {
                     preloadFollowingEpisode()
                 }
             } catch (e: CancellationException) {
@@ -3338,6 +3351,7 @@ class DramaViewModel(application: Application) : AndroidViewModel(application) {
         detailJob?.cancel()
         closeNativeVideo()
         clearPreloadedNext()
+        clearPreloadedLater()
         firstFrameFor = null
         mutable.update { it.copy(detail = null, playbackUrl = null,
             offlinePlaybackUri = null,
