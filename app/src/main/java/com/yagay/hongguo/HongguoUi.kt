@@ -30,7 +30,6 @@ import androidx.compose.foundation.layout.padding
 import androidx.compose.foundation.layout.size
 import androidx.compose.foundation.layout.width
 import androidx.compose.foundation.shape.RoundedCornerShape
-import androidx.compose.foundation.shape.CircleShape
 import androidx.compose.material.icons.Icons
 import androidx.compose.material.icons.outlined.ChevronRight
 import androidx.compose.material.icons.outlined.ExpandLess
@@ -514,8 +513,9 @@ internal fun HongguoPosterCover(
 }
 
 /**
- * Unified compact over-video icon control: 40dp hit area, 30dp subtle circle.
- * Keep this specialized dark variant separate from normal page icon buttons.
+ * Shared transparent top-bar action for the video/feed/loading screens.
+ * Keep the full 40dp touch target but never draw a permanent circular
+ * background behind the icon. Press feedback remains handled by IconButton.
  */
 @Composable
 internal fun HongguoPlayerTopAction(
@@ -529,14 +529,12 @@ internal fun HongguoPlayerTopAction(
         onClick = onClick,
         modifier = modifier.size(HongguoUi.iconButtonSize),
     ) {
-        Box(
-            Modifier.size(30.dp)
-                .background(Color.Black.copy(alpha = 0.25f), CircleShape),
-            contentAlignment = Alignment.Center,
-        ) {
-            Icon(icon, contentDescription = label, tint = Color.White,
-                modifier = Modifier.size(iconSize))
-        }
+        Icon(
+            icon,
+            contentDescription = label,
+            tint = Color.White,
+            modifier = Modifier.size(iconSize),
+        )
     }
 }
 
