@@ -781,18 +781,23 @@ internal fun HongguoPlayerEpisodeEntry(
     modifier: Modifier = Modifier,
 ) {
     Row(
+        // The entire dock slot stays clickable; only its CONTENT uses
+        // intrinsic width so the chevron sits next to the episode count.
         modifier = modifier.heightIn(min = HongguoUi.playbackDockRowHeight)
             .clickable(onClick = onClick)
             .padding(start = HongguoUi.pagePadding, end = 8.dp),
         verticalAlignment = Alignment.CenterVertically,
-        horizontalArrangement = Arrangement.spacedBy(5.dp),
+        horizontalArrangement = Arrangement.spacedBy(2.dp),
     ) {
         Text(
             label,
             fontSize = HongguoUi.playbackDockTitleSize,
             fontWeight = FontWeight.Medium,
             color = HongguoColors.ink,
-            modifier = Modifier.weight(1f).testTag("reel_episode_status"),
+            // fill=false keeps short labels compact while still allowing
+            // long labels to ellipsize before they collide with the clock.
+            modifier = Modifier.weight(1f, fill = false)
+                .testTag("reel_episode_status"),
             maxLines = 1,
             overflow = androidx.compose.ui.text.style.TextOverflow.Ellipsis,
         )
