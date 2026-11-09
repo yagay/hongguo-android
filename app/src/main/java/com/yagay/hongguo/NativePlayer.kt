@@ -6,6 +6,7 @@ import androidx.activity.result.contract.ActivityResultContracts
 import android.provider.DocumentsContract
 import android.content.Intent
 import android.content.Context
+import android.widget.Toast
 import android.view.SurfaceView
 import android.view.TextureView
 import androidx.compose.foundation.background
@@ -137,6 +138,7 @@ internal fun NativePlayer(
     onBackFromSeries: () -> Unit,
     onEnterSeries: (Int) -> Unit,
     externalPipEnabled: Boolean,
+    externalPipStatus: VideoPiPAccess.Status,
     onExternalPipEnabled: (Boolean) -> Unit,
 ) {
     val detail = state.detail ?: return
@@ -698,7 +700,12 @@ internal fun NativePlayer(
             },
             onPictureInPicture = if (externalPipEnabled) ({
                 selected?.vid?.let { vid ->
-                    (context as? MainActivity)?.enterVideoPictureInPicture(vid)
+                    val activity = context as? MainActivity
+                    if (activity?.enterVideoPictureInPicture(vid) != true) {
+                        Toast.makeText(context,
+                            "画中画未启动：请检查系统权限和视频播放状态",
+                            Toast.LENGTH_SHORT).show()
+                    }
                 }
             }) else null,
             onBack = ::flushThenClose,
@@ -828,7 +835,28 @@ internal fun NativePlayer(
             speed = speed,
             fillVideo = fillVideo,
             externalPipEnabled = externalPipEnabled,
+            externalPipStatus = externalPipStatus,
             onExternalPipEnabled = onExternalPipEnabled,
+            onOpenPipSettings = {
+                if ((context as? MainActivity)?.openVideoPictureInPictureSettings() != true) {
+                    Toast.makeText(context, "无法打开系统画中画设置",
+                        Toast.LENGTH_SHORT).show()
+                }
+            },
+            onTestExternalPip = {
+                val vid = selected?.vid
+                if (!externalPipEnabled) {
+                    Toast.makeText(context, "请先开启应用外画中画",
+                        Toast.LENGTH_SHORT).show()
+                } else if (vid == null ||
+                    (context as? MainActivity)?.enterVideoPictureInPicture(vid) != true) {
+                    Toast.makeText(context,
+                        "未能进入小窗：请确认视频正在播放且系统允许画中画",
+                        Toast.LENGTH_LONG).show()
+                } else {
+                    focusedPlaybackSetting = null
+                }
+            },
             onDismiss = { focusedPlaybackSetting = null },
             onSpeed = {
                 speed = it

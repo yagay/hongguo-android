@@ -3,6 +3,10 @@ package com.yagay.hongguo
 import android.app.Activity
 import android.app.PictureInPictureParams
 import android.content.Context
+import android.content.Intent
+import android.net.Uri
+import android.provider.Settings
+import android.widget.Toast
 import android.graphics.Rect
 import android.view.View
 import android.content.pm.PackageManager
@@ -96,6 +100,9 @@ class MainActivity : ComponentActivity() {
     var videoInPictureInPicture by mutableStateOf(false)
         private set
     private var autoPictureInPictureEligible = false
+    private var requestedPictureInPictureEligibility = false
+    private var autoPipParamsApplied = false
+    private var openingPictureInPictureSettings = false
     // Source video coordinates are supplied to Android before PiP animation.
     // Without this hint, the launcher may animate the app icon/window first.
     private var pipVideoSourceView: View? = null
@@ -153,24 +160,59 @@ class MainActivity : ComponentActivity() {
     }
 
     fun updateVideoPictureInPictureEligibility(enabled: Boolean) {
+        requestedPictureInPictureEligibility = enabled
+        val access = VideoPiPAccess.status(this)
         autoPictureInPictureEligible = enabled && readExternalPipEnabled(this) &&
-            packageManager.hasSystemFeature(PackageManager.FEATURE_PICTURE_IN_PICTURE)
+            access != VideoPiPAccess.Status.BLOCKED &&
+            access != VideoPiPAccess.Status.UNSUPPORTED &&
+            !openingPictureInPictureSettings
         if (!videoInPictureInPicture) {
-            // PiP can be disabled per app by the user, and OEM framework
-            // implementations may reject window parameter updates. Never
-            // crash the foreground playback UI because of that restriction.
-            runCatching {
+            // Some OEM builds reject an updated PiP request. Retain that fact
+            // for an onUserLeaveHint fallback instead of silently ignoring it.
+            autoPipParamsApplied = runCatching {
                 setPictureInPictureParams(
                     videoPiPParams(autoPictureInPictureEligible))
-            }
+            }.isSuccess
+        }
+    }
+
+    fun openVideoPictureInPictureSettings(): Boolean {
+        openingPictureInPictureSettings = true
+        if (!videoInPictureInPicture) {
+            runCatching { setPictureInPictureParams(videoPiPParams(false)) }
+        }
+        val packageUri = Uri.fromParts("package", packageName, null)
+        // The direct Android PiP settings action is not a public SDK
+        // constant. Use its documented platform action, then app settings
+        // as a safe OEM fallback if the direct activity is unavailable.
+        val candidates = listOf(
+            Intent("android.settings.PICTURE_IN_PICTURE_SETTINGS", packageUri),
+            Intent(Settings.ACTION_APPLICATION_DETAILS_SETTINGS, packageUri),
+        )
+        val launched = candidates.any { intent ->
+            runCatching { startActivity(intent) }.isSuccess
+        }
+        if (!launched) {
+            openingPictureInPictureSettings = false
+            updateVideoPictureInPictureEligibility(requestedPictureInPictureEligibility)
+        }
+        return launched
+    }
+
+    override fun onResume() {
+        super.onResume()
+        if (openingPictureInPictureSettings) {
+            openingPictureInPictureSettings = false
+            updateVideoPictureInPictureEligibility(requestedPictureInPictureEligibility)
         }
     }
 
     /** Explicit PiP action in both the full and in-app mini players. */
     fun enterVideoPictureInPicture(expectedVid: String): Boolean {
         if (!readExternalPipEnabled(this)) return false
-        if (!packageManager.hasSystemFeature(
-                PackageManager.FEATURE_PICTURE_IN_PICTURE)) return false
+        val access = VideoPiPAccess.status(this)
+        if (access == VideoPiPAccess.Status.UNSUPPORTED ||
+            access == VideoPiPAccess.Status.BLOCKED) return false
         val player = BackgroundPlaybackService.playerFlow.value ?: return false
         if (expectedVid.isBlank() ||
             player.currentMediaItem?.mediaId != expectedVid) return false
@@ -181,11 +223,13 @@ class MainActivity : ComponentActivity() {
 
     override fun onUserLeaveHint() {
         super.onUserLeaveHint()
-        // On Android 12+ the system's auto-enter owns the animation.
-        // A concurrent manual enter can show the launcher icon before video.
-        // Manual fallback is only required on older Android versions.
-        if (Build.VERSION.SDK_INT < Build.VERSION_CODES.S &&
+        // Prefer Android 12+ auto-enter for seamless gesture animation.
+        // On older systems, or if an OEM rejected setPiPParams(), fall
+        // back to the explicit entry when leaving the activity.
+        if (!openingPictureInPictureSettings &&
             !videoInPictureInPicture && autoPictureInPictureEligible &&
+            (Build.VERSION.SDK_INT < Build.VERSION_CODES.S ||
+                !autoPipParamsApplied) &&
             BackgroundPlaybackService.playerFlow.value?.isPlaying == true) {
             runCatching { enterPictureInPictureMode(
                 videoPiPParams(autoEnter = true)) }
@@ -241,11 +285,22 @@ private fun HongguoApp(model: DramaViewModel = viewModel()) {
     var externalPipEnabled by remember(appContext) {
         mutableStateOf(readExternalPipEnabled(appContext))
     }
+    var externalPipStatus by remember(appContext) {
+        mutableStateOf(VideoPiPAccess.status(appContext))
+    }
     val setExternalPipEnabled: (Boolean) -> Unit = { enabled ->
-        externalPipEnabled = enabled
-        appContext.getSharedPreferences(
-            EXTERNAL_PIP_PREFERENCES, Context.MODE_PRIVATE
-        ).edit().putBoolean(EXTERNAL_PIP_ENABLED, enabled).apply()
+        externalPipStatus = VideoPiPAccess.status(appContext)
+        if (enabled && externalPipStatus == VideoPiPAccess.Status.UNSUPPORTED) {
+            Toast.makeText(appContext, "此设备不支持系统画中画", Toast.LENGTH_SHORT).show()
+        } else {
+            externalPipEnabled = enabled
+            appContext.getSharedPreferences(
+                EXTERNAL_PIP_PREFERENCES, Context.MODE_PRIVATE
+            ).edit().putBoolean(EXTERNAL_PIP_ENABLED, enabled).apply()
+            if (enabled && externalPipStatus == VideoPiPAccess.Status.BLOCKED) {
+                (appContext as? MainActivity)?.openVideoPictureInPictureSettings()
+            }
+        }
     }
     val livePlayer by BackgroundPlaybackService.playerFlow.collectAsStateWithLifecycle()
     var liveVideoIsPlaying by remember(livePlayer) {
@@ -272,8 +327,10 @@ private fun HongguoApp(model: DramaViewModel = viewModel()) {
     val lifecycleOwner = LocalLifecycleOwner.current
     DisposableEffect(lifecycleOwner, model) {
         val observer = LifecycleEventObserver { _, event ->
-            if (event == Lifecycle.Event.ON_RESUME)
+            if (event == Lifecycle.Event.ON_RESUME) {
                 model.recoverPlaybackAfterServiceLoss()
+                externalPipStatus = VideoPiPAccess.status(appContext)
+            }
         }
         lifecycleOwner.lifecycle.addObserver(observer)
         onDispose { lifecycleOwner.lifecycle.removeObserver(observer) }
@@ -527,6 +584,7 @@ private fun HongguoApp(model: DramaViewModel = viewModel()) {
                                         }
                                     },
                                     externalPipEnabled = externalPipEnabled,
+                                    externalPipStatus = externalPipStatus,
                                     onExternalPipEnabled = setExternalPipEnabled)
                             }
                         AppShellNavigationPolicy.shouldShowLoading(state, primaryTab) &&

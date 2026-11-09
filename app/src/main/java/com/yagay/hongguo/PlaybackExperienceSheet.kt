@@ -74,7 +74,10 @@ internal fun PlaybackExperienceSheet(
     speed: Float,
     fillVideo: Boolean,
     externalPipEnabled: Boolean,
+    externalPipStatus: VideoPiPAccess.Status,
     onExternalPipEnabled: (Boolean) -> Unit,
+    onOpenPipSettings: () -> Unit,
+    onTestExternalPip: () -> Unit,
     onDismiss: () -> Unit,
     onSpeed: (Float) -> Unit,
     onFillVideo: (Boolean) -> Unit,
@@ -137,12 +140,60 @@ internal fun PlaybackExperienceSheet(
                             )
                             HorizontalDivider(color = HongguoColors.divider)
                             HongguoToggleRow(
-                                title = "应用外悬浮播放",
+                                title = "应用外小窗播放",
                                 checked = externalPipEnabled,
                                 onCheckedChange = onExternalPipEnabled,
                                 tag = "player_external_pip_enabled",
-                                description = "离开应用时自动画中画，也控制播放器上的画中画入口",
+                                description = "使用安卓系统画中画；播放时返回桌面自动缩小，不是悬浮菜单",
                             )
+                            when (externalPipStatus) {
+                                VideoPiPAccess.Status.BLOCKED -> {
+                                    Text(
+                                        "系统未允许红果使用画中画，应用内开关不能覆盖系统权限。",
+                                        color = HongguoColors.accent,
+                                        fontSize = 12.sp,
+                                        modifier = Modifier.testTag("pip_permission_blocked"),
+                                    )
+                                    HongguoPlayerSheetAction(
+                                        label = "打开系统画中画权限",
+                                        onClick = onOpenPipSettings,
+                                        modifier = Modifier.testTag("pip_open_system_settings"),
+                                    )
+                                }
+                                VideoPiPAccess.Status.UNSUPPORTED -> Text(
+                                    "当前设备不支持安卓系统画中画。",
+                                    color = HongguoColors.muted,
+                                    fontSize = 12.sp,
+                                    modifier = Modifier.testTag("pip_unsupported"),
+                                )
+                                VideoPiPAccess.Status.UNKNOWN -> {
+                                    Text(
+                                        "无法确认系统画中画权限；可直接测试或打开系统设置。",
+                                        fontSize = 11.sp,
+                                        color = HongguoColors.muted,
+                                    )
+                                    HongguoPlayerSheetAction(
+                                        label = "检查系统画中画权限",
+                                        onClick = onOpenPipSettings,
+                                        modifier = Modifier.testTag("pip_open_system_settings"),
+                                    )
+                                }
+                                VideoPiPAccess.Status.ALLOWED -> Text(
+                                    "系统画中画权限已允许",
+                                    fontSize = 11.sp,
+                                    color = HongguoColors.muted,
+                                    modifier = Modifier.testTag("pip_permission_allowed"),
+                                )
+                            }
+                            if (externalPipEnabled &&
+                                externalPipStatus != VideoPiPAccess.Status.UNSUPPORTED &&
+                                externalPipStatus != VideoPiPAccess.Status.BLOCKED) {
+                                HongguoPlayerSheetAction(
+                                    label = "立即测试小窗",
+                                    onClick = onTestExternalPip,
+                                    modifier = Modifier.testTag("pip_test_now"),
+                                )
+                            }
                             PlaybackHeading("屏幕亮度")
                             PlaybackChoices(
                                 listOf(-1 to "系统", 65 to "65%", 80 to "80%",
