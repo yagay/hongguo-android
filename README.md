@@ -433,3 +433,8 @@ Kotlin/Compose/Media3 工程及 Debug-only CI。
 - 为防官方刷剧卡片未返回类型而无法继续刷，自动用官方 `reading/distribution/category/landpage/v/` 的 `DramaCategory.REAL` 分页数据补充真人作品：独立服务器游标、递增分页、持续去重，**非本地固定剧单**。如果官方分类接口也不可用则明确显示错误，不将未核实作品混入真人。
 - 请求预算有上限，只有已经成功获取的新作品进入竖屏刷剧队列；不额外上传观看行为、不新增官方账号点赞、评论、关注等写入接口。
 - 这是“官方数据 + 客户端真人筛选”而非官方承诺的「个性化真人推荐」，实时可用性需要真机与服务端数据测试。仅 Debug 构建。
+
+
+## Release 签名及发布
+
+Release APK 使用独立 PKCS#12 密钥，`com.yagay.hongguo` 包名；私钥不入库。详细步骤见 [docs/RELEASE_SIGNING.md](docs/RELEASE_SIGNING.md)。GitHub Actions 默认仍运行 Debug，仅手动勾选 **Build signed Release APK** 时编译、签名并校验 Release。

@@ -3,6 +3,18 @@ plugins {
     id("org.jetbrains.kotlin.android")
     id("org.jetbrains.kotlin.plugin.compose")
 }
+// Private signing material comes only from CI secrets or local shell environment.
+val releaseSigningKeys = listOf(
+    "HG_RELEASE_STORE_FILE",
+    "HG_RELEASE_STORE_PASSWORD",
+    "HG_RELEASE_KEY_ALIAS",
+    "HG_RELEASE_KEY_PASSWORD",
+)
+val releaseSigningValues = releaseSigningKeys.associateWith { System.getenv(it) }
+val releaseSigningConfigured = releaseSigningKeys.all {
+    !releaseSigningValues[it].isNullOrBlank()
+}
+
 android {
     namespace = "com.yagay.hongguo"
     compileSdk = 36
@@ -14,9 +26,24 @@ android {
         versionName = "0.1.0-web-rewrite"
         testInstrumentationRunner = "androidx.test.runner.AndroidJUnitRunner"
     }
+    signingConfigs {
+        create("release") {
+            if (releaseSigningConfigured) {
+                storeFile = file(releaseSigningValues.getValue("HG_RELEASE_STORE_FILE")!!)
+                storePassword = releaseSigningValues.getValue("HG_RELEASE_STORE_PASSWORD")
+                keyAlias = releaseSigningValues.getValue("HG_RELEASE_KEY_ALIAS")
+                keyPassword = releaseSigningValues.getValue("HG_RELEASE_KEY_PASSWORD")
+                storeType = "PKCS12"
+            }
+        }
+    }
     buildTypes {
-        release { isMinifyEnabled = false }
-        debug { isMinifyEnabled = false }
+        getByName("release") {
+            isMinifyEnabled = false
+            isDebuggable = false
+            signingConfig = signingConfigs.getByName("release")
+        }
+        getByName("debug") { isMinifyEnabled = false }
     }
     buildFeatures { compose = true; buildConfig = true }
     compileOptions {
@@ -50,4 +77,26 @@ dependencies {
     testImplementation("com.squareup.okhttp3:mockwebserver:4.12.0")
     testImplementation("org.jetbrains.kotlinx:kotlinx-coroutines-test:1.10.2")
     debugImplementation("androidx.compose.ui:ui-tooling")
+}
+
+/** Fail early on missing secrets instead of accidentally packaging an unsigned release. */
+val verifyReleaseSigning by tasks.registering {
+    group = "verification"
+    description = "Verify the release signing environment before building."
+    doLast {
+        val missing = releaseSigningKeys.filter { releaseSigningValues[it].isNullOrBlank() }
+        if (missing.isNotEmpty()) {
+            throw GradleException(
+                "Release signing not configured. Missing environment variable(s): " +
+                    missing.joinToString(", ")
+            )
+        }
+        val keystore = file(releaseSigningValues.getValue("HG_RELEASE_STORE_FILE")!!)
+        if (!keystore.isFile) {
+            throw GradleException("Release signing keystore file was not found.")
+        }
+    }
+}
+tasks.matching { it.name == "preReleaseBuild" }.configureEach {
+    dependsOn(verifyReleaseSigning)
 }
