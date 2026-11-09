@@ -144,7 +144,9 @@ internal fun PlaybackExperienceSheet(
                                 checked = externalPipEnabled,
                                 onCheckedChange = onExternalPipEnabled,
                                 tag = "player_external_pip_enabled",
-                                description = "使用安卓系统画中画；播放时返回桌面自动缩小，不是悬浮菜单",
+                                description = if (externalPipEnabled)
+                                    "已开启：播放时离开应用可自动进入系统小窗"
+                                else "已关闭：即使系统已允许画中画，也不会自动显示小窗",
                             )
                             when (externalPipStatus) {
                                 VideoPiPAccess.Status.BLOCKED -> {
@@ -179,7 +181,7 @@ internal fun PlaybackExperienceSheet(
                                     )
                                 }
                                 VideoPiPAccess.Status.ALLOWED -> Text(
-                                    "系统画中画权限已允许",
+                                    "系统权限已允许；小窗是否显示由上方开关决定",
                                     fontSize = 11.sp,
                                     color = HongguoColors.muted,
                                     modifier = Modifier.testTag("pip_permission_allowed"),

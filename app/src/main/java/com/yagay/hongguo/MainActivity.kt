@@ -145,6 +145,12 @@ class MainActivity : ComponentActivity() {
         }
     }
 
+    private fun isExternalPipAllowedNow(): Boolean =
+        VideoPiPPolicy.isAllowedByUser(
+            enabledInApp = readExternalPipEnabled(this),
+            systemAccess = VideoPiPAccess.status(this),
+        ) && !openingPictureInPictureSettings
+
     private fun videoPiPParams(autoEnter: Boolean): PictureInPictureParams {
         // Aspect ratio is supported from API 26; auto-enter and seamless
         // resizing only exist from API 31. This app still supports API 26+.
@@ -153,7 +159,10 @@ class MainActivity : ComponentActivity() {
                 VideoPiPPolicy.PORTRAIT_WIDTH, VideoPiPPolicy.PORTRAIT_HEIGHT))
         pipSourceRect?.let { params.setSourceRectHint(it) }
         if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.S) {
-            params.setAutoEnterEnabled(autoEnter)
+            // Re-read the persisted toggle at the last moment. A stale
+            // state or an OEM layout callback must never re-enable PiP
+            // after the user has disabled it inside the app.
+            params.setAutoEnterEnabled(autoEnter && isExternalPipAllowedNow())
             params.setSeamlessResizeEnabled(true)
         }
         return params.build()
@@ -162,9 +171,8 @@ class MainActivity : ComponentActivity() {
     fun updateVideoPictureInPictureEligibility(enabled: Boolean) {
         requestedPictureInPictureEligibility = enabled
         val access = VideoPiPAccess.status(this)
-        autoPictureInPictureEligible = enabled && readExternalPipEnabled(this) &&
-            access != VideoPiPAccess.Status.BLOCKED &&
-            access != VideoPiPAccess.Status.UNSUPPORTED &&
+        autoPictureInPictureEligible = enabled &&
+            VideoPiPPolicy.isAllowedByUser(readExternalPipEnabled(this), access) &&
             !openingPictureInPictureSettings
         if (!videoInPictureInPicture) {
             // Some OEM builds reject an updated PiP request. Retain that fact
@@ -209,10 +217,8 @@ class MainActivity : ComponentActivity() {
 
     /** Explicit PiP action in both the full and in-app mini players. */
     fun enterVideoPictureInPicture(expectedVid: String): Boolean {
-        if (!readExternalPipEnabled(this)) return false
-        val access = VideoPiPAccess.status(this)
-        if (access == VideoPiPAccess.Status.UNSUPPORTED ||
-            access == VideoPiPAccess.Status.BLOCKED) return false
+        // Explicit buttons obey the same user switch as automatic PiP.
+        if (!isExternalPipAllowedNow()) return false
         val player = BackgroundPlaybackService.playerFlow.value ?: return false
         if (expectedVid.isBlank() ||
             player.currentMediaItem?.mediaId != expectedVid) return false
@@ -226,7 +232,7 @@ class MainActivity : ComponentActivity() {
         // Prefer Android 12+ auto-enter for seamless gesture animation.
         // On older systems, or if an OEM rejected setPiPParams(), fall
         // back to the explicit entry when leaving the activity.
-        if (!openingPictureInPictureSettings &&
+        if (isExternalPipAllowedNow() &&
             !videoInPictureInPicture && autoPictureInPictureEligible &&
             (Build.VERSION.SDK_INT < Build.VERSION_CODES.S ||
                 !autoPipParamsApplied) &&
@@ -297,6 +303,12 @@ private fun HongguoApp(model: DramaViewModel = viewModel()) {
             appContext.getSharedPreferences(
                 EXTERNAL_PIP_PREFERENCES, Context.MODE_PRIVATE
             ).edit().putBoolean(EXTERNAL_PIP_ENABLED, enabled).apply()
+            if (!enabled) {
+                // Disable system auto-enter synchronously; do not wait for
+                // Compose SideEffect or the next playback-state event.
+                (appContext as? MainActivity)
+                    ?.updateVideoPictureInPictureEligibility(false)
+            }
             if (enabled && externalPipStatus == VideoPiPAccess.Status.BLOCKED) {
                 (appContext as? MainActivity)?.openVideoPictureInPictureSettings()
             }

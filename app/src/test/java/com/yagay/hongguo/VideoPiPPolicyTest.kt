@@ -29,6 +29,22 @@ class VideoPiPPolicyTest {
         assertFalse(eligible(requested = ""))
     }
 
+    @Test fun userToggleDisablesPipDespiteGrantedSystemPermission() {
+        assertFalse(VideoPiPPolicy.isAllowedByUser(
+            false, VideoPiPAccess.Status.ALLOWED))
+        assertFalse(VideoPiPPolicy.isAllowedByUser(
+            false, VideoPiPAccess.Status.UNKNOWN))
+        assertTrue(VideoPiPPolicy.isAllowedByUser(
+            true, VideoPiPAccess.Status.ALLOWED))
+    }
+
+    @Test fun systemRestrictionStillBlocksEnabledInAppToggle() {
+        assertFalse(VideoPiPPolicy.isAllowedByUser(
+            true, VideoPiPAccess.Status.BLOCKED))
+        assertFalse(VideoPiPPolicy.isAllowedByUser(
+            true, VideoPiPAccess.Status.UNSUPPORTED))
+    }
+
     @Test fun noActiveSourceOrDetailsDoesNotAutoEnter() {
         assertFalse(eligible(detail = false))
         assertFalse(eligible(preparing = true))
