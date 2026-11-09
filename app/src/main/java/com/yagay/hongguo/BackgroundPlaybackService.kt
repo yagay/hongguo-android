@@ -89,13 +89,20 @@ class BackgroundPlaybackService : MediaSessionService() {
     private val previousCommand = SessionCommand(PREVIOUS, Bundle.EMPTY)
     private val nextCommand = SessionCommand(NEXT, Bundle.EMPTY)
     private var remoteVideo: RemoteVideo? = null
-    /** One recently replaced prepared stream for a quick reverse swipe. */
-    private var recentVideo: RemoteVideo? = null
-    private var recentVid: String = ""
-    private var recentQuality = 0
-    private var recentSavedAtMs = 0L
+    /** Reusable recently played native streams, ordered oldest to newest.
+     * All accesses are on the service main thread. No active stream is cached.
+     */
+    private data class RecentStream(
+        val video: RemoteVideo,
+        val vid: String,
+        val quality: Int,
+        val savedAtMs: Long,
+    )
+    private val recentStreams = mutableListOf<RecentStream>()
+    private val recentTtlMs = 15 * 60_000L
+    private val maxRecentEntries = 6
+    private val maxRecentPrefixBytes = 48L * 1024 * 1024
     private var currentQuality = 0
-    private val recentTtlMs = 90_000L
     private var currentKey: String? = null
     private var currentVid: String = ""
     private var previousAllowed = false
@@ -388,11 +395,7 @@ class BackgroundPlaybackService : MediaSessionService() {
 
     private val checkpoint = object : Runnable {
         override fun run() {
-            if (recentVideo != null &&
-                android.os.SystemClock.elapsedRealtime() - recentSavedAtMs > recentTtlMs) {
-                clearRecentVideo()
-                diagnostics.record("BACKGROUND", "RECENT_STREAM_EXPIRED")
-            }
+            pruneRecentStreams()
             if (::engine.isInitialized && currentKey != null) {
                 val duration = engine.duration.takeIf { it > 0 } ?: 0L
                 if (engine.isPlaying && onTimer?.invoke() == true) engine.pause()
@@ -438,29 +441,63 @@ class BackgroundPlaybackService : MediaSessionService() {
     }
 
     private fun clearRecentVideo() {
-        recentVideo?.close()
-        recentVideo = null
-        recentVid = ""
-        recentQuality = 0
-        recentSavedAtMs = 0L
+        recentStreams.forEach { it.video.close() }
+        recentStreams.clear()
     }
 
-    /** Main-thread, one-shot ownership transfer back to the ViewModel.
-     * Do not retain the cached stream beyond 90 seconds or after explicit
-     * stop, and never replay it at another quality.
+    private fun prefixBytes(video: RemoteVideo): Long =
+        runCatching { video.cachedBytes(0L).toLong().coerceAtLeast(0L) }
+            .getOrDefault(0L)
+
+    private fun pruneRecentStreams() {
+        val now = android.os.SystemClock.elapsedRealtime()
+        val expired = recentStreams.filter { now - it.savedAtMs >= recentTtlMs }
+        expired.forEach { old ->
+            recentStreams.remove(old)
+            old.video.close()
+        }
+        if (expired.isNotEmpty()) diagnostics.record("BACKGROUND", "RECENT_STREAM_EXPIRED")
+        // Memory is bounded by both entry count and already cached prefix.
+        // This is an estimate; the native core may hold non-prefix ranges.
+        while (recentStreams.size > maxRecentEntries ||
+            recentStreams.sumOf { prefixBytes(it.video) } > maxRecentPrefixBytes) {
+            val evicted = recentStreams.removeAt(0)
+            evicted.video.close()
+            diagnostics.record("BACKGROUND", "RECENT_STREAM_EVICTED")
+        }
+    }
+
+    private fun rememberRecentVideo(vid: String, quality: Int, video: RemoteVideo) {
+        if (vid.isBlank()) {
+            video.close()
+            return
+        }
+        // Do not cache a second owner of the same handle.
+        recentStreams.removeAll { old ->
+            if (old.vid == vid && old.quality == quality) {
+                if (old.video !== video) old.video.close()
+                true
+            } else false
+        }
+        recentStreams.add(RecentStream(video, vid, quality,
+            android.os.SystemClock.elapsedRealtime()))
+        pruneRecentStreams()
+        diagnostics.record("BACKGROUND", "RECENT_STREAM_STORED")
+    }
+
+    /** Transfer cached ownership once. Entries remain usable for up to 15 minutes
+     * unless pressure forces earlier eviction. Quality must match exactly.
      */
     fun takeRecentVideo(vid: String, quality: Int): RemoteVideo? {
-        val cached = recentVideo ?: return null
-        val fresh = android.os.SystemClock.elapsedRealtime() - recentSavedAtMs <= recentTtlMs
-        if (!fresh) {
-            clearRecentVideo()
+        pruneRecentStreams()
+        val index = recentStreams.indexOfLast {
+            it.vid == vid && it.quality == quality
+        }
+        if (index < 0) {
+            diagnostics.record("BACKGROUND", "RECENT_STREAM_MISS")
             return null
         }
-        if (recentVid != vid || recentQuality != quality) return null
-        recentVideo = null
-        recentVid = ""
-        recentQuality = 0
-        recentSavedAtMs = 0L
+        val cached = recentStreams.removeAt(index).video
         diagnostics.record("BACKGROUND", "RECENT_STREAM_REUSED")
         return cached
     }
@@ -546,15 +583,9 @@ class BackgroundPlaybackService : MediaSessionService() {
         engine.play()
         if (previousRemote != null && previousRemote !== remote &&
             previousVid.isNotBlank()) {
-            // No second decoder or background playback engine. Keep only one
-            // prepared range-stream handle while its future media item is not
-            // active; ExoPlayer has already detached the old data source.
-            clearRecentVideo()
-            recentVideo = previousRemote
-            recentVid = previousVid
-            recentQuality = previousQuality
-            recentSavedAtMs = android.os.SystemClock.elapsedRealtime()
-            diagnostics.record("BACKGROUND", "RECENT_STREAM_STORED")
+            // Keep a bounded LRU of recently played native streams, without
+            // creating a second decoder or re-requesting their media model.
+            rememberRecentVideo(previousVid, previousQuality, previousRemote)
         } else if (previousRemote != null && previousRemote !== remote) {
             previousRemote.close()
         }
