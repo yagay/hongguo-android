@@ -427,10 +427,12 @@ class DramaViewModel(application: Application) : AndroidViewModel(application) {
                     // the next swipe drama, sequentially rather than in
                     // parallel with the episode model request.
                     val latest = state.value
+                    val latestActiveVid = latest.detail?.episodes
+                        ?.getOrNull(latest.episodeIndex)?.vid
                     if (latest.feedMode && latest.preloadNext &&
                         latest.detail?.drama?.id == s.detail?.drama?.id &&
-                        firstFrameFor == latest.detail.episodes
-                            .getOrNull(latest.episodeIndex)?.vid) {
+                        latestActiveVid != null &&
+                        firstFrameFor == latestActiveVid) {
                         // Fetch the missing official queue *after* the next
                         // episode's encrypted range has already been prepared.
                         if (!deferRestoredFeedRecommendations &&
