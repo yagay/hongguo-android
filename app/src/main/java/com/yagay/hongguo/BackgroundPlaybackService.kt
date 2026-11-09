@@ -570,7 +570,7 @@ class BackgroundPlaybackService : MediaSessionService() {
         val item = MediaItem.Builder().setUri(url).setMediaId(vid)
             .apply {
                 if (remote != null)
-                    setCustomCacheKey(NativeDiskVideoCache.key(vid, qualityLimit, remote.total))
+                    NativeDiskVideoCache.streamKey(remote)?.let(::setCustomCacheKey)
             }
             .setMediaMetadata(metadata).build()
         if (remote != null) {
