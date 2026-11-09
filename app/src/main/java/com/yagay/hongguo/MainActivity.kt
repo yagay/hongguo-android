@@ -504,9 +504,27 @@ private fun HongguoApp(model: DramaViewModel = viewModel()) {
                                     onExitFeed = { confirmExitFeed = true },
                                     onBackFromSeries = ::returnFromSeries,
                                     onEnterSeries = { episodeIndex ->
-                                        if (state.feedMode)
-                                            reelModeSlide.prepareSeriesEntry()
-                                        model.exitFeedToEpisode(episodeIndex)
+                                        if (state.feedMode && state.detail != null) {
+                                            val dramaId = state.detail.drama.id
+                                            reelSlideScope.launch {
+                                                // Capture one frame of the outgoing reel
+                                                // before changing routes. The foreground
+                                                // remains the only live Media3 player.
+                                                val ready = reelModeSlide
+                                                    .captureThenPrepareEntry(dramaId)
+                                                if (ready) {
+                                                    val latest = model.state.value
+                                                    if (latest.feedMode &&
+                                                        latest.detail?.drama?.id == dramaId) {
+                                                        model.exitFeedToEpisode(episodeIndex)
+                                                    } else {
+                                                        reelModeSlide.cancelPreparedEntry()
+                                                    }
+                                                }
+                                            }
+                                        } else {
+                                            model.exitFeedToEpisode(episodeIndex)
+                                        }
                                     },
                                     externalPipEnabled = externalPipEnabled,
                                     onExternalPipEnabled = setExternalPipEnabled)

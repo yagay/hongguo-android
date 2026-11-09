@@ -59,6 +59,7 @@ internal fun Media3Reel(
     controls: ReelPlaybackControls,
     expectedVid: String,
     onSurfaceType: (String) -> Unit,
+    onPlayerView: (PlayerView?) -> Unit = {},
 ) {
     // ViewModel configures media in the foreground service after each episode
     // fetch, even while the UI lifecycle is STOPPED. Compose only shows its
@@ -116,6 +117,14 @@ internal fun Media3Reel(
     // picture-in-picture scales the video, not the launcher/app icon.
     val pipActivity = LocalContext.current as? MainActivity
     var pipPlayerView by remember { mutableStateOf<PlayerView?>(null) }
+    val currentOnPlayerView by rememberUpdatedState(onPlayerView)
+    DisposableEffect(pipPlayerView) {
+        val view = pipPlayerView
+        if (view != null) currentOnPlayerView(view)
+        onDispose {
+            if (view != null) currentOnPlayerView(null)
+        }
+    }
     DisposableEffect(pipActivity, pipPlayerView) {
         val view = pipPlayerView
         if (view != null) pipActivity?.registerVideoPipSourceView(view)

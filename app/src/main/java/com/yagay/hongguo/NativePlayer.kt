@@ -85,6 +85,7 @@ import androidx.compose.runtime.setValue
 import androidx.compose.runtime.snapshotFlow
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
+import androidx.compose.ui.layout.onSizeChanged
 import androidx.compose.ui.draw.clipToBounds
 import androidx.compose.ui.draw.clip
 import androidx.compose.ui.layout.ContentScale
@@ -436,7 +437,16 @@ internal fun NativePlayer(
     ) {
     // Keep the closed drawer sheet at its true off-screen position.
     // Only the content page moves during feed/series transitions.
-    ReelModeSlidePlayer(state = state, model = model, slide = modeSlide) {
+    ReelModeSlidePlayer(
+        state = state,
+        slide = modeSlide,
+        backdrop = {
+            ReelModeFeedBackdrop(
+                state = state, detail = detail, episode = selected,
+                playback = playback, slide = modeSlide, model = model,
+            )
+        },
+    ) {
     Box(Modifier.fillMaxSize()) {
     BoxWithConstraints(Modifier.fillMaxSize().testTag("reels_player")) {
         val rotated = activeVideoSize.unappliedRotationDegrees % 180 != 0
@@ -470,6 +480,7 @@ internal fun NativePlayer(
         Box((if (measuredPortraitHeight != null)
                 Modifier.fillMaxWidth().height(measuredPortraitHeight)
             else Modifier.fillMaxWidth().weight(1f))
+            .onSizeChanged { modeSlide.recordVideoViewportHeight(it.height) }
             .testTag("reel_video_viewport")) {
         // A single stable SurfaceView lives under the pager. When switching
         // from one reel-per-drama to the episode pager, pager page positions
@@ -482,6 +493,7 @@ internal fun NativePlayer(
                 controls = playback,
                 expectedVid = playingEpisode.vid,
                 onSurfaceType = model::recordVideoSurface,
+                onPlayerView = modeSlide::registerPlayerView,
             )
         }
         VerticalPager(
