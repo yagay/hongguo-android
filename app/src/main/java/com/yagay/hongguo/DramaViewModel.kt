@@ -408,12 +408,83 @@ class DramaViewModel(application: Application) : AndroidViewModel(application) {
                     preloadedNextQuality = quality
                     remote = null
                     diagnostics.record("PLAYBACK", "NEXT_NATIVE_PREPARED")
+                    // Once the next EPISODE has a prepared range, also warm
+                    // the next swipe drama, sequentially rather than in
+                    // parallel with the episode model request.
+                    val latest = state.value
+                    if (latest.feedMode && latest.preloadNext &&
+                        latest.detail?.drama?.id == s.detail?.drama?.id &&
+                        firstFrameFor == latest.detail.episodes
+                            .getOrNull(latest.episodeIndex)?.vid &&
+                        latest.feedItems.drop(latest.feedIndex + 1).any {
+                            it.id !in latest.hiddenRecommendationIds
+                        }) {
+                        prefetchFollowingFeedItem(latest.feedIndex)
+                    }
                 }
             } catch (e: CancellationException) { throw e }
             catch (_: Exception) { diagnostics.record("PLAYBACK", "NEXT_PREFETCH_UNAVAILABLE") }
             finally { remote?.close() }
         }
     }
+    /**
+     * Schedule only the next useful stream while the current Media3 item is
+     * already rendering. For non-final episodes, episode N+1 is more urgent
+     * than the first video in a different drama. On the last episode, warm a
+     * real official recommendation before the completion callback arrives.
+     */
+    private fun prepareUpcomingPlayback(snapshot: AppState) {
+        val detail = snapshot.detail ?: return
+        val currentEpisode = detail.episodes.getOrNull(snapshot.episodeIndex) ?: return
+        if (!snapshot.preloadNext || snapshot.offlinePlaybackUri != null ||
+            firstFrameFor != currentEpisode.vid) return
+
+        if (snapshot.episodeIndex < detail.episodes.lastIndex) {
+            preloadFollowingEpisode()
+            return
+        }
+        if (!snapshot.autoPlayNext) return
+
+        val continuation = OfficialReelsPolicy.continuationAfterCompletedSeries(
+            finishedDrama = detail.drama,
+            existing = snapshot.feedItems,
+            cameFromFeed = snapshot.feedMode ||
+                snapshot.navigation.origin == PlaybackOrigin.SWIPE_FEED,
+        )
+        // Catalog/history playback is not itself a swipe session. Keep its
+        // final episode visible, but seed an OFFSCREEN official queue that
+        // excludes the finished drama from subsequent recommendations.
+        if (!snapshot.feedMode &&
+            (snapshot.feedItems != continuation.queue ||
+                snapshot.feedIndex != continuation.currentIndex)) {
+            mutable.update {
+                it.copy(feedItems = continuation.queue,
+                    feedIndex = continuation.currentIndex,
+                    feedHasMore = true, feedError = null)
+            }
+        }
+        val current = state.value
+        val nextIndex = OfficialReelsPolicy.nextIndex(
+            current.feedItems, current.feedIndex, 1,
+            current.hiddenRecommendationIds,
+        )
+        if (nextIndex != null) {
+            prefetchFollowingFeedItem(current.feedIndex)
+            return
+        }
+        if (current.feedLoading) return // Existing request is in flight.
+        deferRestoredFeedRecommendations = false
+        if (current.feedMode) {
+            if (!current.feedHasMore) mutable.update { it.copy(feedHasMore = true) }
+            diagnostics.record("REELS", "FINALE_FEED_TOP_UP")
+            loadOfficialReels(restart = !current.feedHasMore)
+        } else {
+            mutable.update { it.copy(feedHasMore = true, feedError = null) }
+            diagnostics.record("REELS", "FINALE_RECOMMENDATION_PREFETCH")
+            loadOfficialReels(restart = true, warmingFinaleId = detail.drama.id)
+        }
+    }
+
     fun nativeVideoFor(vid: String): RemoteVideo? =
         if (activeNativeVid == vid) activeNativeVideo else null
     private fun closeNativeVideo() {
@@ -735,7 +806,14 @@ class DramaViewModel(application: Application) : AndroidViewModel(application) {
                     pendingFeedAdvance = false
                     // A duplicate-only upstream response must not repeatedly
                     // page forever while the user remains on the last reel.
-                    if (state.value.feedItems.size > snapshot.feedItems.size) navigateFeed(1)
+                    if (state.value.feedItems.size > snapshot.feedItems.size) {
+                        // Avoid canceling the delivering coroutine itself in
+                        // open(nextDrama)'s stale-warmup cleanup.
+                        if (warmingFinaleId != null &&
+                            finaleRecommendationRequestFor == warmingFinaleId)
+                            finaleRecommendationRequestFor = null
+                        navigateFeed(1)
+                    }
                 } else if (mayPreloadFollowingDrama(state.value))
                     prefetchFollowingFeedItem(state.value.feedIndex)
                 val latest = state.value
@@ -869,7 +947,7 @@ class DramaViewModel(application: Application) : AndroidViewModel(application) {
 
     private fun prefetchFollowingFeedItem(index: Int) {
         val current = state.value
-        if (!mayPreloadFollowingDrama(current)) return
+        if (!current.preloadNext || !mayPreloadFollowingDrama(current)) return
         val next = current.feedItems.drop(index + 1)
             .firstOrNull { it.id !in current.hiddenRecommendationIds } ?: return
         if (reelWarmSeriesId == next.id && reelWarmVideo != null) return
@@ -889,6 +967,17 @@ class DramaViewModel(application: Application) : AndroidViewModel(application) {
                 // byte range only after Media3 has rendered the active first frame.
                 val active = state.value.detail?.episodes?.getOrNull(state.value.episodeIndex)
                 if (active == null || firstFrameFor != active.vid) return@launch
+                // During a multi-episode reel, prioritize the upcoming
+                // episode. Once its range is ready, begin warming the
+                // adjacent drama without contending for the initial bytes.
+                val activeDetail = state.value.detail
+                if (activeDetail != null &&
+                    state.value.episodeIndex < activeDetail.episodes.lastIndex) {
+                    val followingVid = activeDetail.episodes
+                        .getOrNull(state.value.episodeIndex + 1)?.vid
+                    if (followingVid != null && preloadedNextVid != followingVid)
+                        return@launch
+                }
                 val first = detail.episodes.first().vid
                 val quality = state.value.qualityLimit
                 warming = nativeSource.openVideo(first, qualityLimit = quality)
@@ -2521,17 +2610,7 @@ class DramaViewModel(application: Application) : AndroidViewModel(application) {
             diagnostics.record("REELS", "POST_FIRST_FRAME_TOP_UP")
             loadOfficialReels()
         }
-        // The next episode is more important than the next drama while the
-        // current series has remaining episodes; avoid competing range requests.
-        if (s.feedMode &&
-            s.feedItems.drop(s.feedIndex + 1).any {
-                it.id !in s.hiddenRecommendationIds
-            }) {
-            // In swipe mode the immediately adjacent drama has priority.
-            // The next episode is prefetched after this neighboring video,
-            // rather than consuming the same network/identity budget at once.
-            prefetchFollowingFeedItem(s.feedIndex)
-        } else preloadFollowingEpisode()
+        prepareUpcomingPlayback(s)
     }
 
 
@@ -2549,15 +2628,7 @@ class DramaViewModel(application: Application) : AndroidViewModel(application) {
         library.record(s.detail.drama, ep.index)
         rememberLastPlaybackMode(s.feedMode)
         updateLibrary()
-        if (s.feedMode &&
-            s.feedItems.drop(s.feedIndex + 1).any {
-                it.id !in s.hiddenRecommendationIds
-            }) {
-            // In swipe mode the immediately adjacent drama has priority.
-            // The next episode is prefetched after this neighboring video,
-            // rather than consuming the same network/identity budget at once.
-            prefetchFollowingFeedItem(s.feedIndex)
-        } else preloadFollowingEpisode()
+        prepareUpcomingPlayback(s)
     }
 
     /** Media3-driven actual progress, persisted independently of history.
@@ -2637,12 +2708,16 @@ class DramaViewModel(application: Application) : AndroidViewModel(application) {
         // official recommendation, not a replay of this completed series.
         deferRestoredFeedRecommendations = false
         pendingFeedAdvance = false
+        val alreadyFetchingRecommendation = snapshot.feedLoading &&
+            finaleRecommendationRequestFor == finishedDrama.id
         mutable.update {
             it.copy(
                 feedMode = true,
                 feedItems = continuation.queue,
                 feedIndex = continuation.currentIndex,
-                feedLoading = false,
+                // Preserve the finale's in-flight official request; do not
+                // replace it with a second registration after the last frame.
+                feedLoading = alreadyFetchingRecommendation,
                 feedHasMore = if (nextIndex == null) true else it.feedHasMore,
                 feedError = null,
                 detailPageVisible = false,
@@ -2660,8 +2735,12 @@ class DramaViewModel(application: Application) : AndroidViewModel(application) {
             // excluded seed. pendingFeedAdvance starts the next item as
             // soon as the new official batch is available.
             pendingFeedAdvance = true
-            diagnostics.record("REELS", "SERIES_FINISHED_FETCH_RECOMMENDATIONS")
-            loadOfficialReels(restart = true)
+            if (alreadyFetchingRecommendation) {
+                diagnostics.record("REELS", "SERIES_FINISHED_WAIT_PREFETCH")
+            } else {
+                diagnostics.record("REELS", "SERIES_FINISHED_FETCH_RECOMMENDATIONS")
+                loadOfficialReels(restart = true)
+            }
         }
     }
 
