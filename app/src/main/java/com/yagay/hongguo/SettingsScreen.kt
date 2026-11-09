@@ -19,6 +19,8 @@ import androidx.compose.foundation.layout.WindowInsets
 import androidx.compose.foundation.layout.fillMaxSize
 import androidx.compose.foundation.layout.fillMaxWidth
 import androidx.compose.foundation.layout.height
+import androidx.compose.foundation.layout.heightIn
+import androidx.compose.foundation.layout.widthIn
 import androidx.compose.foundation.layout.padding
 import androidx.compose.foundation.layout.size
 import androidx.compose.foundation.lazy.LazyColumn
@@ -32,6 +34,7 @@ import androidx.compose.material.icons.outlined.ExpandLess
 import androidx.compose.material.icons.outlined.ExpandMore
 import androidx.compose.material.icons.outlined.Settings
 import androidx.compose.material.icons.outlined.ChevronRight
+import androidx.compose.material.icons.outlined.Check
 import androidx.compose.material.icons.outlined.PersonOutline
 import androidx.compose.material.icons.outlined.PlayCircleOutline
 import androidx.compose.material3.AlertDialog
@@ -60,6 +63,9 @@ import androidx.lifecycle.compose.collectAsStateWithLifecycle
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.platform.testTag
+import androidx.compose.ui.graphics.Color
+import androidx.compose.ui.graphics.vector.ImageVector
+import androidx.compose.ui.text.style.TextOverflow
 import androidx.compose.ui.text.font.FontFamily
 import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.unit.dp
@@ -74,6 +80,8 @@ internal fun SettingsScreen(state: AppState, model: DramaViewModel) {
     var confirmClear by remember { mutableStateOf(false) }
     var pendingRestore by remember { mutableStateOf<Uri?>(null) }
     var showLogPreview by rememberSaveable { mutableStateOf(false) }
+    var backendExpanded by rememberSaveable { mutableStateOf(false) }
+    var choiceSheet by rememberSaveable { mutableStateOf<String?>(null) }
     val account by model.account.state.collectAsStateWithLifecycle()
     val exporter = rememberLauncherForActivityResult(
         ActivityResultContracts.CreateDocument("text/plain")
@@ -107,154 +115,129 @@ internal fun SettingsScreen(state: AppState, model: DramaViewModel) {
     ) { padding ->
         LazyColumn(
             modifier = Modifier.fillMaxSize().padding(padding).testTag("settings_page"),
-            contentPadding = PaddingValues(start = HongguoUi.pagePadding,
-                top = 12.dp, end = HongguoUi.pagePadding, bottom = 28.dp),
-            verticalArrangement = Arrangement.spacedBy(12.dp),
+            contentPadding = PaddingValues(start = 12.dp,
+                top = 6.dp, end = 12.dp, bottom = 24.dp),
+            verticalArrangement = Arrangement.spacedBy(7.dp),
         ) {
             item {
-                HongguoSettingsSection("账号与隐私") {
+                CompactSettingsSection("账号与隐私") {
                     SettingsNavRow(
                         icon = Icons.Outlined.PersonOutline,
                         title = "红果账号",
                         subtitle = account.profile?.nickname?.let { "已登录 · $it" }
-                            ?: if (account.checking) "正在检查登录状态" else "登录方式、云片单与账号管理",
+                            ?: if (account.checking) "正在检查登录状态" else "登录与账号管理",
                         tag = "open_account",
                         onClick = { model.show(Modal.ACCOUNT) },
                     )
                     if (account.profile != null) {
-                        HorizontalDivider()
+                        CompactSettingsDivider()
                         SettingToggle(
                             "刷短剧使用登录账号",
-                            "默认关闭；开启后，刷短剧（包括只看真人）及首页推荐会携带本人登录会话请求官方接口。是否真正个性化由服务端决定；切换后刷新推荐队列，不中断当前视频。",
+                            "向官方接口发送登录会话；推荐结果由服务端决定",
                             account.accountRecommendations,
                             model::setAccountRecommendations, "settings_account_recommendations")
-                        Text(
-                            if (account.accountRecommendations)
-                                "已开启：向官方推荐接口发送登录会话（不能保证与官方 App 推荐排序完全一致）"
-                            else "当前为非账号推荐：登录成功不会自动开启此功能。",
-                            color = HongguoColors.muted, fontSize = 12.sp)
-
-                        HorizontalDivider()
-                        SettingToggle("同步观看进度", "默认关闭，仅上报此后播放进度", account.syncEnabled,
+                        CompactSettingsDivider()
+                        SettingToggle("同步观看进度", "仅同步开启后产生的进度",
+                            account.syncEnabled,
                             model.account::setProgressSync, "settings_account_sync")
                     }
                 }
             }
             item {
-                HongguoSettingsSection("外观") {
-                    Text("主题样式", color = HongguoColors.ink, fontWeight = FontWeight.SemiBold)
-                    HongguoChoiceGroup(
-                        options = listOf("warm" to "暖白精修",
-                            "immersive" to "沉浸暗场", "cards" to "内容卡片"),
-                        selected = state.themeStyle,
-                        onSelect = model::setThemeStyle,
-                        tag = "theme_style",
-                        tagByValue = true,
+                CompactSettingsSection("外观") {
+                    CompactSettingsRow(
+                        title = "主题样式",
+                        value = when (state.themeStyle) {
+                            "immersive" -> "沉浸暗场"
+                            "cards" -> "内容卡片"
+                            else -> "暖白精修"
+                        },
+                        tag = "theme_style_row",
+                        onClick = { choiceSheet = "theme_style" },
                     )
-                    Text("显示模式", color = HongguoColors.ink,
-                        fontWeight = FontWeight.SemiBold)
-                    Text("白天、夜间和跟随系统。选择后立即应用，重启应用仍会保留。",
-                        color = HongguoColors.muted, fontSize = 12.sp)
-                    HongguoChoiceGroup(
-                        options = listOf("light" to "白天模式", "dark" to "夜间模式",
-                            "system" to "跟随系统"),
-                        selected = state.themeMode,
-                        onSelect = model::setThemeMode,
-                        tag = "theme_mode",
-                        tagByValue = true,
+                    CompactSettingsDivider()
+                    CompactSettingsRow(
+                        title = "显示模式",
+                        value = when (state.themeMode) {
+                            "dark" -> "夜间模式"
+                            "system" -> "跟随系统"
+                            else -> "白天模式"
+                        },
+                        tag = "theme_mode_row",
+                        onClick = { choiceSheet = "theme_mode" },
                     )
-                    Text("首页、搜索页和剧集详情跟随显示模式；播放视频区域始终使用深色背景。",
-                        color = HongguoColors.muted, fontSize = 12.sp)
                 }
             }
+            // Playback brightness, audio enhancement and other video controls
+            // live exclusively in the player's own PlaybackExperienceSheet.
             item {
-                HongguoSettingsSection("播放画面") {
-                    Text("播放器屏幕亮度", color = HongguoColors.ink,
-                        fontWeight = FontWeight.SemiBold)
-                    HongguoChoiceGroup(
-                        options = listOf(-1 to "跟随系统", 65 to "65%", 80 to "80%",
-                            90 to "90%", 100 to "100%"),
-                        selected = state.videoBrightnessPercent,
-                        onSelect = model::setVideoBrightnessPercent,
-                        tag = "settings_video_brightness",
-                        tagByValue = true,
+                CompactSettingsSection("内容来源") {
+                    CompactSettingsRow(
+                        title = "内容接口",
+                        value = if (state.backend.isBlank()) "原生模式" else "自定义 API",
+                        tag = "backend_settings_entry",
+                        onClick = { backendExpanded = !backendExpanded },
+                        expanded = backendExpanded,
                     )
-                    Text("只对全屏刷短剧和正式剧集播放生效，离开播放器自动恢复系统亮度；" +
-                        "不修改视频颜色、伽马或全局屏幕设置。",
-                        color = HongguoColors.muted, fontSize = 12.sp)
-                    Text("视频声音增强", color = HongguoColors.ink,
-                        fontWeight = FontWeight.SemiBold)
-                    HongguoChoiceGroup(
-                        options = listOf(0 to "原音", 3 to "+3 dB", 6 to "+6 dB"),
-                        selected = state.playbackAudioBoostDb,
-                        onSelect = model::setPlaybackAudioBoostDb,
-                        tag = "settings_audio_boost",
-                        tagByValue = true,
-                    )
-                    Text("增强仅针对本应用音频，不会修改手机全局媒体音量。" +
-                        "系统不支持音效时自动保留原声，出现失真可恢复原音。",
-                        color = HongguoColors.muted, fontSize = 12.sp)
-                }
-            }
-            item {
-                HongguoSettingsSection("内容来源") {
-                    Text(if (state.backend.isBlank()) "原生内容模式" else "使用自定义 API",
-                        fontWeight = FontWeight.SemiBold,
-                        color = HongguoColors.ink)
-                    Text("默认使用手机内置的原生模块。可选连接自建网页版服务；视频播放仍受上游接口可用性影响。",
-                        color = HongguoColors.muted, fontSize = 12.sp)
-                    OutlinedTextField(
-                        value = address,
-                        onValueChange = { address = it },
-                        label = { Text("替代 API 地址（可选）") },
-                        placeholder = { Text("https://your-server.example") },
-                        modifier = Modifier.fillMaxWidth().testTag("backend_address"),
-                        shape = RoundedCornerShape(HongguoUi.controlRadius),
-                        singleLine = true,
-                    )
-                    FlowRow(
-                        horizontalArrangement = Arrangement.spacedBy(8.dp),
-                        verticalArrangement = Arrangement.spacedBy(7.dp),
-                    ) {
-                        HongguoAction(
-                            label = "保存连接",
-                            onClick = { model.saveBackend(address) },
-                            modifier = Modifier.testTag("save_backend"),
-                            style = HongguoActionStyle.PRIMARY,
+                    if (backendExpanded) {
+                        Text(
+                            "默认使用原生模块；可选连接自建接口。",
+                            color = HongguoColors.muted,
+                            fontSize = 11.sp,
                         )
-                        HongguoAction(
-                            label = "恢复原生模式",
-                            onClick = {
-                                address = ""
-                                model.saveBackend("")
-                            },
+                        OutlinedTextField(
+                            value = address,
+                            onValueChange = { address = it },
+                            label = { Text("替代 API 地址（可选）") },
+                            placeholder = { Text("https://your-server.example") },
+                            modifier = Modifier.fillMaxWidth().testTag("backend_address"),
+                            shape = RoundedCornerShape(HongguoUi.controlRadius),
+                            singleLine = true,
+                        )
+                        FlowRow(
+                            horizontalArrangement = Arrangement.spacedBy(6.dp),
+                            verticalArrangement = Arrangement.spacedBy(4.dp),
+                        ) {
+                            HongguoAction(
+                                label = "保存连接",
+                                onClick = { model.saveBackend(address) },
+                                modifier = Modifier.testTag("save_backend"),
+                                style = HongguoActionStyle.PRIMARY,
+                            )
+                            HongguoAction(
+                                label = "恢复原生模式",
+                                onClick = {
+                                    address = ""
+                                    model.saveBackend("")
+                                },
+                            )
+                        }
+                        state.settingsMessage?.let {
+                            Text(it, color = HongguoColors.accent, fontSize = 12.sp)
+                        }
+                        Text(
+                            "公网 API 请使用 HTTPS；127.0.0.1 不指向电脑。",
+                            color = HongguoColors.muted, fontSize = 11.sp,
                         )
                     }
-                    state.settingsMessage?.let { Text(it, color = HongguoColors.accent,
-                        fontSize = 12.sp) }
-                    Text("公网 API 请使用 HTTPS；手机不能通过 127.0.0.1 访问电脑上的服务。",
-                        color = HongguoColors.muted, fontSize = 11.sp)
                 }
             }
             item {
-                HongguoSettingsSection("推荐管理") {
-                    Text("已隐藏 ${state.hiddenRecommendationIds.size} 部剧集",
-                        color = HongguoColors.ink, fontWeight = FontWeight.SemiBold)
-                    Text("在首页推荐封面右上角选择「不再推荐」后，该剧不会再出现在推荐列表中；其他分类不受影响。",
-                        color = HongguoColors.muted, fontSize = 12.sp)
-                    HongguoAction(
-                        label = "恢复全部隐藏推荐",
-                        onClick = model::restoreHiddenRecommendations,
+                CompactSettingsSection("推荐管理") {
+                    CompactSettingsRow(
+                        title = "恢复隐藏的推荐",
+                        value = "已隐藏 ${state.hiddenRecommendationIds.size} 部",
+                        tag = "settings_restore_recommendations",
                         enabled = state.hiddenRecommendationIds.isNotEmpty(),
-                        modifier = Modifier.testTag("settings_restore_recommendations"),
+                        onClick = model::restoreHiddenRecommendations,
                     )
                 }
             }
             item {
-                HongguoSettingsSection("追剧更新提醒") {
+                CompactSettingsSection("追剧更新提醒") {
                     SettingToggle(
                         "定期检查收藏更新",
-                        "用户授权后通过 WorkManager 在联网时约每 12 小时检查；系统可能延迟执行",
+                        "联网时约每 12 小时检查，实际时间由系统决定",
                         state.episodeUpdateNotificationsEnabled,
                         { enabled ->
                             if (enabled && Build.VERSION.SDK_INT >= 33) {
@@ -263,112 +246,141 @@ internal fun SettingsScreen(state: AppState, model: DramaViewModel) {
                         },
                         "settings_tracking_notification",
                     )
-                    HongguoAction(
-                        label = if (state.trackingUpdates) "正在检查…" else "立即检查追剧更新",
-                        onClick = model::checkTrackedUpdates,
+                    CompactSettingsDivider()
+                    CompactSettingsRow(
+                        title = if (state.trackingUpdates) "正在检查…" else "立即检查追剧更新",
+                        value = "手动检查",
+                        tag = "settings_check_updates",
                         enabled = !state.trackingUpdates,
-                        modifier = Modifier.testTag("settings_check_updates"),
+                        onClick = model::checkTrackedUpdates,
                     )
                     state.trackingUpdateMessage?.let {
-                        Text(it, color = HongguoColors.muted, fontSize = 12.sp)
+                        Text(it, color = HongguoColors.muted, fontSize = 11.sp)
                     }
                 }
             }
             item {
-                HongguoSettingsSection("本机数据备份") {
-                    Text("可备份与恢复本机收藏、观看历史、稍后看及本机点赞。不会导出账号 Cookie、短信信息或云端凭据。",
-                        color = HongguoColors.muted, fontSize = 12.sp)
-                    FlowRow(horizontalArrangement = Arrangement.spacedBy(8.dp)) {
-                        HongguoAction(
-                            label = "导出备份",
-                            onClick = { localExporter.launch("Hongguo-local-backup.json") },
-                            modifier = Modifier.testTag("export_local_backup"),
-                        )
-                        HongguoAction(
-                            label = "导入恢复",
-                            onClick = {
-                                localImporter.launch(arrayOf("application/json", "text/plain"))
-                            },
-                            modifier = Modifier.testTag("import_local_backup"),
-                        )
-                    }
-                    state.settingsMessage?.let {
-                        Text(it, color = HongguoColors.accent, fontSize = 12.sp)
-                    }
+                CompactSettingsSection("本机数据备份") {
+                    CompactSettingsRow(
+                        title = "导出本机备份",
+                        subtitle = "收藏、历史、稍后看和点赞（不含登录凭据）",
+                        tag = "export_local_backup",
+                        onClick = { localExporter.launch("Hongguo-local-backup.json") },
+                    )
+                    CompactSettingsDivider()
+                    CompactSettingsRow(
+                        title = "导入并恢复",
+                        tag = "import_local_backup",
+                        onClick = {
+                            localImporter.launch(arrayOf("application/json", "text/plain"))
+                        },
+                    )
                 }
             }
             item {
-                HongguoSettingsSection("诊断与日志") {
-                    Text("遇到播放失败时，可在这里导出诊断日志。日志包含请求阶段、HTTP 状态及错误码，不采集 API 密钥、搜索内容或视频地址。",
-                        color = HongguoColors.muted, fontSize = 12.sp)
+                CompactSettingsSection("诊断与日志") {
                     SettingToggle(
                         title = "记录诊断事件",
-                        explanation = if (state.logEnabled) "已启用 · 本机最多保留 256 KB"
-                                      else "已停用 · 原有日志仍保留",
+                        explanation = if (state.logEnabled) "已开启 · 本机最多保留 256 KB"
+                                      else "已关闭 · 保留已有日志",
                         enabled = state.logEnabled,
                         onChange = model::setLoggingEnabled,
                         testTag = "log_switch",
                     )
-                    FlowRow(
-                        horizontalArrangement = Arrangement.spacedBy(8.dp),
-                        verticalArrangement = Arrangement.spacedBy(7.dp),
-                    ) {
-                        HongguoAction(
-                            label = "导出 TXT",
-                            icon = Icons.Outlined.Description,
-                            onClick = {
-                                val stamp = LocalDateTime.now()
-                                    .format(DateTimeFormatter.ofPattern("yyyyMMdd-HHmmss"))
-                                exporter.launch("Hongguo-diagnostic-$stamp.txt")
-                            },
-                            style = HongguoActionStyle.PRIMARY,
-                            modifier = Modifier.testTag("export_diagnostic"),
-                        )
-                        HongguoAction(
-                            label = "刷新", onClick = model::refreshDiagnostics,
-                        )
-                        HongguoAction(
-                            label = "清空", onClick = { confirmClear = true },
-                        )
-                    }
-                    state.logNotice?.let { Text(it, color = HongguoColors.accent,
-                        fontSize = 12.sp) }
-                    HongguoExpandableRow(
+                    CompactSettingsDivider()
+                    CompactSettingsRow(
+                        title = "导出诊断日志",
+                        value = "TXT",
+                        tag = "export_diagnostic",
+                        onClick = {
+                            val stamp = LocalDateTime.now()
+                                .format(DateTimeFormatter.ofPattern("yyyyMMdd-HHmmss"))
+                            exporter.launch("Hongguo-diagnostic-$stamp.txt")
+                        },
+                    )
+                    CompactSettingsDivider()
+                    CompactSettingsRow(
+                        title = "刷新诊断信息",
+                        tag = "settings_refresh_diagnostics",
+                        onClick = model::refreshDiagnostics,
+                    )
+                    CompactSettingsDivider()
+                    CompactSettingsRow(
+                        title = "清空诊断日志",
+                        tag = "settings_clear_diagnostics",
+                        onClick = { confirmClear = true },
+                    )
+                    CompactSettingsDivider()
+                    CompactSettingsRow(
                         title = "日志预览",
+                        value = if (showLogPreview) "收起" else "展开",
+                        tag = "diagnostic_preview_toggle",
                         expanded = showLogPreview,
                         onClick = {
                             showLogPreview = !showLogPreview
                             if (showLogPreview) model.refreshDiagnostics()
                         },
-                        modifier = Modifier.testTag("diagnostic_preview_toggle"),
                     )
                     if (showLogPreview) {
-                        HongguoCard(modifier = Modifier.fillMaxWidth().height(270.dp)) {
+                        HongguoCard(modifier = Modifier.fillMaxWidth().height(220.dp)) {
                             Text(
                                 state.logText.ifBlank { "暂无诊断记录" }.takeLast(14000),
                                 color = HongguoColors.ink,
                                 modifier = Modifier.fillMaxSize()
                                     .verticalScroll(rememberScrollState())
-                                    .padding(12.dp).testTag("diagnostic_preview"),
+                                    .padding(10.dp).testTag("diagnostic_preview"),
                                 fontFamily = FontFamily.Monospace,
                                 fontSize = 11.sp, lineHeight = 16.sp,
                             )
                         }
                     }
+                    state.logNotice?.let {
+                        Text(it, color = HongguoColors.accent, fontSize = 11.sp)
+                    }
                 }
             }
             item {
-                HongguoSettingsSection("关于") {
-                    Text("红果短剧 · Native Rewrite",
-                        color = HongguoColors.ink,
-                        fontWeight = FontWeight.SemiBold)
-                    Text("版本 ${BuildConfig.VERSION_NAME} · Jetpack Compose + Media3",
-                        color = HongguoColors.muted, fontSize = 12.sp)
-                    Text("部分视频和评论接口可能因网络或上游限制不可用；可在诊断中查看具体阶段。",
-                        color = HongguoColors.muted, fontSize = 11.sp)
+                CompactSettingsSection("关于") {
+                    CompactSettingsRow(
+                        title = "红果短剧 · Native Rewrite",
+                        value = BuildConfig.VERSION_NAME,
+                        tag = "settings_about",
+                        showChevron = false,
+                    )
+                    Text(
+                        "Jetpack Compose + Media3 · 部分内容受上游接口可用性影响",
+                        color = HongguoColors.muted, fontSize = 11.sp,
+                        modifier = Modifier.padding(bottom = 3.dp),
+                    )
                 }
             }
         }
+    }
+
+    choiceSheet?.let { choice ->
+        val options = when (choice) {
+            "theme_style" -> listOf(
+                "warm" to "暖白精修", "immersive" to "沉浸暗场",
+                "cards" to "内容卡片",
+            )
+            else -> listOf(
+                "light" to "白天模式", "dark" to "夜间模式",
+                "system" to "跟随系统",
+            )
+        }
+        val selected = if (choice == "theme_style") state.themeStyle else state.themeMode
+        SettingsChoiceSheet(
+            title = if (choice == "theme_style") "主题样式" else "显示模式",
+            options = options,
+            selected = selected,
+            tagPrefix = choice,
+            onSelect = {
+                if (choice == "theme_style") model.setThemeStyle(it)
+                else model.setThemeMode(it)
+                choiceSheet = null
+            },
+            onDismiss = { choiceSheet = null },
+        )
     }
 
     pendingRestore?.let { uri ->
@@ -399,14 +411,151 @@ internal fun SettingsScreen(state: AppState, model: DramaViewModel) {
     }
 }
 
+/**
+ * Compact settings groups: a short section label and conventional one-line
+ * Android-style preference rows. Large padded choice grids are intentionally
+ * kept out of the main settings list.
+ */
+@Composable
+private fun CompactSettingsSection(
+    title: String,
+    content: @Composable ColumnScope.() -> Unit,
+) {
+    Column(verticalArrangement = Arrangement.spacedBy(4.dp)) {
+        Text(
+            title,
+            color = HongguoColors.muted,
+            fontSize = 12.sp,
+            fontWeight = FontWeight.Medium,
+            modifier = Modifier.padding(start = 12.dp, top = 7.dp, bottom = 2.dp),
+        )
+        Surface(
+            shape = RoundedCornerShape(12.dp),
+            color = HongguoColors.surface,
+            modifier = Modifier.fillMaxWidth(),
+        ) {
+            Column(
+                modifier = Modifier.fillMaxWidth().padding(horizontal = 13.dp, vertical = 2.dp),
+                verticalArrangement = Arrangement.spacedBy(3.dp),
+                content = content,
+            )
+        }
+    }
+}
+
+@Composable
+private fun CompactSettingsDivider() {
+    HorizontalDivider(color = HongguoColors.divider)
+}
+
+@Composable
+private fun CompactSettingsRow(
+    title: String,
+    tag: String,
+    onClick: () -> Unit = {},
+    value: String? = null,
+    subtitle: String? = null,
+    icon: ImageVector? = null,
+    enabled: Boolean = true,
+    expanded: Boolean = false,
+    showChevron: Boolean = true,
+) {
+    Row(
+        modifier = Modifier.fillMaxWidth()
+            .heightIn(min = if (subtitle.isNullOrBlank()) 46.dp else 54.dp)
+            .then(if (enabled && showChevron) Modifier.clickable(onClick = onClick) else Modifier)
+            .padding(vertical = 4.dp)
+            .testTag(tag),
+        horizontalArrangement = Arrangement.spacedBy(9.dp),
+        verticalAlignment = Alignment.CenterVertically,
+    ) {
+        if (icon != null) Icon(
+            icon, contentDescription = null,
+            tint = HongguoColors.accent,
+            modifier = Modifier.size(19.dp),
+        )
+        Column(
+            modifier = Modifier.weight(1f),
+            verticalArrangement = Arrangement.spacedBy(1.dp),
+        ) {
+            Text(
+                title, fontSize = 13.sp, fontWeight = FontWeight.Medium,
+                color = if (enabled) HongguoColors.ink else HongguoColors.muted,
+                maxLines = 1, overflow = TextOverflow.Ellipsis,
+            )
+            if (!subtitle.isNullOrBlank()) Text(
+                subtitle, fontSize = 11.sp, color = HongguoColors.muted,
+                maxLines = 1, overflow = TextOverflow.Ellipsis,
+            )
+        }
+        if (!value.isNullOrBlank()) Text(
+            value,
+            fontSize = 11.sp,
+            color = if (enabled) HongguoColors.muted else HongguoColors.divider,
+            maxLines = 1,
+            overflow = TextOverflow.Ellipsis,
+            modifier = Modifier.widthIn(max = 130.dp),
+        )
+        if (showChevron) Icon(
+            if (expanded) Icons.Outlined.ExpandLess else Icons.Outlined.ChevronRight,
+            contentDescription = null,
+            tint = HongguoColors.muted,
+            modifier = Modifier.size(17.dp),
+        )
+    }
+}
+
+@Composable
+private fun SettingsChoiceSheet(
+    title: String,
+    options: List<Pair<String, String>>,
+    selected: String,
+    tagPrefix: String,
+    onSelect: (String) -> Unit,
+    onDismiss: () -> Unit,
+) {
+    HongguoModalSheet(onDismissRequest = onDismiss) {
+        Column(
+            Modifier.fillMaxWidth().padding(horizontal = 16.dp),
+            verticalArrangement = Arrangement.spacedBy(2.dp),
+        ) {
+            HongguoSheetHeader(title = title)
+            options.forEach { (value, label) ->
+                Row(
+                    modifier = Modifier.fillMaxWidth()
+                        .heightIn(min = 46.dp)
+                        .clickable { onSelect(value) }
+                        .testTag("${tagPrefix}_${value}")
+                        .padding(horizontal = 5.dp),
+                    verticalAlignment = Alignment.CenterVertically,
+                ) {
+                    Text(
+                        label, color = HongguoColors.ink,
+                        fontSize = 14.sp,
+                        modifier = Modifier.weight(1f),
+                    )
+                    if (selected == value) Icon(
+                        Icons.Outlined.Check, contentDescription = "已选择",
+                        tint = HongguoColors.accent,
+                        modifier = Modifier.size(19.dp),
+                    )
+                }
+                if (value != options.last().first) CompactSettingsDivider()
+            }
+            Spacer(Modifier.height(12.dp))
+        }
+    }
+}
+
 @Composable
 private fun SettingsNavRow(
-    icon: androidx.compose.ui.graphics.vector.ImageVector,
+    icon: ImageVector,
     title: String,
     subtitle: String,
     tag: String,
     onClick: () -> Unit,
-) = HongguoNavigationRow(icon, title, subtitle, tag, onClick)
+) = CompactSettingsRow(title = title, subtitle = subtitle, icon = icon,
+    tag = tag, onClick = onClick)
 
 @Composable
 private fun SettingToggle(
