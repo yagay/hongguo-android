@@ -1,6 +1,6 @@
 package com.yagay.hongguo
 
-/** Bounded in-memory warmup for ONE upcoming encrypted video stream. */
+/** Bounded in-memory warmup: N+1 has the user budget; N+2 a smaller fixed budget. */
 internal object VideoPreloadPolicy {
     const val MIB = 1024 * 1024
     const val DEFAULT_MIB = 8
