@@ -604,6 +604,37 @@ class DramaViewModel(application: Application) : AndroidViewModel(application) {
     private var officialFeedGeneration = 0L
     /** Titles shown by the home recommendation grid are excluded from this swipe session. */
     private var homeFeedExcludedIds: Set<String> = emptySet()
+    /** Startup restores the last confirmed video, not a fresh official reel. */
+    private var deferRestoredFeedRecommendations = false
+    private var startupRestoreSeriesId: String? = null
+    private val lastPlaybackModeKey = "last_playback_feed_mode_v1"
+
+    private fun rememberLastPlaybackMode(feed: Boolean) {
+        prefs.edit().putBoolean(lastPlaybackModeKey, feed).apply()
+    }
+
+    private fun restoreLastPlaybackAtStartup(): Boolean {
+        // The library is ordered by CONFIRMED first frames, and per-episode
+        // checkpoints already preserve the actual position independently.
+        val last = StartupPlaybackPolicy.lastConfirmed(
+            state.value.library, state.value.hiddenRecommendationIds
+        ) ?: return false
+        startupRestoreSeriesId = last.drama.id
+        diagnostics.record("APP", "RESTORE_LAST_PLAYBACK")
+        if (prefs.getBoolean(lastPlaybackModeKey, false)) {
+            startFeed(last.drama, resumeEp = last.episode, deferRecommendations = true)
+        } else {
+            open(last.drama, resumeEp = last.episode)
+        }
+        return true
+    }
+
+    private fun fallbackFromUnavailableStartupDrama(seriesId: String) {
+        if (startupRestoreSeriesId != seriesId) return
+        startupRestoreSeriesId = null
+        diagnostics.record("APP", "RESTORE_UNAVAILABLE_FALLBACK")
+        startFeed()
+    }
 
     private fun loadOfficialReels(restart: Boolean = false) {
         val snapshot = state.value
@@ -730,7 +761,7 @@ class DramaViewModel(application: Application) : AndroidViewModel(application) {
                 feedError = null,
             ) }
             updateNotificationNavigation()
-            loadOfficialReels(restart = true)
+            if (!deferRestoredFeedRecommendations) loadOfficialReels(restart = true)
         } else if (state.value.section == Section.RECOMMEND &&
             state.value.detail == null) {
             refresh()
@@ -899,10 +930,9 @@ class DramaViewModel(application: Application) : AndroidViewModel(application) {
             source = runCatching { WebContractClient(state.value.backend,
                 diagnostics = diagnostics) }.getOrNull()
         }
-        // Start directly in the real one-drama-per-swipe stream. Home catalog
-        // remains available only through explicit navigation; it must not gate
-        // the first video behind a three-card homepage request.
-        startFeed()
+        // Start on the last actually played drama/episode. The normal
+        // recommendation feed is only the cold-start fallback.
+        if (!restoreLastPlaybackAtStartup()) startFeed()
     }
 
     /** Debounced autocomplete, canceled for every edit or navigation. */
@@ -1763,9 +1793,14 @@ class DramaViewModel(application: Application) : AndroidViewModel(application) {
      * The "刷短剧" button starts with the official feed's first item.
      * An explicitly selected card can still be used as a one-time seed.
      */
-    fun startFeed(drama: Drama? = null) {
+    fun startFeed(
+        drama: Drama? = null,
+        resumeEp: Int? = null,
+        deferRecommendations: Boolean = false,
+    ) {
         val current = state.value
         if (drama != null && drama.id in current.hiddenRecommendationIds) return
+        deferRestoredFeedRecommendations = deferRecommendations && drama != null
         officialFeedJob?.cancel()
         officialFeedGeneration++
         pendingFeedAdvance = false
@@ -1795,9 +1830,9 @@ class DramaViewModel(application: Application) : AndroidViewModel(application) {
         ) }
         if (drama != null) {
             localContent.rememberSwiped(drama.id)
-            open(drama, resumeEp = 1, feed = true)
+            open(drama, resumeEp = resumeEp ?: 1, feed = true)
         }
-        loadOfficialReels(restart = true)
+        if (!deferRestoredFeedRecommendations) loadOfficialReels(restart = true)
     }
 
     /**
@@ -1848,6 +1883,8 @@ class DramaViewModel(application: Application) : AndroidViewModel(application) {
     fun navigateFeed(direction: Int) {
         val current = state.value
         if (!current.feedMode || direction !in setOf(-1, 1)) return
+        // Request the next recommendation on the user's first deliberate swipe.
+        deferRestoredFeedRecommendations = false
         val index = OfficialReelsPolicy.nextIndex(
             current.feedItems, current.feedIndex, direction,
             current.hiddenRecommendationIds)
@@ -1886,6 +1923,7 @@ class DramaViewModel(application: Application) : AndroidViewModel(application) {
         val currentMediaMatches = snapshot.playbackUrl != null &&
             index == snapshot.episodeIndex &&
             BackgroundPlaybackService.playerFlow.value?.currentMediaItem?.mediaId == target.vid
+        rememberLastPlaybackMode(false)
         mutable.update {
             it.copy(feedMode = false,
                 navigation = it.navigation.toSeries(PlaybackOrigin.SWIPE_FEED),
@@ -1903,6 +1941,7 @@ class DramaViewModel(application: Application) : AndroidViewModel(application) {
     private fun restoreReelFeed(): Boolean {
         val snapshot = state.value
         if (!ReelReturnPolicy.canRestore(snapshot)) return false
+        rememberLastPlaybackMode(true)
         mutable.update {
             it.copy(feedMode = true, navigation = it.navigation.toFeed(),
                 miniPlayerVisible = false, detailPageVisible = false)
@@ -2057,6 +2096,11 @@ class DramaViewModel(application: Application) : AndroidViewModel(application) {
 
         fun displayAndPlay(resolved: DramaDetail, index: Int) {
             if (version != detailId) return
+            if (resolved.episodes.isEmpty() && startupRestoreSeriesId == drama.id) {
+                fallbackFromUnavailableStartupDrama(drama.id)
+                return
+            }
+            if (startupRestoreSeriesId == drama.id) startupRestoreSeriesId = null
             if (origin == PlaybackOrigin.SWIPE_FEED) rememberFeedDetail(resolved)
             mutable.update { it.copy(detail = resolved, episodeIndex = index,
                 preparingDetail = false) }
@@ -2089,6 +2133,7 @@ class DramaViewModel(application: Application) : AndroidViewModel(application) {
                     val message = errorText("读取剧集列表", e)
                     mutable.update { it.copy(preparingDetail = false,
                         playbackError = message, error = message) }
+                    fallbackFromUnavailableStartupDrama(drama.id)
                 }
             }
         }
@@ -2383,11 +2428,13 @@ class DramaViewModel(application: Application) : AndroidViewModel(application) {
         firstFrameFor = ep.vid
         diagnostics.record("MEDIA", "FIRST_FRAME")
         library.record(s.detail.drama, ep.index)
+        rememberLastPlaybackMode(s.feedMode)
         updateLibrary()
         // Allow the initial video to render before fetching more recommendations.
         // Further feed pages and stream-model requests otherwise compete for
         // startup bandwidth and the upstream registration/session lock.
-        if (s.feedMode && OfficialReelsPolicy.needsMore(s.feedItems,
+        if (s.feedMode && !deferRestoredFeedRecommendations &&
+            OfficialReelsPolicy.needsMore(s.feedItems,
                 s.feedIndex, s.hiddenRecommendationIds, s.feedHasMore,
                 s.feedLoading)) {
             diagnostics.record("REELS", "POST_FIRST_FRAME_TOP_UP")
@@ -2419,6 +2466,7 @@ class DramaViewModel(application: Application) : AndroidViewModel(application) {
         firstFrameFor = ep.vid
         diagnostics.record("MEDIA", "BACKGROUND_PROGRESS_CONFIRMED")
         library.record(s.detail.drama, ep.index)
+        rememberLastPlaybackMode(s.feedMode)
         updateLibrary()
         if (s.feedMode &&
             s.feedItems.drop(s.feedIndex + 1).any {
