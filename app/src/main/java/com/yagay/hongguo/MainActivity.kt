@@ -504,8 +504,8 @@ private fun HongguoApp(model: DramaViewModel = viewModel()) {
                                     onExitFeed = { confirmExitFeed = true },
                                     onBackFromSeries = ::returnFromSeries,
                                     onEnterSeries = { episodeIndex ->
-                                        if (state.feedMode && state.detail != null) {
-                                            val dramaId = state.detail.drama.id
+                                        val dramaId = state.detail?.drama?.id
+                                        if (state.feedMode && dramaId != null) {
                                             reelSlideScope.launch {
                                                 // Capture one frame of the outgoing reel
                                                 // before changing routes. The foreground
