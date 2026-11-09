@@ -1,12 +1,12 @@
 package com.yagay.hongguo
 
 import androidx.compose.foundation.background
+import androidx.compose.foundation.BorderStroke
 import androidx.compose.foundation.clickable
 import androidx.compose.foundation.horizontalScroll
 import androidx.compose.foundation.layout.Arrangement
 import androidx.compose.foundation.layout.Box
 import androidx.compose.foundation.layout.Column
-import androidx.compose.foundation.layout.FlowRow
 import androidx.compose.foundation.layout.PaddingValues
 import androidx.compose.foundation.layout.Row
 import androidx.compose.foundation.layout.Spacer
@@ -30,6 +30,8 @@ import androidx.compose.foundation.text.KeyboardActions
 import androidx.compose.foundation.text.KeyboardOptions
 import androidx.compose.material.icons.Icons
 import androidx.compose.material.icons.outlined.ChevronRight
+import androidx.compose.material.icons.outlined.ExpandMore
+import androidx.compose.material.icons.outlined.ExpandLess
 import androidx.compose.material.icons.outlined.Download
 import androidx.compose.material.icons.outlined.History
 import androidx.compose.material.icons.outlined.PersonOutline
@@ -534,6 +536,11 @@ private fun CatalogPoster(drama: Drama, cover: String,
     }
 }
 
+/**
+ * Theater filters are a compact two-level picker, not a wall of Material
+ * FilterChips. Each category previews two equal-width rows; only the group
+ * the user expands can grow. The Apply action remains outside the scroll.
+ */
 @OptIn(ExperimentalMaterial3Api::class)
 @Composable
 private fun CatalogFiltersSheet(
@@ -541,13 +548,10 @@ private fun CatalogFiltersSheet(
     model: DramaViewModel,
     onClose: () -> Unit,
 ) {
-    // Draft changes are intentionally local to this sheet. Closing without
-    // applying never modifies the catalog's active filters or restarts paging.
     var draft by remember(state.genre) { mutableStateOf(state.activeFilters) }
+    var expandedGroup by remember(state.genre) { mutableStateOf<String?>(null) }
     val selectedCount = draft.values.count { it.isNotBlank() }
-    // Keep the apply action outside the scrolling list. On short screens
-    // filter groups scroll, while the confirmation button stays visible.
-    val maxOptionsHeight = (LocalConfiguration.current.screenHeightDp * 0.58f).dp
+    val maxOptionsHeight = (LocalConfiguration.current.screenHeightDp * 0.56f).dp
 
     HongguoModalSheet(
         onDismissRequest = onClose,
@@ -558,10 +562,10 @@ private fun CatalogFiltersSheet(
                 .padding(horizontal = HongguoUi.pagePadding),
         ) {
             HongguoSheetHeader(title = "筛选短剧") {
-                Text(
-                    text = if (selectedCount == 0) "全部条件" else "已选 ${selectedCount} 项",
+                if (selectedCount > 0) Text(
+                    "${selectedCount} 项已选",
                     fontSize = 11.sp,
-                    color = HongguoColors.muted,
+                    color = HongguoColors.accent,
                     modifier = Modifier.testTag("catalog_filter_selected_count"),
                 )
                 HongguoAction(
@@ -574,38 +578,39 @@ private fun CatalogFiltersSheet(
             }
             HorizontalDivider(
                 color = HongguoColors.divider,
-                modifier = Modifier.padding(bottom = 10.dp),
+                modifier = Modifier.padding(bottom = 7.dp),
             )
             if (state.filters.isEmpty()) {
                 Text(
                     "当前分类暂时没有可用筛选条件",
                     color = HongguoColors.muted,
                     fontSize = 13.sp,
-                    modifier = Modifier.padding(vertical = 20.dp),
+                    modifier = Modifier.padding(vertical = 18.dp),
                 )
             } else {
                 androidx.compose.foundation.lazy.LazyColumn(
                     modifier = Modifier.fillMaxWidth()
                         .heightIn(max = maxOptionsHeight)
                         .testTag("catalog_filter_scroll_content"),
-                    verticalArrangement = Arrangement.spacedBy(12.dp),
-                    contentPadding = PaddingValues(bottom = 12.dp),
+                    verticalArrangement = Arrangement.spacedBy(11.dp),
+                    contentPadding = PaddingValues(bottom = 8.dp),
                 ) {
                     items(state.filters.size, key = { state.filters[it].key }) { index ->
                         val group = state.filters[index]
-                        val activeValue = draft[group.key].orEmpty()
-                        val activeLabel = group.options.firstOrNull {
-                            it.value.isNotBlank() && it.value == activeValue
-                        }?.label
+                        val selectedValue = draft[group.key].orEmpty()
+                        val expanded = expandedGroup == group.key
+                        val options = TheaterFilterLayoutPolicy.visibleOptions(
+                            group.options, selectedValue, expanded,
+                        )
                         Column(
-                            modifier = Modifier.fillMaxWidth()
+                            Modifier.fillMaxWidth()
                                 .testTag("catalog_filter_group_${group.key}"),
-                            verticalArrangement = Arrangement.spacedBy(5.dp),
+                            verticalArrangement = Arrangement.spacedBy(6.dp),
                         ) {
                             Row(
-                                modifier = Modifier.fillMaxWidth(),
+                                Modifier.fillMaxWidth().heightIn(min = 22.dp),
                                 verticalAlignment = Alignment.CenterVertically,
-                                horizontalArrangement = Arrangement.spacedBy(8.dp),
+                                horizontalArrangement = Arrangement.spacedBy(6.dp),
                             ) {
                                 Text(
                                     group.name,
@@ -614,38 +619,59 @@ private fun CatalogFiltersSheet(
                                     color = HongguoColors.ink,
                                     modifier = Modifier.weight(1f),
                                 )
-                                if (activeLabel != null) {
-                                    Text(
-                                        activeLabel,
-                                        fontSize = 11.sp,
-                                        color = HongguoColors.accent,
-                                        maxLines = 1,
-                                        overflow = TextOverflow.Ellipsis,
-                                    )
+                                if (TheaterFilterLayoutPolicy.hasMore(group.options)) {
+                                    Row(
+                                        modifier = Modifier
+                                            .clickable {
+                                                expandedGroup = if (expanded) null else group.key
+                                            }
+                                            .padding(start = 8.dp, top = 2.dp, bottom = 2.dp)
+                                            .testTag("catalog_filter_expand_${group.key}"),
+                                        verticalAlignment = Alignment.CenterVertically,
+                                        horizontalArrangement = Arrangement.spacedBy(2.dp),
+                                    ) {
+                                        Text(
+                                            if (expanded) "收起"
+                                            else "更多 ${group.options.size - TheaterFilterLayoutPolicy.PREVIEW_COUNT}",
+                                            color = HongguoColors.accent,
+                                            fontSize = 11.sp,
+                                        )
+                                        Icon(
+                                            if (expanded) Icons.Outlined.ExpandLess
+                                            else Icons.Outlined.ExpandMore,
+                                            contentDescription = null,
+                                            tint = HongguoColors.accent,
+                                            modifier = Modifier.size(16.dp),
+                                        )
+                                    }
                                 }
                             }
-                            // Wrap chips instead of horizontalScroll: every
-                            // available filter stays visible without sideways
-                            // searching or a clipped right-hand edge.
-                            FlowRow(
-                                modifier = Modifier.fillMaxWidth(),
-                                horizontalArrangement = Arrangement.spacedBy(6.dp),
-                                verticalArrangement = Arrangement.spacedBy(3.dp),
-                            ) {
-                                group.options.forEachIndexed { optionIndex, option ->
-                                    HongguoChoiceChip(
-                                        label = option.label,
-                                        selected = activeValue == option.value,
-                                        onClick = {
-                                            draft = draft.toMutableMap().apply {
-                                                if (option.value.isBlank()) remove(group.key)
-                                                else put(group.key, option.value)
-                                            }
-                                        },
-                                        modifier = Modifier.testTag(
-                                            "catalog_filter_option_${group.key}_${optionIndex}"
-                                        ),
-                                    )
+                            // Stable three-column cells avoid the uneven chip
+                            // widths and excessive FlowRow line breaks.
+                            options.chunked(3).forEach { rowOptions ->
+                                Row(
+                                    Modifier.fillMaxWidth(),
+                                    horizontalArrangement = Arrangement.spacedBy(6.dp),
+                                    verticalAlignment = Alignment.CenterVertically,
+                                ) {
+                                    rowOptions.forEach { option ->
+                                        val optionIndex = group.options.indexOf(option)
+                                        CatalogFilterOptionCell(
+                                            label = option.label,
+                                            selected = selectedValue == option.value,
+                                            onClick = {
+                                                draft = draft.toMutableMap().apply {
+                                                    if (option.value.isBlank()) remove(group.key)
+                                                    else put(group.key, option.value)
+                                                }
+                                            },
+                                            modifier = Modifier.weight(1f)
+                                                .testTag("catalog_filter_option_${group.key}_${optionIndex}"),
+                                        )
+                                    }
+                                    repeat(3 - rowOptions.size) {
+                                        Spacer(Modifier.weight(1f))
+                                    }
                                 }
                             }
                         }
@@ -654,20 +680,54 @@ private fun CatalogFiltersSheet(
             }
             HorizontalDivider(
                 color = HongguoColors.divider,
-                modifier = Modifier.padding(top = 6.dp, bottom = 10.dp),
+                modifier = Modifier.padding(top = 8.dp, bottom = 9.dp),
             )
             Button(
                 onClick = {
                     model.applyCatalogFilters(draft)
                     onClose()
                 },
-                modifier = Modifier.fillMaxWidth().height(48.dp)
+                modifier = Modifier.fillMaxWidth().height(46.dp)
                     .testTag("apply_filters"),
                 shape = RoundedCornerShape(HongguoUi.controlRadius),
             ) {
-                Text("查看筛选结果", fontWeight = FontWeight.Bold)
+                Text("查看筛选结果", fontWeight = FontWeight.SemiBold)
             }
-            Spacer(Modifier.height(10.dp))
+            Spacer(Modifier.height(8.dp))
+        }
+    }
+}
+
+/** Dense, equal-width filter choice; no Material FilterChip default padding. */
+@Composable
+private fun CatalogFilterOptionCell(
+    label: String,
+    selected: Boolean,
+    onClick: () -> Unit,
+    modifier: Modifier = Modifier,
+) {
+    Surface(
+        onClick = onClick,
+        modifier = modifier.height(34.dp),
+        color = if (selected) HongguoColors.accentSoft else HongguoColors.background,
+        shape = RoundedCornerShape(8.dp),
+        border = BorderStroke(
+            1.dp,
+            if (selected) HongguoColors.accent else HongguoColors.divider,
+        ),
+    ) {
+        Box(
+            Modifier.fillMaxSize().padding(horizontal = 4.dp),
+            contentAlignment = Alignment.Center,
+        ) {
+            Text(
+                label,
+                fontSize = 11.sp,
+                fontWeight = if (selected) FontWeight.SemiBold else FontWeight.Normal,
+                color = if (selected) HongguoColors.accent else HongguoColors.ink,
+                maxLines = 1,
+                overflow = TextOverflow.Ellipsis,
+            )
         }
     }
 }
