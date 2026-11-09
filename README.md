@@ -447,3 +447,10 @@ Release APK 使用独立 PKCS#12 密钥，`com.yagay.hongguo` 包名；私钥不
 - 完结集的视频模型准备后，在延迟 1.2 秒的低干扰窗口中启动下一部官方推荐预取。即便首帧回调迟到，也不需要等到播放结束才开始查询下一部；真正跨剧衔接仍取决于官方推荐、取址与真实设备网络。
 - 关闭预加载、切换画质或预算、退出播放及跨剧导航时会释放不再适用的 N+2 资源；通过 `PREFETCH_CACHE_HIT/MISS`、`CACHE_PREFIX_KIB_*`、`SWITCH_TO_FIRST_FRAME`、`LATER_VIDEO_PREPARED/WARMED`、`FINALE_EARLY_WARMUP` 等本地诊断事件区分预加载命中与临时取流。
 - 这是一套边界严格的内存预热，不会整集离线下载；HTTP 后端仍按原有播放逻辑工作，原生预加载针对 native source。现有 Debug CI 会在推送时运行，实际无缝切换仍需真机验证。
+
+## 近期播放缓存延长（2026-11-09）
+
+- 系统 Media3 服务把已经退出当前播放的原生 `RemoteVideo` 放入有界 LRU 缓存，按 `vid + quality` 精确命中。由单一服务持有对象，复用时转移所有权，不创建第二个 ExoPlayer。
+- 近期流由原来单项、90 秒改为最多六项、最多 15 分钟（计时从放入缓存开始），并限制前缀缓存字节合计约 48 MiB；达到任何一个上限都优先淘汰最旧缓存。
+- 用户明确关闭播放器或服务销毁时立即关闭并清理全部缓存，不在进程外持久保存，也不将解密视频写入公共存储。进程死亡或系统回收内存后缓存不会保留。
+- `RECENT_STREAM_STORED`、`RECENT_STREAM_REUSED`、`RECENT_STREAM_MISS`、`RECENT_STREAM_EVICTED`、`RECENT_STREAM_EXPIRED` 日志可确认是复用还是重新取流。实际命中与峰值内存仍需 Debug 真机测试。
