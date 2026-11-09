@@ -115,6 +115,18 @@ class MainActivity : ComponentActivity() {
     // Without this hint, the launcher may animate the app icon/window first.
     private var pipVideoSourceView: View? = null
     private var pipSourceRect: Rect? = null
+    private var pipSkipAvailability =
+        BackgroundNavigationPolicy.Availability(false, false)
+
+    /** Keep PiP controls synchronized with the selected episode or reel. */
+    fun updatePipSkipAvailability(value: BackgroundNavigationPolicy.Availability) {
+        if (value == pipSkipAvailability) return
+        pipSkipAvailability = value
+        if (videoInPictureInPicture) {
+            runCatching { setPictureInPictureParams(videoPiPParams(false)) }
+                .onFailure { android.util.Log.w("HongguoPiP", "PiP actions refresh rejected", it) }
+        }
+    }
     private val pipVideoLayoutListener =
         View.OnLayoutChangeListener { _, _, _, _, _, _, _, _, _ ->
             updateVideoPipSourceBounds()
@@ -170,6 +182,13 @@ class MainActivity : ComponentActivity() {
             .setAspectRatio(Rational(
                 VideoPiPPolicy.PORTRAIT_WIDTH, VideoPiPPolicy.PORTRAIT_HEIGHT))
         pipSourceRect?.let { params.setSourceRectHint(it) }
+        val activePlayer = BackgroundPlaybackService.playerFlow.value
+        params.setActions(PiPControls.actions(
+            context = this,
+            available = pipSkipAvailability,
+            isPlaying = activePlayer?.isPlaying == true,
+            hasPlayer = activePlayer != null,
+        ))
         if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.S) {
             // Re-read the persisted toggle at the last moment. A stale
             // state or an OEM layout callback must never re-enable PiP
@@ -195,13 +214,14 @@ class MainActivity : ComponentActivity() {
                 actualMediaId = player?.currentMediaItem?.mediaId,
                 isPlaying = player?.isPlaying == true,
             ) && isAutoPipAllowedNow()
-        if (!videoInPictureInPicture) {
-            runCatching {
-                setPictureInPictureParams(
-                    videoPiPParams(autoPictureInPictureEligible))
-            }.onFailure {
-                android.util.Log.w("HongguoPiP", "Unable to apply auto PiP params", it)
-            }
+        // In PiP, action icons must update after play/pause and skip as
+        // well; the old !videoInPiP gate left disabled icons stranded.
+        runCatching {
+            setPictureInPictureParams(
+                videoPiPParams(if (videoInPictureInPicture) false
+                    else autoPictureInPictureEligible))
+        }.onFailure {
+            android.util.Log.w("HongguoPiP", "Unable to apply PiP params", it)
         }
     }
 
@@ -313,6 +333,7 @@ class MainActivity : ComponentActivity() {
     ) {
         super.onPictureInPictureModeChanged(isInPictureInPictureMode, newConfig)
         videoInPictureInPicture = isInPictureInPictureMode
+        if (isInPictureInPictureMode) refreshAutoPictureInPictureEligibility()
         // The next foreground visit is a new transition.
         if (!isInPictureInPictureMode) autoPipEntryRequested = false
     }
@@ -533,6 +554,22 @@ private fun HongguoApp(model: DramaViewModel = viewModel()) {
     SideEffect {
         // Avoid stale ViewModel playbackUrl/episode checks: Media3 can be
         // playing while these values are temporarily absent during a reel.
+        val pipDetail = state.detail
+        val pipEarlier = state.feedItems.take(state.feedIndex)
+            .any { it.id !in state.hiddenRecommendationIds }
+        val pipLater = state.feedItems.drop(state.feedIndex + 1)
+            .any { it.id !in state.hiddenRecommendationIds }
+        mainActivity?.updatePipSkipAvailability(
+            BackgroundNavigationPolicy.availability(
+                feedMode = state.feedMode,
+                selectedIndex = state.episodeIndex,
+                episodeCount = pipDetail?.episodes?.size ?: 0,
+                previousFeedExists = pipEarlier,
+                nextFeedAvailableOrPending =
+                    pipLater || state.feedHasMore || state.feedLoading,
+                allowFollowingDramaAtEnd = state.offlinePlaybackUri == null,
+            )
+        )
         mainActivity?.updateVideoPictureInPictureEligibility(
             darkPlayer || showMini
         )

@@ -13,6 +13,7 @@ internal object BackgroundNavigationPolicy {
         episodeCount: Int,
         previousFeedExists: Boolean,
         nextFeedAvailableOrPending: Boolean,
+        allowFollowingDramaAtEnd: Boolean = false,
     ): Availability {
         if (episodeCount <= 0 || selectedIndex !in 0 until episodeCount)
             return Availability(false, false)
@@ -21,7 +22,9 @@ internal object BackgroundNavigationPolicy {
             next = nextFeedAvailableOrPending,
         ) else Availability(
             previous = selectedIndex > 0,
-            next = selectedIndex < episodeCount - 1,
+            // At the series finale, the same manual Next control can move
+            // to an official recommended drama (but never for offline files).
+            next = selectedIndex < episodeCount - 1 || allowFollowingDramaAtEnd,
         )
     }
 

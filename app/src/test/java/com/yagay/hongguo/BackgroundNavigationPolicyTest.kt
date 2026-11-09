@@ -21,6 +21,20 @@ class BackgroundNavigationPolicyTest {
         assertFalse(last.next)
     }
 
+    @Test fun onlineSeriesFinaleCanManuallyAdvanceToRecommendation() {
+        val online = BackgroundNavigationPolicy.availability(
+            false, 79, 80, false, false,
+            allowFollowingDramaAtEnd = true,
+        )
+        assertTrue(online.previous)
+        assertTrue(online.next)
+        val offline = BackgroundNavigationPolicy.availability(
+            false, 79, 80, false, false,
+            allowFollowingDramaAtEnd = false,
+        )
+        assertFalse(offline.next)
+    }
+
     @Test fun reelArrowsUseFeedNeighboursNotEpisodeList() {
         val feed = BackgroundNavigationPolicy.availability(
             true, 12, 80, true, false)

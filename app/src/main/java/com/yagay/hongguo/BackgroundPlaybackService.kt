@@ -171,18 +171,11 @@ class BackgroundPlaybackService : MediaSessionService() {
                     NEXT -> 1
                     else -> 0
                 }
-                if (direction == 0 ||
-                    (direction < 0 && !previousAllowed) ||
-                    (direction > 0 && !nextAllowed)) {
-                    return Futures.immediateFuture(SessionResult(SessionResult.RESULT_ERROR_NOT_SUPPORTED))
-                }
-                // The ViewModel pauses only after a real destination is chosen.
-                // If the reel queue needs paging, keep the current drama playing
-                // instead of leaving an idle notification at the queue boundary.
-                diagnostics.record("BACKGROUND", if (direction < 0)
-                    "MEDIA_PREVIOUS" else "MEDIA_NEXT")
-                onNavigate?.invoke(direction)
-                return Futures.immediateFuture(SessionResult(SessionResult.RESULT_SUCCESS))
+                val success = navigateFromPip(direction)
+                return Futures.immediateFuture(SessionResult(
+                    if (success) SessionResult.RESULT_SUCCESS
+                    else SessionResult.RESULT_ERROR_NOT_SUPPORTED,
+                ))
             }
         }
         session = MediaSession.Builder(this, engine)
@@ -566,6 +559,32 @@ class BackgroundPlaybackService : MediaSessionService() {
             previousRemote.close()
         }
         diagnostics.record("BACKGROUND", "NEXT_SOURCE_PLAY_REQUESTED")
+    }
+
+    /**
+     * Explicit PiP RemoteAction and media notification custom commands share
+     * exactly the same service->ViewModel route.
+     */
+    fun navigateFromPip(direction: Int): Boolean {
+        val action = onNavigate ?: return false
+        if ((direction != -1 && direction != 1) ||
+            (direction < 0 && !previousAllowed) ||
+            (direction > 0 && !nextAllowed)) {
+            diagnostics.record("BACKGROUND", "PIP_SKIP_NOT_AVAILABLE")
+            return false
+        }
+        diagnostics.record("BACKGROUND",
+            if (direction < 0) "PIP_MEDIA_PREVIOUS" else "PIP_MEDIA_NEXT")
+        action(direction)
+        return true
+    }
+
+    fun togglePlaybackFromPip(): Boolean {
+        if (!::engine.isInitialized || currentKey == null) return false
+        if (engine.playWhenReady) engine.pause() else engine.play()
+        diagnostics.record("BACKGROUND",
+            if (engine.playWhenReady) "PIP_MEDIA_PLAY" else "PIP_MEDIA_PAUSE")
+        return true
     }
 
     /** Same gestures as the on-screen pager; changes do not seek the current file. */

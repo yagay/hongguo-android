@@ -2478,12 +2478,22 @@ class DramaViewModel(application: Application) : AndroidViewModel(application) {
             episodeCount = detail.episodes.size,
             previousFeedExists = earlier,
             nextFeedAvailableOrPending = later || s.feedHasMore || s.feedLoading,
+            allowFollowingDramaAtEnd = s.offlinePlaybackUri == null,
         )
         BackgroundPlaybackService.active?.configureNavigation(
             policy.previous, policy.next,
         ) { direction ->
-            if (state.value.feedMode) navigateFeed(direction)
-            else playIfDifferent(state.value.episodeIndex + direction)
+            val snapshot = state.value
+            if (snapshot.feedMode) {
+                navigateFeed(direction)
+            } else if (direction > 0 && snapshot.offlinePlaybackUri == null &&
+                snapshot.episodeIndex == (snapshot.detail?.episodes?.lastIndex ?: -1)) {
+                // Manual next in PiP is allowed at the finale regardless of
+                // the autoplay toggle; continue the same recommendation feed.
+                continueWithOfficialRecommendation()
+            } else {
+                playIfDifferent(snapshot.episodeIndex + direction)
+            }
         }
     }
 

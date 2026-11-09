@@ -15,6 +15,8 @@
             android:process=":official_login"
             android:configChanges="orientation|screenSize|keyboardHidden"
             android:windowSoftInputMode="adjustResize" />
+        <receiver android:name=".PiPNavigationReceiver"
+            android:exported="false" />
         <service android:name=".BackgroundPlaybackService"
             android:exported="true"
             android:foregroundServiceType="mediaPlayback">
