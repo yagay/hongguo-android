@@ -1189,6 +1189,13 @@ class DramaViewModel(application: Application) : AndroidViewModel(application) {
         })
     }
 
+    /** Apply the entire filter draft in a single state update, then refresh once. */
+    fun applyCatalogFilters(filters: Map<String, String>) {
+        val clean = filters.filterValues(String::isNotBlank)
+        mutable.update { it.copy(activeFilters = clean) }
+        refresh()
+    }
+
     fun refresh() {
         val feedAccount = account.recommendationAccount()
         appliedRecommendationSession = feedAccount
