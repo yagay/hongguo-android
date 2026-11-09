@@ -568,7 +568,7 @@ class DramaViewModel(application: Application) : AndroidViewModel(application) {
     }
     /** A slow N+2 request remains useful after advancing one episode. */
     private fun isLaterWarmupUseful(
-        vid: String, quality: Int, bufferMiB: Int, generation: Int,
+        vid: String, quality: Int, bufferMiB: Int, generation: Long,
     ): Boolean {
         val s = state.value
         if (!s.preloadNext || s.qualityLimit != quality ||
