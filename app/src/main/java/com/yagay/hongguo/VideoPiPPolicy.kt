@@ -25,6 +25,13 @@ internal object VideoPiPPolicy {
     fun showManualButton(manualButtonVisible: Boolean): Boolean =
         manualButtonVisible
 
+    /** The live Media3 player is the source of truth for auto PiP. */
+    fun canAutoEnterFromActivePlayer(
+        isPlayerVisible: Boolean,
+        actualMediaId: String?,
+        isPlaying: Boolean,
+    ): Boolean = isPlayerVisible && isPlaying && !actualMediaId.isNullOrBlank()
+
     fun canAutoEnter(
         hasDetail: Boolean,
         preparingDetail: Boolean,

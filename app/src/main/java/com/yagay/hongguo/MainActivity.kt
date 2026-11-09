@@ -106,8 +106,7 @@ class MainActivity : ComponentActivity() {
     var videoInPictureInPicture by mutableStateOf(false)
         private set
     private var autoPictureInPictureEligible = false
-    private var requestedPictureInPictureEligibility = false
-    private var autoPipParamsApplied = false
+    private var visibleVideoForAutoPip = false
     private var openingPictureInPictureSettings = false
     // Source video coordinates are supplied to Android before PiP animation.
     // Without this hint, the launcher may animate the app icon/window first.
@@ -178,19 +177,28 @@ class MainActivity : ComponentActivity() {
         return params.build()
     }
 
-    fun updateVideoPictureInPictureEligibility(enabled: Boolean) {
-        requestedPictureInPictureEligibility = enabled
-        val access = VideoPiPAccess.status(this)
-        autoPictureInPictureEligible = enabled &&
-            VideoPiPPolicy.isAutoPipAllowed(readAutoPipEnabled(this), access) &&
-            !openingPictureInPictureSettings
+    /** Store player visibility separately from the live playback state. */
+    fun updateVideoPictureInPictureEligibility(visibleVideo: Boolean) {
+        visibleVideoForAutoPip = visibleVideo
+        refreshAutoPictureInPictureEligibility()
+    }
+
+    /** Re-read the service player and preference immediately, even on toggle. */
+    fun refreshAutoPictureInPictureEligibility() {
+        val player = BackgroundPlaybackService.playerFlow.value
+        autoPictureInPictureEligible =
+            VideoPiPPolicy.canAutoEnterFromActivePlayer(
+                isPlayerVisible = visibleVideoForAutoPip,
+                actualMediaId = player?.currentMediaItem?.mediaId,
+                isPlaying = player?.isPlaying == true,
+            ) && isAutoPipAllowedNow()
         if (!videoInPictureInPicture) {
-            // Some OEM builds reject an updated PiP request. Retain that fact
-            // for an onUserLeaveHint fallback instead of silently ignoring it.
-            autoPipParamsApplied = runCatching {
+            runCatching {
                 setPictureInPictureParams(
                     videoPiPParams(autoPictureInPictureEligible))
-            }.isSuccess
+            }.onFailure {
+                android.util.Log.w("HongguoPiP", "Unable to apply auto PiP params", it)
+            }
         }
     }
 
@@ -212,7 +220,7 @@ class MainActivity : ComponentActivity() {
         }
         if (!launched) {
             openingPictureInPictureSettings = false
-            updateVideoPictureInPictureEligibility(requestedPictureInPictureEligibility)
+            updateVideoPictureInPictureEligibility(visibleVideoForAutoPip)
         }
         return launched
     }
@@ -221,7 +229,7 @@ class MainActivity : ComponentActivity() {
         super.onResume()
         if (openingPictureInPictureSettings) {
             openingPictureInPictureSettings = false
-            updateVideoPictureInPictureEligibility(requestedPictureInPictureEligibility)
+            updateVideoPictureInPictureEligibility(visibleVideoForAutoPip)
         }
     }
 
@@ -240,16 +248,21 @@ class MainActivity : ComponentActivity() {
 
     override fun onUserLeaveHint() {
         super.onUserLeaveHint()
-        // Prefer Android 12+ auto-enter for seamless gesture animation.
-        // On older systems, or if an OEM rejected setPiPParams(), fall
-        // back to the explicit entry when leaving the activity.
-        if (isAutoPipAllowedNow() &&
-            !videoInPictureInPicture && autoPictureInPictureEligible &&
-            (Build.VERSION.SDK_INT < Build.VERSION_CODES.S ||
-                !autoPipParamsApplied) &&
-            BackgroundPlaybackService.playerFlow.value?.isPlaying == true) {
-            runCatching { enterPictureInPictureMode(
-                videoPiPParams(autoEnter = true)) }
+        // Android 12+ handles gesture navigation through prearmed auto-enter.
+        // Three-button Home may not trigger that path on some OEM systems.
+        // This callback is a guarded, explicit fallback using the LIVE player.
+        val player = BackgroundPlaybackService.playerFlow.value
+        val shouldEnter = VideoPiPPolicy.canAutoEnterFromActivePlayer(
+            isPlayerVisible = visibleVideoForAutoPip,
+            actualMediaId = player?.currentMediaItem?.mediaId,
+            isPlaying = player?.isPlaying == true,
+        ) && isAutoPipAllowedNow()
+        if (!videoInPictureInPicture && shouldEnter) {
+            runCatching {
+                enterPictureInPictureMode(videoPiPParams(autoEnter = false))
+            }.onFailure {
+                android.util.Log.w("HongguoPiP", "Home auto PiP fallback failed", it)
+            }
         }
     }
 
@@ -323,12 +336,9 @@ private fun HongguoApp(model: DramaViewModel = viewModel()) {
             appContext.getSharedPreferences(
                 EXTERNAL_PIP_PREFERENCES, Context.MODE_PRIVATE
             ).edit().putBoolean(AUTO_PIP_ENABLED, enabled).apply()
-            if (!enabled) {
-                // Disable system auto-enter synchronously; do not wait for
-                // Compose SideEffect or the next playback-state event.
-                (appContext as? MainActivity)
-                    ?.updateVideoPictureInPictureEligibility(false)
-            }
+            // Apply both ON and OFF immediately without waiting for Compose.
+            (appContext as? MainActivity)
+                ?.refreshAutoPictureInPictureEligibility()
             if (enabled && pipSystemStatus == VideoPiPAccess.Status.BLOCKED) {
                 (appContext as? MainActivity)?.openVideoPictureInPictureSettings()
             }
@@ -346,9 +356,11 @@ private fun HongguoApp(model: DramaViewModel = viewModel()) {
         val listener = object : Player.Listener {
             override fun onIsPlayingChanged(isPlaying: Boolean) {
                 liveVideoIsPlaying = isPlaying
+                (appContext as? MainActivity)?.refreshAutoPictureInPictureEligibility()
             }
             override fun onMediaItemTransition(mediaItem: MediaItem?, reason: Int) {
                 liveVideoMediaId = mediaItem?.mediaId
+                (appContext as? MainActivity)?.refreshAutoPictureInPictureEligibility()
             }
         }
         observed?.addListener(listener)
@@ -476,18 +488,10 @@ private fun HongguoApp(model: DramaViewModel = viewModel()) {
         }
     }
     SideEffect {
-        val selectedVid = state.detail?.episodes
-            ?.getOrNull(state.episodeIndex)?.vid
+        // Avoid stale ViewModel playbackUrl/episode checks: Media3 can be
+        // playing while these values are temporarily absent during a reel.
         mainActivity?.updateVideoPictureInPictureEligibility(
-            autoPipEnabled && darkPlayer &&
-                VideoPiPPolicy.canAutoEnter(
-                hasDetail = state.detail != null,
-                preparingDetail = state.preparingDetail,
-                hasPlaybackSource = state.playbackUrl != null,
-                expectedVid = selectedVid,
-                actualMediaId = liveVideoMediaId,
-                isPlaying = liveVideoIsPlaying,
-            )
+            darkPlayer || showMini
         )
         HongguoColors.applyTheme(state.themeStyle, state.themeMode, systemDark)
         activity?.let {

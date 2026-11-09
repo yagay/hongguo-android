@@ -68,6 +68,35 @@ class VideoPiPPolicyTest {
             VideoPiPAccess.Status.UNKNOWN))
     }
 
+    @Test fun activeMedia3PlayerCanAutoEnterWithoutViewModelPlaybackUrl() {
+        assertTrue(VideoPiPPolicy.canAutoEnterFromActivePlayer(
+            isPlayerVisible = true, actualMediaId = "episode-42",
+            isPlaying = true,
+        ))
+        assertFalse(VideoPiPPolicy.canAutoEnterFromActivePlayer(
+            isPlayerVisible = false, actualMediaId = "episode-42",
+            isPlaying = true,
+        ))
+        assertFalse(VideoPiPPolicy.canAutoEnterFromActivePlayer(
+            isPlayerVisible = true, actualMediaId = null,
+            isPlaying = true,
+        ))
+        assertFalse(VideoPiPPolicy.canAutoEnterFromActivePlayer(
+            isPlayerVisible = true, actualMediaId = "episode-42",
+            isPlaying = false,
+        ))
+    }
+
+    @Test fun homeAutoPipDoesNotDependOnManualButtonVisibility() {
+        assertTrue(VideoPiPPolicy.isAutoPipAllowed(
+            true, VideoPiPAccess.Status.ALLOWED))
+        assertFalse(VideoPiPPolicy.showManualButton(false))
+        assertTrue(VideoPiPPolicy.canAutoEnterFromActivePlayer(
+            true, "episode-42", true))
+        assertFalse(VideoPiPPolicy.isAutoPipAllowed(
+            false, VideoPiPAccess.Status.ALLOWED))
+    }
+
     @Test fun noActiveSourceOrDetailsDoesNotAutoEnter() {
         assertFalse(eligible(detail = false))
         assertFalse(eligible(preparing = true))
