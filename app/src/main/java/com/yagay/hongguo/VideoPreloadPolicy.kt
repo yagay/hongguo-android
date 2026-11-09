@@ -8,6 +8,8 @@ internal object VideoPreloadPolicy {
     // A useful 1 MiB is handed off as soon as possible, then warmed in
     // background up to the user's target while the current video plays.
     const val STARTUP_BYTES = MIB
+    // Keep the second-neighbour warmup small so the active stream and N+1 win bandwidth.
+    const val LATER_BYTES = 2 * MIB
     val OPTIONS_MIB = listOf(1, 2, 4, 8, 16)
 
     fun normalizedMiB(value: Int): Int =
