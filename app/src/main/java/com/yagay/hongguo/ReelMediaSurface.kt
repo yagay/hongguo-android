@@ -10,6 +10,7 @@ import androidx.compose.runtime.getValue
 import androidx.compose.runtime.mutableLongStateOf
 import androidx.compose.runtime.mutableStateOf
 import androidx.compose.runtime.remember
+import androidx.compose.runtime.rememberUpdatedState
 import androidx.compose.runtime.setValue
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.platform.LocalContext
@@ -53,6 +54,7 @@ internal class ReelPlaybackControls {
 @Composable
 internal fun Media3Reel(
     speed: Float,
+    fastForwardHeld: Boolean,
     fillVideo: Boolean,
     controls: ReelPlaybackControls,
     expectedVid: String,
@@ -76,7 +78,18 @@ internal fun Media3Reel(
             // A detached PlayerView must not release the background player.
         }
     }
-    LaunchedEffect(player, speed) { player?.setPlaybackSpeed(speed) }
+    // The two edge hold gestures temporarily override the configured speed.
+    // Disposing the video surface (mini player, PiP, route change) must
+    // never leave the service-owned player running at the temporary 2x rate.
+    val currentBaseSpeed by rememberUpdatedState(speed)
+    DisposableEffect(player) {
+        onDispose { player?.setPlaybackSpeed(currentBaseSpeed) }
+    }
+    LaunchedEffect(player, speed, fastForwardHeld) {
+        player?.setPlaybackSpeed(
+            if (fastForwardHeld) HoldFastForwardPolicy.SPEED else speed
+        )
+    }
     LaunchedEffect(player, controls, expectedVid) {
         // Avoid showing the previous episode's time/duration while the service
         // is resolving or installing the new MediaItem (or after a rapid swipe).
