@@ -21,6 +21,7 @@ import com.hongguotv.core.RemoteVideo
 import com.hongguotv.core.Rendition
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.CancellationException
+import kotlinx.coroutines.ensureActive
 import kotlinx.coroutines.withContext
 import java.io.IOException
 
@@ -565,6 +566,7 @@ class NativeHongguoSource(
     suspend fun openVideo(
         vid: String, nextVid: String? = null, qualityLimit: Int = 0,
         preload: Boolean = false,
+        preloadBytes: Int = VideoPreloadPolicy.DEFAULT_BYTES,
     ): RemoteVideo =
         withContext(Dispatchers.IO) {
         diagnostics?.record("PLAYBACK", "REGISTER_AND_MODEL_START")
@@ -598,10 +600,19 @@ class NativeHongguoSource(
         for (candidate in candidates) {
             val video = RemoteVideo(repository.http, candidate.toStreamInfo())
             try {
-                // Preloaded next items keep a slightly larger byte range
-                // ready. The actively playing item remains at the original
-                // 64 KiB startup budget; no parallel decoder is created.
-                video.prepare(initialBytes = if (preload) 192 * 1024 else 64 * 1024)
+                // Prepare the MP4 index first. Subsequent warm() requests
+                // cache actual media bytes rather than enlarging prepare(),
+                // whose maximum is only 256 KiB.
+                video.prepare(initialBytes = if (preload) 256 * 1024 else 64 * 1024)
+                if (preload) {
+                    // Hand over a useful 1 MiB startup range quickly, then
+                    // the ViewModel grows this same stream in the background.
+                    video.warm(bytes = minOf(
+                        VideoPreloadPolicy.STARTUP_BYTES,
+                        VideoPreloadPolicy.validBytes(preloadBytes),
+                    ))
+                }
+                kotlinx.coroutines.currentCoroutineContext().ensureActive()
                 diagnostics?.record("PLAYBACK",
                     if (preload) "NEXT_RANGE_PREPARED" else "RANGE_PREPARED")
                 return@withContext video

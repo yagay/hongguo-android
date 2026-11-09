@@ -171,13 +171,32 @@ class RemoteVideo(private val http: OkHttpClient, val info: StreamInfo) : Closea
         return this
     }
 
-    /** Bounded warm-up. Retains raw bytes so decryption still uses the absolute sample offset. */
+    /**
+     * Warm a REAL encrypted-video byte range, not just the MP4 index.
+     * Multiple <=1 MiB HTTP ranges avoid oversized requests. Publish each
+     * completed chunk immediately, so switching videos can reuse partially
+     * warmed data even if a larger target is still downloading.
+     *
+     * The callback stops prefetch on route changes without closing a video
+     * that may already have been promoted to active Media3 playback.
+     */
     @Synchronized
-    fun warm(bytes: Int = 1024 * 1024): RemoteVideo {
-        require(bytes in 256 * 1024..4 * 1024 * 1024)
+    fun warm(
+        bytes: Int = 8 * 1024 * 1024,
+        shouldContinue: () -> Boolean = { true },
+    ): RemoteVideo {
+        require(bytes in 256 * 1024..16 * 1024 * 1024)
         prepare()
-        val size = minOf(total, bytes.toLong()).toInt()
-        if (prefix.size < size) prefix = prefix + range(prefix.size.toLong(), size - 1L).bytes
+        val target = minOf(total, bytes.toLong()).toInt()
+        while (prefix.size < target && !closed && shouldContinue()) {
+            val begin = prefix.size
+            val end = minOf(target, begin + 1024 * 1024)
+            val chunk = range(begin.toLong(), end.toLong() - 1).bytes
+            if (closed || !shouldContinue()) break
+            if (chunk.size != end - begin)
+                throw IOException("视频预加载分段数据不完整")
+            prefix = prefix + chunk
+        }
         return this
     }
 
@@ -214,6 +233,9 @@ class RemoteVideo(private val http: OkHttpClient, val info: StreamInfo) : Closea
             closed = true
             calls.toList().forEach { it.cancel() }
             calls.clear()
+            // A queued next stream may hold up to 16 MiB. Return those
+            // bytes to the GC immediately on skip, cancellation or teardown.
+            prefix = byteArrayOf()
         }
     }
 }

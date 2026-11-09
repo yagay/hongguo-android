@@ -194,6 +194,22 @@ class DramaViewModel(application: Application) : AndroidViewModel(application) {
         }
     }
 
+    /** Change the actual encrypted-video prefetch budget without restart. */
+    fun setPreloadBufferMiB(value: Int) {
+        if (value !in VideoPreloadPolicy.OPTIONS_MIB ||
+            value == state.value.preloadBufferMiB) return
+        prefs.edit().putInt("preload_buffer_mib", value).apply()
+        mutable.update { it.copy(preloadBufferMiB = value) }
+        clearPreloadedNext()
+        feedPrefetchJob?.cancel()
+        clearReelWarmVideo()
+        diagnostics.record("PLAYBACK", "PRELOAD_BUDGET_${value}M")
+        val current = state.value
+        val vid = current.detail?.episodes?.getOrNull(current.episodeIndex)?.vid
+        if (current.preloadNext && vid != null && vid == firstFrameFor)
+            prepareUpcomingPlayback(current)
+    }
+
     fun setAutoPlayNext(enabled: Boolean) {
         prefs.edit().putBoolean("auto_play_next", enabled).apply()
         mutable.update { it.copy(autoPlayNext = enabled) }
@@ -385,6 +401,14 @@ class DramaViewModel(application: Application) : AndroidViewModel(application) {
         preloadedNextVid = null
     }
 
+    private fun isActivePreloadJobForEpisode(
+        vid: String, quality: Int, bufferMiB: Int,
+    ): Boolean = state.value.preloadNext &&
+        state.value.qualityLimit == quality &&
+        state.value.preloadBufferMiB == bufferMiB &&
+        (preloadedNextVid == vid ||
+            BackgroundPlaybackService.playerFlow.value?.currentMediaItem?.mediaId == vid)
+
     private fun preloadFollowingEpisode() {
         val s = state.value
         if (!s.preloadNext ||
@@ -394,6 +418,7 @@ class DramaViewModel(application: Application) : AndroidViewModel(application) {
         clearPreloadedNext()
         val generation = detailId
         val quality = s.qualityLimit
+        val targetBytes = VideoPreloadPolicy.bytes(s.preloadBufferMiB)
         preloadEpisodeJob = viewModelScope.launch {
             delay(850)
             var remote: RemoteVideo? = null
@@ -402,7 +427,8 @@ class DramaViewModel(application: Application) : AndroidViewModel(application) {
                 // empty response. Retry at most once for prefetch only, and
                 // only while the target episode and quality are unchanged.
                 remote = try {
-                    nativeSource.openVideo(next, qualityLimit = quality, preload = true)
+                    nativeSource.openVideo(next, qualityLimit = quality,
+                        preload = true, preloadBytes = targetBytes)
                 } catch (first: CancellationException) {
                     throw first
                 } catch (first: Exception) {
@@ -413,16 +439,35 @@ class DramaViewModel(application: Application) : AndroidViewModel(application) {
                         state.value.detail?.episodes
                             ?.getOrNull(state.value.episodeIndex + 1)?.vid != next ||
                         state.value.qualityLimit != quality) return@launch
-                    nativeSource.openVideo(next, qualityLimit = quality, preload = true)
+                    nativeSource.openVideo(next, qualityLimit = quality,
+                        preload = true, preloadBytes = targetBytes)
                 }
                 if (generation == detailId && state.value.preloadNext &&
                     state.value.detail?.episodes?.getOrNull(state.value.episodeIndex + 1)?.vid == next &&
-                    state.value.qualityLimit == quality) {
+                    state.value.qualityLimit == quality &&
+                    state.value.preloadBufferMiB == s.preloadBufferMiB) {
                     preloadedNextVideo = remote
                     preloadedNextVid = next
                     preloadedNextQuality = quality
+                    val ready = remote
                     remote = null
                     diagnostics.record("PLAYBACK", "NEXT_NATIVE_PREPARED")
+                    // Extend the SAME RemoteVideo after publishing the usable
+                    // first MiB. Fast episode switches can consume its current
+                    // prefix even while later chunks are still downloading.
+                    if (ready != null && targetBytes > VideoPreloadPolicy.STARTUP_BYTES) {
+                        try {
+                            withContext(Dispatchers.IO) {
+                                ready.warm(targetBytes) {
+                                    isActivePreloadJobForEpisode(next, quality, s.preloadBufferMiB)
+                                }
+                            }
+                            diagnostics.record("PLAYBACK", "NEXT_VIDEO_WARMED")
+                        } catch (cancel: CancellationException) { throw cancel }
+                        catch (_: Exception) {
+                            diagnostics.record("PLAYBACK", "NEXT_WARM_PARTIAL")
+                        }
+                    }
                     // Once the next EPISODE has a prepared range, also warm
                     // the next swipe drama, sequentially rather than in
                     // parallel with the episode model request.
@@ -1024,16 +1069,39 @@ class DramaViewModel(application: Application) : AndroidViewModel(application) {
                 }
                 val first = detail.episodes.first().vid
                 val quality = state.value.qualityLimit
-                warming = nativeSource.openVideo(first, qualityLimit = quality, preload = true)
+                val bufferMiB = state.value.preloadBufferMiB
+                val targetBytes = VideoPreloadPolicy.bytes(bufferMiB)
+                warming = nativeSource.openVideo(first, qualityLimit = quality,
+                    preload = true, preloadBytes = targetBytes)
                 if (!isUpcomingReel(next.id) || !state.value.preloadNext ||
-                    state.value.qualityLimit != quality) return@launch
+                    state.value.qualityLimit != quality ||
+                    state.value.preloadBufferMiB != bufferMiB) return@launch
                 clearReelWarmVideo()
                 reelWarmSeriesId = next.id
                 reelWarmVid = first
                 reelWarmQuality = quality
                 reelWarmVideo = warming
+                val ready = warming
                 warming = null
                 diagnostics.record("FEED", "NEXT_VIDEO_PREPARED")
+                if (ready != null && targetBytes > VideoPreloadPolicy.STARTUP_BYTES) {
+                    try {
+                        withContext(Dispatchers.IO) {
+                            ready.warm(targetBytes) {
+                                state.value.preloadNext &&
+                                    state.value.preloadBufferMiB == bufferMiB &&
+                                    state.value.qualityLimit == quality &&
+                                    (isUpcomingReel(next.id) ||
+                                        BackgroundPlaybackService.playerFlow.value
+                                            ?.currentMediaItem?.mediaId == first)
+                            }
+                        }
+                        diagnostics.record("FEED", "NEXT_VIDEO_WARMED")
+                    } catch (cancel: CancellationException) { throw cancel }
+                    catch (_: Exception) {
+                        diagnostics.record("FEED", "NEXT_WARM_PARTIAL")
+                    }
+                }
             } catch (e: CancellationException) {
                 throw e
             } catch (_: Exception) {
@@ -1080,6 +1148,9 @@ class DramaViewModel(application: Application) : AndroidViewModel(application) {
                 ?.takeIf { it == "all" || it == "real" } ?: "all",
             autoPlayNext = prefs.getBoolean("auto_play_next", true),
             preloadNext = prefs.getBoolean("preload_next_episode", true),
+            preloadBufferMiB = VideoPreloadPolicy.normalizedMiB(
+                prefs.getInt("preload_buffer_mib", VideoPreloadPolicy.DEFAULT_MIB)
+            ),
             episodeUpdateNotificationsEnabled = prefs.getBoolean("episode_update_notifications", false),
             skipIntroSeconds = prefs.getInt("skip_intro_seconds", 0).coerceIn(0, 120),
             skipOutroSeconds = prefs.getInt("skip_outro_seconds", 0).coerceIn(0, 120),
