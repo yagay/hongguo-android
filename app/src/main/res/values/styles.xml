@@ -6,4 +6,13 @@
         <item name="android:navigationBarColor">#FFF9F6</item>
         <item name="android:windowActionModeOverlay">true</item>
     </style>
+    <!-- Main Compose activity draws behind the bars; the separate official
+         login activity keeps its existing non-edge-to-edge window theme. -->
+    <style name="Theme.Hongguo.EdgeToEdge" parent="Theme.Hongguo">
+        <item name="android:statusBarColor">@android:color/transparent</item>
+        <item name="android:navigationBarColor">@android:color/transparent</item>
+        <item name="android:windowStatusBarContrastEnforced">false</item>
+        <item name="android:windowNavigationBarContrastEnforced">false</item>
+        <item name="android:windowLayoutInDisplayCutoutMode">shortEdges</item>
+    </style>
 </resources>
