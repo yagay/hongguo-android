@@ -1165,8 +1165,25 @@ class DramaViewModel(application: Application) : AndroidViewModel(application) {
                 val quality = state.value.qualityLimit
                 val bufferMiB = state.value.preloadBufferMiB
                 val targetBytes = VideoPreloadPolicy.bytes(bufferMiB)
-                warming = nativeSource.openVideo(first, qualityLimit = quality,
-                    preload = true, preloadBytes = targetBytes)
+                warming = try {
+                    nativeSource.openVideo(first, qualityLimit = quality,
+                        preload = true, preloadBytes = targetBytes)
+                } catch (cancel: CancellationException) {
+                    throw cancel
+                } catch (firstFailure: Exception) {
+                    // The official playback model can briefly return an
+                    // empty source. Reuse the same bounded retry as next
+                    // episode preload, BEFORE the last episode finishes.
+                    if (!PlaybackProblem.isEmptyPlaybackModel(firstFailure))
+                        throw firstFailure
+                    diagnostics.record("FEED", "NEXT_MODEL_EMPTY_RETRY")
+                    delay(1_250)
+                    if (!isUpcomingReel(next.id) || !state.value.preloadNext ||
+                        state.value.qualityLimit != quality ||
+                        state.value.preloadBufferMiB != bufferMiB) return@launch
+                    nativeSource.openVideo(first, qualityLimit = quality,
+                        preload = true, preloadBytes = targetBytes)
+                }
                 if (!isUpcomingReel(next.id) || !state.value.preloadNext ||
                     state.value.qualityLimit != quality ||
                     state.value.preloadBufferMiB != bufferMiB) return@launch
@@ -2304,7 +2321,16 @@ class DramaViewModel(application: Application) : AndroidViewModel(application) {
         updateNotificationNavigation()
         // Only a different or missing media item needs a new playback request.
         // A mode change alone must not reset the position or pause the player.
-        if (!currentMediaMatches) play(index)
+        if (!currentMediaMatches) {
+            play(index)
+        } else if (index == snapshot.detail?.episodes?.lastIndex &&
+            snapshot.autoPlayNext && snapshot.preloadNext) {
+            // Entering the series screen cancelled the official feed request
+            // above. Re-arm finale prefetch while retaining this exact
+            // playing media item and its current progress.
+            diagnostics.record("REELS", "FINALE_PRELOAD_REARM_ON_MODE_SWITCH")
+            prepareUpcomingPlayback(state.value)
+        }
     }
 
     /** Restore the original swipe queue while the current Media3 video keeps playing. */
