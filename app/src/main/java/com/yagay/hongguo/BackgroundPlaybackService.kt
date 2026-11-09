@@ -576,7 +576,10 @@ class BackgroundPlaybackService : MediaSessionService() {
         if (remote != null) {
             // CacheDataSource sits ABOVE the decrypted native stream. Cache hits
             // never reach the upstream HTTP reader, including after app restart.
-            val factory = NativeDiskVideoCache.factory(this, remote)
+            val factory = NativeDiskVideoCache.factory(this, remote) { bytes ->
+                diagnostics.record("DISK_CACHE",
+                    "READ_HIT_KIB_${(bytes / 1024).coerceAtLeast(1)}")
+            }
             engine.setMediaSource(
                 ProgressiveMediaSource.Factory(factory).createMediaSource(item))
             diagnostics.record("DISK_CACHE",
