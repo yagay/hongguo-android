@@ -133,8 +133,8 @@ internal fun ReelScreenshotOverlay(
                 onSearch = onSearch,
             )
         } else {
-            // Preserve the original icon sizes. Only the dark circular
-            // background is reduced to 30dp; 40dp touch targets remain.
+            // Top controls use transparent icons with full 40dp touch targets.
+            // The same shared style is used by the feed and loading screens.
             Row(
                 Modifier.fillMaxWidth()
                     .padding(start = 6.dp, end = 6.dp, top = 2.dp),
