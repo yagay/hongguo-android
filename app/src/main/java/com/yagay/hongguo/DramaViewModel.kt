@@ -3092,7 +3092,9 @@ class DramaViewModel(application: Application) : AndroidViewModel(application) {
                         // Scan/load the disk index on IO, never during the
                         // service's Media3 configuration on the main thread.
                         withContext(Dispatchers.IO) {
-                            NativeDiskVideoCache.prepare(getApplication())
+                            if (NativeDiskVideoCache.prepare(getApplication())) {
+                                NativeDiskVideoCache.register(video, vid, quality)
+                            }
                         }
                         if (version == detailId) launchBackgroundMedia(
                             detail, index, nativeUri, video, checkpoint, version)
