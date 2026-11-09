@@ -22,11 +22,11 @@
    - `HG_RELEASE_STORE_PASSWORD`：见私有 `PRIVATE-GitHub-Secrets.txt`。
    - `HG_RELEASE_KEY_ALIAS`：`hongguo-release`。
    - `HG_RELEASE_KEY_PASSWORD`：见私有 `PRIVATE-GitHub-Secrets.txt`。
-3. 打开 **Actions → Native rewrite Android build → Run workflow**，选择 `rewrite-web-native`，勾选 **Build signed Release APK**。
+3. 打开 **Actions → Hongguo native signed Release → Run workflow**。入口工作流仅在 `main` 分支注册；它会调用 `rewrite-web-native` 的签名构建并检出该分支源码，**不会编译 main 应用代码**。
 4. 运行时先执行 Debug 单元测试，再编译 Release、校验 APK 签名、证书指纹和包名。
 5. 在 workflow 的 **Artifacts** 下载 `hongguo-signed-release-<run_number>`。
 
-日常 push 仍只运行 Debug CI；手动触发但不勾选时也只构建 Debug。缺少 Secrets、密钥文件、证书不匹配或 APK 未签名将使 Release 工作流失败，不会发布未签名安装包。
+日常推送 `rewrite-web-native` 仍只运行 Debug CI。默认分支仅增加手动触发入口，不更改 main 应用源码。缺少 Secrets、密钥文件、证书不匹配或 APK 未签名将使 Release 工作流失败，不会发布未签名安装包。
 
 ## 本地构建
 
