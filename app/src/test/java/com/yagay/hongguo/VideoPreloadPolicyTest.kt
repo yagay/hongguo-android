@@ -1,9 +1,16 @@
 package com.yagay.hongguo
 
 import org.junit.Assert.assertEquals
+import org.junit.Assert.assertTrue
 import org.junit.Test
 
 class VideoPreloadPolicyTest {
+    @Test fun secondNeighbourIsLowerPriorityAndBounded() {
+        assertEquals(2 * VideoPreloadPolicy.MIB, VideoPreloadPolicy.LATER_BYTES)
+        assertTrue(VideoPreloadPolicy.LATER_BYTES < VideoPreloadPolicy.DEFAULT_BYTES)
+        assertTrue(VideoPreloadPolicy.STARTUP_BYTES <= VideoPreloadPolicy.LATER_BYTES)
+    }
+
     @Test fun defaultPrefetchKeepsEightMegabytes() {
         assertEquals(8 * 1024 * 1024, VideoPreloadPolicy.DEFAULT_BYTES)
     }
