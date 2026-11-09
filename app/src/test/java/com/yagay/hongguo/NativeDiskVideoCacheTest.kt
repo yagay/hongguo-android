@@ -21,6 +21,16 @@ class NativeDiskVideoCacheTest {
         assertNotEquals(base, NativeDiskVideoCache.key("87654321", 720, 25_000_000L))
     }
 
+    @Test fun contentFingerprintPreventsStaleSameSizeReuse() {
+        val original = NativeDiskVideoCache.fingerprintedKey(
+            "12345678", 720, 25_000_000L, byteArrayOf(0, 1, 2, 3))
+        val changed = NativeDiskVideoCache.fingerprintedKey(
+            "12345678", 720, 25_000_000L, byteArrayOf(0, 1, 2, 4))
+        assertEquals(original, NativeDiskVideoCache.fingerprintedKey(
+            "12345678", 720, 25_000_000L, byteArrayOf(0, 1, 2, 3)))
+        assertNotEquals(original, changed)
+    }
+
     @Test fun sevenDayExpiryIsInclusiveAndClockSkewInvalidates() {
         val day = 24L * 60 * 60 * 1000
         val now = 300L * day
