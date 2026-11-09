@@ -768,6 +768,64 @@ class DramaViewModel(application: Application) : AndroidViewModel(application) {
     private var requestId = 0L
     private var detailId = 0L
     private var pendingFeedAdvance = false
+    /** Final-episode auto-next survives empty/duplicate official responses. */
+    private var finaleAdvanceFor: String? = null
+    private var finaleAdvanceAttempts = 0
+    private var finaleAdvanceRetryJob: Job? = null
+
+    private fun clearFinaleAdvance() {
+        finaleAdvanceRetryJob?.cancel()
+        finaleAdvanceRetryJob = null
+        finaleAdvanceFor = null
+        finaleAdvanceAttempts = 0
+    }
+
+    private fun markFinaleAdvance(seriesId: String) {
+        if (finaleAdvanceFor != seriesId) {
+            clearFinaleAdvance()
+            finaleAdvanceFor = seriesId
+        }
+    }
+
+    /**
+     * One official page can contain only titles that were already shown.
+     * Keep the automatic transition pending and retry at most twice.
+     * Run the retry in a NEW coroutine: restarting from within the delivering
+     * officialFeedJob would cancel that same coroutine.
+     */
+    private fun retryFinaleAdvance(reason: String) {
+        val s = state.value
+        val seriesId = finaleAdvanceFor ?: return
+        if (!pendingFeedAdvance || !s.feedMode ||
+            s.detail?.drama?.id != seriesId) return
+        if (!FinaleRecommendationPolicy.canRetry(finaleAdvanceAttempts)) {
+            diagnostics.record("REELS", "FINALE_ADVANCE_EXHAUSTED")
+            pendingFeedAdvance = false
+            clearFinaleAdvance()
+            mutable.update {
+                it.copy(feedLoading = false,
+                    feedError = "暂时无法获取下一部推荐，点击重试或上滑继续")
+            }
+            return
+        }
+        finaleAdvanceAttempts++
+        val attempt = finaleAdvanceAttempts
+        diagnostics.record("REELS", "FINALE_RETRY_${attempt}_${reason}")
+        finaleAdvanceRetryJob?.cancel()
+        finaleAdvanceRetryJob = viewModelScope.launch {
+            delay(600L * attempt)
+            val current = state.value
+            if (finaleAdvanceFor != seriesId || !pendingFeedAdvance ||
+                !current.feedMode || current.detail?.drama?.id != seriesId ||
+                current.feedLoading) return@launch
+            loadOfficialReels(
+                restart = true,
+                relaxRecentExclusions =
+                    FinaleRecommendationPolicy.relaxRecentExclusions(attempt),
+            )
+        }
+    }
+
     private var feedPrefetchJob: Job? = null
     private var officialFeedJob: Job? = null
     private var officialFeedGeneration = 0L
@@ -835,6 +893,7 @@ class DramaViewModel(application: Application) : AndroidViewModel(application) {
     private fun loadOfficialReels(
         restart: Boolean = false,
         warmingFinaleId: String? = null,
+        relaxRecentExclusions: Boolean = false,
     ) {
         val snapshot = state.value
         if ((!snapshot.feedMode &&
@@ -846,11 +905,16 @@ class DramaViewModel(application: Application) : AndroidViewModel(application) {
         // Non-restart continuation may be queued by the just-completed batch
         // coroutine itself. Cancelling it here would cancel the caller.
         if (restart) officialFeedJob?.cancel()
+        // After the finale, a heavily filtered first-party feed can contain
+        // only recently viewed items. One bounded retry admits those older
+        // suggestions, but never repeats the just-ended drama or hidden IDs.
         val excluded = snapshot.feedItems.mapTo(linkedSetOf()) { it.id }
             .apply {
                 addAll(snapshot.hiddenRecommendationIds)
-                addAll(homeFeedExcludedIds)
-                addAll(localContent.recentlySwiped())
+                if (!relaxRecentExclusions) {
+                    addAll(homeFeedExcludedIds)
+                    addAll(localContent.recentlySwiped())
+                }
             }
         mutable.update { it.copy(feedLoading = true, feedError = null) }
         officialFeedJob = viewModelScope.launch {
@@ -869,10 +933,12 @@ class DramaViewModel(application: Application) : AndroidViewModel(application) {
                     (warmingFinaleId != null &&
                         !activeFinaleRecommendation(warmingFinaleId))) return@launch
                 mutable.update { current ->
+                    val exclusions = if (relaxRecentExclusions)
+                        current.hiddenRecommendationIds
+                    else current.hiddenRecommendationIds + homeFeedExcludedIds +
+                        localContent.recentlySwiped().toSet()
                     val merged = OfficialReelsPolicy.append(
-                        current.feedItems, result.items,
-                        current.hiddenRecommendationIds + homeFeedExcludedIds +
-                            localContent.recentlySwiped().toSet())
+                        current.feedItems, result.items, exclusions)
                     current.copy(feedItems = merged,
                         feedHasMore = result.hasMore,
                         feedLoading = false,
@@ -892,16 +958,26 @@ class DramaViewModel(application: Application) : AndroidViewModel(application) {
                     }
                 }
                 if (pendingFeedAdvance) {
-                    pendingFeedAdvance = false
-                    // A duplicate-only upstream response must not repeatedly
-                    // page forever while the user remains on the last reel.
-                    if (state.value.feedItems.size > snapshot.feedItems.size) {
-                        // Avoid canceling the delivering coroutine itself in
-                        // open(nextDrama)'s stale-warmup cleanup.
+                    // Check the actual next playable queue entry, not merely
+                    // the total count of returned titles.
+                    val after = state.value
+                    val next = OfficialReelsPolicy.nextIndex(
+                        after.feedItems, after.feedIndex, 1,
+                        after.hiddenRecommendationIds,
+                    )
+                    if (next != null) {
+                        pendingFeedAdvance = false
+                        // Do not cancel the coroutine that delivered this batch.
                         if (warmingFinaleId != null &&
                             finaleRecommendationRequestFor == warmingFinaleId)
                             finaleRecommendationRequestFor = null
+                        diagnostics.record("REELS", "FINALE_ADVANCE_READY")
                         navigateFeed(1)
+                    } else if (finaleAdvanceFor != null) {
+                        // Keep pending through an empty or duplicate-only batch.
+                        retryFinaleAdvance("EMPTY")
+                    } else {
+                        pendingFeedAdvance = false
                     }
                 } else if (mayPreloadFollowingDrama(state.value))
                     prefetchFollowingFeedItem(state.value.feedIndex)
@@ -918,11 +994,12 @@ class DramaViewModel(application: Application) : AndroidViewModel(application) {
                     (state.value.feedMode ||
                         (warmingFinaleId != null &&
                             activeFinaleRecommendation(warmingFinaleId)))) {
-                    pendingFeedAdvance = false
                     mutable.update { it.copy(feedLoading = false,
                         preparingDetail = if (needsFirstDrama) false else it.preparingDetail,
                         feedError = "获取官方推荐超时，请点击重新获取") }
                     diagnostics.record("REELS", "OFFICIAL_TIMEOUT")
+                    if (finaleAdvanceFor != null) retryFinaleAdvance("TIMEOUT")
+                    else pendingFeedAdvance = false
                 }
             } catch (cancel: CancellationException) {
                 throw cancel
@@ -931,12 +1008,13 @@ class DramaViewModel(application: Application) : AndroidViewModel(application) {
                     (state.value.feedMode ||
                         (warmingFinaleId != null &&
                             activeFinaleRecommendation(warmingFinaleId)))) {
-                    pendingFeedAdvance = false
                     mutable.update { it.copy(feedLoading = false,
                         preparingDetail = if (needsFirstDrama) false else it.preparingDetail,
                         feedError = OfficialReelsFailure.userMessage(error)) }
                     diagnostics.record("REELS",
                         "OFFICIAL_FAIL_" + OfficialReelsFailure.code(error))
+                    if (finaleAdvanceFor != null) retryFinaleAdvance("ERROR")
+                    else pendingFeedAdvance = false
                 }
             } finally {
                 if (generation == officialFeedGeneration &&
@@ -2073,6 +2151,7 @@ class DramaViewModel(application: Application) : AndroidViewModel(application) {
         officialFeedGeneration++
         finaleRecommendationRequestFor = null
         pendingFeedAdvance = false
+        clearFinaleAdvance()
         feedPrefetchJob?.cancel()
         clearReelWarmVideo()
         prefetchedFeedDetails.clear()
@@ -2160,6 +2239,7 @@ class DramaViewModel(application: Application) : AndroidViewModel(application) {
         val selected = index?.let(current.feedItems::get)
         if (selected != null && selected.id != current.detail?.drama?.id) {
             pendingFeedAdvance = false
+            clearFinaleAdvance()
             mutable.update { it.copy(feedIndex = index) }
             updateNotificationNavigation()
             localContent.rememberSwiped(selected.id)
@@ -2803,6 +2883,8 @@ class DramaViewModel(application: Application) : AndroidViewModel(application) {
             diagnostics.record("REELS", "OFFLINE_SERIES_FINISHED")
             return
         }
+        markFinaleAdvance(finishedDrama.id)
+        diagnostics.record("REELS", "FINALE_AUTOCONTINUE_STARTED")
         // Swipe mode normally advances its existing official queue.
         // When the server cursor has already been exhausted, start a fresh
         // official recommendation session instead of leaving the last reel
@@ -3023,6 +3105,7 @@ class DramaViewModel(application: Application) : AndroidViewModel(application) {
         sdkDetailJob?.cancel()
         homeFeedExcludedIds = emptySet()
         pendingFeedAdvance = false
+        clearFinaleAdvance()
         officialFeedJob?.cancel()
         officialFeedGeneration++
         finaleRecommendationRequestFor = null
