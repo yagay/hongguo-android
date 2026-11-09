@@ -64,6 +64,8 @@ dependencies {
     implementation("androidx.work:work-runtime-ktx:2.10.3")
     implementation("org.jetbrains.kotlinx:kotlinx-coroutines-android:1.10.2")
     implementation("androidx.media3:media3-exoplayer:1.8.0")
+    implementation("androidx.media3:media3-datasource:1.8.0")
+    implementation("androidx.media3:media3-database:1.8.0")
     implementation("androidx.media3:media3-ui:1.8.0")
     implementation("androidx.media3:media3-session:1.8.0")
     implementation("io.coil-kt:coil-compose:2.7.0")
