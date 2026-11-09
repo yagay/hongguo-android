@@ -137,9 +137,11 @@ internal fun NativePlayer(
     onExitFeed: () -> Unit,
     onBackFromSeries: () -> Unit,
     onEnterSeries: (Int) -> Unit,
-    externalPipEnabled: Boolean,
-    externalPipStatus: VideoPiPAccess.Status,
-    onExternalPipEnabled: (Boolean) -> Unit,
+    autoPipEnabled: Boolean,
+    manualPipButtonVisible: Boolean,
+    pipSystemStatus: VideoPiPAccess.Status,
+    onAutoPipEnabled: (Boolean) -> Unit,
+    onManualPipButtonVisible: (Boolean) -> Unit,
 ) {
     val detail = state.detail ?: return
     if (detail.episodes.isEmpty()) {
@@ -698,7 +700,9 @@ internal fun NativePlayer(
             onOpenAccountDrawer = {
                 accountDrawerScope.launch { accountDrawerState.open() }
             },
-            onPictureInPicture = if (externalPipEnabled) ({
+            onPictureInPicture = if (
+                VideoPiPPolicy.showManualButton(manualPipButtonVisible)
+            ) ({
                 selected?.vid?.let { vid ->
                     val activity = context as? MainActivity
                     if (activity?.enterVideoPictureInPicture(vid) != true) {
@@ -834,21 +838,20 @@ internal fun NativePlayer(
             model = model,
             speed = speed,
             fillVideo = fillVideo,
-            externalPipEnabled = externalPipEnabled,
-            externalPipStatus = externalPipStatus,
-            onExternalPipEnabled = onExternalPipEnabled,
+            autoPipEnabled = autoPipEnabled,
+            manualPipButtonVisible = manualPipButtonVisible,
+            pipSystemStatus = pipSystemStatus,
+            onAutoPipEnabled = onAutoPipEnabled,
+            onManualPipButtonVisible = onManualPipButtonVisible,
             onOpenPipSettings = {
                 if ((context as? MainActivity)?.openVideoPictureInPictureSettings() != true) {
                     Toast.makeText(context, "无法打开系统画中画设置",
                         Toast.LENGTH_SHORT).show()
                 }
             },
-            onTestExternalPip = {
+            onTestManualPip = {
                 val vid = selected?.vid
-                if (!externalPipEnabled) {
-                    Toast.makeText(context, "请先开启应用外画中画",
-                        Toast.LENGTH_SHORT).show()
-                } else if (vid == null ||
+                if (vid == null ||
                     (context as? MainActivity)?.enterVideoPictureInPicture(vid) != true) {
                     Toast.makeText(context,
                         "未能进入小窗：请确认视频正在播放且系统允许画中画",

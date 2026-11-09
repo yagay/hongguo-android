@@ -8,17 +8,22 @@ internal object VideoPiPPolicy {
     const val PORTRAIT_WIDTH = 9
     const val PORTRAIT_HEIGHT = 16
 
-    /**
-     * Android's system permission is a prerequisite, never a replacement
-     * for the user's own in-app PiP toggle. Turning the switch off vetoes
-     * auto-enter AND explicit entry, even if OS permissions remain granted.
-     */
-    fun isAllowedByUser(
-        enabledInApp: Boolean,
+    /** Only the auto PiP preference gates background/leave-app auto-enter. */
+    fun isAutoPipAllowed(
+        autoPipEnabled: Boolean,
         systemAccess: VideoPiPAccess.Status,
-    ): Boolean = enabledInApp &&
+    ): Boolean = autoPipEnabled && isManualEntryPermitted(systemAccess)
+
+    /**
+     * Manual PiP is independent of auto-enter. Its toolbar button is
+     * controlled separately by the "show manual PiP button" preference.
+     */
+    fun isManualEntryPermitted(systemAccess: VideoPiPAccess.Status): Boolean =
         systemAccess != VideoPiPAccess.Status.BLOCKED &&
-        systemAccess != VideoPiPAccess.Status.UNSUPPORTED
+            systemAccess != VideoPiPAccess.Status.UNSUPPORTED
+
+    fun showManualButton(manualButtonVisible: Boolean): Boolean =
+        manualButtonVisible
 
     fun canAutoEnter(
         hasDetail: Boolean,

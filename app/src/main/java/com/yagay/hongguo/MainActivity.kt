@@ -89,11 +89,17 @@ import androidx.lifecycle.viewmodel.compose.viewModel
 import kotlinx.coroutines.launch
 
 private const val EXTERNAL_PIP_PREFERENCES = "external_picture_in_picture"
-private const val EXTERNAL_PIP_ENABLED = "enabled"
+// Retain the old "enabled" key so auto-PiP choices survive app updates.
+private const val AUTO_PIP_ENABLED = "enabled"
+private const val MANUAL_PIP_BUTTON_VISIBLE = "manual_button_visible"
 
-private fun readExternalPipEnabled(context: Context): Boolean =
+private fun readAutoPipEnabled(context: Context): Boolean =
     context.getSharedPreferences(EXTERNAL_PIP_PREFERENCES, Context.MODE_PRIVATE)
-        .getBoolean(EXTERNAL_PIP_ENABLED, true)
+        .getBoolean(AUTO_PIP_ENABLED, true)
+
+private fun readManualPipButtonVisible(context: Context): Boolean =
+    context.getSharedPreferences(EXTERNAL_PIP_PREFERENCES, Context.MODE_PRIVATE)
+        .getBoolean(MANUAL_PIP_BUTTON_VISIBLE, true)
 
 class MainActivity : ComponentActivity() {
     /** PiP is a display mode for the existing Media3 session, not a second service. */
@@ -145,11 +151,15 @@ class MainActivity : ComponentActivity() {
         }
     }
 
-    private fun isExternalPipAllowedNow(): Boolean =
-        VideoPiPPolicy.isAllowedByUser(
-            enabledInApp = readExternalPipEnabled(this),
+    private fun isAutoPipAllowedNow(): Boolean =
+        VideoPiPPolicy.isAutoPipAllowed(
+            autoPipEnabled = readAutoPipEnabled(this),
             systemAccess = VideoPiPAccess.status(this),
         ) && !openingPictureInPictureSettings
+
+    private fun isManualPipAllowedNow(): Boolean =
+        VideoPiPPolicy.isManualEntryPermitted(VideoPiPAccess.status(this)) &&
+            !openingPictureInPictureSettings
 
     private fun videoPiPParams(autoEnter: Boolean): PictureInPictureParams {
         // Aspect ratio is supported from API 26; auto-enter and seamless
@@ -162,7 +172,7 @@ class MainActivity : ComponentActivity() {
             // Re-read the persisted toggle at the last moment. A stale
             // state or an OEM layout callback must never re-enable PiP
             // after the user has disabled it inside the app.
-            params.setAutoEnterEnabled(autoEnter && isExternalPipAllowedNow())
+            params.setAutoEnterEnabled(autoEnter && isAutoPipAllowedNow())
             params.setSeamlessResizeEnabled(true)
         }
         return params.build()
@@ -172,7 +182,7 @@ class MainActivity : ComponentActivity() {
         requestedPictureInPictureEligibility = enabled
         val access = VideoPiPAccess.status(this)
         autoPictureInPictureEligible = enabled &&
-            VideoPiPPolicy.isAllowedByUser(readExternalPipEnabled(this), access) &&
+            VideoPiPPolicy.isAutoPipAllowed(readAutoPipEnabled(this), access) &&
             !openingPictureInPictureSettings
         if (!videoInPictureInPicture) {
             // Some OEM builds reject an updated PiP request. Retain that fact
@@ -217,13 +227,14 @@ class MainActivity : ComponentActivity() {
 
     /** Explicit PiP action in both the full and in-app mini players. */
     fun enterVideoPictureInPicture(expectedVid: String): Boolean {
-        // Explicit buttons obey the same user switch as automatic PiP.
-        if (!isExternalPipAllowedNow()) return false
+        // Manual entry is independent of auto PiP. Button visibility is
+        // controlled separately by the user's manual-button preference.
+        if (!isManualPipAllowedNow()) return false
         val player = BackgroundPlaybackService.playerFlow.value ?: return false
         if (expectedVid.isBlank() ||
             player.currentMediaItem?.mediaId != expectedVid) return false
         return runCatching {
-            enterPictureInPictureMode(videoPiPParams(autoEnter = true))
+            enterPictureInPictureMode(videoPiPParams(autoEnter = false))
         }.getOrDefault(false)
     }
 
@@ -232,7 +243,7 @@ class MainActivity : ComponentActivity() {
         // Prefer Android 12+ auto-enter for seamless gesture animation.
         // On older systems, or if an OEM rejected setPiPParams(), fall
         // back to the explicit entry when leaving the activity.
-        if (isExternalPipAllowedNow() &&
+        if (isAutoPipAllowedNow() &&
             !videoInPictureInPicture && autoPictureInPictureEligible &&
             (Build.VERSION.SDK_INT < Build.VERSION_CODES.S ||
                 !autoPipParamsApplied) &&
@@ -288,28 +299,37 @@ class MainActivity : ComponentActivity() {
 private fun HongguoApp(model: DramaViewModel = viewModel()) {
     val state by model.state.collectAsStateWithLifecycle()
     val appContext = LocalContext.current
-    var externalPipEnabled by remember(appContext) {
-        mutableStateOf(readExternalPipEnabled(appContext))
+    var autoPipEnabled by remember(appContext) {
+        mutableStateOf(readAutoPipEnabled(appContext))
     }
-    var externalPipStatus by remember(appContext) {
+    var manualPipButtonVisible by remember(appContext) {
+        mutableStateOf(readManualPipButtonVisible(appContext))
+    }
+    val setManualPipButtonVisible: (Boolean) -> Unit = { visible ->
+        manualPipButtonVisible = visible
+        appContext.getSharedPreferences(
+            EXTERNAL_PIP_PREFERENCES, Context.MODE_PRIVATE
+        ).edit().putBoolean(MANUAL_PIP_BUTTON_VISIBLE, visible).apply()
+    }
+    var pipSystemStatus by remember(appContext) {
         mutableStateOf(VideoPiPAccess.status(appContext))
     }
-    val setExternalPipEnabled: (Boolean) -> Unit = { enabled ->
-        externalPipStatus = VideoPiPAccess.status(appContext)
-        if (enabled && externalPipStatus == VideoPiPAccess.Status.UNSUPPORTED) {
+    val setAutoPipEnabled: (Boolean) -> Unit = { enabled ->
+        pipSystemStatus = VideoPiPAccess.status(appContext)
+        if (enabled && pipSystemStatus == VideoPiPAccess.Status.UNSUPPORTED) {
             Toast.makeText(appContext, "此设备不支持系统画中画", Toast.LENGTH_SHORT).show()
         } else {
-            externalPipEnabled = enabled
+            autoPipEnabled = enabled
             appContext.getSharedPreferences(
                 EXTERNAL_PIP_PREFERENCES, Context.MODE_PRIVATE
-            ).edit().putBoolean(EXTERNAL_PIP_ENABLED, enabled).apply()
+            ).edit().putBoolean(AUTO_PIP_ENABLED, enabled).apply()
             if (!enabled) {
                 // Disable system auto-enter synchronously; do not wait for
                 // Compose SideEffect or the next playback-state event.
                 (appContext as? MainActivity)
                     ?.updateVideoPictureInPictureEligibility(false)
             }
-            if (enabled && externalPipStatus == VideoPiPAccess.Status.BLOCKED) {
+            if (enabled && pipSystemStatus == VideoPiPAccess.Status.BLOCKED) {
                 (appContext as? MainActivity)?.openVideoPictureInPictureSettings()
             }
         }
@@ -341,7 +361,7 @@ private fun HongguoApp(model: DramaViewModel = viewModel()) {
         val observer = LifecycleEventObserver { _, event ->
             if (event == Lifecycle.Event.ON_RESUME) {
                 model.recoverPlaybackAfterServiceLoss()
-                externalPipStatus = VideoPiPAccess.status(appContext)
+                pipSystemStatus = VideoPiPAccess.status(appContext)
             }
         }
         lifecycleOwner.lifecycle.addObserver(observer)
@@ -459,7 +479,7 @@ private fun HongguoApp(model: DramaViewModel = viewModel()) {
         val selectedVid = state.detail?.episodes
             ?.getOrNull(state.episodeIndex)?.vid
         mainActivity?.updateVideoPictureInPictureEligibility(
-            externalPipEnabled && darkPlayer &&
+            autoPipEnabled && darkPlayer &&
                 VideoPiPPolicy.canAutoEnter(
                 hasDetail = state.detail != null,
                 preparingDetail = state.preparingDetail,
@@ -595,9 +615,11 @@ private fun HongguoApp(model: DramaViewModel = viewModel()) {
                                             model.exitFeedToEpisode(episodeIndex)
                                         }
                                     },
-                                    externalPipEnabled = externalPipEnabled,
-                                    externalPipStatus = externalPipStatus,
-                                    onExternalPipEnabled = setExternalPipEnabled)
+                                    autoPipEnabled = autoPipEnabled,
+                                    manualPipButtonVisible = manualPipButtonVisible,
+                                    pipSystemStatus = pipSystemStatus,
+                                    onAutoPipEnabled = setAutoPipEnabled,
+                                    onManualPipButtonVisible = setManualPipButtonVisible)
                             }
                         AppShellNavigationPolicy.shouldShowLoading(state, primaryTab) &&
                             !searchLandingOpen -> {

@@ -73,11 +73,13 @@ internal fun PlaybackExperienceSheet(
     model: DramaViewModel,
     speed: Float,
     fillVideo: Boolean,
-    externalPipEnabled: Boolean,
-    externalPipStatus: VideoPiPAccess.Status,
-    onExternalPipEnabled: (Boolean) -> Unit,
+    autoPipEnabled: Boolean,
+    manualPipButtonVisible: Boolean,
+    pipSystemStatus: VideoPiPAccess.Status,
+    onAutoPipEnabled: (Boolean) -> Unit,
+    onManualPipButtonVisible: (Boolean) -> Unit,
     onOpenPipSettings: () -> Unit,
-    onTestExternalPip: () -> Unit,
+    onTestManualPip: () -> Unit,
     onDismiss: () -> Unit,
     onSpeed: (Float) -> Unit,
     onFillVideo: (Boolean) -> Unit,
@@ -140,15 +142,22 @@ internal fun PlaybackExperienceSheet(
                             )
                             HorizontalDivider(color = HongguoColors.divider)
                             HongguoToggleRow(
-                                title = "应用外小窗播放",
-                                checked = externalPipEnabled,
-                                onCheckedChange = onExternalPipEnabled,
+                                title = "离开应用自动小窗",
+                                checked = autoPipEnabled,
+                                onCheckedChange = onAutoPipEnabled,
                                 tag = "player_external_pip_enabled",
-                                description = if (externalPipEnabled)
-                                    "已开启：播放时离开应用可自动进入系统小窗"
-                                else "已关闭：即使系统已允许画中画，也不会自动显示小窗",
+                                description = if (autoPipEnabled)
+                                    "已开启：播放中离开应用时自动进入系统画中画"
+                                else "已关闭：不自动进入小窗，不影响手动小窗按钮",
                             )
-                            when (externalPipStatus) {
+                            HongguoToggleRow(
+                                title = "显示手动小窗按钮",
+                                checked = manualPipButtonVisible,
+                                onCheckedChange = onManualPipButtonVisible,
+                                tag = "player_manual_pip_button_visible",
+                                description = "控制播放器顶部的画中画图标，与自动小窗独立",
+                            )
+                            when (pipSystemStatus) {
                                 VideoPiPAccess.Status.BLOCKED -> {
                                     Text(
                                         "系统未允许红果使用画中画，应用内开关不能覆盖系统权限。",
@@ -181,18 +190,17 @@ internal fun PlaybackExperienceSheet(
                                     )
                                 }
                                 VideoPiPAccess.Status.ALLOWED -> Text(
-                                    "系统权限已允许；小窗是否显示由上方开关决定",
+                                    "系统权限已允许；自动小窗和手动按钮分别由各自开关控制",
                                     fontSize = 11.sp,
                                     color = HongguoColors.muted,
                                     modifier = Modifier.testTag("pip_permission_allowed"),
                                 )
                             }
-                            if (externalPipEnabled &&
-                                externalPipStatus != VideoPiPAccess.Status.UNSUPPORTED &&
-                                externalPipStatus != VideoPiPAccess.Status.BLOCKED) {
+                            if (pipSystemStatus != VideoPiPAccess.Status.UNSUPPORTED &&
+                                pipSystemStatus != VideoPiPAccess.Status.BLOCKED) {
                                 HongguoPlayerSheetAction(
-                                    label = "立即测试小窗",
-                                    onClick = onTestExternalPip,
+                                    label = "测试手动小窗",
+                                    onClick = onTestManualPip,
                                     modifier = Modifier.testTag("pip_test_now"),
                                 )
                             }

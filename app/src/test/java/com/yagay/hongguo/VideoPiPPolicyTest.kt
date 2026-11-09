@@ -29,20 +29,43 @@ class VideoPiPPolicyTest {
         assertFalse(eligible(requested = ""))
     }
 
-    @Test fun userToggleDisablesPipDespiteGrantedSystemPermission() {
-        assertFalse(VideoPiPPolicy.isAllowedByUser(
+    @Test fun autoToggleDisablesOnlyAutoPipDespiteGrantedSystemPermission() {
+        assertFalse(VideoPiPPolicy.isAutoPipAllowed(
             false, VideoPiPAccess.Status.ALLOWED))
-        assertFalse(VideoPiPPolicy.isAllowedByUser(
+        assertFalse(VideoPiPPolicy.isAutoPipAllowed(
             false, VideoPiPAccess.Status.UNKNOWN))
-        assertTrue(VideoPiPPolicy.isAllowedByUser(
+        assertTrue(VideoPiPPolicy.isAutoPipAllowed(
             true, VideoPiPAccess.Status.ALLOWED))
     }
 
     @Test fun systemRestrictionStillBlocksEnabledInAppToggle() {
-        assertFalse(VideoPiPPolicy.isAllowedByUser(
+        assertFalse(VideoPiPPolicy.isAutoPipAllowed(
             true, VideoPiPAccess.Status.BLOCKED))
-        assertFalse(VideoPiPPolicy.isAllowedByUser(
+        assertFalse(VideoPiPPolicy.isAutoPipAllowed(
             true, VideoPiPAccess.Status.UNSUPPORTED))
+    }
+
+    @Test fun manualPipWorksEvenWhenAutoPipIsOff() {
+        val granted = VideoPiPAccess.Status.ALLOWED
+        assertFalse(VideoPiPPolicy.isAutoPipAllowed(false, granted))
+        assertTrue(VideoPiPPolicy.isManualEntryPermitted(granted))
+        assertTrue(VideoPiPPolicy.showManualButton(true))
+        assertFalse(VideoPiPPolicy.showManualButton(false))
+    }
+
+    @Test fun hidingManualButtonDoesNotDisableAutomaticPip() {
+        val granted = VideoPiPAccess.Status.ALLOWED
+        assertFalse(VideoPiPPolicy.showManualButton(false))
+        assertTrue(VideoPiPPolicy.isAutoPipAllowed(true, granted))
+    }
+
+    @Test fun manualEntryStillRespectsSystemPermission() {
+        assertFalse(VideoPiPPolicy.isManualEntryPermitted(
+            VideoPiPAccess.Status.BLOCKED))
+        assertFalse(VideoPiPPolicy.isManualEntryPermitted(
+            VideoPiPAccess.Status.UNSUPPORTED))
+        assertTrue(VideoPiPPolicy.isManualEntryPermitted(
+            VideoPiPAccess.Status.UNKNOWN))
     }
 
     @Test fun noActiveSourceOrDetailsDoesNotAutoEnter() {
