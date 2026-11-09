@@ -176,6 +176,65 @@ class DramaViewModel(application: Application) : AndroidViewModel(application) {
         mutable.update { it.copy(hiddenRecommendationIds = emptySet()) }
     }
 
+    fun diskCacheEnabled(): Boolean =
+        NativeDiskVideoCache.enabled(getApplication())
+
+    fun wifiBackgroundPreloadEnabled(): Boolean =
+        NativeDiskVideoCache.wifiPreload(getApplication())
+
+    fun mobileBackgroundPreloadEnabled(): Boolean =
+        NativeDiskVideoCache.mobilePreload(getApplication())
+
+    fun diskCacheSizeMiB(): Long = NativeDiskVideoCache.sizeBytes() / (1024 * 1024)
+
+    fun setDiskCacheEnabled(enabled: Boolean) {
+        prefs.edit().putBoolean("disk_cache_enabled", enabled).apply()
+        diagnostics.record("DISK_CACHE", if (enabled) "ENABLED" else "DISABLED")
+        if (enabled) viewModelScope.launch(Dispatchers.IO) {
+            NativeDiskVideoCache.prepare(getApplication())
+        }
+    }
+
+    fun setWifiBackgroundPreload(enabled: Boolean) {
+        prefs.edit().putBoolean("preload_wifi", enabled).apply()
+        diagnostics.record("DISK_CACHE",
+            if (enabled) "WIFI_PREFETCH_ON" else "WIFI_PREFETCH_OFF")
+        if (!enabled) {
+            clearPreloadedNext()
+            clearPreloadedLater()
+            feedPrefetchJob?.cancel()
+            clearReelWarmVideo()
+        } else if (NativeDiskVideoCache.mayBackgroundPreload(getApplication()))
+            prepareUpcomingPlayback(state.value)
+    }
+
+    fun setMobileBackgroundPreload(enabled: Boolean) {
+        prefs.edit().putBoolean("preload_mobile", enabled).apply()
+        diagnostics.record("DISK_CACHE",
+            if (enabled) "METERED_PREFETCH_ON" else "METERED_PREFETCH_OFF")
+        if (!enabled && !NativeDiskVideoCache.mayBackgroundPreload(getApplication())) {
+            clearPreloadedNext()
+            clearPreloadedLater()
+            feedPrefetchJob?.cancel()
+            clearReelWarmVideo()
+        } else if (NativeDiskVideoCache.mayBackgroundPreload(getApplication()))
+            prepareUpcomingPlayback(state.value)
+    }
+
+    fun clearDiskVideoCache() {
+        if (BackgroundPlaybackService.playerFlow.value?.currentMediaItem != null) {
+            mutable.update { it.copy(settingsMessage = "请先关闭播放器再清理视频缓存") }
+            return
+        }
+        viewModelScope.launch {
+            withContext(Dispatchers.IO) {
+                NativeDiskVideoCache.clear(getApplication())
+            }
+            diagnostics.record("DISK_CACHE", "USER_CLEARED")
+            mutable.update { it.copy(settingsMessage = "已清理磁盘视频缓存") }
+        }
+    }
+
     fun setPreloadNext(enabled: Boolean) {
         prefs.edit().putBoolean("preload_next_episode", enabled).apply()
         mutable.update { it.copy(preloadNext = enabled) }
@@ -450,6 +509,7 @@ class DramaViewModel(application: Application) : AndroidViewModel(application) {
     private fun preloadFollowingEpisode() {
         val s = state.value
         if (!s.preloadNext ||
+            !NativeDiskVideoCache.mayBackgroundPreload(getApplication()) ||
             (source != null && s.navigation.origin != PlaybackOrigin.SWIPE_FEED)) return
         val next = s.detail?.episodes?.getOrNull(s.episodeIndex + 1)?.vid ?: return
         if (next == preloadedNextVid && preloadedNextQuality == s.qualityLimit) {
@@ -528,6 +588,11 @@ class DramaViewModel(application: Application) : AndroidViewModel(application) {
                                     isActivePreloadJobForEpisode(next, quality, s.preloadBufferMiB)
                                 }
                             }
+                            NativeDiskVideoCache.warm(
+                                getApplication(), ready, next, quality, targetBytes) {
+                                    isActivePreloadJobForEpisode(
+                                        next, quality, s.preloadBufferMiB)
+                                }
                             diagnostics.record("PLAYBACK", "NEXT_VIDEO_WARMED")
                         } catch (cancel: CancellationException) { throw cancel }
                         catch (_: Exception) {
@@ -587,6 +652,7 @@ class DramaViewModel(application: Application) : AndroidViewModel(application) {
     /** Prepare N+2 only after N+1 is ready; never hold a full episode here. */
     private fun preloadFurtherEpisode(snapshot: AppState) {
         if (!snapshot.preloadNext || snapshot.offlinePlaybackUri != null ||
+            !NativeDiskVideoCache.mayBackgroundPreload(getApplication()) ||
             (source != null && snapshot.navigation.origin != PlaybackOrigin.SWIPE_FEED)) return
         val detail = snapshot.detail ?: return
         val next = detail.episodes.getOrNull(snapshot.episodeIndex + 1)?.vid ?: return
@@ -628,6 +694,9 @@ class DramaViewModel(application: Application) : AndroidViewModel(application) {
                                             ?.currentMediaItem?.mediaId == later)
                             }
                         }
+                        NativeDiskVideoCache.warm(
+                            getApplication(), ready, later, quality,
+                            VideoPreloadPolicy.LATER_BYTES)
                         diagnostics.record("PLAYBACK", "LATER_VIDEO_WARMED")
                     } catch (cancel: CancellationException) { throw cancel }
                     catch (_: Exception) {
@@ -662,6 +731,7 @@ class DramaViewModel(application: Application) : AndroidViewModel(application) {
         val detail = snapshot.detail ?: return
         val currentEpisode = detail.episodes.getOrNull(snapshot.episodeIndex) ?: return
         if (!snapshot.preloadNext || snapshot.offlinePlaybackUri != null ||
+            !NativeDiskVideoCache.mayBackgroundPreload(getApplication()) ||
             (firstFrameFor != currentEpisode.vid && snapshot.playbackUrl == null)) return
 
         val episodeDecision = SeamlessPrefetchPolicy.choose(
@@ -1286,7 +1356,8 @@ class DramaViewModel(application: Application) : AndroidViewModel(application) {
 
     private fun prefetchFollowingFeedItem(index: Int) {
         val current = state.value
-        if (!current.preloadNext || !mayPreloadFollowingDrama(current)) return
+        if (!current.preloadNext || !mayPreloadFollowingDrama(current) ||
+            !NativeDiskVideoCache.mayBackgroundPreload(getApplication())) return
         val next = current.feedItems.drop(index + 1)
             .firstOrNull { it.id !in current.hiddenRecommendationIds } ?: return
         if (reelWarmSeriesId == next.id && reelWarmVideo != null) return
@@ -1363,6 +1434,12 @@ class DramaViewModel(application: Application) : AndroidViewModel(application) {
                                             ?.currentMediaItem?.mediaId == first)
                             }
                         }
+                        NativeDiskVideoCache.warm(
+                            getApplication(), ready, first, quality, targetBytes) {
+                                isUpcomingReel(next.id) ||
+                                    BackgroundPlaybackService.playerFlow.value
+                                        ?.currentMediaItem?.mediaId == first
+                            }
                         diagnostics.record("FEED", "NEXT_VIDEO_WARMED")
                     } catch (cancel: CancellationException) { throw cancel }
                     catch (_: Exception) {
@@ -3003,8 +3080,15 @@ class DramaViewModel(application: Application) : AndroidViewModel(application) {
                     val nativeUri = "native://episode/" + vid
                     mutable.update { it.copy(playbackUrl = nativeUri,
                         playing = true) }
-                    if (serviceStarted) launchBackgroundMedia(
-                        detail, index, nativeUri, video, checkpoint, version)
+                    if (serviceStarted) {
+                        // Scan/load the disk index on IO, never during the
+                        // service's Media3 configuration on the main thread.
+                        withContext(Dispatchers.IO) {
+                            NativeDiskVideoCache.prepare(getApplication())
+                        }
+                        if (version == detailId) launchBackgroundMedia(
+                            detail, index, nativeUri, video, checkpoint, version)
+                    }
                 }
                 diagnostics.record("PLAYBACK", "SOURCE_READY", elapsed(started))
                 // Begin preparing the upcoming stream while the current item
