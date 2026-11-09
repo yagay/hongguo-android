@@ -639,7 +639,7 @@ class DramaViewModel(application: Application) : AndroidViewModel(application) {
         val detail = snapshot.detail ?: return
         val currentEpisode = detail.episodes.getOrNull(snapshot.episodeIndex) ?: return
         if (!snapshot.preloadNext || snapshot.offlinePlaybackUri != null ||
-            firstFrameFor != currentEpisode.vid) return
+            (firstFrameFor != currentEpisode.vid && snapshot.playbackUrl == null)) return
 
         val episodeDecision = SeamlessPrefetchPolicy.choose(
             enabled = snapshot.preloadNext,
@@ -1375,6 +1375,7 @@ class DramaViewModel(application: Application) : AndroidViewModel(application) {
                 .firstOrNull { it.id !in current.hiddenRecommendationIds }?.id == seriesId
     }
     private var firstFrameFor: String? = null
+    private var playbackStartAtMs = 0L
     private var startEpisodeHint: Int? = null
 
     private val mutable = MutableStateFlow(
@@ -2877,8 +2878,13 @@ class DramaViewModel(application: Application) : AndroidViewModel(application) {
                 vid, state.value.qualityLimit)
         diagnostics.record("PLAYBACK",
             if (cachedNative != null) "PREFETCH_CACHE_HIT" else "PREFETCH_CACHE_MISS")
-        if (cachedNative != null)
+        if (cachedNative != null) {
             diagnostics.record("PLAYBACK", "PREPARED_STREAM_REUSED")
+            // Count locally available prefix, not merely a successful model lookup.
+            val prefixKiB = runCatching { cachedNative.cachedBytes(0L) / 1024 }
+                .getOrDefault(0)
+            diagnostics.record("PLAYBACK", "CACHE_PREFIX_KIB_${prefixKiB}")
+        }
         if (cachedNative != null && cachedNative === preloadedLaterVideo) {
             preloadLaterJob?.cancel()
             preloadLaterJob = null
@@ -2908,6 +2914,7 @@ class DramaViewModel(application: Application) : AndroidViewModel(application) {
         // the comment action, without delaying playback address preparation.
         loadComments(reset = true)
         diagnostics.record("PLAYBACK", "START")
+        playbackStartAtMs = android.os.SystemClock.elapsedRealtime()
         detailJob = viewModelScope.launch {
             val started = System.nanoTime()
             try {
@@ -2947,7 +2954,24 @@ class DramaViewModel(application: Application) : AndroidViewModel(application) {
                 // is buffering. The job checks its generation after a grace
                 // period so it cannot replace a rapid swipe's target.
                 if (version == detailId && api == null) {
-                    preloadFollowingEpisode()
+                    val latest = state.value
+                    if (index < detail.episodes.lastIndex) {
+                        preloadFollowingEpisode()
+                    } else if (latest.preloadNext && latest.autoPlayNext) {
+                        // Resolve official continuation during the finale itself,
+                        // not in the ENDED callback. The request runs after a
+                        // short grace interval to protect current startup.
+                        viewModelScope.launch {
+                            delay(1_200)
+                            if (version == detailId &&
+                                state.value.detail?.drama?.id == detail.drama.id &&
+                                state.value.episodeIndex == index &&
+                                state.value.playbackUrl != null) {
+                                diagnostics.record("REELS", "FINALE_EARLY_WARMUP")
+                                prepareUpcomingPlayback(state.value)
+                            }
+                        }
+                    }
                 }
             } catch (e: CancellationException) {
                 if (cachedNative != null && activeNativeVideo !== cachedNative) cachedNative.close()
@@ -3025,6 +3049,8 @@ class DramaViewModel(application: Application) : AndroidViewModel(application) {
             diagnostics.record("REELS", "NEXT_DRAMA_FIRST_FRAME")
         }
         diagnostics.record("MEDIA", "FIRST_FRAME")
+        if (playbackStartAtMs > 0L) diagnostics.record("PLAYBACK",
+            "SWITCH_TO_FIRST_FRAME", android.os.SystemClock.elapsedRealtime() - playbackStartAtMs)
         library.record(s.detail.drama, ep.index)
         rememberLastPlaybackMode(s.feedMode)
         updateLibrary()
