@@ -7,6 +7,7 @@ import androidx.compose.runtime.Composable
 import androidx.compose.runtime.DisposableEffect
 import androidx.compose.runtime.LaunchedEffect
 import androidx.compose.runtime.getValue
+import androidx.compose.runtime.mutableIntStateOf
 import androidx.compose.runtime.mutableLongStateOf
 import androidx.compose.runtime.mutableStateOf
 import androidx.compose.runtime.remember
@@ -18,6 +19,7 @@ import androidx.compose.ui.platform.testTag
 import androidx.compose.ui.viewinterop.AndroidView
 import androidx.lifecycle.compose.collectAsStateWithLifecycle
 import androidx.media3.exoplayer.ExoPlayer
+import androidx.media3.common.Player
 import androidx.media3.ui.PlayerView
 import androidx.media3.ui.AspectRatioFrameLayout
 import kotlinx.coroutines.delay
@@ -35,6 +37,9 @@ internal class ReelPlaybackControls {
     var positionMs by mutableLongStateOf(0L)
     var durationMs by mutableLongStateOf(0L)
     var isPlaying by mutableStateOf(false)
+    var playWhenReady by mutableStateOf(false)
+    var playbackState by mutableIntStateOf(Player.STATE_IDLE)
+    var currentMediaMatches by mutableStateOf(false)
     fun toggle() {
         player?.let { current ->
             if (current.isPlaying) current.pause()
@@ -97,6 +102,9 @@ internal fun Media3Reel(
         controls.positionMs = 0L
         controls.durationMs = 0L
         controls.isPlaying = false
+        controls.playWhenReady = false
+        controls.playbackState = Player.STATE_IDLE
+        controls.currentMediaMatches = false
         while (isActive) {
             val sample = ReelClockPolicy.sample(
                 expectedVid = expectedVid,
@@ -109,6 +117,10 @@ internal fun Media3Reel(
             controls.positionMs = sample.positionMs
             controls.durationMs = sample.durationMs
             controls.isPlaying = sample.playing
+            controls.currentMediaMatches = sample.currentItem
+            controls.playWhenReady = sample.currentItem && player?.playWhenReady == true
+            controls.playbackState = if (sample.currentItem)
+                player?.playbackState ?: Player.STATE_IDLE else Player.STATE_IDLE
             delay(250)
         }
     }

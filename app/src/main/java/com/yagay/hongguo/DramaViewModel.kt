@@ -217,7 +217,9 @@ class DramaViewModel(application: Application) : AndroidViewModel(application) {
             // Even a retry that was already queued by the series finale
             // must stop immediately when the user disables autoplay.
             pendingFeedAdvance = false
+            autoNextTargetDramaId = null
             clearFinaleAdvance()
+            mutable.update { it.copy(nextDramaTransition = NextDramaTransition.NONE) }
             // Manual episode selection remains supported, but no longer
             // issue background official requests for automatic finale play.
             cancelFinaleRecommendationWarmup()
@@ -774,6 +776,8 @@ class DramaViewModel(application: Application) : AndroidViewModel(application) {
     private var pendingFeedAdvance = false
     /** Final-episode auto-next survives empty/duplicate official responses. */
     private var finaleAdvanceFor: String? = null
+    /** Only this automatically selected drama keeps the loading indicator. */
+    private var autoNextTargetDramaId: String? = null
     private var finaleAdvanceAttempts = 0
     private var finaleAdvanceRetryJob: Job? = null
 
@@ -789,6 +793,10 @@ class DramaViewModel(application: Application) : AndroidViewModel(application) {
             clearFinaleAdvance()
             finaleAdvanceFor = seriesId
         }
+        mutable.update {
+            it.copy(nextDramaTransition = NextDramaTransition.FINDING_RECOMMENDATION)
+        }
+        diagnostics.record("REELS", "NEXT_DRAMA_LOADING_VISIBLE")
     }
 
     /**
@@ -808,6 +816,7 @@ class DramaViewModel(application: Application) : AndroidViewModel(application) {
             clearFinaleAdvance()
             mutable.update {
                 it.copy(feedLoading = false,
+                    nextDramaTransition = NextDramaTransition.UNAVAILABLE,
                     feedError = "暂时无法获取下一部推荐，点击重试或上滑继续")
             }
             return
@@ -2185,6 +2194,7 @@ class DramaViewModel(application: Application) : AndroidViewModel(application) {
         finaleRecommendationRequestFor = null
         pendingFeedAdvance = false
         clearFinaleAdvance()
+        autoNextTargetDramaId = null
         feedPrefetchJob?.cancel()
         clearReelWarmVideo()
         prefetchedFeedDetails.clear()
@@ -2207,6 +2217,7 @@ class DramaViewModel(application: Application) : AndroidViewModel(application) {
             feedLoading = false,
             feedHasMore = true,
             feedError = null,
+            nextDramaTransition = NextDramaTransition.NONE,
             preparingDetail = drama == null,
         ) }
         if (drama != null) {
@@ -2271,9 +2282,19 @@ class DramaViewModel(application: Application) : AndroidViewModel(application) {
             current.hiddenRecommendationIds)
         val selected = index?.let(current.feedItems::get)
         if (selected != null && selected.id != current.detail?.drama?.id) {
+            val automaticallyAdvancing = direction > 0 && finaleAdvanceFor != null &&
+                current.nextDramaTransition == NextDramaTransition.FINDING_RECOMMENDATION
             pendingFeedAdvance = false
             clearFinaleAdvance()
-            mutable.update { it.copy(feedIndex = index) }
+            autoNextTargetDramaId = if (automaticallyAdvancing) selected.id else null
+            mutable.update {
+                it.copy(feedIndex = index,
+                    nextDramaTransition = if (automaticallyAdvancing)
+                        NextDramaTransition.PREPARING_VIDEO
+                    else NextDramaTransition.NONE)
+            }
+            if (automaticallyAdvancing)
+                diagnostics.record("REELS", "NEXT_DRAMA_VIDEO_PREPARING")
             updateNotificationNavigation()
             localContent.rememberSwiped(selected.id)
             open(selected, resumeEp = 1, feed = true)
@@ -2407,6 +2428,8 @@ class DramaViewModel(application: Application) : AndroidViewModel(application) {
         showDetails: Boolean = false,
         origin: PlaybackOrigin = if (feed) PlaybackOrigin.SWIPE_FEED
             else PlaybackOrigin.CATALOG) {
+        val keepNextDramaPreparing = autoNextTargetDramaId == drama.id
+        autoNextTargetDramaId = null
         if (finaleAdvanceFor != null && finaleAdvanceFor != drama.id) {
             pendingFeedAdvance = false
             clearFinaleAdvance()
@@ -2494,6 +2517,9 @@ class DramaViewModel(application: Application) : AndroidViewModel(application) {
             playbackError = null,
             playbackUrl = null,
             playing = false,
+            nextDramaTransition = if (keepNextDramaPreparing)
+                NextDramaTransition.PREPARING_VIDEO
+            else NextDramaTransition.NONE,
         ) }
         diagnostics.record("DETAIL", "START")
 
@@ -2847,6 +2873,10 @@ class DramaViewModel(application: Application) : AndroidViewModel(application) {
         val ep = s.detail?.episodes?.getOrNull(s.episodeIndex) ?: return
         if (ep.vid != expectedVid || firstFrameFor == ep.vid) return
         firstFrameFor = ep.vid
+        if (s.nextDramaTransition != NextDramaTransition.NONE) {
+            mutable.update { it.copy(nextDramaTransition = NextDramaTransition.NONE) }
+            diagnostics.record("REELS", "NEXT_DRAMA_FIRST_FRAME")
+        }
         diagnostics.record("MEDIA", "FIRST_FRAME")
         library.record(s.detail.drama, ep.index)
         rememberLastPlaybackMode(s.feedMode)
@@ -2879,6 +2909,10 @@ class DramaViewModel(application: Application) : AndroidViewModel(application) {
         val ep = s.detail?.episodes?.getOrNull(s.episodeIndex) ?: return
         if (ep.vid != expectedVid || firstFrameFor == ep.vid) return
         firstFrameFor = ep.vid
+        if (s.nextDramaTransition != NextDramaTransition.NONE) {
+            mutable.update { it.copy(nextDramaTransition = NextDramaTransition.NONE) }
+            diagnostics.record("REELS", "NEXT_DRAMA_BACKGROUND_CONFIRMED")
+        }
         diagnostics.record("MEDIA", "BACKGROUND_PROGRESS_CONFIRMED")
         library.record(s.detail.drama, ep.index)
         rememberLastPlaybackMode(s.feedMode)
@@ -3152,6 +3186,7 @@ class DramaViewModel(application: Application) : AndroidViewModel(application) {
         homeFeedExcludedIds = emptySet()
         pendingFeedAdvance = false
         clearFinaleAdvance()
+        autoNextTargetDramaId = null
         officialFeedJob?.cancel()
         officialFeedGeneration++
         finaleRecommendationRequestFor = null
@@ -3178,6 +3213,7 @@ class DramaViewModel(application: Application) : AndroidViewModel(application) {
             miniPlayerVisible = false,
             feedItems = emptyList(), feedLoading = false,
             feedHasMore = false, feedError = null,
+            nextDramaTransition = NextDramaTransition.NONE,
             relatedSeries = null, relatedWorks = emptyList(),
             relatedLoading = false, relatedError = null,
             guessWorks = emptyList(), guessesLoading = false, guessesError = null,

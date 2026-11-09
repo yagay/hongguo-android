@@ -47,6 +47,7 @@ import androidx.compose.material.icons.outlined.FavoriteBorder
 import androidx.compose.material.icons.outlined.FormatListNumbered
 import androidx.compose.material.icons.outlined.Pause
 import androidx.compose.material.icons.outlined.PlayArrow
+import androidx.compose.material.icons.outlined.Replay
 import androidx.compose.material.icons.outlined.Refresh
 import androidx.compose.material.icons.outlined.Share
 import androidx.compose.material.icons.outlined.Subtitles
@@ -182,6 +183,15 @@ internal fun NativePlayer(
     val pagerRecenterPending = pagerState.currentPage != activePage &&
         !pagerState.isScrollInProgress
     val playback = remember(state.episodeIndex) { ReelPlaybackControls() }
+    var showResumeFeedback by remember(detail.drama.id, state.episodeIndex) {
+        mutableStateOf(false)
+    }
+    LaunchedEffect(showResumeFeedback) {
+        if (showResumeFeedback) {
+            delay(800)
+            showResumeFeedback = false
+        }
+    }
     var speed by remember(detail.drama.id) { mutableFloatStateOf(state.defaultPlaybackSpeed) }
     // Preserve the complete encoded frame by default. Never crop or
     // stretch video just to hide aspect-ratio letterboxing. The external
@@ -529,7 +539,11 @@ internal fun NativePlayer(
                                         onTap = {
                                             if (state.feedMode)
                                                 onEnterSeries(state.episodeIndex)
-                                            else playback.toggle()
+                                            else {
+                                                showResumeFeedback =
+                                                    !playback.isPlaying && playback.player != null
+                                                playback.toggle()
+                                            }
                                         },
                                         onDoubleTap = {
                                             if (!likedNow) model.likeIfNotAlready()
@@ -583,11 +597,105 @@ internal fun NativePlayer(
                                 tint = Color(0xFFFF6D6D),
                                 modifier = Modifier.size(92.dp))
                         }
-                        if (!clearScreenEnabled &&
-                            !playback.isPlaying && playback.positionMs > 0) {
-                            Icon(Icons.Outlined.PlayArrow, "继续播放",
-                                tint = Color.White.copy(alpha = 0.88f),
-                                modifier = Modifier.size(68.dp))
+                        val centerIndicator = PlaybackCenterIndicatorPolicy.resolve(
+                            transition = state.nextDramaTransition,
+                            hasPlaybackError = state.playbackError != null,
+                            currentMediaMatches = playback.currentMediaMatches,
+                            isPlaying = playback.isPlaying,
+                            playWhenReady = playback.playWhenReady,
+                            buffering = playback.playbackState == Player.STATE_BUFFERING,
+                            ended = playback.playbackState == Player.STATE_ENDED,
+                            hasProgress = playback.positionMs > 0L,
+                            showResumeFeedback = showResumeFeedback,
+                        )
+                        when (centerIndicator) {
+                            PlaybackCenterIndicatorPolicy.Indicator.FINDING_NEXT_DRAMA,
+                            PlaybackCenterIndicatorPolicy.Indicator.PREPARING_NEXT_VIDEO,
+                            PlaybackCenterIndicatorPolicy.Indicator.RETRY_NEXT_DRAMA -> {
+                                Column(
+                                    modifier = Modifier
+                                        .background(
+                                            Color.Black.copy(alpha = 0.65f),
+                                            RoundedCornerShape(15.dp),
+                                        )
+                                        .padding(horizontal = 17.dp, vertical = 13.dp)
+                                        .testTag("next_drama_loading_feedback"),
+                                    horizontalAlignment = Alignment.CenterHorizontally,
+                                    verticalArrangement = Arrangement.spacedBy(9.dp),
+                                ) {
+                                    if (centerIndicator ==
+                                        PlaybackCenterIndicatorPolicy.Indicator.RETRY_NEXT_DRAMA) {
+                                        Icon(
+                                            Icons.Outlined.Refresh,
+                                            contentDescription = "推荐加载失败",
+                                            tint = Color.White,
+                                            modifier = Modifier.size(28.dp),
+                                        )
+                                        Text(
+                                            "暂时无法获取下一部短剧",
+                                            color = Color.White,
+                                            fontSize = 13.sp,
+                                        )
+                                        OutlinedButton(
+                                            onClick = model::retryOfficialReels,
+                                            modifier = Modifier.testTag("next_drama_retry"),
+                                        ) { Text("重试下一部", color = Color.White) }
+                                    } else {
+                                        CircularProgressIndicator(
+                                            modifier = Modifier.size(27.dp),
+                                            color = Color.White,
+                                            strokeWidth = 2.5.dp,
+                                        )
+                                        Text(
+                                            if (centerIndicator ==
+                                                PlaybackCenterIndicatorPolicy.Indicator.FINDING_NEXT_DRAMA)
+                                                "本剧已播完 · 正在获取下一部…"
+                                            else "正在准备下一部视频…",
+                                            color = Color.White,
+                                            fontSize = 13.sp,
+                                            fontWeight = FontWeight.Medium,
+                                        )
+                                        Text(
+                                            "准备好后将自动播放",
+                                            color = Color.White.copy(alpha = 0.8f),
+                                            fontSize = 11.sp,
+                                        )
+                                    }
+                                }
+                            }
+                            PlaybackCenterIndicatorPolicy.Indicator.BUFFERING ->
+                                CircularProgressIndicator(
+                                    color = Color.White,
+                                    modifier = Modifier.size(30.dp)
+                                        .testTag("video_buffering_indicator"),
+                                    strokeWidth = 2.5.dp,
+                                )
+                            PlaybackCenterIndicatorPolicy.Indicator.PLAY,
+                            PlaybackCenterIndicatorPolicy.Indicator.REPLAY,
+                            PlaybackCenterIndicatorPolicy.Indicator.PAUSE_FEEDBACK ->
+                                if (!clearScreenEnabled) {
+                                    val icon = when (centerIndicator) {
+                                        PlaybackCenterIndicatorPolicy.Indicator.REPLAY ->
+                                            Icons.Outlined.Replay
+                                        PlaybackCenterIndicatorPolicy.Indicator.PAUSE_FEEDBACK ->
+                                            Icons.Outlined.Pause
+                                        else -> Icons.Outlined.PlayArrow
+                                    }
+                                    Icon(
+                                        icon,
+                                        contentDescription = when (centerIndicator) {
+                                            PlaybackCenterIndicatorPolicy.Indicator.REPLAY ->
+                                                "重新播放"
+                                            PlaybackCenterIndicatorPolicy.Indicator.PAUSE_FEEDBACK ->
+                                                "正在播放"
+                                            else -> "继续播放"
+                                        },
+                                        tint = Color.White.copy(alpha = 0.9f),
+                                        modifier = Modifier.size(64.dp)
+                                            .testTag("video_center_playback_indicator"),
+                                    )
+                                }
+                            PlaybackCenterIndicatorPolicy.Indicator.NONE -> Unit
                         }
                     } else if (state.playbackError == null) {
                         // The next media item may already be prepared. Do not
@@ -609,8 +717,23 @@ internal fun NativePlayer(
                             delay(450)
                             showDelayedSpinner = true
                         }
-                        if (showDelayedSpinner)
-                            CircularProgressIndicator(color = Color.White)
+                        if (showDelayedSpinner) {
+                            Column(
+                                modifier = Modifier.testTag("video_source_loading_feedback"),
+                                horizontalAlignment = Alignment.CenterHorizontally,
+                                verticalArrangement = Arrangement.spacedBy(10.dp),
+                            ) {
+                                CircularProgressIndicator(color = Color.White)
+                                if (state.nextDramaTransition ==
+                                    NextDramaTransition.PREPARING_VIDEO) {
+                                    Text(
+                                        "正在准备下一部视频…",
+                                        color = Color.White,
+                                        fontSize = 13.sp,
+                                    )
+                                }
+                            }
+                        }
                     }
                     state.playbackError?.let { error ->
                         Column(

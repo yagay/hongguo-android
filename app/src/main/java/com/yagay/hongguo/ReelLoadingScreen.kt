@@ -77,11 +77,17 @@ internal fun ReelLoadingScreen(
     val failed = error != null && !loading
     val title = when {
         failed -> "加载失败"
+        state.nextDramaTransition == NextDramaTransition.FINDING_RECOMMENDATION ->
+            "本剧已播完 · 正在获取下一部"
+        state.nextDramaTransition == NextDramaTransition.PREPARING_VIDEO ->
+            "正在准备下一部视频"
         drama != null -> "正在准备播放"
         else -> "正在获取短剧"
     }
     val description = when {
         failed -> "网络或内容接口暂时不可用"
+        state.nextDramaTransition != NextDramaTransition.NONE ->
+            "下一部准备好后会自动开始播放"
         preparingSeries && drama != null -> "正在读取这部短剧的分集信息"
         drama != null -> "正在连接视频资源"
         else -> "正在读取官方推荐"

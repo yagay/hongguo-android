@@ -98,6 +98,8 @@ data class AppState(
     val feedLoading: Boolean = false,
     val feedHasMore: Boolean = false,
     val feedError: String? = null,
+    /** User-visible handoff after the final episode; reset on next first frame. */
+    val nextDramaTransition: NextDramaTransition = NextDramaTransition.NONE,
     val episodeIndex: Int = 0,
     val preparingDetail: Boolean = false,
     val relatedSeries: String? = null,
