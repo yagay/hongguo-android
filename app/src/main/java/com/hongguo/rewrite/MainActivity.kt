@@ -27,7 +27,13 @@ import androidx.compose.foundation.layout.Spacer
 import androidx.compose.foundation.layout.fillMaxSize
 import androidx.compose.foundation.layout.fillMaxWidth
 import androidx.compose.foundation.layout.imePadding
-import androidx.compose.foundation.layout.safeDrawingPadding
+import androidx.compose.foundation.layout.WindowInsets
+import androidx.compose.foundation.layout.WindowInsetsSides
+import androidx.compose.foundation.layout.only
+import androidx.compose.foundation.layout.safeDrawing
+import androidx.compose.foundation.layout.windowInsetsBottomHeight
+import androidx.compose.foundation.layout.windowInsetsPadding
+import androidx.compose.foundation.layout.windowInsetsTopHeight
 import androidx.compose.foundation.layout.padding
 import androidx.compose.foundation.layout.size
 import androidx.compose.material3.AlertDialog
@@ -407,7 +413,21 @@ private fun HongguoApp(model: DramaViewModel = viewModel()) {
                 else HongguoColors.background
             )
         ) {
-            Column(Modifier.fillMaxSize().safeDrawingPadding().imePadding()) {
+            // Paint the real system-bar areas with the adjoining app chrome.
+            // Content owns only the *horizontal* safe insets; top and bottom
+            // are separately measured to avoid double padding in 3-button
+            // navigation, gesture navigation and display-cutout modes.
+            Column(Modifier.fillMaxSize().imePadding()) {
+                Spacer(Modifier.fillMaxWidth()
+                    .background(
+                        if (darkPlayer) HongguoColors.playerBackground
+                        else HongguoColors.surface
+                    )
+                    .windowInsetsTopHeight(WindowInsets.safeDrawing))
+                Column(Modifier.weight(1f).fillMaxWidth()
+                    .windowInsetsPadding(
+                        WindowInsets.safeDrawing.only(WindowInsetsSides.Horizontal)
+                    )) {
                 Box(Modifier.weight(1f)) {
                     BackHandler(
                         enabled = state.modal != Modal.NONE ||
@@ -533,6 +553,19 @@ private fun HongguoApp(model: DramaViewModel = viewModel()) {
                         onSelect = ::selectPrimaryTab,
                     )
                 }
+                }
+                // Unlike the old safeDrawingPadding(), the bottom system
+                // navigation area now uses the SAME background as the app's
+                // navigation bar instead of the catalog/body background.
+                Spacer(Modifier.fillMaxWidth()
+                    .background(
+                        when {
+                            showPrimaryNavigation -> HongguoColors.surface
+                            darkPlayer -> HongguoColors.playerBackground
+                            else -> HongguoColors.background
+                        }
+                    )
+                    .windowInsetsBottomHeight(WindowInsets.safeDrawing))
             }
         }
         if (confirmExitFeed) {
