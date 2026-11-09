@@ -15,6 +15,7 @@ import androidx.media3.database.StandaloneDatabaseProvider
 import com.hongguotv.core.RemoteVideo
 import java.io.File
 import java.security.MessageDigest
+import java.util.WeakHashMap
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.currentCoroutineContext
 import kotlinx.coroutines.ensureActive
@@ -38,6 +39,9 @@ internal object NativeDiskVideoCache {
     @Volatile private var lastPruneMs = 0L
     private val lock = Any()
     @Volatile private var cache: SimpleCache? = null
+    // Avoid ever reusing stale bytes if a provider replaces a video while
+    // preserving its ID and file length. Keys are owned by the video handle.
+    private val registeredKeys = WeakHashMap<RemoteVideo, String>()
 
     fun enabled(context: Context): Boolean =
         context.getSharedPreferences(PREFS, Context.MODE_PRIVATE)
@@ -70,6 +74,39 @@ internal object NativeDiskVideoCache {
         return MessageDigest.getInstance("SHA-256")
             .digest(input).joinToString("") { "%02x".format(it) }
     }
+
+    internal fun fingerprintedKey(
+        vid: String, quality: Int, bytes: Long, header: ByteArray,
+    ): String {
+        val digest = MessageDigest.getInstance("SHA-256")
+        val fingerprint = digest.digest(header).joinToString("") {
+            "%02x".format(it)
+        }
+        return digest.digest(
+            (key(vid, quality, bytes) + "|" + fingerprint).toByteArray(Charsets.UTF_8)
+        ).joinToString("") { "%02x".format(it) }
+    }
+
+    suspend fun register(video: RemoteVideo, vid: String, quality: Int) =
+        withContext(Dispatchers.IO) {
+            synchronized(registeredKeys) {
+                if (registeredKeys.containsKey(video)) return@withContext
+            }
+            val prefixLength = minOf(video.total, 1024L).toInt()
+            if (prefixLength <= 0) return@withContext
+            // A missing or unreadable prefix must NOT fall back to an unsafe
+            // URL-only key. Media3 can still play via NativeVideoDataSource.
+            val header = runCatching { video.read(0L, prefixLength) }
+                .getOrNull()?.takeIf { it.size == prefixLength }
+                ?: return@withContext
+            synchronized(registeredKeys) {
+                registeredKeys[video] =
+                    fingerprintedKey(vid, quality, video.total, header)
+            }
+        }
+
+    fun streamKey(video: RemoteVideo): String? =
+        synchronized(registeredKeys) { registeredKeys[video] }
 
     /** Must only be called on Dispatchers.IO (or a dedicated worker). */
     fun prepare(context: Context, ignoreDisabled: Boolean = false): Boolean {
@@ -131,7 +168,7 @@ internal object NativeDiskVideoCache {
     ): DataSource.Factory {
         val upstream = DataSource.Factory { NativeVideoDataSource(video) }
         val ready = cache
-        return if (enabled(context) && ready != null)
+        return if (enabled(context) && ready != null && streamKey(video) != null)
             CacheDataSource.Factory().setCache(ready)
                 .setUpstreamDataSourceFactory(upstream)
                 .setFlags(CacheDataSource.FLAG_IGNORE_CACHE_ON_ERROR)
@@ -158,12 +195,14 @@ internal object NativeDiskVideoCache {
     ): Unit = withContext(Dispatchers.IO) {
         if (!enabled(context) || !mayBackgroundPreload(context) ||
             !useful() || !prepare(context)) return@withContext
+        register(video, vid, quality)
+        val safeKey = streamKey(video) ?: return@withContext
         val length = minOf(requestedBytes.toLong(), video.total)
         if (length <= 0) return@withContext
         val source = factory(context, video).createDataSource()
         val spec = DataSpec.Builder()
             .setUri(Uri.parse("native://episode/$vid"))
-            .setKey(key(vid, quality, video.total))
+            .setKey(safeKey)
             .setPosition(0L).setLength(length).build()
         val buffer = ByteArray(64 * 1024)
         try {
