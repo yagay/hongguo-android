@@ -225,10 +225,12 @@ internal fun NativePlayer(
     }
     val clearScreenEnabled = hiddenChromeMask == 63
     var clearScreenMenuOpen by remember { mutableStateOf(false) }
-    // Signed seek feedback: negative = rewind, positive = fast-forward.
-    // Kept separate from clear-screen chrome, so it remains readable even
-    // when all normal video overlays are hidden.
-    var edgeSeekFeedback by remember { mutableStateOf<Int?>(null) }
+    // Press-and-hold on either video edge temporarily plays forward at 2x.
+    // Do not change the selected/persisted speed; releasing restores it.
+    // The feedback stays visible even when clear-screen mode is active.
+    var edgeFastForwardSide by remember(detail.drama.id, state.episodeIndex) {
+        mutableStateOf<Int?>(null)
+    }
     val likedNow by rememberUpdatedState(
         detail.drama.id in state.likedDramaIds
     )
@@ -463,6 +465,7 @@ internal fun NativePlayer(
         selected?.let { playingEpisode ->
             Media3Reel(
                 speed = speed,
+                fastForwardHeld = edgeFastForwardSide != null,
                 fillVideo = fillVideo,
                 controls = playback,
                 expectedVid = playingEpisode.vid,
@@ -505,46 +508,42 @@ internal fun NativePlayer(
                                             showHeart = true
                                         },
                                         onLongPress = { touch ->
-                                            val edgeZone = size.width * 0.22f
+                                            val side = HoldFastForwardPolicy.sideForTouch(
+                                                touch.x, size.width.toFloat()
+                                            )
                                             when {
-                                                touch.x < edgeZone && playback.durationMs > 0L -> {
-                                                    playback.seekTo(playback.positionMs - 10_000L)
-                                                    edgeSeekFeedback = -10
-                                                }
-                                                touch.x > size.width - edgeZone &&
-                                                    playback.durationMs > 0L -> {
-                                                    playback.seekTo(playback.positionMs + 10_000L)
-                                                    edgeSeekFeedback = 10
-                                                }
-                                                else -> clearScreenMenuOpen = true
+                                                side != null && playback.player?.isPlaying == true ->
+                                                    edgeFastForwardSide = side
+                                                side == null -> clearScreenMenuOpen = true
                                             }
                                         },
                                         onPress = {
-                                            tryAwaitRelease()
-                                            // Briefly retain feedback after lift-off so
-                                            // a short press is still perceptible.
-                                            delay(350)
-                                            edgeSeekFeedback = null
+                                            try {
+                                                tryAwaitRelease()
+                                            } finally {
+                                                // Also restore after a cancelled gesture,
+                                                // a page change or a disappearing Surface.
+                                                edgeFastForwardSide = null
+                                            }
                                         },
                                     )
                                 },
                         )
-                        edgeSeekFeedback?.let { seconds ->
+                        edgeFastForwardSide?.let { side ->
                             Box(
                                 Modifier.align(
-                                    if (seconds < 0) Alignment.CenterStart
+                                    if (side < 0) Alignment.CenterStart
                                     else Alignment.CenterEnd
                                 ).padding(horizontal = 15.dp)
                                     .background(
                                         Color.Black.copy(alpha = 0.43f),
                                         RoundedCornerShape(20.dp),
                                     ).padding(horizontal = 12.dp, vertical = 7.dp)
-                                    .testTag("reel_edge_seek_feedback"),
+                                    .testTag("reel_edge_fast_forward_feedback"),
                                 contentAlignment = Alignment.Center,
                             ) {
                                 Text(
-                                    if (seconds < 0) "↶ 快退 10 秒"
-                                    else "快进 10 秒 ↷",
+                                    "▶▶ 2× 快进",
                                     color = Color.White, fontSize = 12.sp,
                                     fontWeight = FontWeight.Medium,
                                 )
