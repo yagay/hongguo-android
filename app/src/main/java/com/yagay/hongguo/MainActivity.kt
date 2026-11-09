@@ -119,7 +119,7 @@ class MainActivity : ComponentActivity() {
         BackgroundNavigationPolicy.Availability(false, false)
 
     /** Keep PiP controls synchronized with the selected episode or reel. */
-    fun updatePipSkipAvailability(value: BackgroundNavigationPolicy.Availability) {
+    internal fun updatePipSkipAvailability(value: BackgroundNavigationPolicy.Availability) {
         if (value == pipSkipAvailability) return
         pipSkipAvailability = value
         if (videoInPictureInPicture) {
