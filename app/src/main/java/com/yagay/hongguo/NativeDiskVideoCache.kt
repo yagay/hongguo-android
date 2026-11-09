@@ -34,6 +34,8 @@ internal object NativeDiskVideoCache {
     private const val PREFS = "web_rewrite_settings"
     private const val MAX_BYTES = 2L * 1024 * 1024 * 1024
     private const val AGE_MS = 7L * 24 * 60 * 60 * 1000
+    private const val PRUNE_INTERVAL_MS = 60L * 60 * 1000
+    @Volatile private var lastPruneMs = 0L
     private val lock = Any()
     @Volatile private var cache: SimpleCache? = null
 
@@ -70,9 +72,12 @@ internal object NativeDiskVideoCache {
     }
 
     /** Must only be called on Dispatchers.IO (or a dedicated worker). */
-    fun prepare(context: Context): Boolean {
-        if (!enabled(context)) return false
-        if (cache != null) return true
+    fun prepare(context: Context, ignoreDisabled: Boolean = false): Boolean {
+        if (!ignoreDisabled && !enabled(context)) return false
+        if (cache != null) {
+            maybePrune(cache!!)
+            return true
+        }
         synchronized(lock) {
             if (cache == null) {
                 try {
@@ -81,7 +86,7 @@ internal object NativeDiskVideoCache {
                     val db = StandaloneDatabaseProvider(context.applicationContext)
                     val created = SimpleCache(dir, LeastRecentlyUsedCacheEvictor(MAX_BYTES), db)
                     cache = created
-                    pruneExpired(created)
+                    maybePrune(created)
                 } catch (_: Exception) {
                     return false
                 }
@@ -90,14 +95,26 @@ internal object NativeDiskVideoCache {
         return cache != null
     }
 
-    private fun pruneExpired(instance: SimpleCache) {
+    private fun maybePrune(instance: SimpleCache) {
         val now = System.currentTimeMillis()
+        if (lastPruneMs != 0L &&
+            now - lastPruneMs in 0L until PRUNE_INTERVAL_MS) return
+        synchronized(lock) {
+            if (lastPruneMs != 0L &&
+                now - lastPruneMs in 0L until PRUNE_INTERVAL_MS) return
+            pruneExpired(instance, now)
+            lastPruneMs = now
+        }
+    }
+
+    internal fun expired(lastTouched: Long, now: Long): Boolean =
+        lastTouched > now || now - lastTouched >= AGE_MS
+
+    private fun pruneExpired(instance: SimpleCache, now: Long) {
         for (key in instance.keys.toList()) {
             val spans = instance.getCachedSpans(key).toList()
             for (span in spans) {
-                if (span.isCached &&
-                    (span.lastTouchTimestamp > now ||
-                        now - span.lastTouchTimestamp >= AGE_MS)) {
+                if (span.isCached && expired(span.lastTouchTimestamp, now)) {
                     runCatching { instance.removeSpan(span) }
                 }
             }
@@ -108,13 +125,25 @@ internal object NativeDiskVideoCache {
 
     fun sizeBytes(): Long = cache?.cacheSpace ?: 0L
 
-    fun factory(context: Context, video: RemoteVideo): DataSource.Factory {
+    fun factory(
+        context: Context, video: RemoteVideo,
+        onCacheRead: (Long) -> Unit = {},
+    ): DataSource.Factory {
         val upstream = DataSource.Factory { NativeVideoDataSource(video) }
         val ready = cache
         return if (enabled(context) && ready != null)
             CacheDataSource.Factory().setCache(ready)
                 .setUpstreamDataSourceFactory(upstream)
                 .setFlags(CacheDataSource.FLAG_IGNORE_CACHE_ON_ERROR)
+                .setEventListener(object : CacheDataSource.EventListener {
+                    override fun onCachedBytesRead(
+                        cacheSizeBytes: Long, cachedBytesRead: Long,
+                    ) {
+                        if (cachedBytesRead > 0L) onCacheRead(cachedBytesRead)
+                    }
+
+                    override fun onCacheIgnored(reason: Int) = Unit
+                })
         else upstream
     }
 
@@ -128,7 +157,7 @@ internal object NativeDiskVideoCache {
         requestedBytes: Int, useful: () -> Boolean = { true },
     ): Unit = withContext(Dispatchers.IO) {
         if (!enabled(context) || !mayBackgroundPreload(context) ||
-            !prepare(context)) return@withContext
+            !useful() || !prepare(context)) return@withContext
         val length = minOf(requestedBytes.toLong(), video.total)
         if (length <= 0) return@withContext
         val source = factory(context, video).createDataSource()
@@ -154,10 +183,8 @@ internal object NativeDiskVideoCache {
 
     /** Cache persists across ordinary playback close; clear only by user action. */
     suspend fun clear(context: Context) = withContext(Dispatchers.IO) {
-        val existing = cache ?: run {
-            if (!prepare(context)) return@withContext
-            cache ?: return@withContext
-        }
+        if (!prepare(context, ignoreDisabled = true)) return@withContext
+        val existing = cache ?: return@withContext
         for (resource in existing.keys.toList()) {
             runCatching { existing.removeResource(resource) }
         }
