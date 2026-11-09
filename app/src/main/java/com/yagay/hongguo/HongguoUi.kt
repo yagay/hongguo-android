@@ -647,9 +647,10 @@ internal fun HongguoEpisodeCell(
     selected: Boolean,
     onClick: () -> Unit,
     modifier: Modifier = Modifier,
+    cellHeight: androidx.compose.ui.unit.Dp = 44.dp,
 ) {
     Box(
-        modifier = modifier.height(44.dp)
+        modifier = modifier.height(cellHeight)
             .clip(RoundedCornerShape(HongguoUi.controlRadius))
             .background(if (selected) HongguoColors.accent
                 else HongguoColors.playerControlBackground)

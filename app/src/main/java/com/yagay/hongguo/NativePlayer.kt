@@ -832,97 +832,32 @@ internal fun NativePlayer(
         CommentsSheet(state, model)
     }
 
-    if (showEpisodes) HongguoPlayerSheet(
-        onDismissRequest = { showEpisodes = false },
-        modifier = Modifier.testTag("reel_episodes_sheet"),
-    ) {
-        HongguoPlayerPanel(
-            title = "选集 · 共 ${detail.episodes.size} 集",
-            modifier = Modifier.heightIn(max = 630.dp).verticalScroll(rememberScrollState()),
-            subtitle = "点击集数切换播放 · 当前第 ${detail.episodes.getOrNull(state.episodeIndex)?.index ?: 1} 集",
-            actions = {
-                if (state.backend.isBlank()) {
-                    HongguoPlayerSheetAction(
-                        label = "下载5集",
-                        onClick = { downloadBatch(5) },
-                        modifier = Modifier.testTag("batch_download_5"),
-                    )
-                } else {
-                    HongguoPlayerSheetAction(
-                        label = "下载5集",
-                        onClick = {
-                            model.download(detail.episodes[state.episodeIndex].index,
-                                detail.episodes.drop(state.episodeIndex).take(5)
-                                    .lastOrNull()?.index ?: detail.episodes[state.episodeIndex].index)
-                            showEpisodes = false
-                        },
-                    )
-                }
-            },
-        ) {
-            LazyVerticalGrid(
-                columns = GridCells.Fixed(5),
-                modifier = Modifier.fillMaxWidth().heightIn(max = 460.dp),
-                horizontalArrangement = Arrangement.spacedBy(8.dp),
-            ) {
-                itemsIndexed(detail.episodes) { index, episode ->
-                    val active = index == state.episodeIndex
-                    HongguoEpisodeCell(
-                        label = episode.index.toString(),
-                        selected = active,
-                        onClick = {
-                            if (state.feedMode) model.exitFeedToEpisode(index)
-                            else model.play(index)
-                            showEpisodes = false
-                        },
-                        modifier = Modifier.fillMaxWidth().testTag("episode_" + index),
-                    )
-                }
+    if (showEpisodes) ReelEpisodeSelectionSheet(
+        detail = detail,
+        state = state,
+        model = model,
+        onDismiss = { showEpisodes = false },
+        onDownloadFive = {
+            if (state.backend.isBlank()) {
+                downloadBatch(5)
+            } else {
+                val from = detail.episodes[state.episodeIndex].index
+                val to = detail.episodes.drop(state.episodeIndex).take(5)
+                    .lastOrNull()?.index ?: from
+                model.download(from, to)
+                showEpisodes = false
             }
-            if (state.relatedSeries == detail.drama.id) {
-                HongguoMenuSeparator()
-                HongguoSheetHeader(title = "其他季 / 相关作品") {
-                    if (state.relatedLoading) {
-                        CircularProgressIndicator(Modifier.size(18.dp),
-                            strokeWidth = 2.dp, color = HongguoColors.accent)
-                    } else {
-                        HongguoIconAction(onClick = {
-                            model.loadRelated(detail.drama.id)
-                        }) {
-                            Icon(Icons.Outlined.Refresh, contentDescription = "刷新相关作品",
-                                tint = HongguoColors.ink)
-                        }
-                    }
-                }
-                state.relatedWorks.take(15).forEach { work ->
-                    HongguoSheetListRow(
-                        enabled = !work.upcoming,
-                        onClick = {
-                            showEpisodes = false
-                            model.openRelatedDrama(work.drama)
-                        },
-                    ) {
-                        Column(Modifier.weight(1f)) {
-                            Text(work.drama.title, color = HongguoColors.ink, maxLines = 1,
-                                overflow = TextOverflow.Ellipsis)
-                            Text(work.season, color = HongguoColors.muted,
-                                fontSize = 12.sp)
-                        }
-                        Text(if (work.upcoming) "待上线" else "观看",
-                            color = if (work.upcoming) HongguoColors.muted
-                                else HongguoColors.accent, fontSize = 12.sp)
-                    }
-                }
-                if (!state.relatedLoading && state.relatedWorks.isEmpty()) {
-                    Text(state.relatedError ?: "暂无官方关联作品",
-                        fontSize = 12.sp, color = HongguoColors.muted,
-                        maxLines = 3, overflow = TextOverflow.Ellipsis,
-                        modifier = Modifier.fillMaxWidth().padding(vertical = 16.dp))
-                }
-            }
-            Spacer(Modifier.height(22.dp))
-        }
-    }
+        },
+        onSelectEpisode = { index ->
+            if (state.feedMode) model.exitFeedToEpisode(index)
+            else model.play(index)
+            showEpisodes = false
+        },
+        onRelatedDrama = { work ->
+            showEpisodes = false
+            model.openRelatedDrama(work.drama)
+        },
+    )
 }
 
 
