@@ -568,11 +568,20 @@ class BackgroundPlaybackService : MediaSessionService() {
                 if (cover.startsWith("https://")) setArtworkUri(Uri.parse(cover))
             }.build()
         val item = MediaItem.Builder().setUri(url).setMediaId(vid)
+            .apply {
+                if (remote != null)
+                    setCustomCacheKey(NativeDiskVideoCache.key(vid, qualityLimit, remote.total))
+            }
             .setMediaMetadata(metadata).build()
         if (remote != null) {
-            val factory = DataSource.Factory { NativeVideoDataSource(remote) }
+            // CacheDataSource sits ABOVE the decrypted native stream. Cache hits
+            // never reach the upstream HTTP reader, including after app restart.
+            val factory = NativeDiskVideoCache.factory(this, remote)
             engine.setMediaSource(
                 ProgressiveMediaSource.Factory(factory).createMediaSource(item))
+            diagnostics.record("DISK_CACHE",
+                if (NativeDiskVideoCache.isReady(this)) "SOURCE_CACHE_READY"
+                else "SOURCE_CACHE_FALLBACK")
         } else {
             engine.setMediaItem(item)
         }
