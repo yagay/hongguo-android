@@ -4,10 +4,10 @@ plugins {
     id("org.jetbrains.kotlin.plugin.compose")
 }
 android {
-    namespace = "com.hongguo.rewrite"
+    namespace = "com.yagay.hongguo"
     compileSdk = 36
     defaultConfig {
-        applicationId = "com.hongguo.rewrite"
+        applicationId = "com.yagay.hongguo"
         minSdk = 26
         targetSdk = 36
         versionCode = 1

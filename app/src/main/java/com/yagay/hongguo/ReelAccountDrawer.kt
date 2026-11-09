@@ -1,0 +1,351 @@
+package com.yagay.hongguo
+
+import androidx.compose.foundation.background
+import androidx.compose.foundation.clickable
+import androidx.compose.foundation.layout.Arrangement
+import androidx.compose.foundation.layout.aspectRatio
+import androidx.compose.foundation.layout.Column
+import androidx.compose.foundation.layout.PaddingValues
+import androidx.compose.foundation.layout.Row
+import androidx.compose.foundation.layout.Spacer
+import androidx.compose.foundation.layout.fillMaxSize
+import androidx.compose.foundation.layout.fillMaxWidth
+import androidx.compose.foundation.layout.height
+import androidx.compose.foundation.layout.padding
+import androidx.compose.foundation.layout.size
+import androidx.compose.foundation.layout.width
+import androidx.compose.foundation.lazy.LazyColumn
+import androidx.compose.foundation.lazy.LazyRow
+import androidx.compose.foundation.lazy.items
+import androidx.compose.foundation.shape.CircleShape
+import androidx.compose.foundation.shape.RoundedCornerShape
+import androidx.compose.material.icons.Icons
+import androidx.compose.material.icons.automirrored.outlined.ArrowBack
+import androidx.compose.material.icons.outlined.BookmarkBorder
+import androidx.compose.material.icons.outlined.ChevronRight
+import androidx.compose.material.icons.outlined.Download
+import androidx.compose.material.icons.outlined.EventAvailable
+import androidx.compose.material.icons.outlined.PersonOutline
+import androidx.compose.material.icons.outlined.PrivacyTip
+import androidx.compose.material.icons.outlined.Settings
+import androidx.compose.material.icons.outlined.Share
+import androidx.compose.material.icons.outlined.FolderOpen
+import androidx.compose.material.icons.outlined.Home
+import androidx.compose.material3.Card
+import androidx.compose.material3.Icon
+import androidx.compose.material3.MaterialTheme
+import androidx.compose.material3.Text
+import androidx.compose.material3.Surface
+import androidx.compose.material3.TextButton
+import androidx.compose.material3.HorizontalDivider
+import androidx.compose.runtime.Composable
+import androidx.compose.runtime.getValue
+import androidx.compose.runtime.mutableStateOf
+import androidx.compose.runtime.remember
+import androidx.compose.runtime.setValue
+import androidx.compose.runtime.saveable.rememberSaveable
+import androidx.compose.ui.Alignment
+import androidx.compose.ui.Modifier
+import androidx.compose.ui.draw.clip
+import androidx.compose.ui.graphics.Color
+import androidx.compose.ui.layout.ContentScale
+import androidx.compose.ui.platform.testTag
+import androidx.compose.ui.text.font.FontWeight
+import androidx.compose.ui.text.style.TextOverflow
+import androidx.compose.ui.unit.dp
+import androidx.compose.ui.unit.sp
+import androidx.lifecycle.compose.collectAsStateWithLifecycle
+import coil.compose.AsyncImage
+
+/** Account drawer over the existing reel surface; it never owns or rebuilds Media3. */
+@Composable
+internal fun ReelAccountDrawer(
+    state: AppState,
+    model: DramaViewModel,
+    onAccount: () -> Unit,
+    onHistoryItem: (Drama) -> Unit,
+    onReservations: () -> Unit,
+    onDownloads: () -> Unit,
+    onShare: () -> Unit,
+    onSettings: () -> Unit,
+    onBrowseHome: () -> Unit,
+    onOfflineEpisode: (OfflineEpisode) -> Unit,
+) {
+    val account by model.account.state.collectAsStateWithLifecycle()
+    // History can include repeat visits; show each drama only once, most recent first.
+    val recentlyWatched = remember(state.library) {
+        state.library.sortedByDescending { it.updated }.distinctBy { it.drama.id }
+    }
+    var recentExpanded by rememberSaveable { mutableStateOf(false) }
+    var drawerPage by rememberSaveable { mutableStateOf<String?>(null) }
+    Column(Modifier.fillMaxSize().background(HongguoColors.background)
+        .testTag("reel_account_drawer")) {
+        LazyColumn(
+            modifier = Modifier.weight(1f).fillMaxWidth(),
+            contentPadding = PaddingValues(start = HongguoUi.pagePadding,
+                end = HongguoUi.pagePadding,
+                top = 24.dp, bottom = 24.dp),
+            verticalArrangement = Arrangement.spacedBy(HongguoUi.pageSectionGap),
+        ) {
+            if (drawerPage == "watch_later" || drawerPage == "offline") {
+                item {
+                    Row(Modifier.fillMaxWidth(),
+                        verticalAlignment = Alignment.CenterVertically) {
+                        Row(Modifier.clickable { drawerPage = null }
+                            .padding(vertical = 10.dp, horizontal = 4.dp)
+                            .testTag("drawer_library_back"),
+                            verticalAlignment = Alignment.CenterVertically) {
+                            Icon(Icons.AutoMirrored.Outlined.ArrowBack,
+                                "返回常用功能", tint = HongguoColors.ink,
+                                modifier = Modifier.size(22.dp))
+                            Spacer(Modifier.width(6.dp))
+                            Text("返回", color = HongguoColors.ink, fontSize = 14.sp)
+                        }
+                        Spacer(Modifier.weight(1f))
+                        Text(if (drawerPage == "watch_later") "稍后看" else "本机离线",
+                            color = HongguoColors.ink, fontWeight = FontWeight.SemiBold,
+                            fontSize = 18.sp)
+                    }
+                }
+                if (drawerPage == "watch_later") {
+                    if (state.watchLater.isEmpty()) item {
+                        HongguoEmptyState("还没有稍后看的短剧")
+                    }
+                    items(state.watchLater, key = { "later_" + it.id }) { drama ->
+                        HongguoCard() {
+                            Row(Modifier.fillMaxWidth().padding(12.dp),
+                                verticalAlignment = Alignment.CenterVertically) {
+                                AsyncImage(model = model.cover(drama.cover),
+                                    contentDescription = null,
+                                    contentScale = ContentScale.Crop,
+                                    modifier = Modifier.size(width = 48.dp, height = 65.dp)
+                                        .clip(RoundedCornerShape(8.dp)))
+                                Spacer(Modifier.width(10.dp))
+                                Column(Modifier.weight(1f).clickable {
+                                    onHistoryItem(drama)
+                                }.testTag("drawer_later_open_" + drama.id)) {
+                                    Text(drama.title, fontWeight = FontWeight.SemiBold,
+                                        fontSize = 14.sp, maxLines = 2,
+                                        overflow = TextOverflow.Ellipsis,
+                                        color = HongguoColors.ink)
+                                    Text("点击继续观看", fontSize = 11.sp, color = HongguoColors.muted)
+                                }
+                                TextButton(onClick = { model.toggleWatchLater(drama) },
+                                    modifier = Modifier.testTag("drawer_later_remove_" + drama.id)) {
+                                    Text("移除")
+                                }
+                            }
+                        }
+                    }
+                } else {
+                    state.offlineLibraryMessage?.let { notice ->
+                        item { Text(notice, color = HongguoColors.accent, fontSize = 12.sp) }
+                    }
+                    if (state.offlineEpisodes.isEmpty()) item {
+                        HongguoEmptyState("还没有保存到本机的离线视频")
+                    }
+                    items(state.offlineEpisodes,
+                        key = { "offline_" + it.documentUri }) { episode ->
+                        HongguoCard() {
+                            Row(Modifier.fillMaxWidth().padding(12.dp),
+                                verticalAlignment = Alignment.CenterVertically) {
+                                Column(Modifier.weight(1f).clickable {
+                                    onOfflineEpisode(episode)
+                                }.testTag("drawer_offline_open_" + episode.vid)) {
+                                    Text(episode.title, color = HongguoColors.ink,
+                                        fontWeight = FontWeight.SemiBold, fontSize = 14.sp,
+                                        maxLines = 2, overflow = TextOverflow.Ellipsis)
+                                    Text("第 ${episode.episode} 集 · 本机播放",
+                                        color = HongguoColors.muted, fontSize = 12.sp)
+                                }
+                                TextButton(onClick = {
+                                    model.removeOfflineEpisode(episode.documentUri)
+                                }, modifier = Modifier.testTag("drawer_offline_remove_" + episode.vid)) {
+                                    Text("移除记录")
+                                }
+                            }
+                        }
+                    }
+                }
+            } else {
+        item {
+            Row(
+                Modifier.fillMaxWidth().clickable(onClick = onAccount)
+                    .padding(horizontal = 8.dp, vertical = 12.dp)
+                    .testTag("drawer_account"),
+                verticalAlignment = Alignment.CenterVertically,
+                horizontalArrangement = Arrangement.spacedBy(12.dp),
+            ) {
+                val avatar = account.profile?.avatarUrl
+                if (!avatar.isNullOrBlank()) {
+                    AsyncImage(
+                        model = avatar,
+                        contentDescription = null,
+                        contentScale = ContentScale.Crop,
+                        modifier = Modifier.size(56.dp).clip(CircleShape),
+                    )
+                } else {
+                    androidx.compose.foundation.layout.Box(
+                        Modifier.size(56.dp).clip(CircleShape)
+                            .background(HongguoColors.accentSoft),
+                        contentAlignment = Alignment.Center,
+                    ) {
+                        Icon(Icons.Outlined.PersonOutline, null,
+                            tint = HongguoColors.muted, modifier = Modifier.size(30.dp))
+                    }
+                }
+                Column(Modifier.weight(1f)) {
+                    Text(account.profile?.nickname ?: "登录红果账号",
+                        color = HongguoColors.ink, fontWeight = FontWeight.SemiBold,
+                        fontSize = 18.sp, maxLines = 1, overflow = TextOverflow.Ellipsis)
+                    Text("账号与隐私", color = HongguoColors.muted, fontSize = 12.sp)
+                }
+                Icon(Icons.Outlined.ChevronRight, null, tint = HongguoColors.muted)
+            }
+        }
+        item {
+            HongguoCard() {
+                Column(Modifier.fillMaxWidth().padding(14.dp),
+                    verticalArrangement = Arrangement.spacedBy(12.dp)) {
+                    Row(Modifier.fillMaxWidth(), verticalAlignment = Alignment.CenterVertically) {
+                        Text("最近在看", fontWeight = FontWeight.SemiBold,
+                            fontSize = 17.sp, color = HongguoColors.ink,
+                            modifier = Modifier.weight(1f))
+                        if (recentlyWatched.size > 2) {
+                            Text(if (recentExpanded) "收起" else "展开更多 · ${recentlyWatched.size}部",
+                                modifier = Modifier.clickable {
+                                    recentExpanded = !recentExpanded
+                                }.padding(vertical = 7.dp)
+                                    .testTag("drawer_recent_expand"),
+                                color = HongguoColors.accent, fontSize = 12.sp)
+                        }
+                    }
+                    if (recentlyWatched.isEmpty()) {
+                        HongguoEmptyState("还没有观看记录")
+                    } else if (!recentExpanded) {
+                        // One horizontal row contains ALL watched dramas. The next
+                        // poster remains partially visible to indicate swiping.
+                        LazyRow(
+                            modifier = Modifier.fillMaxWidth()
+                                .testTag("drawer_recent_carousel"),
+                            horizontalArrangement = Arrangement.spacedBy(10.dp),
+                        ) {
+                            items(recentlyWatched, key = { it.drama.id }) { watched ->
+                                RecentWatchTile(watched, model,
+                                    modifier = Modifier.width(100.dp),
+                                    onClick = { onHistoryItem(watched.drama) })
+                            }
+                        }
+                        if (recentlyWatched.size > 2) {
+                            Text("左右滑动查看更多", color = HongguoColors.muted, fontSize = 11.sp)
+                        }
+                    }
+                }
+            }
+        }
+        if (recentExpanded && recentlyWatched.isNotEmpty()) {
+            // Three proportional 2:3 posters per row. Each row is an item
+            // of the outer LazyColumn, avoiding nested vertical scrolling.
+            items(recentlyWatched.chunked(3),
+                key = { row -> "recent_expanded_" + row.first().drama.id }) { row ->
+                Row(
+                    modifier = Modifier.fillMaxWidth()
+                        .testTag("drawer_recent_expanded_row"),
+                    horizontalArrangement = Arrangement.spacedBy(8.dp),
+                ) {
+                    row.forEach { watched ->
+                        RecentWatchTile(watched, model,
+                            modifier = Modifier.weight(1f),
+                            onClick = { onHistoryItem(watched.drama) })
+                    }
+                    repeat(3 - row.size) { Spacer(Modifier.weight(1f)) }
+                }
+            }
+        }
+        item {
+            HongguoCard() {
+                Column(Modifier.fillMaxWidth().padding(14.dp),
+                    verticalArrangement = Arrangement.spacedBy(6.dp)) {
+                    Text("常用功能", fontSize = 17.sp, fontWeight = FontWeight.SemiBold,
+                        color = HongguoColors.ink)
+                    DrawerAction("我的预约", Icons.Outlined.EventAvailable,
+                        onReservations, "drawer_reservations")
+                    DrawerAction("稍后看 · ${state.watchLater.size}部",
+                        Icons.Outlined.BookmarkBorder,
+                        { drawerPage = "watch_later" }, "drawer_watch_later")
+                    DrawerAction("下载任务", Icons.Outlined.Download,
+                        onDownloads, "drawer_downloads")
+                    DrawerAction("本机离线 · ${state.offlineEpisodes.size}集",
+                        Icons.Outlined.FolderOpen,
+                        { drawerPage = "offline" }, "drawer_offline_library")
+                    DrawerAction("分享解析", Icons.Outlined.Share,
+                        onShare, "drawer_share")
+                    DrawerAction("账号与隐私", Icons.Outlined.PrivacyTip,
+                        onAccount, "drawer_privacy")
+                    // Home is a deliberate action; never the default landing
+                    // destination when closing account, settings, or search.
+                    DrawerAction("浏览主页", Icons.Outlined.Home,
+                        onBrowseHome, "drawer_browse_home")
+                }
+            }
+        }
+        } // Drawer main menu
+        } // Scrollable content: settings stays pinned below
+        Surface(color = HongguoColors.background, shadowElevation = 8.dp) {
+            Column(Modifier.fillMaxWidth()) {
+                HorizontalDivider(color = HongguoColors.divider)
+                Row(Modifier.fillMaxWidth().clickable(onClick = onSettings)
+                    .testTag("drawer_settings")
+                    .padding(horizontal = 23.dp, vertical = 16.dp),
+                    verticalAlignment = Alignment.CenterVertically) {
+                    Icon(Icons.Outlined.Settings, contentDescription = null,
+                        tint = HongguoColors.ink, modifier = Modifier.size(23.dp))
+                    Spacer(Modifier.width(12.dp))
+                    Text("设置", color = HongguoColors.ink, fontSize = 16.sp,
+                        fontWeight = FontWeight.SemiBold, modifier = Modifier.weight(1f))
+                    Icon(Icons.Outlined.ChevronRight, contentDescription = null,
+                        tint = HongguoColors.muted)
+                }
+            }
+        }
+    }
+}
+
+/** Compact poster tile for the horizontal recent-history strip. */
+@Composable
+private fun RecentWatchTile(
+    watched: Watched,
+    model: DramaViewModel,
+    modifier: Modifier = Modifier,
+    onClick: () -> Unit,
+) {
+    Column(
+        modifier.clickable(onClick = onClick)
+            .testTag("drawer_recent_" + watched.drama.id),
+        verticalArrangement = Arrangement.spacedBy(5.dp),
+    ) {
+        HongguoPosterCover(
+            cover = model.cover(watched.drama.cover),
+            title = watched.drama.title,
+            modifier = Modifier.fillMaxWidth().aspectRatio(2f / 3f),
+        )
+        Text(watched.drama.title, color = HongguoColors.ink,
+            maxLines = 2, overflow = TextOverflow.Ellipsis,
+            fontSize = 12.sp, lineHeight = 16.sp)
+        Text("第${watched.episode}集", color = HongguoColors.muted, fontSize = 11.sp)
+    }
+}
+
+@Composable
+private fun DrawerAction(
+    title: String,
+    icon: androidx.compose.ui.graphics.vector.ImageVector,
+    onClick: () -> Unit,
+    tag: String,
+) = HongguoNavigationRow(
+    icon = icon,
+    title = title,
+    subtitle = "",
+    tag = tag,
+    onClick = onClick,
+)

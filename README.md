@@ -13,7 +13,7 @@
 - 单向数据流：DramaViewModel -> AppState -> Compose；本机数据、剧场分页、下载任务、播放地址重试及视频 Surface 已逐步拆入独立模块，模块边界详见 docs/ARCHITECTURE.md。
 - 统一的剧集、分集、分页和错误模型；收藏/历史保存在本机并限定为 200 条。
 - 历史只在 Media3 实际渲染首帧后记录，避免播放失败留下误记录。
-- 独立包名 `com.hongguo.rewrite`，能与旧版并排安装进行验收。
+- 独立包名 `com.yagay.hongguo`，能与旧版并排安装进行验收。
 
 ## 当前工程状态（重要）
 
@@ -380,7 +380,7 @@ Kotlin/Compose/Media3 工程及 Debug-only CI。
 - 下载仍是应用进程内协程任务，缺少可靠跨进程断点续传、后台持久下载队列和下载后的文件重命名冲突处理。
 - 下一集预热仅准备媒体句柄与开头 64 KiB，并非完整可配置的 Media3 磁盘缓存。
 - 自动跨季连播尚未接入；官方关联作品数据不一定代表下一季，不能任意跳转。
-- rewrite 的安装包 ID 为 `com.hongguo.rewrite`，与 main 的 `com.hongguo.android` 不同。main 的发布 APK 不能被当成 rewrite 的自动更新包；rewrite 专用的校验、发布及安装链路仍缺失。
+- rewrite 的安装包 ID 为 `com.yagay.hongguo`，与 main 的 `com.hongguo.android` 不同。main 的发布 APK 不能被当成 rewrite 的自动更新包；rewrite 专用的校验、发布及安装链路仍缺失。
 - 本机多用户隔离与局域网传输未接入，不能在现有单用户 SharedPreferences 上叠加假用户切换。
 - Debug Gradle 构建有现有 push 工作流，但尚未取得本轮可独立确认的成功结果；所有新功能需要编译、Android 版本兼容测试与真机验收。
 
