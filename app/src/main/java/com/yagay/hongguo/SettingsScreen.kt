@@ -275,6 +275,10 @@ internal fun SettingsScreen(state: AppState, model: DramaViewModel) {
                             localImporter.launch(arrayOf("application/json", "text/plain"))
                         },
                     )
+                    // Keep the original backup/import success and error feedback.
+                    state.settingsMessage?.let {
+                        Text(it, color = HongguoColors.accent, fontSize = 11.sp)
+                    }
                 }
             }
             item {
