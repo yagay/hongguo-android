@@ -1,7 +1,7 @@
 package com.yagay.hongguo
 
 /** Explicit cross-drama transition: a stopped last frame is not a paused video. */
-internal enum class NextDramaTransition {
+enum class NextDramaTransition {
     NONE,
     FINDING_RECOMMENDATION,
     PREPARING_VIDEO,
