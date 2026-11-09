@@ -446,6 +446,10 @@ class DramaViewModel(application: Application) : AndroidViewModel(application) {
         }
         if (preloadEpisodeTargetVid == next && preloadEpisodeJob?.isActive == true)
             return
+        // N+2 may still be resolving when the user advances to N+1.
+        // Wait for that request instead of opening the same encrypted stream twice.
+        if (preloadLaterTargetVid == next && preloadLaterJob?.isActive == true)
+            return
         // Promote an already prepared N+2 after advancing to N+1.
         if (next == preloadedLaterVid && preloadedLaterQuality == s.qualityLimit &&
             preloadedLaterVideo != null) {
@@ -625,6 +629,13 @@ class DramaViewModel(application: Application) : AndroidViewModel(application) {
                 diagnostics.record("PLAYBACK", "LATER_PREFETCH_UNAVAILABLE")
             } finally {
                 remote?.close()
+            }
+            // If playback advanced while this slot was filling, hand it over
+            // on the next main-loop turn rather than issuing a duplicate model request.
+            if (preloadedLaterVid == later &&
+                state.value.detail?.episodes
+                    ?.getOrNull(state.value.episodeIndex + 1)?.vid == later) {
+                viewModelScope.launch { preloadFollowingEpisode() }
             }
         }
     }
