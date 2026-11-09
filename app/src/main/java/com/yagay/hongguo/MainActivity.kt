@@ -108,6 +108,9 @@ class MainActivity : ComponentActivity() {
     private var autoPictureInPictureEligible = false
     private var visibleVideoForAutoPip = false
     private var openingPictureInPictureSettings = false
+    // A single foreground-to-background transition may deliver both
+    // onUserLeaveHint and onPause. One PiP request must cover both.
+    private var autoPipEntryRequested = false
     // Source video coordinates are supplied to Android before PiP animation.
     // Without this hint, the launcher may animate the app icon/window first.
     private var pipVideoSourceView: View? = null
@@ -227,9 +230,14 @@ class MainActivity : ComponentActivity() {
 
     override fun onResume() {
         super.onResume()
+        autoPipEntryRequested = false
         if (openingPictureInPictureSettings) {
             openingPictureInPictureSettings = false
             updateVideoPictureInPictureEligibility(visibleVideoForAutoPip)
+        } else {
+            // The player may still be running after returning from another
+            // application, so re-arm system auto-PiP on every foreground entry.
+            refreshAutoPictureInPictureEligibility()
         }
     }
 
@@ -246,24 +254,57 @@ class MainActivity : ComponentActivity() {
         }.getOrDefault(false)
     }
 
-    override fun onUserLeaveHint() {
-        super.onUserLeaveHint()
-        // Android 12+ handles gesture navigation through prearmed auto-enter.
-        // Three-button Home may not trigger that path on some OEM systems.
-        // This callback is a guarded, explicit fallback using the LIVE player.
+    /**
+     * All user-driven background transitions share the same PiP policy.
+     * The platform can skip onUserLeaveHint when another app is launched
+     * from Recents, notifications, a link or an OEM switching gesture.
+     */
+    private fun tryEnterAutoPipWhenLeaving(trigger: String) {
         val player = BackgroundPlaybackService.playerFlow.value
-        val shouldEnter = VideoPiPPolicy.canAutoEnterFromActivePlayer(
+        val systemAccess = VideoPiPAccess.status(this)
+        val canEnter = VideoPiPPolicy.canEnterWhenLeavingApp(
+            autoPipEnabled = readAutoPipEnabled(this),
+            systemAccess = systemAccess,
             isPlayerVisible = visibleVideoForAutoPip,
             actualMediaId = player?.currentMediaItem?.mediaId,
             isPlaying = player?.isPlaying == true,
-        ) && isAutoPipAllowedNow()
-        if (!videoInPictureInPicture && shouldEnter) {
-            runCatching {
-                enterPictureInPictureMode(videoPiPParams(autoEnter = false))
-            }.onFailure {
-                android.util.Log.w("HongguoPiP", "Home auto PiP fallback failed", it)
-            }
+            alreadyInPip = videoInPictureInPicture || isInPictureInPictureMode,
+            entryRequested = autoPipEntryRequested,
+            openingSettings = openingPictureInPictureSettings,
+            finishingOrRecreating = isFinishing || isChangingConfigurations,
+        )
+        if (!canEnter) {
+            android.util.Log.d(
+                "HongguoPiP",
+                "$trigger skipped: enabled=${readAutoPipEnabled(this)}" +
+                    " access=$systemAccess visible=$visibleVideoForAutoPip" +
+                    " playing=${player?.isPlaying} media=${player?.currentMediaItem?.mediaId}" +
+                    " pip=$videoInPictureInPicture requested=$autoPipEntryRequested",
+            )
+            return
         }
+        // A manual request is necessary only when the OS has not already
+        // moved us into PiP. Keep the same Media3 session and source bounds.
+        val entered = runCatching {
+            enterPictureInPictureMode(videoPiPParams(autoEnter = false))
+        }.onFailure {
+            android.util.Log.w("HongguoPiP", "$trigger auto PiP request failed", it)
+        }.getOrDefault(false)
+        if (entered) autoPipEntryRequested = true
+        else android.util.Log.w("HongguoPiP", "$trigger auto PiP was rejected")
+    }
+
+    override fun onUserLeaveHint() {
+        super.onUserLeaveHint()
+        tryEnterAutoPipWhenLeaving("onUserLeaveHint")
+    }
+
+    override fun onPause() {
+        // Some external app switches bypass onUserLeaveHint entirely.
+        // Try before super.onPause(), while this Activity is still able to
+        // enter PiP; a successful earlier request prevents duplicates.
+        tryEnterAutoPipWhenLeaving("onPause")
+        super.onPause()
     }
 
     override fun onPictureInPictureModeChanged(
@@ -272,6 +313,8 @@ class MainActivity : ComponentActivity() {
     ) {
         super.onPictureInPictureModeChanged(isInPictureInPictureMode, newConfig)
         videoInPictureInPicture = isInPictureInPictureMode
+        // The next foreground visit is a new transition.
+        if (!isInPictureInPictureMode) autoPipEntryRequested = false
     }
 
     override fun onDestroy() {

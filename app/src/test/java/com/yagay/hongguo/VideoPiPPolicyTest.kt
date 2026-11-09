@@ -97,6 +97,47 @@ class VideoPiPPolicyTest {
             false, VideoPiPAccess.Status.ALLOWED))
     }
 
+    private fun leaving(
+        autoEnabled: Boolean = true,
+        playerVisible: Boolean = true,
+        playing: Boolean = true,
+        inPip: Boolean = false,
+        requested: Boolean = false,
+        settings: Boolean = false,
+        finishing: Boolean = false,
+        access: VideoPiPAccess.Status = VideoPiPAccess.Status.ALLOWED,
+    ) = VideoPiPPolicy.canEnterWhenLeavingApp(
+        autoPipEnabled = autoEnabled,
+        systemAccess = access,
+        isPlayerVisible = playerVisible,
+        actualMediaId = "episode-42",
+        isPlaying = playing,
+        alreadyInPip = inPip,
+        entryRequested = requested,
+        openingSettings = settings,
+        finishingOrRecreating = finishing,
+    )
+
+    @Test fun externalAppSwitchAndHomeShareTheSameEligibility() {
+        assertTrue(leaving())
+        assertFalse(leaving(autoEnabled = false))
+        assertFalse(leaving(playerVisible = false))
+        assertFalse(leaving(playing = false))
+        assertFalse(leaving(access = VideoPiPAccess.Status.BLOCKED))
+    }
+
+    @Test fun pauseDoesNotDuplicatePipOrOpenOnPermissionSettings() {
+        assertFalse(leaving(inPip = true))
+        assertFalse(leaving(requested = true))
+        assertFalse(leaving(settings = true))
+        assertFalse(leaving(finishing = true))
+    }
+
+    @Test fun manualButtonVisibilityDoesNotGateAppSwitchAutoPip() {
+        assertFalse(VideoPiPPolicy.showManualButton(false))
+        assertTrue(leaving(autoEnabled = true))
+    }
+
     @Test fun noActiveSourceOrDetailsDoesNotAutoEnter() {
         assertFalse(eligible(detail = false))
         assertFalse(eligible(preparing = true))

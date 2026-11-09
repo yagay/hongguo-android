@@ -32,6 +32,27 @@ internal object VideoPiPPolicy {
         isPlaying: Boolean,
     ): Boolean = isPlayerVisible && isPlaying && !actualMediaId.isNullOrBlank()
 
+    /**
+     * Shared eligibility for leaving via Home, Recents, a notification or
+     * another app. Android may emit onPause without onUserLeaveHint.
+     * Never enter while a PiP request is in flight or a settings activity
+     * is being launched on purpose.
+     */
+    fun canEnterWhenLeavingApp(
+        autoPipEnabled: Boolean,
+        systemAccess: VideoPiPAccess.Status,
+        isPlayerVisible: Boolean,
+        actualMediaId: String?,
+        isPlaying: Boolean,
+        alreadyInPip: Boolean,
+        entryRequested: Boolean,
+        openingSettings: Boolean,
+        finishingOrRecreating: Boolean,
+    ): Boolean = isAutoPipAllowed(autoPipEnabled, systemAccess) &&
+        canAutoEnterFromActivePlayer(isPlayerVisible, actualMediaId, isPlaying) &&
+        !alreadyInPip && !entryRequested && !openingSettings &&
+        !finishingOrRecreating
+
     fun canAutoEnter(
         hasDetail: Boolean,
         preparingDetail: Boolean,
