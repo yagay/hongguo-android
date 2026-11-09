@@ -226,6 +226,10 @@ class DramaViewModel(application: Application) : AndroidViewModel(application) {
             mutable.update { it.copy(settingsMessage = "请先关闭播放器再清理视频缓存") }
             return
         }
+        clearPreloadedNext()
+        clearPreloadedLater()
+        feedPrefetchJob?.cancel()
+        clearReelWarmVideo()
         viewModelScope.launch {
             withContext(Dispatchers.IO) {
                 NativeDiskVideoCache.clear(getApplication())
@@ -491,7 +495,8 @@ class DramaViewModel(application: Application) : AndroidViewModel(application) {
     ): Boolean {
         val s = state.value
         if (!s.preloadNext || s.qualityLimit != quality ||
-            s.preloadBufferMiB != bufferMiB) return false
+            s.preloadBufferMiB != bufferMiB ||
+            !NativeDiskVideoCache.mayBackgroundPreload(getApplication())) return false
         val episodes = s.detail?.episodes ?: return false
         return (generation == detailId &&
             episodes.getOrNull(s.episodeIndex + 1)?.vid == vid) ||
@@ -501,6 +506,7 @@ class DramaViewModel(application: Application) : AndroidViewModel(application) {
     private fun isActivePreloadJobForEpisode(
         vid: String, quality: Int, bufferMiB: Int,
     ): Boolean = state.value.preloadNext &&
+        NativeDiskVideoCache.mayBackgroundPreload(getApplication()) &&
         state.value.qualityLimit == quality &&
         state.value.preloadBufferMiB == bufferMiB &&
         (preloadedNextVid == vid ||
@@ -642,7 +648,8 @@ class DramaViewModel(application: Application) : AndroidViewModel(application) {
     ): Boolean {
         val s = state.value
         if (!s.preloadNext || s.qualityLimit != quality ||
-            s.preloadBufferMiB != bufferMiB) return false
+            s.preloadBufferMiB != bufferMiB ||
+            !NativeDiskVideoCache.mayBackgroundPreload(getApplication())) return false
         val episodes = s.detail?.episodes ?: return false
         return (generation == detailId &&
             episodes.getOrNull(s.episodeIndex + 2)?.vid == vid) ||
@@ -1427,6 +1434,7 @@ class DramaViewModel(application: Application) : AndroidViewModel(application) {
                         withContext(Dispatchers.IO) {
                             ready.warm(targetBytes) {
                                 state.value.preloadNext &&
+                                    NativeDiskVideoCache.mayBackgroundPreload(getApplication()) &&
                                     state.value.preloadBufferMiB == bufferMiB &&
                                     state.value.qualityLimit == quality &&
                                     (isUpcomingReel(next.id) ||
