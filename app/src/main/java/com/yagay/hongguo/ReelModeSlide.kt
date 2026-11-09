@@ -102,11 +102,15 @@ internal class ReelModeSlideState {
         val view = videoSource ?: return
         if (view.width <= 0 || view.height <= 0) return
         val scale = minOf(1f, 540f / view.width, 960f / view.height)
-        val bitmap = Bitmap.createBitmap(
-            (view.width * scale).toInt().coerceAtLeast(1),
-            (view.height * scale).toInt().coerceAtLeast(1),
-            Bitmap.Config.ARGB_8888,
-        )
+        // Screenshot capture is only visual polish. If allocation fails,
+        // keep navigation responsive and use the poster fallback.
+        val bitmap = runCatching {
+            Bitmap.createBitmap(
+                (view.width * scale).toInt().coerceAtLeast(1),
+                (view.height * scale).toInt().coerceAtLeast(1),
+                Bitmap.Config.ARGB_8888,
+            )
+        }.getOrNull() ?: return
         val copied = when (view) {
             is SurfaceView -> {
                 if (!view.holder.surface.isValid) false
@@ -145,7 +149,16 @@ internal class ReelModeSlideState {
         }
     }
 
-    fun cancelPreparedEntry() { entryPrepared = false }
+    fun cancelPreparedEntry() {
+        entryPrepared = false
+        capturedVideoFrame = null
+        capturedDramaId = null
+    }
+
+    fun clearFinishedTransitionFrame() {
+        capturedVideoFrame = null
+        capturedDramaId = null
+    }
 
     val fraction: Float get() = translation.value
     fun positionFor(feedMode: Boolean): Float =
@@ -193,6 +206,7 @@ internal class ReelModeSlideState {
             navigateBack()
         } finally {
             withContext(NonCancellable) { translation.snapTo(0f) }
+            clearFinishedTransitionFrame()
             exitRunning = false
         }
     }
