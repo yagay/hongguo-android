@@ -204,7 +204,20 @@ class MainActivity : ComponentActivity() {
         CrashCapture.install(applicationContext)
         super.onCreate(savedInstanceState)
         videoInPictureInPicture = isInPictureInPictureMode
+        // Draw the app background/video under both system bars.  Keep
+        // interactive controls inside safeDrawing in the Compose root.
         enableEdgeToEdge()
+        WindowCompat.setDecorFitsSystemWindows(window, false)
+        @Suppress("DEPRECATION")
+        window.statusBarColor = android.graphics.Color.TRANSPARENT
+        @Suppress("DEPRECATION")
+        window.navigationBarColor = android.graphics.Color.TRANSPARENT
+        if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.Q) {
+            // Android 10+ otherwise adds a grey scrim, especially over the
+            // three-button navigation bar even with transparent bar colors.
+            window.isStatusBarContrastEnforced = false
+            window.isNavigationBarContrastEnforced = false
+        }
         setContent { HongguoApp() }
     }
 }
