@@ -208,7 +208,8 @@ internal object NativeDiskVideoCache {
         try {
             source.open(spec)
             var remaining = length
-            while (remaining > 0 && useful()) {
+            while (remaining > 0 && useful() && enabled(context) &&
+                mayBackgroundPreload(context)) {
                 currentCoroutineContext().ensureActive()
                 val amount = source.read(buffer, 0,
                     minOf(remaining, buffer.size.toLong()).toInt())
