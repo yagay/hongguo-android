@@ -14,3 +14,6 @@ captures/
 keystore.properties
 release-signing.properties
 .signing/
+hongguo-release.base64.txt
+PRIVATE-GitHub-Secrets.txt
+*signing-kit.zip
