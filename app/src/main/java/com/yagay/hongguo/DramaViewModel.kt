@@ -1523,6 +1523,14 @@ class DramaViewModel(application: Application) : AndroidViewModel(application) {
                 .onFailure { diagnostics.record("TRACKING", "STARTUP_SCHEDULER_UNAVAILABLE") }
         }
         diagnostics.record("APP", "START")
+        // Start the disk index on IO at app launch. The playback path still
+        // awaits this only if the user starts a video before initialization ends.
+        viewModelScope.launch(Dispatchers.IO) {
+            if (NativeDiskVideoCache.prepare(application))
+                diagnostics.record("DISK_CACHE", "INDEX_READY")
+            else if (NativeDiskVideoCache.enabled(application))
+                diagnostics.record("DISK_CACHE", "INDEX_UNAVAILABLE")
+        }
         // The saved login is verified asynchronously after homepage init.
         // If account recommendations were previously opted in, a late
         // profile verification must refresh the anonymous starter feed.
