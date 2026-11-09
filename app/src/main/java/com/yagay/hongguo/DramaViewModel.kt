@@ -2529,10 +2529,25 @@ class DramaViewModel(application: Application) : AndroidViewModel(application) {
             diagnostics.record("REELS", "OFFLINE_SERIES_FINISHED")
             return
         }
-        // Swipe mode already knows how to move within/paginate its queue.
+        // Swipe mode normally advances its existing official queue.
+        // When the server cursor has already been exhausted, start a fresh
+        // official recommendation session instead of leaving the last reel
+        // frozen at the end of the video.
         if (snapshot.feedMode) {
             diagnostics.record("REELS", "FEED_FINISHED_NEXT_DRAMA")
-            navigateFeed(1)
+            val next = OfficialReelsPolicy.nextIndex(
+                snapshot.feedItems, snapshot.feedIndex, 1,
+                snapshot.hiddenRecommendationIds,
+            )
+            if (next != null || snapshot.feedHasMore || snapshot.feedLoading) {
+                navigateFeed(1)
+            } else {
+                deferRestoredFeedRecommendations = false
+                pendingFeedAdvance = true
+                mutable.update { it.copy(feedHasMore = true, feedError = null) }
+                diagnostics.record("REELS", "FEED_FINISHED_NEW_RECOMMENDATION_CURSOR")
+                loadOfficialReels(restart = true)
+            }
             return
         }
         val continuation = OfficialReelsPolicy.continuationAfterCompletedSeries(
