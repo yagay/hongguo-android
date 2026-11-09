@@ -104,6 +104,8 @@ internal object NativeDiskVideoCache {
         }
     }
 
+    fun isReady(context: Context): Boolean = enabled(context) && cache != null
+
     fun sizeBytes(): Long = cache?.cacheSpace ?: 0L
 
     fun factory(context: Context, video: RemoteVideo): DataSource.Factory {
