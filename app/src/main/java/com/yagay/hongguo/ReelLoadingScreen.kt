@@ -21,7 +21,6 @@ import androidx.compose.material3.ModalDrawerSheet
 import androidx.compose.material3.ModalNavigationDrawer
 import androidx.compose.material3.Text
 import androidx.compose.material3.TextButton
-import androidx.compose.material3.rememberDrawerState
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.LaunchedEffect
 import androidx.compose.runtime.getValue
@@ -65,7 +64,7 @@ internal fun ReelLoadingScreen(
     onSearch: () -> Unit,
     exitLabel: String = "退出刷短剧",
 ) {
-    val drawerState = rememberDrawerState(DrawerValue.Closed)
+    val drawerState = rememberTransientReelDrawerState()
     val drawerScope = rememberCoroutineScope()
     val stage = if (drama != null) "episode" else "recommendation"
     var elapsedSeconds by remember(stage, drama?.id, loading) { mutableIntStateOf(0) }
@@ -90,7 +89,9 @@ internal fun ReelLoadingScreen(
 
     ModalNavigationDrawer(
         drawerState = drawerState,
-        gesturesEnabled = state.feedMode,
+        gesturesEnabled = ReelDrawerPolicy.gesturesEnabled(
+            drawerState.isOpen, state.feedMode, searchOverlayOpen = false
+        ),
         drawerContent = {
             ModalDrawerSheet(
                 modifier = Modifier.width((LocalConfiguration.current.screenWidthDp * 0.80f).dp),
@@ -99,6 +100,7 @@ internal fun ReelLoadingScreen(
                 ReelAccountDrawer(
                     state = state,
                     model = model,
+                    onClose = { drawerScope.launch { drawerState.close() } },
                     onAccount = { model.show(Modal.ACCOUNT) },
                     onHistoryItem = { model.openFromFeedSelection(it) },
                     onReservations = { model.show(Modal.ACCOUNT) },

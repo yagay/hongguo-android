@@ -62,7 +62,6 @@ import androidx.compose.material3.ModalBottomSheet
 import androidx.compose.material3.ModalNavigationDrawer
 import androidx.compose.material3.ModalDrawerSheet
 import androidx.compose.material3.DrawerValue
-import androidx.compose.material3.rememberDrawerState
 import androidx.compose.material3.OutlinedButton
 import androidx.compose.material3.Slider
 import androidx.compose.material3.Text
@@ -208,7 +207,7 @@ internal fun NativePlayer(
             model.consumeReelSearchRequest(state.reelSearchRequest)
         }
     }
-    val accountDrawerState = rememberDrawerState(DrawerValue.Closed)
+    val accountDrawerState = rememberTransientReelDrawerState()
     val accountDrawerScope = rememberCoroutineScope()
     var showHeart by remember { mutableStateOf(false) }
     // A persisted, composable bitmask: each overlay section can be
@@ -377,7 +376,11 @@ internal fun NativePlayer(
 
     ModalNavigationDrawer(
         drawerState = accountDrawerState,
-        gesturesEnabled = state.feedMode && !searchOverlayOpen,
+        // An already open drawer MUST remain dismissible, even in SERIES
+        // mode (where swipe-to-open is intentionally disabled).
+        gesturesEnabled = ReelDrawerPolicy.gesturesEnabled(
+            accountDrawerState.isOpen, state.feedMode, searchOverlayOpen
+        ),
         drawerContent = {
             ModalDrawerSheet(
                 modifier = Modifier.width((LocalConfiguration.current.screenWidthDp * 0.80f).dp),
@@ -386,6 +389,9 @@ internal fun NativePlayer(
                 ReelAccountDrawer(
                     state = state,
                     model = model,
+                    onClose = {
+                        accountDrawerScope.launch { accountDrawerState.close() }
+                    },
                     onAccount = {
                         accountDrawerScope.launch { accountDrawerState.close() }
                         model.show(Modal.ACCOUNT)

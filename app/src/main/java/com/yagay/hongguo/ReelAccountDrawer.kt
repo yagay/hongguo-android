@@ -23,6 +23,7 @@ import androidx.compose.material.icons.Icons
 import androidx.compose.material.icons.automirrored.outlined.ArrowBack
 import androidx.compose.material.icons.outlined.BookmarkBorder
 import androidx.compose.material.icons.outlined.ChevronRight
+import androidx.compose.material.icons.outlined.Close
 import androidx.compose.material.icons.outlined.Download
 import androidx.compose.material.icons.outlined.EventAvailable
 import androidx.compose.material.icons.outlined.PersonOutline
@@ -33,6 +34,7 @@ import androidx.compose.material.icons.outlined.FolderOpen
 import androidx.compose.material.icons.outlined.Home
 import androidx.compose.material3.Card
 import androidx.compose.material3.Icon
+import androidx.compose.material3.IconButton
 import androidx.compose.material3.MaterialTheme
 import androidx.compose.material3.Text
 import androidx.compose.material3.Surface
@@ -70,6 +72,7 @@ internal fun ReelAccountDrawer(
     onSettings: () -> Unit,
     onBrowseHome: () -> Unit,
     onOfflineEpisode: (OfflineEpisode) -> Unit,
+    onClose: () -> Unit,
 ) {
     val account by model.account.state.collectAsStateWithLifecycle()
     // History can include repeat visits; show each drama only once, most recent first.
@@ -80,6 +83,24 @@ internal fun ReelAccountDrawer(
     var drawerPage by rememberSaveable { mutableStateOf<String?>(null) }
     Column(Modifier.fillMaxSize().background(HongguoColors.background)
         .testTag("reel_account_drawer")) {
+        // Explicit escape hatch even on OEM PiP restoration paths where a
+        // tap on the scrim might be intercepted by another window layer.
+        Row(
+            Modifier.fillMaxWidth().padding(start = HongguoUi.pagePadding,
+                end = 10.dp, top = 4.dp, bottom = 2.dp),
+            verticalAlignment = Alignment.CenterVertically,
+        ) {
+            Text("账号与常用功能", color = HongguoColors.ink,
+                fontSize = 14.sp, fontWeight = FontWeight.SemiBold,
+                modifier = Modifier.weight(1f))
+            IconButton(
+                onClick = onClose,
+                modifier = Modifier.testTag("reel_account_drawer_close"),
+            ) {
+                Icon(Icons.Outlined.Close, contentDescription = "关闭菜单",
+                    tint = HongguoColors.ink)
+            }
+        }
         LazyColumn(
             modifier = Modifier.weight(1f).fillMaxWidth(),
             contentPadding = PaddingValues(start = HongguoUi.pagePadding,
