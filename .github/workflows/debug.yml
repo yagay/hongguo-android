@@ -4,6 +4,13 @@ on:
     branches: [rewrite-web-native]
   pull_request:
     branches: [rewrite-web-native]
+  workflow_call:
+    inputs:
+      signed_release:
+        description: 'Build signed Release APK'
+        required: false
+        default: false
+        type: boolean
   workflow_dispatch:
     inputs:
       signed_release:
@@ -16,7 +23,7 @@ concurrency:
   cancel-in-progress: true
 jobs:
   debug:
-    if: ${{ github.event_name != 'workflow_dispatch' || !inputs.signed_release }}
+    if: ${{ !inputs.signed_release }}
     runs-on: ubuntu-latest
     permissions:
       contents: read
@@ -90,12 +97,14 @@ jobs:
   # Only runs when explicitly selected via "Run workflow". Ordinary pushes
   # remain Debug-only. The signing key must live in repository Actions Secrets.
   release:
-    if: ${{ github.event_name == 'workflow_dispatch' && inputs.signed_release }}
+    if: ${{ inputs.signed_release }}
     runs-on: ubuntu-latest
     permissions:
       contents: read
     steps:
       - uses: actions/checkout@v4
+        with:
+          ref: rewrite-web-native
       - uses: actions/setup-java@v4
         with:
           distribution: temurin
