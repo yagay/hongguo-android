@@ -197,6 +197,21 @@ class DramaViewModel(application: Application) : AndroidViewModel(application) {
     fun setAutoPlayNext(enabled: Boolean) {
         prefs.edit().putBoolean("auto_play_next", enabled).apply()
         mutable.update { it.copy(autoPlayNext = enabled) }
+        if (!enabled) {
+            // Manual episode selection remains supported, but no longer
+            // issue background official requests for automatic finale play.
+            cancelFinaleRecommendationWarmup()
+            if (!state.value.feedMode) {
+                feedPrefetchJob?.cancel()
+                clearReelWarmVideo()
+            }
+        } else {
+            val snapshot = state.value
+            val current = snapshot.detail?.episodes
+                ?.getOrNull(snapshot.episodeIndex)?.vid
+            if (snapshot.preloadNext && current == firstFrameFor)
+                prepareUpcomingPlayback(snapshot)
+        }
     }
 
     fun setThemeStyle(value: String) {
@@ -415,11 +430,21 @@ class DramaViewModel(application: Application) : AndroidViewModel(application) {
                     if (latest.feedMode && latest.preloadNext &&
                         latest.detail?.drama?.id == s.detail?.drama?.id &&
                         firstFrameFor == latest.detail.episodes
-                            .getOrNull(latest.episodeIndex)?.vid &&
-                        latest.feedItems.drop(latest.feedIndex + 1).any {
-                            it.id !in latest.hiddenRecommendationIds
-                        }) {
-                        prefetchFollowingFeedItem(latest.feedIndex)
+                            .getOrNull(latest.episodeIndex)?.vid) {
+                        // Fetch the missing official queue *after* the next
+                        // episode's encrypted range has already been prepared.
+                        if (!deferRestoredFeedRecommendations &&
+                            OfficialReelsPolicy.needsMore(
+                                latest.feedItems, latest.feedIndex,
+                                latest.hiddenRecommendationIds,
+                                latest.feedHasMore, latest.feedLoading,
+                            )) {
+                            loadOfficialReels()
+                        } else if (latest.feedItems.drop(latest.feedIndex + 1).any {
+                                it.id !in latest.hiddenRecommendationIds
+                            }) {
+                            prefetchFollowingFeedItem(latest.feedIndex)
+                        }
                     }
                 }
             } catch (e: CancellationException) { throw e }
@@ -2623,7 +2648,11 @@ class DramaViewModel(application: Application) : AndroidViewModel(application) {
         if (s.feedMode && !deferRestoredFeedRecommendations &&
             OfficialReelsPolicy.needsMore(s.feedItems,
                 s.feedIndex, s.hiddenRecommendationIds, s.feedHasMore,
-                s.feedLoading)) {
+                s.feedLoading) &&
+            (!s.preloadNext ||
+                s.episodeIndex >= (s.detail?.episodes?.lastIndex ?: 0))) {
+            // A live episode's next range beats new official feed pages.
+            // Request more recommendations after the next episode is warm.
             diagnostics.record("REELS", "POST_FIRST_FRAME_TOP_UP")
             loadOfficialReels()
         }
