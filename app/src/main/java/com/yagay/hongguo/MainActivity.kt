@@ -499,22 +499,17 @@ private fun HongguoApp(model: DramaViewModel = viewModel()) {
                         ) && state.detail != null ->
                             // UI mode changes do not destroy the active Media3 item.
                             key(state.detail?.drama?.id) {
-                                ReelModeSlidePlayer(
-                                    state = state,
-                                    model = model,
-                                    slide = reelModeSlide,
-                                ) {
-                                    NativePlayer(state, model,
-                                        onExitFeed = { confirmExitFeed = true },
-                                        onBackFromSeries = ::returnFromSeries,
-                                        onEnterSeries = { episodeIndex ->
-                                            if (state.feedMode)
-                                                reelModeSlide.prepareSeriesEntry()
-                                            model.exitFeedToEpisode(episodeIndex)
-                                        },
-                                        externalPipEnabled = externalPipEnabled,
-                                        onExternalPipEnabled = setExternalPipEnabled)
-                                }
+                                NativePlayer(state, model,
+                                    modeSlide = reelModeSlide,
+                                    onExitFeed = { confirmExitFeed = true },
+                                    onBackFromSeries = ::returnFromSeries,
+                                    onEnterSeries = { episodeIndex ->
+                                        if (state.feedMode)
+                                            reelModeSlide.prepareSeriesEntry()
+                                        model.exitFeedToEpisode(episodeIndex)
+                                    },
+                                    externalPipEnabled = externalPipEnabled,
+                                    onExternalPipEnabled = setExternalPipEnabled)
                             }
                         AppShellNavigationPolicy.shouldShowLoading(state, primaryTab) &&
                             !searchLandingOpen -> {

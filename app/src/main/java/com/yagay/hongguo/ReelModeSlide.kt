@@ -131,18 +131,11 @@ internal fun ReelModeSlidePlayer(
                     modifier = Modifier.fillMaxSize(),
                 )
             }
+            // No dummy feed navigation or menu here. The old implementation
+            // exposed what looked like a second left menu during the slide,
+            // even when its account drawer was closed.
             if (fromReel) {
-                Box(Modifier.fillMaxSize().background(Color.Black.copy(alpha = 0.18f))) {
-                    ReelFeedHeader(
-                        reelsMode = state.reelsMode,
-                        onComic = {},
-                        onReal = {},
-                        onRecommend = {},
-                        onOpenAccountDrawer = {},
-                        onSearch = {},
-                        modifier = Modifier.align(Alignment.TopCenter),
-                    )
-                }
+                Box(Modifier.fillMaxSize().background(Color.Black.copy(alpha = 0.18f)))
             }
         }
         // Modifier.offset moves the AndroidView and its SurfaceView bounds as

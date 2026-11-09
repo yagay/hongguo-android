@@ -131,6 +131,7 @@ import java.time.format.DateTimeFormatter
 internal fun NativePlayer(
     state: AppState,
     model: DramaViewModel,
+    modeSlide: ReelModeSlideState,
     onExitFeed: () -> Unit,
     onBackFromSeries: () -> Unit,
     onEnterSeries: (Int) -> Unit,
@@ -433,6 +434,9 @@ internal fun NativePlayer(
             }
         },
     ) {
+    // Keep the closed drawer sheet at its true off-screen position.
+    // Only the content page moves during feed/series transitions.
+    ReelModeSlidePlayer(state = state, model = model, slide = modeSlide) {
     Box(Modifier.fillMaxSize()) {
     BoxWithConstraints(Modifier.fillMaxSize().testTag("reels_player")) {
         val rotated = activeVideoSize.unappliedRotationDegrees % 180 != 0
@@ -745,6 +749,7 @@ internal fun NativePlayer(
         )
     }
     } // Overlay container
+    } // ReelModeSlidePlayer content
     } // ModalNavigationDrawer content
 
     if (clearScreenMenuOpen) AlertDialog(
