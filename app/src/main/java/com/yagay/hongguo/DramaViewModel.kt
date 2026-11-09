@@ -566,6 +566,19 @@ class DramaViewModel(application: Application) : AndroidViewModel(application) {
             } finally { remote?.close() }
         }
     }
+    /** A slow N+2 request remains useful after advancing one episode. */
+    private fun isLaterWarmupUseful(
+        vid: String, quality: Int, bufferMiB: Int, generation: Int,
+    ): Boolean {
+        val s = state.value
+        if (!s.preloadNext || s.qualityLimit != quality ||
+            s.preloadBufferMiB != bufferMiB) return false
+        val episodes = s.detail?.episodes ?: return false
+        return (generation == detailId &&
+            episodes.getOrNull(s.episodeIndex + 2)?.vid == vid) ||
+            episodes.getOrNull(s.episodeIndex + 1)?.vid == vid
+    }
+
     /** Prepare N+2 only after N+1 is ready; never hold a full episode here. */
     private fun preloadFurtherEpisode(snapshot: AppState) {
         if (!snapshot.preloadNext || snapshot.offlinePlaybackUri != null ||
@@ -586,19 +599,13 @@ class DramaViewModel(application: Application) : AndroidViewModel(application) {
             try {
                 // Yield to the critical startup prefix of N+1.
                 delay(500)
-                if (generation != detailId ||
-                    state.value.detail?.episodes
-                        ?.getOrNull(state.value.episodeIndex + 2)?.vid != later ||
-                    !state.value.preloadNext || state.value.qualityLimit != quality ||
-                    state.value.preloadBufferMiB != bufferMiB) return@launch
+                if (!isLaterWarmupUseful(later, quality, bufferMiB, generation))
+                    return@launch
                 diagnostics.record("PLAYBACK", "LATER_PREFETCH_SCHEDULED")
                 remote = nativeSource.openVideo(later, qualityLimit = quality,
                     preload = true, preloadBytes = VideoPreloadPolicy.LATER_BYTES)
-                if (generation != detailId ||
-                    state.value.detail?.episodes
-                        ?.getOrNull(state.value.episodeIndex + 2)?.vid != later ||
-                    !state.value.preloadNext || state.value.qualityLimit != quality ||
-                    state.value.preloadBufferMiB != bufferMiB) return@launch
+                if (!isLaterWarmupUseful(later, quality, bufferMiB, generation))
+                    return@launch
                 preloadedLaterVideo = remote
                 preloadedLaterVid = later
                 preloadedLaterQuality = quality
