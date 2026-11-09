@@ -1,6 +1,6 @@
 package com.yagay.hongguo
 
-/** A completed video and a manual vertical swipe are independent events. */
+/** Finishing the final episode can continue with an official recommended drama. */
 internal object ReelAutoplayPolicy {
     enum class Action { STOP, NEXT_EPISODE, NEXT_DRAMA }
 
@@ -8,10 +8,12 @@ internal object ReelAutoplayPolicy {
         currentEpisodeIndex: Int,
         episodeCount: Int,
         autoPlayEnabled: Boolean,
-        inReels: Boolean,
+        @Suppress("UNUSED_PARAMETER") inReels: Boolean,
     ): Action {
         if (!autoPlayEnabled || currentEpisodeIndex !in 0 until episodeCount) return Action.STOP
         if (currentEpisodeIndex + 1 < episodeCount) return Action.NEXT_EPISODE
-        return if (inReels) Action.NEXT_DRAMA else Action.STOP
+        // Both the swipe feed and the full-series player share official
+        // recommendations after the FINAL episode, when autoplay is enabled.
+        return Action.NEXT_DRAMA
     }
 }

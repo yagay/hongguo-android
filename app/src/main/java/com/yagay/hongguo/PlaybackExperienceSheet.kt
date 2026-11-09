@@ -263,7 +263,7 @@ internal fun PlaybackExperienceSheet(
                         )
                     }
                     HorizontalDivider(color = HongguoColors.divider)
-                    PlaybackToggle("自动连播下一集", state.autoPlayNext,
+                    PlaybackToggle("自动连播下一集／下一部推荐", state.autoPlayNext,
                         model::setAutoPlayNext, "player_auto_next")
                     PlaybackToggle("预加载下一集", state.preloadNext,
                         model::setPreloadNext, "player_preload_next")

@@ -2,6 +2,24 @@ package com.yagay.hongguo
 
 /** The swipe queue is independent from the manually loaded home recommendation catalog. */
 internal object OfficialReelsPolicy {
+    data class Continuation(val queue: List<Drama>, val currentIndex: Int)
+
+    /**
+     * A series reached from the swipe feed keeps its actual recommendation
+     * queue. A catalog/history series must never reuse unrelated stale reels:
+     * seed a fresh official queue with that just-completed drama instead.
+     */
+    fun continuationAfterCompletedSeries(
+        finishedDrama: Drama,
+        existing: List<Drama>,
+        cameFromFeed: Boolean,
+    ): Continuation {
+        val position = if (cameFromFeed)
+            existing.indexOfFirst { it.id == finishedDrama.id } else -1
+        return if (position >= 0) Continuation(existing, position)
+        else Continuation(listOf(finishedDrama), 0)
+    }
+
     /** An account-mode switch discards stale anonymous recommendations, but
      * never closes or replaces the drama currently playing in Media3.
      */

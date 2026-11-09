@@ -2517,6 +2517,65 @@ class DramaViewModel(application: Application) : AndroidViewModel(application) {
         }
     }
 
+    /**
+     * A completed full-series player joins the real swipe recommendation
+     * queue. Keep the existing Media3 session until a new recommended
+     * episode is resolved; never restart episode one of the finished drama.
+     */
+    private fun continueWithOfficialRecommendation() {
+        val snapshot = state.value
+        val finishedDrama = snapshot.detail?.drama ?: return
+        if (snapshot.offlinePlaybackUri != null) {
+            diagnostics.record("REELS", "OFFLINE_SERIES_FINISHED")
+            return
+        }
+        // Swipe mode already knows how to move within/paginate its queue.
+        if (snapshot.feedMode) {
+            diagnostics.record("REELS", "FEED_FINISHED_NEXT_DRAMA")
+            navigateFeed(1)
+            return
+        }
+        val continuation = OfficialReelsPolicy.continuationAfterCompletedSeries(
+            finishedDrama = finishedDrama,
+            existing = snapshot.feedItems,
+            cameFromFeed = snapshot.navigation.origin == PlaybackOrigin.SWIPE_FEED,
+        )
+        val nextIndex = OfficialReelsPolicy.nextIndex(
+            continuation.queue, continuation.currentIndex, 1,
+            snapshot.hiddenRecommendationIds,
+        )
+        // The final episode has ended: the NEXT media item is a different
+        // official recommendation, not a replay of this completed series.
+        deferRestoredFeedRecommendations = false
+        pendingFeedAdvance = false
+        mutable.update {
+            it.copy(
+                feedMode = true,
+                feedItems = continuation.queue,
+                feedIndex = continuation.currentIndex,
+                feedLoading = false,
+                feedHasMore = if (nextIndex == null) true else it.feedHasMore,
+                feedError = null,
+                detailPageVisible = false,
+                navigation = if (it.miniPlayerVisible) it.navigation.toCatalog()
+                    else it.navigation.toFeed(),
+            )
+        }
+        updateNotificationNavigation()
+        if (nextIndex != null) {
+            diagnostics.record("REELS", "SERIES_FINISHED_QUEUE_NEXT")
+            navigateFeed(1)
+        } else {
+            // No queued recommendation: fetch through the same official
+            // endpoint as swipe mode, preserving the finished drama as the
+            // excluded seed. pendingFeedAdvance starts the next item as
+            // soon as the new official batch is available.
+            pendingFeedAdvance = true
+            diagnostics.record("REELS", "SERIES_FINISHED_FETCH_RECOMMENDATIONS")
+            loadOfficialReels(restart = true)
+        }
+    }
+
     fun nextEpisode(expectedVid: String? = null) {
         val s = state.value
         if (expectedVid != null && s.detail?.episodes?.getOrNull(s.episodeIndex)?.vid != expectedVid) return
@@ -2547,8 +2606,7 @@ class DramaViewModel(application: Application) : AndroidViewModel(application) {
                 }
             }
             ReelAutoplayPolicy.Action.NEXT_DRAMA -> {
-                diagnostics.record("REELS", "SERIES_FINISHED_NEXT_DRAMA")
-                navigateFeed(1)
+                continueWithOfficialRecommendation()
             }
         }
     }

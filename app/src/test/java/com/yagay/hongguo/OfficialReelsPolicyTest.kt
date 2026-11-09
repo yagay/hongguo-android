@@ -17,6 +17,40 @@ class OfficialReelsPolicyTest {
             emptyList(), 0, null))
     }
 
+    @Test fun completedFeedSeriesKeepsQueuedNextDrama() {
+        val queue = listOf(title("10"), title("20"), title("30"))
+        val result = OfficialReelsPolicy.continuationAfterCompletedSeries(
+            finishedDrama = title("20"), existing = queue, cameFromFeed = true,
+        )
+        assertEquals(queue, result.queue)
+        assertEquals(1, result.currentIndex)
+        assertEquals(2, OfficialReelsPolicy.nextIndex(
+            result.queue, result.currentIndex, 1, emptySet(),
+        ))
+    }
+
+    @Test fun completedCatalogSeriesStartsFreshOfficialQueue() {
+        val unrelated = listOf(title("10"), title("20"), title("30"))
+        val result = OfficialReelsPolicy.continuationAfterCompletedSeries(
+            finishedDrama = title("99"), existing = unrelated, cameFromFeed = false,
+        )
+        assertEquals(listOf("99"), result.queue.map { it.id })
+        assertEquals(0, result.currentIndex)
+        assertNull(OfficialReelsPolicy.nextIndex(
+            result.queue, result.currentIndex, 1, emptySet(),
+        ))
+    }
+
+    @Test fun hiddenQueuedRecommendationIsSkippedAfterSeriesCompletion() {
+        val queue = listOf(title("1"), title("2"), title("3"), title("4"))
+        val result = OfficialReelsPolicy.continuationAfterCompletedSeries(
+            finishedDrama = title("2"), existing = queue, cameFromFeed = true,
+        )
+        assertEquals(3, OfficialReelsPolicy.nextIndex(
+            result.queue, result.currentIndex, 1, setOf("3"),
+        ))
+    }
+
     @Test fun officialPagesExtendPastTheThreeItemManualHomeBatch() {
         val seed = listOf(title("1"))
         val first = OfficialReelsPolicy.append(seed,
@@ -67,7 +101,7 @@ class OfficialReelsPolicyTest {
             ReelAutoplayPolicy.onEnded(3, 5, true, true))
         assertEquals(ReelAutoplayPolicy.Action.NEXT_DRAMA,
             ReelAutoplayPolicy.onEnded(4, 5, true, true))
-        assertEquals(ReelAutoplayPolicy.Action.STOP,
+        assertEquals(ReelAutoplayPolicy.Action.NEXT_DRAMA,
             ReelAutoplayPolicy.onEnded(4, 5, true, false))
         assertEquals(ReelAutoplayPolicy.Action.STOP,
             ReelAutoplayPolicy.onEnded(0, 5, false, true))
