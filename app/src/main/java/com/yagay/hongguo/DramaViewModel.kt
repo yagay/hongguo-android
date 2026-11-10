@@ -1544,8 +1544,20 @@ class DramaViewModel(application: Application) : AndroidViewModel(application) {
             !NativeDiskVideoCache.mayBackgroundPreload(getApplication())) return
         val next = current.feedItems.drop(index + 1)
             .firstOrNull { it.id !in current.hiddenRecommendationIds } ?: return
-        if (reelWarmSeriesId == next.id && reelWarmVideo != null) return
+        if (reelSecondSeriesId == next.id && reelSecondVideo != null)
+            promoteSecondSwipeStream(next.id)
+        if (reelWarmSeriesId == next.id && reelWarmVideo != null) {
+            val second = current.feedItems.drop(index + 1)
+                .filter { it.id !in current.hiddenRecommendationIds &&
+                    it.id != next.id }.distinctBy { it.id }.getOrNull(0)
+            if (second != null) scheduleSecondSwipeVideo(second.id)
+            return
+        }
+        if (feedPrefetchTargetSeriesId == next.id &&
+            feedPrefetchJob?.isActive == true) return
         feedPrefetchJob?.cancel()
+        feedPrefetchTargetSeriesId = next.id
+        diagnostics.record("FEED", "NEXT_DRAMA_PREFETCH_SCHEDULED")
         feedPrefetchJob = viewModelScope.launch {
             var warming: RemoteVideo? = null
             val activeAtStart = state.value.detail?.drama?.id
@@ -1553,29 +1565,44 @@ class DramaViewModel(application: Application) : AndroidViewModel(application) {
                 val detail = prefetchedFeedDetails[next.id] ?: nativeSource.detail(next.id)
                 if (!isUpcomingReel(next.id)) return@launch
                 prefetchedFeedDetails[next.id] = detail
-                while (prefetchedFeedDetails.size > 3)
+                while (prefetchedFeedDetails.size > 5)
                     prefetchedFeedDetails.remove(prefetchedFeedDetails.keys.first())
                 diagnostics.record("FEED", "NEXT_DETAIL_PREFETCHED")
                 if (!state.value.preloadNext || detail.episodes.isEmpty()) return@launch
-                // Do not compete with current video startup. Prepare the next
-                // byte range only after Media3 has rendered the active first frame.
-                val active = state.value.detail?.episodes?.getOrNull(state.value.episodeIndex)
-                if (active == null || firstFrameFor != active.vid) return@launch
-                // During a multi-episode reel, prioritize the upcoming
-                // episode. Once its range is ready, begin warming the
-                // adjacent drama without contending for the initial bytes.
-                val activeDetail = state.value.detail
-                if (activeDetail != null &&
-                    state.value.episodeIndex < activeDetail.episodes.lastIndex) {
-                    val followingVid = activeDetail.episodes
-                        .getOrNull(state.value.episodeIndex + 1)?.vid
-                    if (followingVid != null && preloadedNextVid != followingVid)
-                        return@launch
+                // Wait only for the active item's startup, not for the entire
+                // N+1 warmup; first-frame callbacks may be absent in background.
+                var active = state.value.detail?.episodes
+                    ?.getOrNull(state.value.episodeIndex)
+                if (active == null) return@launch
+                repeat(20) {
+                    if (firstFrameFor == active?.vid ||
+                        !isUpcomingReel(next.id)) return@repeat
+                    delay(125)
+                    active = state.value.detail?.episodes
+                        ?.getOrNull(state.value.episodeIndex)
                 }
+                if (!isUpcomingReel(next.id) ||
+                    (firstFrameFor != active?.vid &&
+                        state.value.playbackUrl == null)) return@launch
+                // Give the next episode an opportunity to publish its first
+                // 1 MiB, but do not block the next drama behind 8-16 MiB.
+                val activeDetail = state.value.detail
+                val followingVid = activeDetail?.episodes
+                    ?.getOrNull(state.value.episodeIndex + 1)?.vid
+                if (followingVid != null && preloadedNextVid != followingVid) {
+                    repeat(14) {
+                        if (preloadedNextVid != followingVid &&
+                            isUpcomingReel(next.id)) delay(125)
+                    }
+                }
+                if (!isUpcomingReel(next.id)) return@launch
                 val first = detail.episodes.first().vid
                 val quality = state.value.qualityLimit
                 val bufferMiB = state.value.preloadBufferMiB
-                val targetBytes = VideoPreloadPolicy.bytes(bufferMiB)
+                // The next DRAMA uses a smaller budget than the immediate
+                // next EPISODE. A separate second drama gets only 2 MiB.
+                val targetBytes = minOf(VideoPreloadPolicy.bytes(bufferMiB),
+                    8 * VideoPreloadPolicy.MIB)
                 warming = try {
                     nativeSource.openVideo(first, qualityLimit = quality,
                         preload = true, preloadBytes = targetBytes)
@@ -1606,6 +1633,11 @@ class DramaViewModel(application: Application) : AndroidViewModel(application) {
                 val ready = warming
                 warming = null
                 diagnostics.record("FEED", "NEXT_VIDEO_PREPARED")
+                // The second drama can start preparing its model now.
+                val following = state.value.feedItems.drop(state.value.feedIndex + 1)
+                    .filter { it.id !in state.value.hiddenRecommendationIds &&
+                        it.id != next.id }.distinctBy { it.id }.firstOrNull()
+                if (following != null) scheduleSecondSwipeVideo(following.id)
                 if (ready != null && targetBytes > VideoPreloadPolicy.STARTUP_BYTES) {
                     try {
                         withContext(Dispatchers.IO) {
