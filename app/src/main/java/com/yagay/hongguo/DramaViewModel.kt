@@ -1492,7 +1492,14 @@ class DramaViewModel(application: Application) : AndroidViewModel(application) {
                 // The initial active video and N+1 prefix have priority.
                 delay(900)
                 if (!isSecondUpcomingReel(second.id)) return@launch
-                val detail = nativeSource.detail(second.id)
+                val detail = try {
+                    nativeSource.detail(second.id)
+                } catch (error: IOException) {
+                    diagnostics.record("FEED", "SECOND_DETAIL_NETWORK_RETRY")
+                    delay(1_500)
+                    if (!isSecondUpcomingReel(second.id)) return@launch
+                    nativeSource.detail(second.id)
+                }
                 if (!isSecondUpcomingReel(second.id)) return@launch
                 prefetchedFeedDetails[second.id] = detail
                 while (prefetchedFeedDetails.size > 5)
@@ -1609,7 +1616,16 @@ class DramaViewModel(application: Application) : AndroidViewModel(application) {
             var warming: RemoteVideo? = null
             val activeAtStart = state.value.detail?.drama?.id
             try {
-                val detail = prefetchedFeedDetails[next.id] ?: nativeSource.detail(next.id)
+                // A transient failed detail lookup previously killed the
+                // entire cross-drama preload without another attempt.
+                val detail = prefetchedFeedDetails[next.id] ?: try {
+                    nativeSource.detail(next.id)
+                } catch (error: IOException) {
+                    diagnostics.record("FEED", "NEXT_DETAIL_NETWORK_RETRY")
+                    delay(1_500)
+                    if (!isUpcomingReel(next.id)) return@launch
+                    nativeSource.detail(next.id)
+                }
                 if (!isUpcomingReel(next.id)) return@launch
                 prefetchedFeedDetails[next.id] = detail
                 while (prefetchedFeedDetails.size > 5)
@@ -3342,7 +3358,7 @@ class DramaViewModel(application: Application) : AndroidViewModel(application) {
                     // Give it a short bounded handoff window before issuing
                     // another network request for the same video ID.
                     val inFlightVideo = if (pendingNextJob != null)
-                        kotlinx.coroutines.withTimeoutOrNull(2_500L) {
+                        kotlinx.coroutines.withTimeoutOrNull(4_500L) {
                             while (preloadedNextVid != vid && pendingNextJob.isActive) {
                                 delay(40)
                             }
@@ -3372,7 +3388,7 @@ class DramaViewModel(application: Application) : AndroidViewModel(application) {
                     // duplicate playback-model request and cancelling prefetch.
                     val inFlightReel = if (cachedNative == null &&
                         inFlightVideo == null && pendingReelJob != null)
-                        kotlinx.coroutines.withTimeoutOrNull(3_000L) {
+                        kotlinx.coroutines.withTimeoutOrNull(5_000L) {
                             while (pendingReelJob.isActive &&
                                 !(reelWarmSeriesId == detail.drama.id &&
                                   reelWarmVid == vid && reelWarmQuality == quality &&
