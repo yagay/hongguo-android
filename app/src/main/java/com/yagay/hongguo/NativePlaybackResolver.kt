@@ -21,41 +21,37 @@ internal class NativePlaybackResolver(
         quality: Int,
         isCurrent: () -> Boolean,
     ): RemoteVideo? {
-        var networkRetries = 0
-        var emptyRetries = 0
+        // The core already performs multi-route, deadline-bound recovery.
+        // At most ONE outer retry prevents a second complete 8-second model
+        // round from stacking on top of multiple more 8-second rounds.
+        var retried = false
         while (true) {
             try {
                 return source.openVideo(
                     vid,
-                    if (networkRetries == 0 && emptyRetries == 0) ahead else null,
+                    if (retried) null else ahead,
                     quality,
                 )
             } catch (cancelled: CancellationException) {
                 throw cancelled
             } catch (error: Exception) {
-                val waitMs = when {
-                    PlaybackProblem.isEmptyPlaybackModel(error) && emptyRetries < 1 -> {
-                        emptyRetries++
-                        diagnostics.record("PLAYBACK", "PRIMARY_EMPTY_RETRY")
-                        1_500L
+                if (!retried && (PlaybackProblem.isEmptyPlaybackModel(error) ||
+                        PlaybackProblem.isTransientTransport(error))) {
+                    retried = true
+                    val empty = PlaybackProblem.isEmptyPlaybackModel(error)
+                    diagnostics.record("PLAYBACK",
+                        if (empty) "PRIMARY_EMPTY_RETRY" else "PRIMARY_NETWORK_RETRY_1")
+                    delay(if (empty) 700L else 800L)
+                    if (!isCurrent()) {
+                        diagnostics.record("PLAYBACK", "PRIMARY_RETRY_CANCELLED_STALE")
+                        return null
                     }
-                    PlaybackProblem.isTransientTransport(error) && networkRetries < 2 -> {
-                        networkRetries++
-                        diagnostics.record("PLAYBACK", "PRIMARY_NETWORK_RETRY_" + networkRetries)
-                        networkRetries * 1_500L
-                    }
-                    else -> {
-                        if (PlaybackProblem.isEmptyPlaybackModel(error))
-                            diagnostics.record("PLAYBACK", "PRIMARY_EMPTY_RETRY_EXHAUSTED")
-                        if (PlaybackProblem.isTransientTransport(error))
-                            diagnostics.record("PLAYBACK", "PRIMARY_NETWORK_RETRY_EXHAUSTED")
-                        throw error
-                    }
-                }
-                delay(waitMs)
-                if (!isCurrent()) {
-                    diagnostics.record("PLAYBACK", "PRIMARY_RETRY_CANCELLED_STALE")
-                    return null
+                } else {
+                    if (PlaybackProblem.isEmptyPlaybackModel(error))
+                        diagnostics.record("PLAYBACK", "PRIMARY_EMPTY_RETRY_EXHAUSTED")
+                    if (PlaybackProblem.isTransientTransport(error))
+                        diagnostics.record("PLAYBACK", "PRIMARY_NETWORK_RETRY_EXHAUSTED")
+                    throw error
                 }
             }
         }
