@@ -1708,7 +1708,9 @@ class DramaViewModel(application: Application) : AndroidViewModel(application) {
 
     private fun isUpcomingReel(seriesId: String): Boolean {
         val current = state.value
-        return mayPreloadFollowingDrama(current) &&
+        return current.preloadNext &&
+            NativeDiskVideoCache.mayBackgroundPreload(getApplication()) &&
+            mayPreloadFollowingDrama(current) &&
             SwipePrefetchPolicy.candidates(
                 current.feedItems.map { it.id }, current.feedIndex,
                 current.hiddenRecommendationIds, current.detail?.drama?.id
