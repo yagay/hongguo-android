@@ -67,8 +67,7 @@ class DramaViewModel(application: Application) : AndroidViewModel(application) {
             }
             ++detailId
             detailJob?.cancel()
-            clearPreloadedNext()
-            clearPreloadedLater()
+            cancelPreloading()
             closeNativeVideo()
             clearSocial()
             clearEngagement()
@@ -217,11 +216,8 @@ class DramaViewModel(application: Application) : AndroidViewModel(application) {
         // Release obsolete jobs when moving to a more restrictive network
         // policy. Do not dispose live playback's RemoteVideo instance.
         if (!NativeDiskVideoCache.mayBackgroundPreload(getApplication())) {
-            clearPreloadedNext()
-            clearPreloadedLater()
-            feedPrefetchJob?.cancel()
-            clearReelWarmVideo()
-            clearFeedLookahead()
+            cancelPreloading()
+            cancelPreloadDetail()
             cancelFinaleRecommendationWarmup()
         } else {
             val s = state.value
@@ -238,11 +234,8 @@ class DramaViewModel(application: Application) : AndroidViewModel(application) {
         diagnostics.record("DISK_CACHE",
             if (enabled) "WIFI_PREFETCH_ON" else "WIFI_PREFETCH_OFF")
         if (!enabled) {
-            clearPreloadedNext()
-            clearPreloadedLater()
-            feedPrefetchJob?.cancel()
-            clearReelWarmVideo()
-            clearFeedLookahead()
+            cancelPreloading()
+            cancelPreloadDetail()
         } else if (NativeDiskVideoCache.mayBackgroundPreload(getApplication()))
             prepareUpcomingPlayback(state.value)
     }
@@ -252,11 +245,8 @@ class DramaViewModel(application: Application) : AndroidViewModel(application) {
         diagnostics.record("DISK_CACHE",
             if (enabled) "METERED_PREFETCH_ON" else "METERED_PREFETCH_OFF")
         if (!enabled && !NativeDiskVideoCache.mayBackgroundPreload(getApplication())) {
-            clearPreloadedNext()
-            clearPreloadedLater()
-            feedPrefetchJob?.cancel()
-            clearReelWarmVideo()
-            clearFeedLookahead()
+            cancelPreloading()
+            cancelPreloadDetail()
         } else if (NativeDiskVideoCache.mayBackgroundPreload(getApplication()))
             prepareUpcomingPlayback(state.value)
     }
@@ -266,11 +256,8 @@ class DramaViewModel(application: Application) : AndroidViewModel(application) {
             mutable.update { it.copy(settingsMessage = "请先关闭播放器再清理视频缓存") }
             return
         }
-        clearPreloadedNext()
-        clearPreloadedLater()
-        feedPrefetchJob?.cancel()
-        clearReelWarmVideo()
-        clearFeedLookahead()
+        cancelPreloading()
+        cancelPreloadDetail()
         viewModelScope.launch {
             withContext(Dispatchers.IO) {
                 NativeDiskVideoCache.clear(getApplication())
@@ -284,11 +271,8 @@ class DramaViewModel(application: Application) : AndroidViewModel(application) {
         prefs.edit().putBoolean("preload_next_episode", enabled).apply()
         mutable.update { it.copy(preloadNext = enabled) }
         if (!enabled) {
-            clearPreloadedNext()
-            clearPreloadedLater()
-            feedPrefetchJob?.cancel()
-            clearReelWarmVideo()
-            clearFeedLookahead()
+            cancelPreloading()
+            cancelPreloadDetail()
             cancelFinaleRecommendationWarmup()
         } else {
             // Switching preload ON while a video is already playing should
@@ -307,11 +291,8 @@ class DramaViewModel(application: Application) : AndroidViewModel(application) {
             value == state.value.preloadBufferMiB) return
         prefs.edit().putInt("preload_buffer_mib", value).apply()
         mutable.update { it.copy(preloadBufferMiB = value) }
-        clearPreloadedNext()
-        clearPreloadedLater()
-        feedPrefetchJob?.cancel()
-        clearReelWarmVideo()
-        clearFeedLookahead()
+        cancelPreloading()
+        cancelPreloadDetail()
         diagnostics.record("PLAYBACK", "PRELOAD_BUDGET_${value}M")
         val current = state.value
         val vid = current.detail?.episodes?.getOrNull(current.episodeIndex)?.vid
@@ -333,9 +314,8 @@ class DramaViewModel(application: Application) : AndroidViewModel(application) {
             // issue background official requests for automatic finale play.
             cancelFinaleRecommendationWarmup()
             if (!state.value.feedMode) {
-                feedPrefetchJob?.cancel()
-                clearReelWarmVideo()
-                clearFeedLookahead()
+                cancelPreloading()
+                cancelPreloadDetail()
             }
         } else {
             val snapshot = state.value
@@ -491,442 +471,106 @@ class DramaViewModel(application: Application) : AndroidViewModel(application) {
     private val sleepTimer = SleepTimer { android.os.SystemClock.elapsedRealtime() }
     @Volatile private var activeNativeVideo: RemoteVideo? = null
     @Volatile private var activeNativeVid: String? = null
-    private var preloadedNextVid: String? = null
-    private var preloadedNextQuality = 0
-    private var preloadedNextVideo: RemoteVideo? = null
-    private var preloadEpisodeJob: Job? = null
-    private var preloadEpisodeTargetVid: String? = null
-    /** Low-priority N+2 stream: separate from N+1 so advancing doesn't discard it. */
-    private var preloadedLaterVid: String? = null
-    private var preloadedLaterQuality = 0
-    private var preloadedLaterVideo: RemoteVideo? = null
-    private var preloadLaterJob: Job? = null
-    private var preloadLaterTargetVid: String? = null
+    // The upstream TV media source manager owns all media sample preloading.
+    // Only one next-episode/next-drama source may be prepared at a time.
+    private val nativePreloader by lazy {
+        NativeStreamPreloader(viewModelScope, getApplication(), nativeSource, diagnostics)
+    }
+    private var preloadDetailJob: Job? = null
+    private var preloadDetailId: String? = null
 
-    private fun clearPreloadedLater() {
-        preloadLaterJob?.cancel()
-        preloadLaterJob = null
-        preloadLaterTargetVid = null
-        preloadedLaterVideo?.close()
-        preloadedLaterVideo = null
-        preloadedLaterVid = null
+    private fun cancelPreloadDetail() {
+        preloadDetailJob?.cancel()
+        preloadDetailJob = null
+        preloadDetailId = null
+    }
+    private fun cancelPreloading() {
+        cancelPreloadDetail()
+        nativePreloader.cancel()
     }
 
-    /** Stream prepared for a different series, not the next episode of this series. */
-    private var reelWarmSeriesId: String? = null
-    private var reelWarmVid: String? = null
-    private var reelWarmQuality = 0
-    private var reelWarmVideo: RemoteVideo? = null
-    private var feedPrefetchTargetSeriesId: String? = null
-    /** Preserve an unfinished next-drama model during the actual swipe. */
-    private var feedHandoffTargetSeriesId: String? = null
-
-    /** A second swipe candidate is allowed a tiny prepared stream, never a decoder. */
-    private var reelSecondSeriesId: String? = null
-    private var reelSecondVid: String? = null
-    private var reelSecondQuality = 0
-    private var reelSecondVideo: RemoteVideo? = null
-    private var feedSecondWarmJob: Job? = null
-    private var feedSecondTargetSeriesId: String? = null
-    private var feedDetailsLookaheadJob: Job? = null
-    private var feedDetailsLookaheadKey: String? = null
-
-    private fun clearFeedLookahead() {
-        feedDetailsLookaheadJob?.cancel()
-        feedDetailsLookaheadJob = null
-        feedDetailsLookaheadKey = null
-        feedSecondWarmJob?.cancel()
-        feedSecondWarmJob = null
-        feedSecondTargetSeriesId = null
-        reelSecondVideo?.close()
-        reelSecondVideo = null
-        reelSecondVid = null
-        reelSecondSeriesId = null
+    private fun preloadDurationMs(miB: Int): Long = when {
+        miB <= 4 -> 1000L
+        miB <= 8 -> 1500L
+        miB <= 12 -> 2000L
+        else -> 3000L
     }
 
-    private fun promoteSecondSwipeStream(seriesId: String) {
-        if (reelSecondSeriesId != seriesId || reelSecondVideo == null) return
-        // Navigation never closes an already transferred stream.
-        clearReelWarmVideo()
-        feedSecondWarmJob?.cancel()
-        feedSecondWarmJob = null
-        feedSecondTargetSeriesId = null
-        reelWarmVideo = reelSecondVideo
-        reelWarmSeriesId = reelSecondSeriesId
-        reelWarmVid = reelSecondVid
-        reelWarmQuality = reelSecondQuality
-        reelSecondVideo = null
-        reelSecondVid = null
-        reelSecondSeriesId = null
-        diagnostics.record("FEED", "SECOND_STREAM_PROMOTED")
-    }
-
-    private fun clearReelWarmVideo() {
-        reelWarmVideo?.close()
-        reelWarmVideo = null
-        reelWarmSeriesId = null
-        reelWarmVid = null
-    }
-
-    private fun clearPreloadedNext() {
-        preloadEpisodeJob?.cancel()
-        preloadEpisodeJob = null
-        preloadEpisodeTargetVid = null
-        preloadedNextVideo?.close()
-        preloadedNextVideo = null
-        preloadedNextVid = null
-    }
-
-    private fun isNextWarmupUseful(
-        vid: String, quality: Int, bufferMiB: Int, generation: Long,
-    ): Boolean {
-        val s = state.value
-        if (!s.preloadNext || s.qualityLimit != quality ||
-            s.preloadBufferMiB != bufferMiB ||
-            !NativeDiskVideoCache.mayBackgroundPreload(getApplication())) return false
-        val episodes = s.detail?.episodes ?: return false
-        return (generation == detailId &&
-            episodes.getOrNull(s.episodeIndex + 1)?.vid == vid) ||
-            episodes.getOrNull(s.episodeIndex)?.vid == vid
-    }
-
-    private fun isActivePreloadJobForEpisode(
-        vid: String, quality: Int, bufferMiB: Int,
-    ): Boolean = state.value.preloadNext &&
-        NativeDiskVideoCache.mayBackgroundPreload(getApplication()) &&
-        state.value.qualityLimit == quality &&
-        state.value.preloadBufferMiB == bufferMiB &&
-        (preloadedNextVid == vid ||
-            BackgroundPlaybackService.playerFlow.value?.currentMediaItem?.mediaId == vid)
-
-    private fun preloadFollowingEpisode() {
-        val s = state.value
-        if (!s.preloadNext) {
-            diagnostics.record("PLAYBACK", "NEXT_PREFETCH_SKIP_DISABLED")
-            return
-        }
-        if (!NativeDiskVideoCache.mayBackgroundPreload(getApplication())) {
-            diagnostics.record("PLAYBACK", "NEXT_PREFETCH_SKIP_NETWORK_" +
-                (NativeDiskVideoCache.preloadBlockReason(getApplication()) ?: "UNKNOWN"))
-            return
-        }
-        if (source != null && s.navigation.origin != PlaybackOrigin.SWIPE_FEED) {
-            diagnostics.record("PLAYBACK", "NEXT_PREFETCH_SKIP_EXTERNAL_SOURCE")
-            return
-        }
-        val next = s.detail?.episodes?.getOrNull(s.episodeIndex + 1)?.vid ?: return
-        if (next == preloadedNextVid && preloadedNextQuality == s.qualityLimit) {
-            preloadFurtherEpisode(s)
-            return
-        }
-        if (preloadEpisodeTargetVid == next && preloadEpisodeJob?.isActive == true)
-            return
-        // N+2 may still be resolving when the user advances to N+1.
-        // Wait for that request instead of opening the same encrypted stream twice.
-        if (preloadLaterTargetVid == next && preloadLaterJob?.isActive == true)
-            return
-        // Promote an already prepared N+2 after advancing to N+1.
-        if (next == preloadedLaterVid && preloadedLaterQuality == s.qualityLimit &&
-            preloadedLaterVideo != null) {
-            clearPreloadedNext()
-            preloadLaterJob?.cancel()
-            preloadLaterJob = null
-            preloadLaterTargetVid = null
-            preloadedNextVideo = preloadedLaterVideo
-            preloadedNextVid = preloadedLaterVid
-            preloadedNextQuality = preloadedLaterQuality
-            preloadedLaterVideo = null
-            preloadedLaterVid = null
-            diagnostics.record("PLAYBACK", "LATER_STREAM_PROMOTED")
-            preloadFurtherEpisode(s)
-            return
-        }
-        clearPreloadedNext()
-        val generation = detailId
-        val quality = s.qualityLimit
-        val targetBytes = VideoPreloadPolicy.bytesFor(
-            VideoPreloadPolicy.Slot.NEXT_EPISODE, s.preloadBufferMiB)
-        val originatingVid = s.detail?.episodes?.getOrNull(s.episodeIndex)?.vid
-        diagnostics.record("PLAYBACK", "NEXT_PREFETCH_SCHEDULED")
-        preloadEpisodeTargetVid = next
-        preloadEpisodeJob = viewModelScope.launch {
-            // Give active playback a short exclusive startup window.
-            // First frame releases prefetch immediately, but a background
-            // player with no attached surface cannot block it forever.
-            if (firstFrameFor != originatingVid) {
-                repeat(16) {
-                    if (firstFrameFor != originatingVid &&
-                        isNextWarmupUseful(next, quality, s.preloadBufferMiB, generation))
-                        delay(150)
-                }
-            }
-            if (!isNextWarmupUseful(next, quality, s.preloadBufferMiB, generation))
-                return@launch
-            var remote: RemoteVideo? = null
-            try {
-                // The upstream playback model intermittently returns an
-                // empty response. Retry at most once for prefetch only, and
-                // only while the target episode and quality are unchanged.
-                remote = try {
-                    nativeSource.openVideo(next, qualityLimit = quality,
-                        preload = true, preloadBytes = targetBytes)
-                } catch (first: CancellationException) {
-                    throw first
-                } catch (first: Exception) {
-                    val emptyModel = PlaybackProblem.isEmptyPlaybackModel(first)
-                    val networkFailure = first is IOException
-                    if (!emptyModel && !networkFailure) throw first
-                    diagnostics.record("PLAYBACK",
-                        if (emptyModel) "PREFETCH_EMPTY_RETRY"
-                        else "PREFETCH_NETWORK_RETRY")
-                    delay(if (emptyModel) 1_500 else 2_000)
-                    if (!isNextWarmupUseful(
-                            next, quality, s.preloadBufferMiB, generation)) return@launch
-                    nativeSource.openVideo(next, qualityLimit = quality,
-                        preload = true, preloadBytes = targetBytes)
-                }
-                if (isNextWarmupUseful(
-                        next, quality, s.preloadBufferMiB, generation)) {
-                    preloadedNextVideo = remote
-                    preloadedNextVid = next
-                    preloadedNextQuality = quality
-                    val ready = remote
-                    remote = null
-                    diagnostics.record("PLAYBACK", "NEXT_NATIVE_PREPARED")
-                    // Extend the SAME RemoteVideo after publishing the usable
-                    // first MiB. Fast episode switches can consume its current
-                    // prefix even while later chunks are still downloading.
-                    if (ready != null) {
-                        try {
-                            withContext(Dispatchers.IO) {
-                                ready.warm(targetBytes) {
-                                    isActivePreloadJobForEpisode(next, quality, s.preloadBufferMiB)
-                                }
-                            }
-                            NativeDiskVideoCache.warm(
-                                getApplication(), ready, next, quality, targetBytes) {
-                                    isActivePreloadJobForEpisode(
-                                        next, quality, s.preloadBufferMiB)
-                                }
-                            diagnostics.record("PLAYBACK", "NEXT_VIDEO_WARMED")
-                        } catch (cancel: CancellationException) { throw cancel }
-                        catch (_: Exception) {
-                            diagnostics.record("PLAYBACK", "NEXT_WARM_PARTIAL")
-                        }
-                    }
-                    // An available N+1 startup prefix is enough for the
-                    // cross-drama task to progress, without waiting for all
-                    // N+1 bytes to be written to disk.
-                    if (state.value.feedMode) scheduleSwipePrefetch(state.value)
-                    // Once N+1 is usable, N+2 is allowed a small low-priority
-                    // range. Never let this compete with the N+1 initial request.
-                    preloadFurtherEpisode(state.value)
-                    // Once the next EPISODE has a prepared range, also warm
-                    // the next swipe drama, sequentially rather than in
-                    // parallel with the episode model request.
-                    val latest = state.value
-                    val latestActiveVid = latest.detail?.episodes
-                        ?.getOrNull(latest.episodeIndex)?.vid
-                    if (latest.feedMode && latest.preloadNext &&
-                        latest.detail?.drama?.id == s.detail?.drama?.id &&
-                        latestActiveVid != null &&
-                        firstFrameFor == latestActiveVid) {
-                        // Fetch the missing official queue *after* the next
-                        // episode's encrypted range has already been prepared.
-                        if (!deferRestoredFeedRecommendations &&
-                            OfficialReelsPolicy.needsMore(
-                                latest.feedItems, latest.feedIndex,
-                                latest.hiddenRecommendationIds,
-                                latest.feedHasMore, latest.feedLoading,
-                            )) {
-                            loadOfficialReels()
-                        } else if (latest.feedItems.drop(latest.feedIndex + 1).any {
-                                it.id !in latest.hiddenRecommendationIds
-                            }) {
-                            prefetchFollowingFeedItem(latest.feedIndex)
-                        }
-                    }
-                }
-            } catch (e: CancellationException) {
-                diagnostics.record("PLAYBACK", "NEXT_PREFETCH_CANCELLED")
-                throw e
-            } catch (_: Exception) {
-                diagnostics.record("PLAYBACK", "NEXT_PREFETCH_UNAVAILABLE")
-            } finally { remote?.close() }
-        }
-    }
-    /** A slow N+2 request remains useful after advancing one episode. */
-    private fun isLaterWarmupUseful(
-        vid: String, quality: Int, bufferMiB: Int, generation: Long,
-    ): Boolean {
-        val s = state.value
-        if (!s.preloadNext || s.qualityLimit != quality ||
-            s.preloadBufferMiB != bufferMiB ||
-            !NativeDiskVideoCache.mayBackgroundPreload(getApplication())) return false
-        val episodes = s.detail?.episodes ?: return false
-        return (generation == detailId &&
-            episodes.getOrNull(s.episodeIndex + 2)?.vid == vid) ||
-            episodes.getOrNull(s.episodeIndex + 1)?.vid == vid
-    }
-
-    /** Prepare N+2 only after N+1 is ready; never hold a full episode here. */
-    private fun preloadFurtherEpisode(snapshot: AppState) {
-        if (!snapshot.preloadNext || snapshot.offlinePlaybackUri != null ||
-            !NativeDiskVideoCache.mayBackgroundPreload(getApplication()) ||
-            (source != null && snapshot.navigation.origin != PlaybackOrigin.SWIPE_FEED)) return
-        val detail = snapshot.detail ?: return
-        val next = detail.episodes.getOrNull(snapshot.episodeIndex + 1)?.vid ?: return
-        val later = detail.episodes.getOrNull(snapshot.episodeIndex + 2)?.vid ?: return
-        if (preloadedNextVid != next || preloadedNextVideo == null) return
-        if (preloadedLaterVid == later && preloadedLaterQuality == snapshot.qualityLimit) return
-        if (preloadLaterTargetVid == later && preloadLaterJob?.isActive == true) return
-        clearPreloadedLater()
-        val generation = detailId
-        val quality = snapshot.qualityLimit
-        val bufferMiB = snapshot.preloadBufferMiB
-        preloadLaterTargetVid = later
-        preloadLaterJob = viewModelScope.launch {
-            var remote: RemoteVideo? = null
-            try {
-                // Yield to the critical startup prefix of N+1.
-                delay(500)
-                if (!isLaterWarmupUseful(later, quality, bufferMiB, generation))
-                    return@launch
-                diagnostics.record("PLAYBACK", "LATER_PREFETCH_SCHEDULED")
-                remote = nativeSource.openVideo(later, qualityLimit = quality,
-                    preload = true, preloadBytes = VideoPreloadPolicy.bytesFor(
-                        VideoPreloadPolicy.Slot.LATER, bufferMiB))
-                if (!isLaterWarmupUseful(later, quality, bufferMiB, generation))
-                    return@launch
-                preloadedLaterVideo = remote
-                preloadedLaterVid = later
-                preloadedLaterQuality = quality
-                val ready = remote
-                remote = null
-                diagnostics.record("PLAYBACK", "LATER_VIDEO_PREPARED")
-                if (ready != null) {
-                    try {
-                        withContext(Dispatchers.IO) {
-                            ready.warm(VideoPreloadPolicy.LATER_BYTES) {
-                                state.value.preloadNext &&
-                                    state.value.qualityLimit == quality &&
-                                    (preloadedLaterVid == later ||
-                                        BackgroundPlaybackService.playerFlow.value
-                                            ?.currentMediaItem?.mediaId == later)
-                            }
-                        }
-                        NativeDiskVideoCache.warm(
-                            getApplication(), ready, later, quality,
-                            VideoPreloadPolicy.LATER_BYTES)
-                        diagnostics.record("PLAYBACK", "LATER_VIDEO_WARMED")
-                    } catch (cancel: CancellationException) { throw cancel }
-                    catch (_: Exception) {
-                        diagnostics.record("PLAYBACK", "LATER_WARM_PARTIAL")
-                    }
-                }
-            } catch (cancel: CancellationException) {
-                diagnostics.record("PLAYBACK", "LATER_PREFETCH_CANCELLED")
-                throw cancel
-            } catch (_: Exception) {
-                diagnostics.record("PLAYBACK", "LATER_PREFETCH_UNAVAILABLE")
-            } finally {
-                remote?.close()
-            }
-            // If playback advanced while this slot was filling, hand it over
-            // on the next main-loop turn rather than issuing a duplicate model request.
-            if (preloadedLaterVid == later &&
-                state.value.detail?.episodes
-                    ?.getOrNull(state.value.episodeIndex + 1)?.vid == later) {
-                viewModelScope.launch { preloadFollowingEpisode() }
-            }
-        }
-    }
-
-    /**
-     * Schedule only the next useful stream while the current Media3 item is
-     * already rendering. For non-final episodes, episode N+1 is more urgent
-     * than the first video in a different drama. On the last episode, warm a
-     * real official recommendation before the completion callback arrives.
-     */
     private fun prepareUpcomingPlayback(snapshot: AppState) {
         val detail = snapshot.detail ?: return
-        val currentEpisode = detail.episodes.getOrNull(snapshot.episodeIndex) ?: return
-        if (snapshot.offlinePlaybackUri != null) return
-        if (!snapshot.preloadNext) {
-            diagnostics.record("PLAYBACK", "PREFETCH_GATE_DISABLED")
-            return
-        }
-        if (!NativeDiskVideoCache.mayBackgroundPreload(getApplication())) {
-            diagnostics.record("PLAYBACK", "PREFETCH_GATE_NETWORK_" +
-                (NativeDiskVideoCache.preloadBlockReason(getApplication()) ?: "UNKNOWN"))
-            return
-        }
-        if (firstFrameFor != currentEpisode.vid && snapshot.playbackUrl == null)
-            return
-
-        val episodeDecision = SeamlessPrefetchPolicy.choose(
-            enabled = snapshot.preloadNext,
-            autoPlayNext = snapshot.autoPlayNext,
-            inSwipeFeed = snapshot.feedMode,
-            offline = snapshot.offlinePlaybackUri != null,
-            hasNextEpisode = snapshot.episodeIndex < detail.episodes.lastIndex,
-            hasQueuedNextDrama = false,
-        )
-        // Cross-drama planning is independent from the N+1 byte download.
-        // It prepares candidate metadata early while the episode remains primary.
-        if (snapshot.feedMode) scheduleSwipePrefetch(snapshot)
-        if (episodeDecision == SeamlessPrefetchPolicy.Next.NEXT_EPISODE) {
-            preloadFollowingEpisode()
-            return
-        }
-        if (episodeDecision == SeamlessPrefetchPolicy.Next.NONE) return
-
-        val continuation = OfficialReelsPolicy.continuationAfterCompletedSeries(
-            finishedDrama = detail.drama,
-            existing = snapshot.feedItems,
-            cameFromFeed = snapshot.feedMode ||
-                snapshot.navigation.origin == PlaybackOrigin.SWIPE_FEED,
-        )
-        // Catalog/history playback is not itself a swipe session. Keep its
-        // final episode visible, but seed an OFFSCREEN official queue that
-        // excludes the finished drama from subsequent recommendations.
-        if (!snapshot.feedMode &&
-            (snapshot.feedItems != continuation.queue ||
-                snapshot.feedIndex != continuation.currentIndex)) {
-            mutable.update {
-                it.copy(feedItems = continuation.queue,
-                    feedIndex = continuation.currentIndex,
-                    feedHasMore = true, feedError = null)
+        val current = detail.episodes.getOrNull(snapshot.episodeIndex) ?: return
+        if (!snapshot.preloadNext || snapshot.offlinePlaybackUri != null ||
+            !NativeDiskVideoCache.mayBackgroundPreload(getApplication()) ||
+            firstFrameFor != current.vid) return
+        val next = detail.episodes.getOrNull(snapshot.episodeIndex + 1)
+        if (!snapshot.feedMode && next != null) {
+            cancelPreloadDetail()
+            val target = NativeStreamPreloader.Target(
+                detail.drama.id, next.vid, snapshot.qualityLimit,
+                preloadDurationMs(snapshot.preloadBufferMiB),
+                detail.drama.title, next.index, detail.episodes.size,
+                detail.drama.cover)
+            nativePreloader.schedule(target) {
+                val s = state.value
+                s.preloadNext && s.qualityLimit == target.quality &&
+                    NativeDiskVideoCache.mayBackgroundPreload(getApplication()) &&
+                    s.detail?.drama?.id == target.seriesId &&
+                    (s.detail?.episodes?.getOrNull(s.episodeIndex + 1)?.vid == target.vid ||
+                        s.detail?.episodes?.getOrNull(s.episodeIndex)?.vid == target.vid)
             }
-        }
-        val current = state.value
-        val nextIndex = OfficialReelsPolicy.nextIndex(
-            current.feedItems, current.feedIndex, 1,
-            current.hiddenRecommendationIds,
-        )
-        val plan = SeamlessPrefetchPolicy.choose(
-            enabled = current.preloadNext,
-            autoPlayNext = current.autoPlayNext,
-            inSwipeFeed = current.feedMode,
-            offline = current.offlinePlaybackUri != null,
-            hasNextEpisode = false,
-            hasQueuedNextDrama = nextIndex != null,
-        )
-        if (plan == SeamlessPrefetchPolicy.Next.NEXT_DRAMA) {
-            prefetchFollowingFeedItem(current.feedIndex)
             return
         }
-        if (plan != SeamlessPrefetchPolicy.Next.FETCH_RECOMMENDATIONS ||
-            current.feedLoading) return // The official request is already in flight.
-        deferRestoredFeedRecommendations = false
-        if (current.feedMode) {
-            if (!current.feedHasMore) mutable.update { it.copy(feedHasMore = true) }
-            diagnostics.record("REELS", "FINALE_FEED_TOP_UP")
-            loadOfficialReels(restart = !current.feedHasMore)
-        } else {
-            mutable.update { it.copy(feedHasMore = true, feedError = null) }
-            diagnostics.record("REELS", "FINALE_RECOMMENDATION_PREFETCH")
-            loadOfficialReels(restart = true, warmingFinaleId = detail.drama.id)
+        if (!snapshot.feedMode && !snapshot.autoPlayNext) return
+        val id = SwipePrefetchPolicy.candidates(
+            snapshot.feedItems.map { it.id }, snapshot.feedIndex,
+            snapshot.hiddenRecommendationIds, detail.drama.id).firstOrNull()
+        if (id == null) {
+            if (!snapshot.feedLoading && snapshot.feedHasMore) loadOfficialReels()
+            return
+        }
+        if (nativePreloader.hasSeries(id) ||
+            (preloadDetailId == id && preloadDetailJob?.isActive == true)) return
+        cancelPreloadDetail()
+        preloadDetailId = id
+        preloadDetailJob = viewModelScope.launch {
+            try {
+                val info = prefetchedFeedDetails[id] ?: visitedFeedDetails[id]
+                    ?: nativeSource.detail(id)
+                val s = state.value
+                if (info.episodes.isEmpty() || !s.preloadNext ||
+                    !NativeDiskVideoCache.mayBackgroundPreload(getApplication()) ||
+                    SwipePrefetchPolicy.candidates(
+                        s.feedItems.map { it.id }, s.feedIndex,
+                        s.hiddenRecommendationIds, s.detail?.drama?.id
+                    ).firstOrNull() != id) return@launch
+                prefetchedFeedDetails[id] = info
+                while (prefetchedFeedDetails.size > 5)
+                    prefetchedFeedDetails.remove(prefetchedFeedDetails.keys.first())
+                val first = info.episodes.first()
+                val target = NativeStreamPreloader.Target(
+                    id, first.vid, s.qualityLimit,
+                    preloadDurationMs(s.preloadBufferMiB),
+                    info.drama.title, first.index, info.episodes.size, info.drama.cover)
+                nativePreloader.schedule(target) {
+                    val latest = state.value
+                    latest.preloadNext && latest.qualityLimit == target.quality &&
+                        NativeDiskVideoCache.mayBackgroundPreload(getApplication()) &&
+                        (latest.detail?.drama?.id == id ||
+                            SwipePrefetchPolicy.candidates(
+                                latest.feedItems.map { it.id }, latest.feedIndex,
+                                latest.hiddenRecommendationIds, latest.detail?.drama?.id
+                            ).firstOrNull() == id)
+                }
+                diagnostics.record("FEED", "PRELOAD_V3_NEAREST_SCHEDULED")
+            } catch (e: CancellationException) { throw e }
+            catch (_: Exception) {
+                diagnostics.record("FEED", "PRELOAD_V3_DETAIL_UNAVAILABLE")
+            } finally {
+                if (preloadDetailId == id) {
+                    preloadDetailId = null
+                    preloadDetailJob = null
+                }
+            }
         }
     }
 
@@ -1189,7 +833,6 @@ class DramaViewModel(application: Application) : AndroidViewModel(application) {
         }
     }
 
-    private var feedPrefetchJob: Job? = null
     private var officialFeedJob: Job? = null
     private var officialFeedGeneration = 0L
     /** Background official-page request while the full-series finale plays. */
@@ -1376,8 +1019,8 @@ class DramaViewModel(application: Application) : AndroidViewModel(application) {
                     }
                 } else if (mayPreloadFollowingDrama(state.value)) {
                     if (state.value.feedMode)
-                        scheduleSwipePrefetch(state.value)
-                    else prefetchFollowingFeedItem(state.value.feedIndex)
+                        prepareUpcomingPlayback(state.value)
+                    else prepareUpcomingPlayback(state.value)
                 }
                 val latest = state.value
                 if (!needsFirstDrama && OfficialReelsPolicy.needsMore(
@@ -1448,9 +1091,8 @@ class DramaViewModel(application: Application) : AndroidViewModel(application) {
             officialFeedJob?.cancel()
             officialFeedGeneration++
             pendingFeedAdvance = false
-            feedPrefetchJob?.cancel()
-            clearReelWarmVideo()
-            clearFeedLookahead()
+            cancelPreloading()
+            cancelPreloadDetail()
             prefetchedFeedDetails.clear()
             val snapshot = state.value
             // Do not stop/recreate Media3 playback solely for a settings
@@ -1544,12 +1186,10 @@ class DramaViewModel(application: Application) : AndroidViewModel(application) {
         }
         officialFeedJob?.cancel()
         officialFeedGeneration++
-        feedPrefetchJob?.cancel()
-        feedPrefetchJob = null
-        feedPrefetchTargetSeriesId = null
-        feedHandoffTargetSeriesId = null
-        clearReelWarmVideo()
-        clearFeedLookahead()
+        cancelPreloading()
+
+        cancelPreloading()
+        cancelPreloadDetail()
         prefetchedFeedDetails.clear()
         clearFinaleAdvance()
         failedFeedRefreshPending = true
@@ -1579,337 +1219,8 @@ class DramaViewModel(application: Application) : AndroidViewModel(application) {
      * the full N+1 range warmup. Only the next drama gets a full stream slot;
      * the second drama has a smaller 2 MiB slot and separately cached metadata.
      */
-    private fun scheduleSwipePrefetch(snapshot: AppState) {
-        if (!snapshot.feedMode || snapshot.offlinePlaybackUri != null) return
-        if (!snapshot.preloadNext) {
-            diagnostics.record("FEED", "SWIPE_PREFETCH_SKIP_DISABLED")
-            return
-        }
-        if (deferRestoredFeedRecommendations) {
-            diagnostics.record("FEED", "SWIPE_PREFETCH_SKIP_RESTORE")
-            return
-        }
-        if (!NativeDiskVideoCache.mayBackgroundPreload(getApplication())) {
-            diagnostics.record("FEED", "SWIPE_PREFETCH_SKIP_NETWORK_" +
-                (NativeDiskVideoCache.preloadBlockReason(getApplication()) ?: "UNKNOWN"))
-            return
-        }
-        val candidateIds = SwipePrefetchPolicy.candidates(
-            snapshot.feedItems.map { it.id }, snapshot.feedIndex,
-            snapshot.hiddenRecommendationIds, snapshot.detail?.drama?.id)
-        val candidates = candidateIds.mapNotNull { id ->
-            snapshot.feedItems.firstOrNull { it.id == id }
-        }
-        if (candidates.isEmpty()) {
-            diagnostics.record("FEED", "SWIPE_PREFETCH_WAIT_RECOMMENDATIONS")
-            // The official queue may not yet exist while the first reel starts.
-            // Its eventual result calls this planner again.
-            if (!snapshot.feedLoading && snapshot.feedHasMore &&
-                snapshot.playbackUrl != null) loadOfficialReels()
-            return
-        }
-        diagnostics.record("FEED", "SWIPE_PREFETCH_PLAN_READY")
-        val first = candidates[0]
-        if (reelSecondSeriesId == first.id && reelSecondVideo != null)
-            promoteSecondSwipeStream(first.id)
-        if (reelWarmSeriesId != first.id || reelWarmVideo == null)
-            prefetchFollowingFeedItem(snapshot.feedIndex)
+    // Old multi-drama speculation removed; use shared TV preload manager.
 
-        val second = candidates.getOrNull(1) ?: return
-        if (prefetchedFeedDetails.containsKey(second.id) ||
-            visitedFeedDetails.containsKey(second.id)) {
-            scheduleSecondSwipeVideo(second.id)
-            return
-        }
-        val key = snapshot.detail?.drama?.id + "|" + first.id + "|" + second.id
-        if (feedDetailsLookaheadKey == key &&
-            feedDetailsLookaheadJob?.isActive == true) return
-        feedDetailsLookaheadJob?.cancel()
-        feedDetailsLookaheadKey = key
-        feedDetailsLookaheadJob = viewModelScope.launch {
-            try {
-                // The initial active video and N+1 prefix have priority.
-                delay(900)
-                if (!isSecondUpcomingReel(second.id)) return@launch
-                val detail = try {
-                    nativeSource.detail(second.id)
-                } catch (error: IOException) {
-                    diagnostics.record("FEED", "SECOND_DETAIL_NETWORK_RETRY")
-                    delay(1_500)
-                    if (!isSecondUpcomingReel(second.id)) return@launch
-                    nativeSource.detail(second.id)
-                }
-                if (!isSecondUpcomingReel(second.id)) return@launch
-                prefetchedFeedDetails[second.id] = detail
-                while (prefetchedFeedDetails.size > 5)
-                    prefetchedFeedDetails.remove(prefetchedFeedDetails.keys.first())
-                diagnostics.record("FEED", "SECOND_DETAIL_PREFETCHED")
-                scheduleSecondSwipeVideo(second.id)
-            } catch (cancel: CancellationException) { throw cancel }
-            catch (_: Exception) {
-                diagnostics.record("FEED", "SECOND_DETAIL_PREFETCH_FAILED")
-            }
-        }
-    }
-
-    private fun isSecondUpcomingReel(seriesId: String): Boolean {
-        val s = state.value
-        if (!s.feedMode || !s.preloadNext ||
-            !NativeDiskVideoCache.mayBackgroundPreload(getApplication())) return false
-        return SwipePrefetchPolicy.candidates(
-            s.feedItems.map { it.id }, s.feedIndex,
-            s.hiddenRecommendationIds, s.detail?.drama?.id
-        ).getOrNull(1) == seriesId
-    }
-
-    private fun scheduleSecondSwipeVideo(seriesId: String) {
-        if (!isSecondUpcomingReel(seriesId) ||
-            reelSecondSeriesId == seriesId && reelSecondVideo != null ||
-            feedSecondTargetSeriesId == seriesId &&
-                feedSecondWarmJob?.isActive == true) return
-        val detail = prefetchedFeedDetails[seriesId]
-            ?: visitedFeedDetails[seriesId] ?: return
-        val vid = detail.episodes.firstOrNull()?.vid ?: return
-        // Never start a second upstream stream until the immediate next reel
-        // has at least its opening range prepared.
-        val s = state.value
-        val firstId = SwipePrefetchPolicy.candidates(
-            s.feedItems.map { it.id }, s.feedIndex,
-            s.hiddenRecommendationIds, s.detail?.drama?.id
-        ).firstOrNull()
-        if (firstId != reelWarmSeriesId || reelWarmVideo == null) return
-        feedSecondWarmJob?.cancel()
-        feedSecondTargetSeriesId = seriesId
-        val quality = state.value.qualityLimit
-        val bufferMiB = state.value.preloadBufferMiB
-        feedSecondWarmJob = viewModelScope.launch {
-            var remote: RemoteVideo? = null
-            try {
-                delay(900)
-                if (!isSecondUpcomingReel(seriesId) ||
-                    quality != state.value.qualityLimit ||
-                    bufferMiB != state.value.preloadBufferMiB) return@launch
-                diagnostics.record("FEED", "SECOND_VIDEO_PREFETCH_START")
-                remote = nativeSource.openVideo(vid, qualityLimit = quality,
-                    preload = true, preloadBytes = VideoPreloadPolicy.bytesFor(
-                        VideoPreloadPolicy.Slot.LATER, bufferMiB))
-                if (!isSecondUpcomingReel(seriesId) ||
-                    quality != state.value.qualityLimit ||
-                    bufferMiB != state.value.preloadBufferMiB) return@launch
-                reelSecondVideo?.close()
-                reelSecondVideo = remote
-                reelSecondSeriesId = seriesId
-                reelSecondVid = vid
-                reelSecondQuality = quality
-                val ready = remote
-                remote = null
-                diagnostics.record("FEED", "SECOND_VIDEO_PREPARED")
-                if (ready != null) {
-                    try {
-                        NativeDiskVideoCache.warm(
-                            getApplication(), ready, vid, quality,
-                            VideoPreloadPolicy.LATER_BYTES) {
-                                (isSecondUpcomingReel(seriesId) ||
-                                    reelSecondVideo === ready) &&
-                                    state.value.qualityLimit == quality
-                            }
-                        diagnostics.record("FEED", "SECOND_VIDEO_WARMED")
-                    } catch (cancel: CancellationException) { throw cancel }
-                    catch (_: Exception) {
-                        diagnostics.record("FEED", "SECOND_WARM_PARTIAL")
-                    }
-                }
-            } catch (cancel: CancellationException) { throw cancel }
-            catch (_: Exception) {
-                diagnostics.record("FEED", "SECOND_PREFETCH_UNAVAILABLE")
-            } finally {
-                remote?.close()
-            }
-        }
-    }
-
-    private fun prefetchFollowingFeedItem(index: Int) {
-        val current = state.value
-        if (!current.preloadNext || !mayPreloadFollowingDrama(current) ||
-            !NativeDiskVideoCache.mayBackgroundPreload(getApplication())) return
-        val nextId = SwipePrefetchPolicy.candidates(
-            current.feedItems.map { it.id }, index,
-            current.hiddenRecommendationIds, current.detail?.drama?.id
-        ).firstOrNull() ?: return
-        val next = current.feedItems.firstOrNull { it.id == nextId } ?: return
-        if (reelSecondSeriesId == next.id && reelSecondVideo != null)
-            promoteSecondSwipeStream(next.id)
-        if (reelWarmSeriesId == next.id && reelWarmVideo != null) {
-            val second = SwipePrefetchPolicy.candidates(
-                current.feedItems.map { it.id }, index,
-                current.hiddenRecommendationIds, current.detail?.drama?.id
-            ).getOrNull(1)
-            if (second != null) scheduleSecondSwipeVideo(second)
-            return
-        }
-        if (feedPrefetchTargetSeriesId == next.id &&
-            feedPrefetchJob?.isActive == true) return
-        feedPrefetchJob?.cancel()
-        feedPrefetchTargetSeriesId = next.id
-        diagnostics.record("FEED", "NEXT_DRAMA_PREFETCH_SCHEDULED")
-        feedPrefetchJob = viewModelScope.launch {
-            var warming: RemoteVideo? = null
-            val activeAtStart = state.value.detail?.drama?.id
-            try {
-                // A transient failed detail lookup previously killed the
-                // entire cross-drama preload without another attempt.
-                val detail = prefetchedFeedDetails[next.id] ?: try {
-                    nativeSource.detail(next.id)
-                } catch (error: IOException) {
-                    diagnostics.record("FEED", "NEXT_DETAIL_NETWORK_RETRY")
-                    delay(1_500)
-                    if (!isUpcomingReel(next.id)) return@launch
-                    nativeSource.detail(next.id)
-                }
-                if (!isUpcomingReel(next.id)) return@launch
-                prefetchedFeedDetails[next.id] = detail
-                while (prefetchedFeedDetails.size > 5)
-                    prefetchedFeedDetails.remove(prefetchedFeedDetails.keys.first())
-                diagnostics.record("FEED", "NEXT_DETAIL_PREFETCHED")
-                if (!state.value.preloadNext || detail.episodes.isEmpty()) return@launch
-                // Wait only for the active item's startup, not for the entire
-                // N+1 warmup; first-frame callbacks may be absent in background.
-                var active = state.value.detail?.episodes
-                    ?.getOrNull(state.value.episodeIndex)
-                if (active == null) return@launch
-                repeat(20) {
-                    if (firstFrameFor == active?.vid ||
-                        !isUpcomingReel(next.id)) return@repeat
-                    delay(125)
-                    active = state.value.detail?.episodes
-                        ?.getOrNull(state.value.episodeIndex)
-                }
-                if (!isUpcomingReel(next.id) ||
-                    (firstFrameFor != active?.vid &&
-                        state.value.playbackUrl == null)) return@launch
-                // Give the next episode an opportunity to publish its first
-                // 1 MiB, but do not block the next drama behind 8-16 MiB.
-                val activeDetail = state.value.detail
-                val followingVid = activeDetail?.episodes
-                    ?.getOrNull(state.value.episodeIndex + 1)?.vid
-                if (followingVid != null && preloadedNextVid != followingVid) {
-                    repeat(14) {
-                        if (preloadedNextVid != followingVid &&
-                            isUpcomingReel(next.id)) delay(125)
-                    }
-                }
-                if (!isUpcomingReel(next.id)) return@launch
-                val first = detail.episodes.first().vid
-                val quality = state.value.qualityLimit
-                val bufferMiB = state.value.preloadBufferMiB
-                // The next DRAMA uses a smaller budget than the immediate
-                // next EPISODE. A separate second drama gets only 2 MiB.
-                val targetBytes = VideoPreloadPolicy.bytesFor(
-                    VideoPreloadPolicy.Slot.NEXT_DRAMA, bufferMiB)
-                warming = try {
-                    nativeSource.openVideo(first, qualityLimit = quality,
-                        preload = true, preloadBytes = targetBytes)
-                } catch (cancel: CancellationException) {
-                    throw cancel
-                } catch (firstFailure: Exception) {
-                    // Upstream sometimes returns an empty model or a transient
-                    // network exception. One bounded attempt, without looping
-                    // against a rate-limited registration service.
-                    val emptyModel = PlaybackProblem.isEmptyPlaybackModel(firstFailure)
-                    if (!emptyModel && firstFailure !is IOException) throw firstFailure
-                    diagnostics.record("FEED",
-                        if (emptyModel) "NEXT_MODEL_EMPTY_RETRY"
-                        else "NEXT_MODEL_NETWORK_RETRY")
-                    delay(if (emptyModel) 1_500 else 2_000)
-                    if (!isUpcomingReel(next.id) || !state.value.preloadNext ||
-                        state.value.qualityLimit != quality ||
-                        state.value.preloadBufferMiB != bufferMiB) return@launch
-                    nativeSource.openVideo(first, qualityLimit = quality,
-                        preload = true, preloadBytes = targetBytes)
-                }
-                if (!isUpcomingReel(next.id) || !state.value.preloadNext ||
-                    state.value.qualityLimit != quality ||
-                    state.value.preloadBufferMiB != bufferMiB) return@launch
-                clearReelWarmVideo()
-                reelWarmSeriesId = next.id
-                reelWarmVid = first
-                reelWarmQuality = quality
-                reelWarmVideo = warming
-                val ready = warming
-                warming = null
-                diagnostics.record("FEED", "NEXT_VIDEO_PREPARED")
-                // The second drama can start preparing its model now.
-                val after = state.value
-                val following = SwipePrefetchPolicy.candidates(
-                    after.feedItems.map { it.id }, after.feedIndex,
-                    after.hiddenRecommendationIds, after.detail?.drama?.id
-                ).getOrNull(1)
-                if (following != null) scheduleSecondSwipeVideo(following)
-                if (ready != null) {
-                    try {
-                        withContext(Dispatchers.IO) {
-                            ready.warm(targetBytes) {
-                                state.value.preloadNext &&
-                                    NativeDiskVideoCache.mayBackgroundPreload(getApplication()) &&
-                                    state.value.preloadBufferMiB == bufferMiB &&
-                                    state.value.qualityLimit == quality &&
-                                    (isUpcomingReel(next.id) ||
-                                        BackgroundPlaybackService.playerFlow.value
-                                            ?.currentMediaItem?.mediaId == first)
-                            }
-                        }
-                        NativeDiskVideoCache.warm(
-                            getApplication(), ready, first, quality, targetBytes) {
-                                isUpcomingReel(next.id) ||
-                                    BackgroundPlaybackService.playerFlow.value
-                                        ?.currentMediaItem?.mediaId == first
-                            }
-                        diagnostics.record("FEED", "NEXT_VIDEO_WARMED")
-                    } catch (cancel: CancellationException) { throw cancel }
-                    catch (_: Exception) {
-                        diagnostics.record("FEED", "NEXT_WARM_PARTIAL")
-                    }
-                }
-            } catch (e: CancellationException) {
-                throw e
-            } catch (error: Exception) {
-                diagnostics.record("FEED", when {
-                    PlaybackProblem.isEmptyPlaybackModel(error) ->
-                        "NEXT_PRELOAD_FAIL_EMPTY_MODEL"
-                    error is IOException -> "NEXT_PRELOAD_FAIL_NETWORK_IO"
-                    else -> "NEXT_PRELOAD_FAIL_OTHER"
-                })
-            } finally {
-                warming?.close()
-                // Avoid competing playback-model requests. After the next
-                // drama is warmed (or unavailable), give natural next-episode
-                // playback its usual prefetch opportunity too.
-                val current = state.value
-                val activeDetail = current.detail
-                if (activeAtStart != null && activeDetail != null &&
-                    activeDetail.drama.id == activeAtStart &&
-                    current.preloadNext && current.episodeIndex in activeDetail.episodes.indices &&
-                    current.episodeIndex < activeDetail.episodes.lastIndex &&
-                    firstFrameFor == activeDetail.episodes[current.episodeIndex].vid) {
-                    preloadFollowingEpisode()
-                }
-            }
-        }
-    }
-
-    private fun isUpcomingReel(seriesId: String): Boolean {
-        val current = state.value
-        val isHandingOff = feedHandoffTargetSeriesId == seriesId &&
-            current.feedMode && current.detail?.drama?.id == seriesId &&
-            current.playbackUrl == null
-        return current.preloadNext &&
-            NativeDiskVideoCache.mayBackgroundPreload(getApplication()) &&
-            (isHandingOff || mayPreloadFollowingDrama(current) &&
-                SwipePrefetchPolicy.candidates(
-                    current.feedItems.map { it.id }, current.feedIndex,
-                    current.hiddenRecommendationIds, current.detail?.drama?.id
-                ).firstOrNull() == seriesId)
-    }
     private var firstFrameFor: String? = null
     private var playbackStartAtMs = 0L
     private var startEpisodeHint: Int? = null
@@ -2865,9 +2176,8 @@ class DramaViewModel(application: Application) : AndroidViewModel(application) {
         pendingFeedAdvance = false
         clearFinaleAdvance()
         autoNextTargetDramaId = null
-        feedPrefetchJob?.cancel()
-        clearReelWarmVideo()
-        clearFeedLookahead()
+        cancelPreloading()
+        cancelPreloadDetail()
         prefetchedFeedDetails.clear()
         visitedFeedDetails.clear()
         val feedAccount = account.recommendationAccount()
@@ -2963,12 +2273,9 @@ class DramaViewModel(application: Application) : AndroidViewModel(application) {
                 current.nextDramaTransition == NextDramaTransition.FINDING_RECOMMENDATION
             pendingFeedAdvance = false
             clearFinaleAdvance()
-            val pendingPreparedReel = feedPrefetchTargetSeriesId == selected.id &&
-                feedPrefetchJob?.isActive == true
-            feedHandoffTargetSeriesId =
-                if (pendingPreparedReel) selected.id else null
-            if (pendingPreparedReel)
-                diagnostics.record("FEED", "INFLIGHT_DRAMA_HANDOFF_REQUESTED")
+            nativePreloader.retainSeries(selected.id)
+            if (nativePreloader.hasSeries(selected.id))
+                diagnostics.record("FEED", "PRELOAD_V3_HANDOFF_SELECTED")
             autoNextTargetDramaId = if (automaticallyAdvancing) selected.id else null
             mutable.update {
                 it.copy(feedIndex = index,
@@ -3011,9 +2318,8 @@ class DramaViewModel(application: Application) : AndroidViewModel(application) {
         // Keep the prepared following drama while switching only the UI from
         // reel to episode mode; the sole Media3 item does not change.
         if (index != snapshot.detail?.episodes?.lastIndex || !snapshot.preloadNext) {
-            feedPrefetchJob?.cancel()
-            clearReelWarmVideo()
-            clearFeedLookahead()
+            cancelPreloading()
+            cancelPreloadDetail()
         }
         val currentMediaMatches = snapshot.playbackUrl != null &&
             index == snapshot.episodeIndex &&
@@ -3080,7 +2386,7 @@ class DramaViewModel(application: Application) : AndroidViewModel(application) {
                 current.hiddenRecommendationIds, current.feedHasMore, current.feedLoading)) {
             loadOfficialReels()
         } else if (current.preloadNext) {
-            prefetchFollowingFeedItem(current.feedIndex)
+            prepareUpcomingPlayback(state.value)
         }
         return true
     }
@@ -3143,9 +2449,8 @@ class DramaViewModel(application: Application) : AndroidViewModel(application) {
         detailJob?.cancel()
         val version = ++detailId
         firstFrameFor = null
-        promoteSecondSwipeStream(drama.id)
-        clearPreloadedNext()
-        clearPreloadedLater()
+        cancelPreloadDetail()
+        nativePreloader.retainSeries(drama.id)
         startEpisodeHint = resumeEp
 
         // Reels frequently revisit a prefetched or recently watched series.
@@ -3377,8 +2682,7 @@ class DramaViewModel(application: Application) : AndroidViewModel(application) {
                     // Discard any cached decoder/source from the dead session.
                     // The next media load performs the existing authenticated
                     // stream request rather than reopening a stale data source.
-                    clearPreloadedNext()
-                    clearPreloadedLater()
+                    cancelPreloading()
                     diagnostics.record("BACKGROUND", "FOREGROUND_RECONNECT")
                     play(current.episodeIndex)
                 }
@@ -3395,12 +2699,7 @@ class DramaViewModel(application: Application) : AndroidViewModel(application) {
         if (finaleRecommendationRequestFor != null &&
             index != detail.episodes.lastIndex)
             cancelFinaleRecommendationWarmup()
-        // A different episode should not retain a prepared next-drama stream.
-        if (index != detail.episodes.lastIndex && !state.value.feedMode) {
-            feedPrefetchJob?.cancel()
-            clearReelWarmVideo()
-            clearFeedLookahead()
-        }
+        nativePreloader.retainVideo(detail.episodes[index].vid, state.value.qualityLimit)
         // Notification commands run while the Activity is STOPPED. Reuse the
         // running foreground service rather than making a forbidden background
         // service start request on Android 12+.
@@ -3442,54 +2741,10 @@ class DramaViewModel(application: Application) : AndroidViewModel(application) {
         }
         detailJob?.cancel()
         closeNativeVideo()
-        val reelCached = state.value.feedMode &&
-            reelWarmSeriesId == detail.drama.id &&
-            reelWarmVid == vid && reelWarmQuality == state.value.qualityLimit
-        val cachedNative = if (reelCached) reelWarmVideo
-            else if (preloadedNextVid == vid &&
-                preloadedNextQuality == state.value.qualityLimit) preloadedNextVideo
-            else if (preloadedLaterVid == vid &&
-                preloadedLaterQuality == state.value.qualityLimit) preloadedLaterVideo
-            else BackgroundPlaybackService.active?.takeRecentVideo(
-                vid, state.value.qualityLimit)
+        val cachedNative = nativePreloader.takeReady(vid, state.value.qualityLimit)
+            ?: BackgroundPlaybackService.active?.takeRecentVideo(vid, state.value.qualityLimit)
         diagnostics.record("PLAYBACK",
-            if (cachedNative != null) "PREFETCH_CACHE_HIT" else "PREFETCH_CACHE_MISS")
-        if (cachedNative != null) {
-            diagnostics.record("PLAYBACK", "PREPARED_STREAM_REUSED")
-            // Count locally available prefix, not merely a successful model lookup.
-            val prefixKiB = runCatching { cachedNative.cachedBytes(0L) / 1024 }
-                .getOrDefault(0)
-            diagnostics.record("PLAYBACK", "CACHE_PREFIX_KIB_${prefixKiB}")
-        }
-        if (cachedNative != null && cachedNative === preloadedLaterVideo) {
-            preloadLaterJob?.cancel()
-            preloadLaterJob = null
-            preloadLaterTargetVid = null
-            preloadedLaterVideo = null
-            preloadedLaterVid = null
-            diagnostics.record("PLAYBACK", "LATER_STREAM_REUSED")
-        }
-        // Transfer the warmed reel's ownership to the active playback request.
-        if (reelCached) {
-            reelWarmVideo = null
-            reelWarmVid = null
-            reelWarmSeriesId = null
-        }
-        val pendingReelJob = if (cachedNative == null && api == null &&
-            state.value.feedMode && feedHandoffTargetSeriesId == detail.drama.id &&
-            feedPrefetchTargetSeriesId == detail.drama.id &&
-            feedPrefetchJob?.isActive == true) feedPrefetchJob else null
-        val pendingNextJob = if (cachedNative == null &&
-            preloadEpisodeTargetVid == vid && preloadEpisodeJob?.isActive == true &&
-            api == null) preloadEpisodeJob else null
-        if (pendingNextJob == null) preloadEpisodeJob?.cancel()
-        if (pendingNextJob == null) {
-            preloadEpisodeJob = null
-            preloadEpisodeTargetVid = null
-        }
-        if (cachedNative !== preloadedNextVideo) preloadedNextVideo?.close()
-        preloadedNextVideo = null
-        preloadedNextVid = null
+            if (cachedNative != null) "PRELOAD_V3_HIT" else "PRELOAD_V3_PENDING_OR_MISS")
         firstFrameFor = null
         val checkpoint = library.checkpoint(detail.drama.id, vid)
         mutable.update { it.copy(episodeIndex = index, playbackUrl = null,
@@ -3515,95 +2770,11 @@ class DramaViewModel(application: Application) : AndroidViewModel(application) {
                     // The independent N+1 task begins after SOURCE_READY.
                     val ahead: String? = null
                     val quality = state.value.qualityLimit
-                    // A fully cached video can play without resolving another signed model.
-                    val complete = if (cachedNative == null) withContext(Dispatchers.IO) {
-                        NativeDiskVideoCache.findComplete(getApplication(), vid, quality)
-                    } else null
-                    if (complete != null) {
-                        if (version != detailId) return@launch
-                        pendingNextJob?.cancel()
-                        pendingReelJob?.cancel()
-                        diagnostics.record("DISK_CACHE", "COMPLETE_REPLAY_HIT")
-                        val localUri = "native-cache://episode/$vid?cache_key=${complete.cacheKey}"
-                        mutable.update { it.copy(playbackUrl = localUri, playing = true) }
-                        if (serviceStarted) launchBackgroundMedia(
-                            detail, index, localUri, null, checkpoint, version)
-                        diagnostics.record("PLAYBACK", "SOURCE_READY", elapsed(started))
-                        if (version == detailId) {
-                            if (index < detail.episodes.lastIndex) preloadFollowingEpisode()
-                            else if (state.value.preloadNext && state.value.autoPlayNext)
-                                prepareUpcomingPlayback(state.value)
-                        }
-                        return@launch
-                    }
-                    // A rapid advance may catch the N+1 model still in flight.
-                    // Give it a short bounded handoff window before issuing
-                    // another network request for the same video ID.
-                    val inFlightVideo = if (pendingNextJob != null)
-                        kotlinx.coroutines.withTimeoutOrNull(2_000L) {
-                            while (preloadedNextVid != vid && pendingNextJob.isActive) {
-                                delay(40)
-                            }
-                            if (preloadedNextVid == vid) {
-                                val prepared = preloadedNextVideo
-                                preloadedNextVideo = null
-                                preloadedNextVid = null
-                                preloadEpisodeJob?.cancel()
-                                preloadEpisodeJob = null
-                                preloadEpisodeTargetVid = null
-                                if (prepared != null)
-                                    diagnostics.record("PLAYBACK", "INFLIGHT_PRELOAD_REUSED")
-                                prepared
-                            } else null
-                        } else null
-                    if (pendingNextJob != null && inFlightVideo == null) {
-                        diagnostics.record("PLAYBACK", "INFLIGHT_PRELOAD_TIMEOUT")
-                        preloadEpisodeJob?.cancel()
-                        preloadEpisodeJob = null
-                        preloadEpisodeTargetVid = null
-                        preloadedNextVideo?.close()
-                        preloadedNextVideo = null
-                        preloadedNextVid = null
-                    }
-                    // The old reel's in-flight source may complete while the
-                    // user swipes. Transfer ownership instead of starting a
-                    // duplicate playback-model request and cancelling prefetch.
-                    val inFlightReel = if (cachedNative == null &&
-                        inFlightVideo == null && pendingReelJob != null)
-                        kotlinx.coroutines.withTimeoutOrNull(2_500L) {
-                            while (pendingReelJob.isActive &&
-                                !(reelWarmSeriesId == detail.drama.id &&
-                                  reelWarmVid == vid && reelWarmQuality == quality &&
-                                  reelWarmVideo != null)) {
-                                delay(50)
-                            }
-                            if (reelWarmSeriesId == detail.drama.id &&
-                                reelWarmVid == vid && reelWarmQuality == quality) {
-                                val prepared = reelWarmVideo
-                                reelWarmVideo = null
-                                reelWarmVid = null
-                                reelWarmSeriesId = null
-                                feedPrefetchJob?.cancel()
-                                feedPrefetchJob = null
-                                feedPrefetchTargetSeriesId = null
-                                if (prepared != null)
-                                    diagnostics.record("FEED", "INFLIGHT_DRAMA_REUSED")
-                                prepared
-                            } else null
-                        } else null
-                    if (feedHandoffTargetSeriesId == detail.drama.id) {
-                        if (pendingReelJob != null && inFlightReel == null) {
-                            diagnostics.record("FEED", "INFLIGHT_DRAMA_TIMEOUT")
-                            pendingReelJob.cancel()
-                            if (feedPrefetchJob === pendingReelJob) {
-                                feedPrefetchJob = null
-                                feedPrefetchTargetSeriesId = null
-                            }
-                        }
-                        feedHandoffTargetSeriesId = null
-                    }
+                    // Share one in-flight preload rather than issuing a duplicate model.
+                    val inFlightVideo = if (cachedNative == null)
+                        nativePreloader.takeOrAwait(vid, quality) else null
                     val resolveStarted = System.nanoTime()
-                    val video = cachedNative ?: inFlightVideo ?: inFlightReel
+                    val video = cachedNative ?: inFlightVideo
                         ?: playbackResolver.resolve(
                         vid, ahead, quality,
                         isCurrent = {
@@ -3645,33 +2816,7 @@ class DramaViewModel(application: Application) : AndroidViewModel(application) {
                     }
                 }
                 diagnostics.record("PLAYBACK", "SOURCE_READY", elapsed(started))
-                // Begin preparing the upcoming stream while the current item
-                // is buffering. The job checks its generation after a grace
-                // period so it cannot replace a rapid swipe's target.
-                if (version == detailId && api == null) {
-                    val latest = state.value
-                    // A new recommendation/model request is optional; do not
-                    // compete for the network until the current first frame.
-                    if (latest.feedMode && firstFrameFor == vid)
-                        scheduleSwipePrefetch(latest)
-                    if (index < detail.episodes.lastIndex) {
-                        preloadFollowingEpisode()
-                    } else if (latest.preloadNext && latest.autoPlayNext) {
-                        // Resolve official continuation during the finale itself,
-                        // not in the ENDED callback. The request runs after a
-                        // short grace interval to protect current startup.
-                        viewModelScope.launch {
-                            delay(1_200)
-                            if (version == detailId &&
-                                state.value.detail?.drama?.id == detail.drama.id &&
-                                state.value.episodeIndex == index &&
-                                state.value.playbackUrl != null) {
-                                diagnostics.record("REELS", "FINALE_EARLY_WARMUP")
-                                prepareUpcomingPlayback(state.value)
-                            }
-                        }
-                    }
-                }
+                // First frame/background progress now schedules the next source.
             } catch (e: CancellationException) {
                 if (cachedNative != null && activeNativeVideo !== cachedNative) cachedNative.close()
                 throw e
@@ -3713,11 +2858,9 @@ class DramaViewModel(application: Application) : AndroidViewModel(application) {
     }
 
     fun setQualityLimit(value: Int, positionMs: Long, durationMs: Long) {
-        feedPrefetchJob?.cancel()
-        clearReelWarmVideo()
-        clearFeedLookahead()
-        clearPreloadedNext()
-        clearPreloadedLater()
+        cancelPreloading()
+        cancelPreloadDetail()
+        cancelPreloading()
         if (value !in setOf(0, 360, 480, 720, 1080)) return
         prefs.edit().putInt("quality_limit", value).apply()
         val s = state.value
@@ -4202,9 +3345,8 @@ class DramaViewModel(application: Application) : AndroidViewModel(application) {
         officialFeedJob?.cancel()
         officialFeedGeneration++
         finaleRecommendationRequestFor = null
-        feedPrefetchJob?.cancel()
-        clearReelWarmVideo()
-        clearFeedLookahead()
+        cancelPreloading()
+        cancelPreloadDetail()
         prefetchedFeedDetails.clear()
         visitedFeedDetails.clear()
         ++relatedGeneration
@@ -4216,8 +3358,7 @@ class DramaViewModel(application: Application) : AndroidViewModel(application) {
         ++detailId
         detailJob?.cancel()
         closeNativeVideo()
-        clearPreloadedNext()
-        clearPreloadedLater()
+        cancelPreloading()
         firstFrameFor = null
         mutable.update { it.copy(detail = null, playbackUrl = null,
             renderedVideoVid = null,
