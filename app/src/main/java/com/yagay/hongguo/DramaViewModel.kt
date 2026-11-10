@@ -3808,12 +3808,17 @@ class DramaViewModel(application: Application) : AndroidViewModel(application) {
             ReelAutoplayPolicy.Action.STOP ->
                 diagnostics.record("PLAYBACK", "AUTO_NEXT_STOPPED")
             ReelAutoplayPolicy.Action.NEXT_EPISODE -> {
-                if (s.feedMode) {
-                    // The first recommendation episode has finished.
-                    // Enter the series player before advancing so the UI,
-                    // pager, and navigation are all episode-scoped. Keep the
-                    // same Media3 session; exitFeedToEpisode invokes play()
-                    // only for the newly selected episode.
+                if (s.feedMode &&
+                    s.returnSeries?.drama?.id == s.detail?.drama?.id) {
+                    // A full-series video temporarily displayed in feed
+                    // mode must continue its episodes without changing UI.
+                    val next = s.episodeIndex + 1
+                    mutable.update { it.copy(returnSeries = Watched(
+                        s.detail!!.drama, s.detail.episodes[next].index,
+                        System.currentTimeMillis())) }
+                    diagnostics.record("NAVIGATION", "FEED_SERIES_AUTONEXT_KEEP_MODE")
+                    play(next)
+                } else if (s.feedMode) {
                     diagnostics.record("NAVIGATION", "REEL_AUTONEXT_TO_SERIES")
                     exitFeedToEpisode(s.episodeIndex + 1)
                 } else {
@@ -3930,10 +3935,9 @@ class DramaViewModel(application: Application) : AndroidViewModel(application) {
         if (!snapshot.feedMode || snapshot.navigation.destination != PlaybackDestination.FEED)
             return
         if (snapshot.detail?.drama?.id == previous.drama.id) {
-            val index = snapshot.detail.episodes.indexOfFirst {
-                it.index == previous.episode
-            }.takeIf { it >= 0 } ?: snapshot.episodeIndex
-            exitFeedToEpisode(index)
+            // The very same Media3 source continued playing in feed mode.
+            // Switching back must never seek to the old bookmarked episode.
+            exitFeedToEpisode(snapshot.episodeIndex)
             diagnostics.record("NAVIGATION", "SERIES_RETURN_SAME_SOURCE")
             return
         }
@@ -3980,14 +3984,41 @@ class DramaViewModel(application: Application) : AndroidViewModel(application) {
             diagnostics.record("NAVIGATION", "HOME_FEED_RESTORED")
             return
         }
-        if (current.navigation.origin == PlaybackOrigin.SWIPE_FEED &&
-            current.detail != null) {
-            backFromPlayer()
+        // Home is a visual mode switch, not a video source change: the full
+        // episode stays attached to the sole Media3 player at its live
+        // position. Add it to the reel queue if opened from Theater/My.
+        val active = current.detail
+        if (active != null && current.offlinePlaybackUri == null) {
+            checkpointActiveEpisode()
+            val selected = active.drama
+            val queueIndex = current.feedItems.indexOfFirst { it.id == selected.id }
+            val queue = if (queueIndex >= 0) current.feedItems
+                else current.feedItems + selected
+            val position = if (queueIndex >= 0) queueIndex else queue.lastIndex
+            rememberLastPlaybackMode(true)
+            mutable.update { it.copy(
+                feedMode = true,
+                navigation = it.navigation.toFeed(),
+                returnSeries = Watched(selected,
+                    active.episodes.getOrNull(current.episodeIndex)?.index ?: 1,
+                    System.currentTimeMillis()),
+                returnFeedItem = null,
+                feedItems = queue,
+                feedIndex = position,
+                feedHasMore = true,
+                miniPlayerVisible = false,
+                detailPageVisible = false,
+                modal = Modal.NONE,
+            ) }
+            updateNotificationNavigation()
+            diagnostics.record("NAVIGATION", "HOME_TO_FEED_KEEP_MEDIA3")
+            if (!state.value.feedLoading &&
+                OfficialReelsPolicy.needsMore(queue, position,
+                    current.hiddenRecommendationIds, true, false))
+                loadOfficialReels()
             return
         }
-        // Preserve the last series for the new feed's return shortcut even
-        // when this series originally came from Theater or My.
-        checkpointActiveEpisode()
+        // When no playable cloud item exists, start the default feed.
         closePlayer()
         startFeed()
         diagnostics.record("NAVIGATION", "HOME_FEED_NEW_SESSION")
