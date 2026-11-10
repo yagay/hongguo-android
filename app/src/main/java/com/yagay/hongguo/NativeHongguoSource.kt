@@ -19,6 +19,7 @@ import com.hongguotv.core.DiscoveryGroup
 import com.hongguotv.core.RankBoard
 import com.hongguotv.core.RemoteVideo
 import com.hongguotv.core.Rendition
+import com.hongguotv.core.StreamLadder
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.CancellationException
 import kotlinx.coroutines.ensureActive
@@ -40,6 +41,10 @@ class NativeHongguoSource(
     // Only host-level startup timings are retained (no signed URL, key,
     // cookies, or permanent blacklists).
     private val cdnHealth = CdnStartupHealth()
+    // The playback model is cheap to share, while a prepared RemoteVideo
+    // remains single-owner. One-shot, short-lived handoff avoids asking for
+    // a second signed model if the user swipes before CDN warming finishes.
+    private val preparedModelHandoff = PreparedModelHandoff<StreamLadder>()
     // One bounded background model/index operation at a time, but foreground
     // openVideo never takes this lock and never waits behind a prefetch job.
     private val speculativePrepareMutex = kotlinx.coroutines.sync.Mutex()
@@ -49,7 +54,10 @@ class NativeHongguoSource(
 
     /** Called only for a new catalog session; QR cookies never enter logs. */
     fun setAccountRecommendations(session: FeedAccount?) {
-        synchronized(recommendationLock) { accountFeed = session }
+        synchronized(recommendationLock) {
+            if (accountFeed != session) preparedModelHandoff.clear()
+            accountFeed = session
+        }
     }
     private var recommendationBuffer = RecommendationAccumulator<Series> { it.id }
     private var recommendationOffset = 0
@@ -600,8 +608,16 @@ class NativeHongguoSource(
             }?.let { listOf(it) }.orEmpty()
             // Low-priority prefetch must not contend with foreground model
             // recovery or registration through all fallback routes.
-            repository.streamLadder(vid, metadataAhead = ahead,
-                speculative = preload)
+            val existing = if (preload) null else preparedModelHandoff.take(vid)
+            if (existing != null) {
+                diagnostics?.record("PLAYBACK", "INFLIGHT_MODEL_HANDOFF")
+                existing
+            } else {
+                repository.streamLadder(vid, metadataAhead = ahead,
+                    speculative = preload).also { result ->
+                    if (preload) preparedModelHandoff.offer(vid, result)
+                }
+            }
         } catch (error: Exception) {
             val code = PlaybackProblem.describe("播放模型", error).substringBefore(" · ")
             diagnostics?.record("PLAYBACK", "MODEL_FAIL_" + code,
@@ -673,6 +689,7 @@ class NativeHongguoSource(
                 throw error
             }
         }
+        preparedModelHandoff.invalidate(vid)
         throw last ?: IOException("MEDIA_PREPARATION_FAILED")
         } finally {
             if (preload) speculativePrepareMutex.unlock()
