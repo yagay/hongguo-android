@@ -3515,11 +3515,32 @@ class DramaViewModel(application: Application) : AndroidViewModel(application) {
                     // The independent N+1 task begins after SOURCE_READY.
                     val ahead: String? = null
                     val quality = state.value.qualityLimit
+                    // A fully cached video can play without resolving another signed model.
+                    val complete = if (cachedNative == null) withContext(Dispatchers.IO) {
+                        NativeDiskVideoCache.findComplete(getApplication(), vid, quality)
+                    } else null
+                    if (complete != null) {
+                        if (version != detailId) return@launch
+                        pendingNextJob?.cancel()
+                        pendingReelJob?.cancel()
+                        diagnostics.record("DISK_CACHE", "COMPLETE_REPLAY_HIT")
+                        val localUri = "native-cache://episode/$vid?cache_key=${complete.cacheKey}"
+                        mutable.update { it.copy(playbackUrl = localUri, playing = true) }
+                        if (serviceStarted) launchBackgroundMedia(
+                            detail, index, localUri, null, checkpoint, version)
+                        diagnostics.record("PLAYBACK", "SOURCE_READY", elapsed(started))
+                        if (version == detailId) {
+                            if (index < detail.episodes.lastIndex) preloadFollowingEpisode()
+                            else if (state.value.preloadNext && state.value.autoPlayNext)
+                                prepareUpcomingPlayback(state.value)
+                        }
+                        return@launch
+                    }
                     // A rapid advance may catch the N+1 model still in flight.
                     // Give it a short bounded handoff window before issuing
                     // another network request for the same video ID.
                     val inFlightVideo = if (pendingNextJob != null)
-                        kotlinx.coroutines.withTimeoutOrNull(900L) {
+                        kotlinx.coroutines.withTimeoutOrNull(2_000L) {
                             while (preloadedNextVid != vid && pendingNextJob.isActive) {
                                 delay(40)
                             }
@@ -3549,7 +3570,7 @@ class DramaViewModel(application: Application) : AndroidViewModel(application) {
                     // duplicate playback-model request and cancelling prefetch.
                     val inFlightReel = if (cachedNative == null &&
                         inFlightVideo == null && pendingReelJob != null)
-                        kotlinx.coroutines.withTimeoutOrNull(1_200L) {
+                        kotlinx.coroutines.withTimeoutOrNull(2_500L) {
                             while (pendingReelJob.isActive &&
                                 !(reelWarmSeriesId == detail.drama.id &&
                                   reelWarmVid == vid && reelWarmQuality == quality &&
@@ -3713,6 +3734,12 @@ class DramaViewModel(application: Application) : AndroidViewModel(application) {
 
     fun mediaError(expectedVid: String, message: String) {
         if (state.value.detail?.episodes?.getOrNull(state.value.episodeIndex)?.vid != expectedVid) return
+        if (message == "LOCAL_CACHE_REPLAY_FAILED") {
+            diagnostics.record("DISK_CACHE", "COMPLETE_REPLAY_NETWORK_FALLBACK")
+            val index = state.value.episodeIndex
+            viewModelScope.launch { delay(80); if (state.value.episodeIndex == index) play(index) }
+            return
+        }
         mutable.update { it.copy(playbackError = message, playing = false) }
         diagnostics.record("MEDIA", "FAIL_" + message.substringBefore(" · "))
     }
