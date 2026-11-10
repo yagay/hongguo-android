@@ -394,8 +394,8 @@ internal fun NativePlayer(
 
     ModalNavigationDrawer(
         drawerState = accountDrawerState,
-        // An already open drawer MUST remain dismissible, even in SERIES
-        // mode (where swipe-to-open is intentionally disabled).
+        // Swiping right must NEVER open the left drawer, including in feed
+        // mode. Keep dismissal gestures only after the menu button opens it.
         gesturesEnabled = ReelDrawerPolicy.gesturesEnabled(
             accountDrawerState.isOpen, state.feedMode, searchOverlayOpen
         ),
