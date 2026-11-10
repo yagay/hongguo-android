@@ -884,7 +884,10 @@ constructor(
                 upcomingPlaybackModels.entries.removeAll { now - it.value.savedAt !in 0..60_000 }
                 upcomingPlaybackModels.remove(id)?.entry
             } ?: playbackSession.takeModel(id, playbackModelOwner, clock()).takeIf { firstRead }
-        val deadline = System.nanoTime() + TimeUnit.MILLISECONDS.toNanos(if (speculative) 2000 else 8000)
+        // A single bounded speculative route is cheaper than foreground multi-route
+        // recovery; 4 s still accommodates a typical 2-3 s model response.
+        val deadline = System.nanoTime() + TimeUnit.MILLISECONDS.toNanos(
+            if (speculative) 4000 else 8000)
         val entry =
             cached
                 ?: RequestScope.withDeadline(deadline) {
@@ -960,6 +963,7 @@ constructor(
                     var postCount = 0
                     var emptyPosts = 0
                     var attempts = 0
+                    var retryNeedsFreshConnection = false
                     while (attempts < (if (speculative) 1 else 4)) {
                         if (pendingRoutes.isEmpty()) {
                             // 已知路径全部为空时，在本轮剩余额度内恢复身份，不先弹错误再重跑整轮。
@@ -974,7 +978,10 @@ constructor(
                         }
                         val route = pendingRoutes.removeFirst()
                         val attempt = attempts++
-                        val client = transport(fresh = attempt > 0)
+                        // Different upstream hosts do not need new connection
+                        // pools just because a previous candidate was empty.
+                        // Keep a fresh pool only after a real transport failure.
+                        val client = transport(fresh = retryNeedsFreshConnection)
                         if (!route.get) postCount++
                         try {
                             val row = if (route.get) {
@@ -1010,6 +1017,10 @@ constructor(
                         } catch (error: IOException) {
                             RequestScope.ensureActive()
                             lastError = error
+                            retryNeedsFreshConnection =
+                                error is java.net.SocketTimeoutException ||
+                                error is java.net.ConnectException ||
+                                error is java.net.UnknownHostException
                             val empty = error is EmptyPlaybackResponseException
                             allEmpty = allEmpty && empty
                             if (!route.get && empty) emptyPosts++
@@ -1017,7 +1028,8 @@ constructor(
                             // GET 结构不符仍可换备用接口；POST 明确业务/格式错误不继续盲试。
                             if (!route.get && !PlayRetryPlan.temporary(error)) throw error
                         } finally {
-                            if (attempt > 0) client.connectionPool.evictAll()
+                            if (retryNeedsFreshConnection && attempt > 0)
+                                client.connectionPool.evictAll()
                         }
                     }
                     if (current == null) {
