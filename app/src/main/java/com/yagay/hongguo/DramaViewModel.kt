@@ -1256,6 +1256,18 @@ class DramaViewModel(application: Application) : AndroidViewModel(application) {
     /** Failed feed batches are excluded from the next fresh cursor only.
      * A successful new batch clears this temporary quarantine. */
     private val staleFeedExcludedIds = linkedSetOf<String>()
+    private var failedFeedRefreshPending = false
+
+    private fun failedFeedRefreshUnavailable(message: String) {
+        if (!failedFeedRefreshPending) return
+        failedFeedRefreshPending = false
+        mutable.update { it.copy(
+            playbackError = message,
+            nextDramaTransition = NextDramaTransition.NONE,
+            feedLoading = false,
+        ) }
+        diagnostics.record("REELS", "FAILED_QUEUE_REFRESH_UNAVAILABLE")
+    }
 
     private fun loadOfficialReels(
         restart: Boolean = false,
@@ -1342,12 +1354,20 @@ class DramaViewModel(application: Application) : AndroidViewModel(application) {
                     )
                     if (next != null) {
                         pendingFeedAdvance = false
+                        if (failedFeedRefreshPending) {
+                            failedFeedRefreshPending = false
+                            diagnostics.record("REELS", "FAILED_QUEUE_REPLACEMENT_READY")
+                        }
                         // Do not cancel the coroutine that delivered this batch.
                         if (warmingFinaleId != null &&
                             finaleRecommendationRequestFor == warmingFinaleId)
                             finaleRecommendationRequestFor = null
                         diagnostics.record("REELS", "FINALE_ADVANCE_READY")
                         navigateFeed(1)
+                    } else if (failedFeedRefreshPending) {
+                        pendingFeedAdvance = false
+                        failedFeedRefreshUnavailable(
+                            "官方暂时没有新推荐，请点击刷新推荐列表")
                     } else if (finaleAdvanceFor != null) {
                         // Keep pending through an empty or duplicate-only batch.
                         retryFinaleAdvance("EMPTY")
@@ -1376,6 +1396,8 @@ class DramaViewModel(application: Application) : AndroidViewModel(application) {
                         preparingDetail = if (needsFirstDrama) false else it.preparingDetail,
                         feedError = "获取官方推荐超时，请点击重新获取") }
                     diagnostics.record("REELS", "OFFICIAL_TIMEOUT")
+                    failedFeedRefreshUnavailable(
+                        "获取官方推荐超时，请点击刷新推荐列表")
                     if (finaleAdvanceFor != null) retryFinaleAdvance("TIMEOUT")
                     else pendingFeedAdvance = false
                 }
@@ -1391,6 +1413,8 @@ class DramaViewModel(application: Application) : AndroidViewModel(application) {
                         feedError = OfficialReelsFailure.userMessage(error)) }
                     diagnostics.record("REELS",
                         "OFFICIAL_FAIL_" + OfficialReelsFailure.code(error))
+                    failedFeedRefreshUnavailable(
+                        "推荐列表刷新失败，请点击刷新推荐列表")
                     if (finaleAdvanceFor != null) retryFinaleAdvance("ERROR")
                     else pendingFeedAdvance = false
                 }
@@ -1493,9 +1517,8 @@ class DramaViewModel(application: Application) : AndroidViewModel(application) {
             relaxRecentExclusions = ended,
         )
     }
-    /** A failed model may belong to an expired official recommendation
-     * list. A regular video retry cannot repair that list. Discard the stale
-     * queue, invalidate the old cursor and request a fresh official page.
+    /** A failed model may belong to an expired recommendation list.
+     * Retain the current screen while fetching a new official page.
      * This is deliberately user-initiated (button or next swipe after error),
      * not an infinite automatic retry loop. */
     fun refreshFailedReels() {
@@ -1528,6 +1551,8 @@ class DramaViewModel(application: Application) : AndroidViewModel(application) {
         clearReelWarmVideo()
         clearFeedLookahead()
         prefetchedFeedDetails.clear()
+        clearFinaleAdvance()
+        failedFeedRefreshPending = true
         pendingFeedAdvance = true
         mutable.update { it.copy(
             feedItems = listOf(anchor), feedIndex = 0,
@@ -2833,6 +2858,7 @@ class DramaViewModel(application: Application) : AndroidViewModel(application) {
         val current = state.value
         if (drama != null && drama.id in current.hiddenRecommendationIds) return
         deferRestoredFeedRecommendations = deferRecommendations && drama != null
+        failedFeedRefreshPending = false
         officialFeedJob?.cancel()
         officialFeedGeneration++
         finaleRecommendationRequestFor = null
@@ -2971,6 +2997,7 @@ class DramaViewModel(application: Application) : AndroidViewModel(application) {
      * Keep the feed queue/index so Back can return to this same drama and resume swiping.
      */
     fun exitFeedToEpisode(index: Int) {
+        failedFeedRefreshPending = false
         val snapshot = state.value
         val target = snapshot.detail?.episodes?.getOrNull(index) ?: return
         if (!snapshot.feedMode) {
