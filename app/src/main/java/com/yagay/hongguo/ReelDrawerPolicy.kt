@@ -11,10 +11,14 @@ import androidx.lifecycle.LifecycleEventObserver
 import androidx.lifecycle.compose.LocalLifecycleOwner
 import kotlinx.coroutines.launch
 
-/** Keep dismissal working even if the user returned in a non-feed series mode. */
+/**
+ * Never open the account drawer from a horizontal swipe on the player.
+ * The visible menu button remains the only opening gesture. Once opened,
+ * the drawer may still be dismissed by swiping left or tapping the scrim.
+ */
 internal object ReelDrawerPolicy {
     fun gesturesEnabled(isOpen: Boolean, feedMode: Boolean, searchOverlayOpen: Boolean): Boolean =
-        isOpen || (feedMode && !searchOverlayOpen)
+        isOpen
 }
 
 /**
