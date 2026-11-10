@@ -1312,7 +1312,12 @@ class DramaViewModel(application: Application) : AndroidViewModel(application) {
                             "官方暂未推荐新作品，可上滑重试" else null)
                 }
                 updateNotificationNavigation()
-                if (result.items.isNotEmpty()) staleFeedExcludedIds.clear()
+                // Do not reopen the stale batch if the provider returned
+                // only duplicates that could not enter the replacement queue.
+                if (state.value.feedItems.isNotEmpty() &&
+                    result.items.any { offered ->
+                        state.value.feedItems.any { it.id == offered.id }
+                    }) staleFeedExcludedIds.clear()
                 diagnostics.record("REELS", "OFFICIAL_BATCH_READY")
                 if (needsFirstDrama && state.value.feedMode) {
                     val first = state.value.feedItems.firstOrNull()
