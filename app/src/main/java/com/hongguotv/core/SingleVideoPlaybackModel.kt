@@ -17,7 +17,17 @@ internal object SingleVideoPlaybackModel {
         val raw = data.opt("video_model")
         val model = when (raw) {
             is JSONObject -> raw
-            is String -> runCatching { JSONObject(raw) }.getOrNull()
+            is String -> {
+                // Some App builds return a JSON string, others base64-encode
+                // the same model. Reject oversized strings before decoding.
+                if (raw.length > 384 * 1024) null
+                else runCatching { JSONObject(raw) }.getOrNull()
+                    ?: runCatching {
+                        val decoded = java.util.Base64.getDecoder().decode(raw)
+                        if (decoded.size > 256 * 1024) null
+                        else JSONObject(String(decoded, Charsets.UTF_8))
+                    }.getOrNull()
+            }
             else -> null
         } ?: if (data.has("video_list")) data else return null
         val list = model.opt("video_list")
