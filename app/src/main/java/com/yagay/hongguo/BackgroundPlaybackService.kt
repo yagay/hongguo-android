@@ -22,6 +22,8 @@ import androidx.media3.exoplayer.ExoPlayer
 import androidx.media3.exoplayer.analytics.AnalyticsListener
 import androidx.media3.exoplayer.DecoderReuseEvaluation
 import androidx.media3.exoplayer.source.ProgressiveMediaSource
+import androidx.media3.exoplayer.source.preload.DefaultPreloadManager
+import androidx.media3.exoplayer.source.preload.TargetPreloadStatusControl
 import androidx.media3.session.CommandButton
 import androidx.media3.session.MediaSession
 import androidx.media3.session.MediaSessionService
@@ -62,6 +64,11 @@ class BackgroundPlaybackService : MediaSessionService() {
                 .getBoolean("log_enabled", true))
     }
     private lateinit var engine: ExoPlayer
+    private lateinit var preloadManager: DefaultPreloadManager
+    private var queuedPreloadItem: MediaItem? = null
+    private var queuedPreloadVideo: RemoteVideo? = null
+    private var queuedPreloadVid: String? = null
+    private var nativePreloadDurationMs = 1_500L
     private val audioBoost = PlaybackAudioBoost { code ->
         diagnostics.record("AUDIO_BOOST", code)
     }
@@ -143,7 +150,17 @@ class BackgroundPlaybackService : MediaSessionService() {
             "web_rewrite_settings", MODE_PRIVATE
         ).getInt("playback_audio_boost_db", 0)
             .takeIf(AudioBoostPolicy::valid) ?: 0
-        engine = ExoPlayer.Builder(this).build().apply {
+        // Same builder and source pipeline as upstream hongguoTV.
+        val preloadBuilder = DefaultPreloadManager.Builder(
+            this,
+            TargetPreloadStatusControl<Int, DefaultPreloadManager.PreloadStatus> { rank ->
+                if (rank == 1)
+                    DefaultPreloadManager.PreloadStatus.specifiedRangeLoaded(
+                        nativePreloadDurationMs)
+                else DefaultPreloadManager.PreloadStatus.PRELOAD_STATUS_NOT_PRELOADED
+            })
+        preloadManager = preloadBuilder.build()
+        engine = preloadBuilder.buildExoPlayer().apply {
             setAudioAttributes(
                 androidx.media3.common.AudioAttributes.Builder()
                     .setUsage(C.USAGE_MEDIA)
@@ -511,6 +528,48 @@ class BackgroundPlaybackService : MediaSessionService() {
         return cached
     }
 
+
+    /** Queue exactly one encrypted video as a shared TV-style Media3 media source. */
+    fun queueNativePreload(
+        vid: String, quality: Int, video: RemoteVideo,
+        title: String, episode: Int, totalEpisodes: Int,
+        cover: String, durationMs: Long,
+    ): Boolean {
+        if (!::preloadManager.isInitialized || currentVid == vid) return false
+        if (queuedPreloadVideo === video && queuedPreloadVid == vid) return true
+        discardNativePreload(queuedPreloadVideo)
+        nativePreloadDurationMs = durationMs
+        val metadata = MediaMetadata.Builder()
+            .setTitle(BackgroundNavigationPolicy.title(title, episode))
+            .setArtist(BackgroundNavigationPolicy.episodeLabel(episode, totalEpisodes))
+            .setAlbumTitle(title)
+            .apply { if (cover.startsWith("https://")) setArtworkUri(Uri.parse(cover)) }
+            .build()
+        val item = MediaItem.Builder().setUri("native://episode/$vid")
+            .setMediaId(vid)
+            .apply { NativeDiskVideoCache.streamKey(video)?.let { setCustomCacheKey(it) } }
+            .setMediaMetadata(metadata).build()
+        val source = ProgressiveMediaSource.Factory(
+            NativeDiskVideoCache.factory(this, video)).createMediaSource(item)
+        queuedPreloadVideo = video
+        queuedPreloadVid = vid
+        queuedPreloadItem = item
+        preloadManager.setCurrentPlayingIndex(0)
+        preloadManager.add(source, 1)
+        preloadManager.invalidate()
+        diagnostics.record("PRELOAD_V3", "TV_MEDIA3_QUEUED")
+        return true
+    }
+
+    fun discardNativePreload(video: RemoteVideo?) {
+        if (video != null && queuedPreloadVideo !== video) return
+        val item = queuedPreloadItem ?: return
+        if (::preloadManager.isInitialized) preloadManager.remove(item)
+        queuedPreloadItem = null
+        queuedPreloadVideo = null
+        queuedPreloadVid = null
+    }
+
     /** Called on main by the UI after metadata + encrypted media are ready. */
     fun configure(
         key: String,
@@ -605,8 +664,19 @@ class BackgroundPlaybackService : MediaSessionService() {
                 onError?.invoke("LOCAL_CACHE_REPLAY_FAILED")
                 return
             }
-            engine.setMediaSource(
-                ProgressiveMediaSource.Factory(factory).createMediaSource(item))
+            val prepared = if (remote != null && remote === queuedPreloadVideo &&
+                queuedPreloadVid == vid && queuedPreloadItem != null)
+                preloadManager.getMediaSource(queuedPreloadItem!!) else null
+            if (prepared != null) {
+                engine.setMediaSource(prepared)
+                queuedPreloadItem = null
+                queuedPreloadVideo = null
+                queuedPreloadVid = null
+                diagnostics.record("PRELOAD_V3", "TV_MEDIA3_HANDOFF")
+            } else {
+                engine.setMediaSource(
+                    ProgressiveMediaSource.Factory(factory).createMediaSource(item))
+            }
             diagnostics.record("DISK_CACHE", when {
                 localCacheKey != null -> "COMPLETE_REPLAY_STARTED"
                 NativeDiskVideoCache.isReady(this) -> "SOURCE_CACHE_READY"
@@ -727,6 +797,7 @@ class BackgroundPlaybackService : MediaSessionService() {
         }
         currentKey = null
         clearRecentVideo()
+        discardNativePreload(null)
         remoteVideo?.close()
         remoteVideo = null
         onFirstFrame = null
@@ -807,6 +878,8 @@ class BackgroundPlaybackService : MediaSessionService() {
         remoteVideo?.close()
         remoteVideo = null
         clearRecentVideo()
+        discardNativePreload(null)
+        if (::preloadManager.isInitialized) preloadManager.release()
         if (::session.isInitialized) session.release()
         if (::engine.isInitialized) engine.release()
         super.onDestroy()
