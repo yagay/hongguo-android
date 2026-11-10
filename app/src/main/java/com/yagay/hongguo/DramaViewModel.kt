@@ -195,6 +195,44 @@ class DramaViewModel(application: Application) : AndroidViewModel(application) {
         }
     }
 
+    fun preloadNetworkMode(): String =
+        NativeDiskVideoCache.preloadMode(getApplication())
+
+    /** A single selection changes all prefetch lanes at once. Current
+     * playback and the disk cache of already played bytes are untouched. */
+    fun setPreloadNetworkMode(value: String) {
+        if (value !in setOf(
+                PreloadNetworkPolicy.OFF,
+                PreloadNetworkPolicy.WIFI,
+                PreloadNetworkPolicy.ALL,
+            )) return
+        val before = NativeDiskVideoCache.preloadMode(getApplication())
+        if (before == value) return
+        prefs.edit()
+            .putString("preload_network_mode", value)
+            .remove("preload_wifi")
+            .remove("preload_mobile")
+            .apply()
+        diagnostics.record("PLAYBACK", "PREFETCH_NETWORK_MODE_" + value.uppercase())
+        // Release obsolete jobs when moving to a more restrictive network
+        // policy. Do not dispose live playback's RemoteVideo instance.
+        if (!NativeDiskVideoCache.mayBackgroundPreload(getApplication())) {
+            clearPreloadedNext()
+            clearPreloadedLater()
+            feedPrefetchJob?.cancel()
+            clearReelWarmVideo()
+            clearFeedLookahead()
+            cancelFinaleRecommendationWarmup()
+        } else {
+            val s = state.value
+            val currentVid = s.detail?.episodes?.getOrNull(s.episodeIndex)?.vid
+            if (s.preloadNext && s.offlinePlaybackUri == null &&
+                (firstFrameFor == currentVid || s.playbackUrl != null)) {
+                prepareUpcomingPlayback(s)
+            }
+        }
+    }
+
     fun setWifiBackgroundPreload(enabled: Boolean) {
         prefs.edit().putBoolean("preload_wifi", enabled).apply()
         diagnostics.record("DISK_CACHE",
