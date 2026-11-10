@@ -157,7 +157,7 @@ class BackgroundPlaybackService : MediaSessionService() {
                 if (rank == 1)
                     DefaultPreloadManager.PreloadStatus.specifiedRangeLoaded(
                         nativePreloadDurationMs)
-                else DefaultPreloadManager.PreloadStatus.PRELOAD_STATUS_TRACKS_SELECTED
+                else DefaultPreloadManager.PreloadStatus.specifiedRangeLoaded(0L)
             })
         preloadManager = preloadBuilder.build()
         engine = preloadBuilder.buildExoPlayer().apply {
