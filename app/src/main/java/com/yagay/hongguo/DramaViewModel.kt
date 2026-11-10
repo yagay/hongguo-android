@@ -3903,6 +3903,26 @@ class DramaViewModel(application: Application) : AndroidViewModel(application) {
         }
     }
 
+    /** Explicit Home/刷剧 action. A mini player must never turn the
+     * bottom Home tab into a loop that restores an unrelated series. */
+    fun returnToSwipeFeed() {
+        val current = state.value
+        if (current.feedMode) {
+            if (current.navigation.destination != PlaybackDestination.FEED ||
+                current.miniPlayerVisible) restorePlayer()
+            diagnostics.record("NAVIGATION", "HOME_FEED_RESTORED")
+            return
+        }
+        if (current.navigation.origin == PlaybackOrigin.SWIPE_FEED &&
+            current.detail != null) {
+            backFromPlayer()
+            return
+        }
+        closePlayer()
+        startFeed()
+        diagnostics.record("NAVIGATION", "HOME_FEED_NEW_SESSION")
+    }
+
     /** The route, not a mini-player flag, owns Back for full-series video. */
     fun backFromPlayer() {
         if (restoreReelFeed()) return
@@ -3925,8 +3945,13 @@ class DramaViewModel(application: Application) : AndroidViewModel(application) {
             closePlayer()
             startFeed(previous)
             diagnostics.record("NAVIGATION", "RESTORE_FEED_NEW_SESSION")
-        } else if (snapshot.detail == null) closePlayer()
-        else minimizePlayer()
+        } else {
+            // Default Home is always the swipe feed. Catalog-origin series
+            // Back must not minimize into a Home/mini restore loop.
+            closePlayer()
+            startFeed()
+            diagnostics.record("NAVIGATION", "SERIES_BACK_TO_FEED")
+        }
     }
 
     fun closePlayer() {
