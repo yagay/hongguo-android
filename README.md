@@ -476,3 +476,14 @@ Release APK 使用独立 PKCS#12 密钥，`com.yagay.hongguo` 包名；私钥不
 - 队列改变、账号推荐状态改变、关闭预加载、切换画质或预算、退出播放器时取消过期任务并释放非活跃的视频句柄。仅在设置允许的已验证网络下追加预加载，移动网络默认不额外预取。
 - 新增 `SWIPE_PREFETCH_PLAN_READY`、`NEXT_DRAMA_PREFETCH_SCHEDULED`、`SECOND_DETAIL_PREFETCHED`、`SECOND_VIDEO_PREFETCH_START/PREPARED/WARMED`、`SECOND_STREAM_PROMOTED` 等日志，配合 `PREFETCH_CACHE_HIT` 与 `READ_HIT_KIB_*` 判断预加载是否真正命中。
 - 预测窗口严格限制为两部官方推荐，不加入非官方固定剧库，不改变用户主动点选/浏览历史逻辑。相关单元测试覆盖重复或隐藏内容过滤、快速连续滑动后的候选移动和队列末尾边界。实际切换是否无等待仍受官方模型、播放授权及网络影响。
+
+## 预加载失效诊断与修复（2026-11-10）
+
+根据用户 2026-11-10 07:21 UTC 导出的诊断日志：`PREFETCH_CACHE_MISS` 34 次、`PREFETCH_CACHE_HIT` 3 次，`MODEL_FAIL_PLAYBACK_EMPTY_RESPONSE` 11 次，另有模型网络 I/O/超时错误；`DISK_CACHE READ_HIT_KIB_*` 证实曾命中磁盘片段，不能据此推断跨剧预加载已完成。
+
+- **预取门控**：修正某些 Android/OEM 将 Wi-Fi 标记为计费网络或尚未通过系统连通性验证，导致整套提前加载被直接跳过的问题。Wi-Fi 开关允许时可预取；其他网络仍遵循移动网络开关。播放本身不受预取开关影响。
+- **上游错误**：下一集及下一部短剧播放模型遇到空响应或瞬时 `IOException` 时，仅有限重试一次；下一部/再下一部详情请求网络失败也允许一次短延迟重试，不进入无限请求循环。
+- **滑动交接**：用户上滑时不再立即启动下一目标的预热任务并取消仍在进行的旧目标任务。对正在预取的目标允许短暂等待并转移 `RemoteVideo` 所有权，避免本次预加载尚未准备完就开始第二次相同的模型请求。命中日志 `INFLIGHT_DRAMA_REUSED`；超时回退 `INFLIGHT_DRAMA_TIMEOUT`。
+- **诊断可见性**：`PREFETCH_GATE_DISABLED`、`PREFETCH_GATE_NETWORK_*`、`SWIPE_PREFETCH_SKIP_*`、`SWIPE_PREFETCH_WAIT_RECOMMENDATIONS`、`NEXT_PRELOAD_FAIL_*` 可直接区分用户设置、网络策略、推荐队列缺失、上游异常。
+- **测试**：增加纯网络策略测试，确保 Wi-Fi 模式与移动网络额外预加载开关相互独立。现有刷剧两候选测试仍应通过。
+- **确认 APK**：旧日志没有 `SWIPE_PREFETCH_PLAN_READY` 等双候选事件，不能证明已安装最新分支的 Debug APK。请使用本次提交后的 Debug 构建复测，重点观察 `SWIPE_PREFETCH_PLAN_READY`、`NEXT_DRAMA_PREFETCH_SCHEDULED`、`SECOND_VIDEO_PREPARED`、`INFLIGHT_DRAMA_REUSED`、`DISK_CACHE READ_HIT_KIB_*`。
