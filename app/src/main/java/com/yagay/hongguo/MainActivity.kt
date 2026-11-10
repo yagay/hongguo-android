@@ -536,9 +536,10 @@ private fun HongguoApp(model: DramaViewModel = viewModel()) {
                     reelSlideScope.launch {
                         // The current Media3 surface slides off to reveal
                         // the feed; mode change occurs only after exit.
-                        reelModeSlide.exitRightThen {
-                            model.returnToSwipeFeed()
-                        }
+                        reelModeSlide.exitRightThen(
+                            navigateBack = { model.returnToSwipeFeed() },
+                            captureDramaId = state.detail?.drama?.id,
+                        )
                     }
                 }
                 else -> model.returnToSwipeFeed()
