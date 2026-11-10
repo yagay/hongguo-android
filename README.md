@@ -487,3 +487,7 @@ Release APK 使用独立 PKCS#12 密钥，`com.yagay.hongguo` 包名；私钥不
 - **诊断可见性**：`PREFETCH_GATE_DISABLED`、`PREFETCH_GATE_NETWORK_*`、`SWIPE_PREFETCH_SKIP_*`、`SWIPE_PREFETCH_WAIT_RECOMMENDATIONS`、`NEXT_PRELOAD_FAIL_*` 可直接区分用户设置、网络策略、推荐队列缺失、上游异常。
 - **测试**：增加纯网络策略测试，确保 Wi-Fi 模式与移动网络额外预加载开关相互独立。现有刷剧两候选测试仍应通过。
 - **确认 APK**：旧日志没有 `SWIPE_PREFETCH_PLAN_READY` 等双候选事件，不能证明已安装最新分支的 Debug APK。请使用本次提交后的 Debug 构建复测，重点观察 `SWIPE_PREFETCH_PLAN_READY`、`NEXT_DRAMA_PREFETCH_SCHEDULED`、`SECOND_VIDEO_PREPARED`、`INFLIGHT_DRAMA_REUSED`、`DISK_CACHE READ_HIT_KIB_*`。
+
+## 设置：预加载网络（2026-11-10）
+
+设置 → **视频缓存与预加载** → **预加载网络**，通过统一的选择弹窗提供 **关闭预加载 / 仅 Wi-Fi（默认推荐） / 所有网络（含移动数据）** 三种策略。选择立即保存到本机偏好设置，对下一集 N+1、下下集 N+2、下一部与再下一部刷剧候选的后台网络预加载一致生效；禁用时释放待机预加载，允许时重新安排当前剧的后台预取，无需重启。该项**不会禁止正在播放的视频联网**，也不会阻止正在播放的视频片段被正常加入磁盘缓存。安装更新时从旧版 Wi-Fi/移动数据两个开关自动推导，避免更新导致现有选择丢失。设置行使用应用原有 `SettingsChoiceSheet` 样式。
