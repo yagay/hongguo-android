@@ -505,15 +505,15 @@ private fun HongguoApp(model: DramaViewModel = viewModel()) {
         // tab can still be My/Theater. A same-tab tap must still minimize the
         // new full player instead of being discarded.
         if (tab == primaryTab &&
-            !AppShellNavigationPolicy.shouldMinimizeForTab(state, tab)) return
+            !AppShellNavigationPolicy.shouldMinimizeForTab(state, tab) &&
+            !(tab == "home" &&
+                AppShellNavigationPolicy.homeTabNeedsFeedNavigation(state))) return
         if (tab == "home") {
             primaryTab = tab
-            if (AppShellNavigationPolicy.shouldRestoreForHome(state)) {
-                // Preserve the active Media3 item, its progress and feed queue.
-                if (state.miniPlayerVisible) model.restorePlayer()
-            } else {
-                model.startFeed()
-            }
+            searchLandingOpen = false
+            // The Home tab always means swipe feed. Expanding the small
+            // player is a separate user action, never an implicit Home action.
+            model.returnToSwipeFeed()
         } else {
             // Apply the player transition BEFORE changing the selected tab.
             // The tab no longer controls whether the full player is rendered.
