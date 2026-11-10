@@ -634,7 +634,7 @@ class DramaViewModel(application: Application) : AndroidViewModel(application) {
                     // Extend the SAME RemoteVideo after publishing the usable
                     // first MiB. Fast episode switches can consume its current
                     // prefix even while later chunks are still downloading.
-                    if (ready != null && targetBytes > VideoPreloadPolicy.STARTUP_BYTES) {
+                    if (ready != null) {
                         try {
                             withContext(Dispatchers.IO) {
                                 ready.warm(targetBytes) {
@@ -1659,7 +1659,7 @@ class DramaViewModel(application: Application) : AndroidViewModel(application) {
                     after.hiddenRecommendationIds, after.detail?.drama?.id
                 ).getOrNull(1)
                 if (following != null) scheduleSecondSwipeVideo(following)
-                if (ready != null && targetBytes > VideoPreloadPolicy.STARTUP_BYTES) {
+                if (ready != null) {
                     try {
                         withContext(Dispatchers.IO) {
                             ready.warm(targetBytes) {
