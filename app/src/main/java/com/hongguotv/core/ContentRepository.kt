@@ -1032,6 +1032,37 @@ constructor(
                             if (freshConnection) client.connectionPool.evictAll()
                         }
                     }
+                    // A third *distinct* official model shape is known from
+                    // guoapp. Only try it after the main signed GET/POST paths
+                    // yield empty models, using the SAME caller deadline and
+                    // registration profile. Never extend the budget or mask
+                    // an explicit authentication / business rejection.
+                    if (current == null && !speculative && allEmpty &&
+                        TimeUnit.NANOSECONDS.toMillis(
+                            deadline - System.nanoTime()) > 1_200L) {
+                        try {
+                            val singlePayload = JSONObject()
+                                .put("video_id", id)
+                                .put("content_type", 1)
+                                .put("biz_param", JSONObject()
+                                    .put("need_all_video_definition", true)
+                                    .put("video_platform", 3))
+                                .toString().toByteArray(Charsets.UTF_8)
+                            val request = playbackRequest(
+                                "https://${PlayRetryPlan.hosts.first()}/novel/player/video_model/v1/",
+                                identity, body = singlePayload)
+                            val raw = fetchPlaybackModel(request, transport(), trace,
+                                PlaybackRequestTrace.Stage.POST)
+                            SingleVideoPlaybackModel.parse(raw)?.let { row ->
+                                current = row
+                                identity.offerModel(id, row, playbackModelOwner, clock())
+                                resetPlaybackFailures()
+                            }
+                        } catch (error: IOException) {
+                            RequestScope.ensureActive()
+                            lastError = error
+                        }
+                    }
                     if (current == null) {
                         RequestScope.ensureActive()
                         if (!speculative) synchronized(playbackIdentityLock) {

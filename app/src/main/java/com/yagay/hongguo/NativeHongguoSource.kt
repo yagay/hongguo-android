@@ -37,6 +37,9 @@ class NativeHongguoSource(
     private val diagnostics: DiagnosticLog? = null,
 ) {
     private val websiteCovers = NativeWebsiteSource(diagnostics = diagnostics)
+    // Only host-level startup timings are retained (no signed URL, key,
+    // cookies, or permanent blacklists).
+    private val cdnHealth = CdnStartupHealth()
     private val recommendationLock = Any()
     private var recommendationFeed = RecommendationFeed(repository.http)
     private var accountFeed: FeedAccount? = null
@@ -602,9 +605,12 @@ class NativeHongguoSource(
             diagnostics?.record("PLAYBACK", "CODEC_UNSUPPORTED")
             throw IOException("CODEC_NOT_SUPPORTED")
         }
+        // Keep codec/quality preference intact; only reorder CDN hosts
+        // within an equivalent tier based on recent MP4 index success.
         val candidates = eligible.sortedWith(
             compareBy<Rendition> { QualityPolicy.rank(it.quality, qualityLimit) }
                 .thenByDescending { codecName(it.codec) == "video/avc" }
+                .thenBy { cdnHealth.score(it.url) }
         ).take(4)
         var last: IOException? = null
         // MP4 index preparation must not inherit the long 45-second segment
@@ -636,6 +642,8 @@ class NativeHongguoSource(
                 diagnostics?.record("PLAYBACK",
                     if (preload) "NEXT_RANGE_PREPARED" else "RANGE_PREPARED",
                     (System.nanoTime() - rangeStarted) / 1_000_000)
+                cdnHealth.success(candidate.url,
+                    (System.nanoTime() - rangeStarted) / 1_000_000)
                 diagnostics?.record("PLAYBACK",
                     "CDN_CANDIDATE_${candidateIndex + 1}_READY")
                 return@withContext video
@@ -645,6 +653,7 @@ class NativeHongguoSource(
             } catch (error: IOException) {
                 video.close()
                 last = error
+                cdnHealth.failure(candidate.url)
                 diagnostics?.record("PLAYBACK", "RANGE_FAIL",
                     (System.nanoTime() - rangeStarted) / 1_000_000)
                 diagnostics?.record("PLAYBACK",
