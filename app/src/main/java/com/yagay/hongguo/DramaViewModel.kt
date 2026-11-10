@@ -480,6 +480,8 @@ class DramaViewModel(application: Application) : AndroidViewModel(application) {
     private var reelWarmQuality = 0
     private var reelWarmVideo: RemoteVideo? = null
     private var feedPrefetchTargetSeriesId: String? = null
+    /** Preserve an unfinished next-drama model during the actual swipe. */
+    private var feedHandoffTargetSeriesId: String? = null
 
     /** A second swipe candidate is allowed a tiny prepared stream, never a decoder. */
     private var reelSecondSeriesId: String? = null
@@ -1741,13 +1743,16 @@ class DramaViewModel(application: Application) : AndroidViewModel(application) {
 
     private fun isUpcomingReel(seriesId: String): Boolean {
         val current = state.value
+        val isHandingOff = feedHandoffTargetSeriesId == seriesId &&
+            current.feedMode && current.detail?.drama?.id == seriesId &&
+            current.playbackUrl == null
         return current.preloadNext &&
             NativeDiskVideoCache.mayBackgroundPreload(getApplication()) &&
-            mayPreloadFollowingDrama(current) &&
-            SwipePrefetchPolicy.candidates(
-                current.feedItems.map { it.id }, current.feedIndex,
-                current.hiddenRecommendationIds, current.detail?.drama?.id
-            ).firstOrNull() == seriesId
+            (isHandingOff || mayPreloadFollowingDrama(current) &&
+                SwipePrefetchPolicy.candidates(
+                    current.feedItems.map { it.id }, current.feedIndex,
+                    current.hiddenRecommendationIds, current.detail?.drama?.id
+                ).firstOrNull() == seriesId)
     }
     private var firstFrameFor: String? = null
     private var playbackStartAtMs = 0L
@@ -2795,6 +2800,12 @@ class DramaViewModel(application: Application) : AndroidViewModel(application) {
                 current.nextDramaTransition == NextDramaTransition.FINDING_RECOMMENDATION
             pendingFeedAdvance = false
             clearFinaleAdvance()
+            val pendingPreparedReel = feedPrefetchTargetSeriesId == selected.id &&
+                feedPrefetchJob?.isActive == true
+            feedHandoffTargetSeriesId =
+                if (pendingPreparedReel) selected.id else null
+            if (pendingPreparedReel)
+                diagnostics.record("FEED", "INFLIGHT_DRAMA_HANDOFF_REQUESTED")
             autoNextTargetDramaId = if (automaticallyAdvancing) selected.id else null
             mutable.update {
                 it.copy(feedIndex = index,
@@ -2807,7 +2818,9 @@ class DramaViewModel(application: Application) : AndroidViewModel(application) {
             updateNotificationNavigation()
             localContent.rememberSwiped(selected.id)
             open(selected, resumeEp = 1, feed = true)
-            prefetchFollowingFeedItem(index)
+            // Do not cancel an in-flight prefetch for the newly selected reel
+            // by scheduling the following reel immediately. SOURCE_READY and
+            // FIRST_FRAME will re-arm the new recommendation window.
             if (direction > 0 && OfficialReelsPolicy.needsMore(
                     current.feedItems, index, current.hiddenRecommendationIds,
                     current.feedHasMore, current.feedLoading)) loadOfficialReels()
@@ -3286,6 +3299,10 @@ class DramaViewModel(application: Application) : AndroidViewModel(application) {
             reelWarmVid = null
             reelWarmSeriesId = null
         }
+        val pendingReelJob = if (cachedNative == null && api == null &&
+            state.value.feedMode && feedHandoffTargetSeriesId == detail.drama.id &&
+            feedPrefetchTargetSeriesId == detail.drama.id &&
+            feedPrefetchJob?.isActive == true) feedPrefetchJob else null
         val pendingNextJob = if (cachedNative == null &&
             preloadEpisodeTargetVid == vid && preloadEpisodeJob?.isActive == true &&
             api == null) preloadEpisodeJob else null
@@ -3350,7 +3367,45 @@ class DramaViewModel(application: Application) : AndroidViewModel(application) {
                         preloadedNextVideo = null
                         preloadedNextVid = null
                     }
-                    val video = cachedNative ?: inFlightVideo ?: playbackResolver.resolve(
+                    // The old reel's in-flight source may complete while the
+                    // user swipes. Transfer ownership instead of starting a
+                    // duplicate playback-model request and cancelling prefetch.
+                    val inFlightReel = if (cachedNative == null &&
+                        inFlightVideo == null && pendingReelJob != null)
+                        kotlinx.coroutines.withTimeoutOrNull(3_000L) {
+                            while (pendingReelJob.isActive &&
+                                !(reelWarmSeriesId == detail.drama.id &&
+                                  reelWarmVid == vid && reelWarmQuality == quality &&
+                                  reelWarmVideo != null)) {
+                                delay(50)
+                            }
+                            if (reelWarmSeriesId == detail.drama.id &&
+                                reelWarmVid == vid && reelWarmQuality == quality) {
+                                val prepared = reelWarmVideo
+                                reelWarmVideo = null
+                                reelWarmVid = null
+                                reelWarmSeriesId = null
+                                feedPrefetchJob?.cancel()
+                                feedPrefetchJob = null
+                                feedPrefetchTargetSeriesId = null
+                                if (prepared != null)
+                                    diagnostics.record("FEED", "INFLIGHT_DRAMA_REUSED")
+                                prepared
+                            } else null
+                        } else null
+                    if (feedHandoffTargetSeriesId == detail.drama.id) {
+                        if (pendingReelJob != null && inFlightReel == null) {
+                            diagnostics.record("FEED", "INFLIGHT_DRAMA_TIMEOUT")
+                            pendingReelJob.cancel()
+                            if (feedPrefetchJob === pendingReelJob) {
+                                feedPrefetchJob = null
+                                feedPrefetchTargetSeriesId = null
+                            }
+                        }
+                        feedHandoffTargetSeriesId = null
+                    }
+                    val video = cachedNative ?: inFlightVideo ?: inFlightReel
+                        ?: playbackResolver.resolve(
                         vid, ahead, quality,
                         isCurrent = {
                             val current = state.value
