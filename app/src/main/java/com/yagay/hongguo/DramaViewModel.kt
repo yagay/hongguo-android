@@ -3397,15 +3397,15 @@ class DramaViewModel(application: Application) : AndroidViewModel(application) {
                     if (serviceStarted) launchBackgroundMedia(
                         detail, index, url, null, checkpoint, version)
                 } else {
-                    val ahead = if (state.value.preloadNext &&
-                        NativeDiskVideoCache.mayBackgroundPreload(getApplication()))
-                        detail.episodes.getOrNull(index + 1)?.vid else null
+                    // Current playback must not wait for optional metadata-ahead.
+                    // The independent N+1 task begins after SOURCE_READY.
+                    val ahead: String? = null
                     val quality = state.value.qualityLimit
                     // A rapid advance may catch the N+1 model still in flight.
                     // Give it a short bounded handoff window before issuing
                     // another network request for the same video ID.
                     val inFlightVideo = if (pendingNextJob != null)
-                        kotlinx.coroutines.withTimeoutOrNull(4_500L) {
+                        kotlinx.coroutines.withTimeoutOrNull(900L) {
                             while (preloadedNextVid != vid && pendingNextJob.isActive) {
                                 delay(40)
                             }
@@ -3435,7 +3435,7 @@ class DramaViewModel(application: Application) : AndroidViewModel(application) {
                     // duplicate playback-model request and cancelling prefetch.
                     val inFlightReel = if (cachedNative == null &&
                         inFlightVideo == null && pendingReelJob != null)
-                        kotlinx.coroutines.withTimeoutOrNull(5_000L) {
+                        kotlinx.coroutines.withTimeoutOrNull(1_200L) {
                             while (pendingReelJob.isActive &&
                                 !(reelWarmSeriesId == detail.drama.id &&
                                   reelWarmVid == vid && reelWarmQuality == quality &&
@@ -3488,13 +3488,20 @@ class DramaViewModel(application: Application) : AndroidViewModel(application) {
                     mutable.update { it.copy(playbackUrl = nativeUri,
                         playing = true) }
                     if (serviceStarted) {
-                        // Scan/load the disk index on IO, never during the
-                        // service's Media3 configuration on the main thread.
-                        withContext(Dispatchers.IO) {
-                            if (NativeDiskVideoCache.prepare(getApplication())) {
+                        // The disk fingerprint may require an upstream read.
+                        // Never hold the active video behind this optional
+                        // cache registration for longer than one short grace.
+                        val registration = viewModelScope.launch(Dispatchers.IO) {
+                            if (NativeDiskVideoCache.prepare(getApplication()))
                                 NativeDiskVideoCache.register(video, vid, quality)
-                            }
                         }
+                        val registeredInTime = kotlinx.coroutines.withTimeoutOrNull(250L) {
+                            registration.join()
+                            true
+                        } == true
+                        diagnostics.record("PLAYBACK",
+                            if (registeredInTime) "CACHE_KEY_READY_BEFORE_PLAY"
+                            else "CACHE_KEY_DEFERRED_FOR_FIRST_FRAME")
                         if (version == detailId) launchBackgroundMedia(
                             detail, index, nativeUri, video, checkpoint, version)
                     }
