@@ -3168,9 +3168,14 @@ class DramaViewModel(application: Application) : AndroidViewModel(application) {
         resumeMs: Long,
         expectedGeneration: Long,
     ) {
-        withTimeout(8_000) {
-            BackgroundPlaybackService.playerFlow.filterNotNull().first()
+        val serviceWaitStarted = System.nanoTime()
+        if (BackgroundPlaybackService.active == null) {
+            withTimeout(8_000) {
+                BackgroundPlaybackService.playerFlow.filterNotNull().first()
+            }
         }
+        diagnostics.record("PLAYBACK", "SERVICE_WAIT",
+            elapsed(serviceWaitStarted))
         if (expectedGeneration != detailId ||
             state.value.detail?.drama?.id != detail.drama.id) return
         val current = detail.episodes[index]
@@ -3467,6 +3472,7 @@ class DramaViewModel(application: Application) : AndroidViewModel(application) {
                         }
                         feedHandoffTargetSeriesId = null
                     }
+                    val resolveStarted = System.nanoTime()
                     val video = cachedNative ?: inFlightVideo ?: inFlightReel
                         ?: playbackResolver.resolve(
                         vid, ahead, quality,
@@ -3478,6 +3484,8 @@ class DramaViewModel(application: Application) : AndroidViewModel(application) {
                                 current.qualityLimit == quality
                         },
                     ) ?: return@launch
+                    diagnostics.record("PLAYBACK", "STREAM_ACQUIRED",
+                        elapsed(resolveStarted))
                     if (version != detailId) {
                         video.close()
                         return@launch
