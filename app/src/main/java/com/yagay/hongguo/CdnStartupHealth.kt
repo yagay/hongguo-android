@@ -20,7 +20,8 @@ internal class CdnStartupHealth(private val now: () -> Long = System::currentTim
     }.getOrNull()
 
     @Synchronized fun score(url: String): Int {
-        val value = hosts[host(url)] ?: return 0
+        val name = host(url) ?: return 0
+        val value = hosts[name] ?: return 0
         val time = now()
         if (value.failedUntil > time) return 50_000
         if (value.lastSuccess <= 0L || time < value.lastSuccess ||

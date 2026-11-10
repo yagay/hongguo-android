@@ -40,6 +40,9 @@ class NativeHongguoSource(
     // Only host-level startup timings are retained (no signed URL, key,
     // cookies, or permanent blacklists).
     private val cdnHealth = CdnStartupHealth()
+    // One bounded background model/index operation at a time, but foreground
+    // openVideo never takes this lock and never waits behind a prefetch job.
+    private val speculativePrepareMutex = kotlinx.coroutines.sync.Mutex()
     private val recommendationLock = Any()
     private var recommendationFeed = RecommendationFeed(repository.http)
     private var accountFeed: FeedAccount? = null
@@ -579,6 +582,13 @@ class NativeHongguoSource(
         preloadBytes: Int = VideoPreloadPolicy.DEFAULT_BYTES,
     ): RemoteVideo =
         withContext(Dispatchers.IO) {
+        val waitingAt = System.nanoTime()
+        if (preload) {
+            speculativePrepareMutex.lock()
+            diagnostics?.record("PLAYBACK", "SPECULATIVE_LANE_WAIT",
+                (System.nanoTime() - waitingAt) / 1_000_000)
+        }
+        try {
         diagnostics?.record("PLAYBACK", "REGISTER_AND_MODEL_START")
         val started = System.nanoTime()
         val ladder = try {
@@ -664,6 +674,9 @@ class NativeHongguoSource(
             }
         }
         throw last ?: IOException("MEDIA_PREPARATION_FAILED")
+        } finally {
+            if (preload) speculativePrepareMutex.unlock()
+        }
     }
 
     /** First-party read-only comment pages; website public reviews are

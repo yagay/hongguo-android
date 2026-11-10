@@ -10,6 +10,16 @@ internal object VideoPreloadPolicy {
     const val STARTUP_BYTES = MIB
     // Keep the second-neighbour warmup small so the active stream and N+1 win bandwidth.
     const val LATER_BYTES = 2 * MIB
+
+    enum class Slot { NEXT_EPISODE, NEXT_DRAMA, LATER }
+    /** The immediate next episode gets the user's full setting; a distant
+     * reel/episode cannot consume the same byte budget. */
+    fun bytesFor(slot: Slot, requestedMiB: Int): Int = when (slot) {
+        Slot.NEXT_EPISODE -> bytes(requestedMiB)
+        Slot.NEXT_DRAMA -> minOf(bytes(requestedMiB), 8 * MIB)
+        Slot.LATER -> minOf(bytes(requestedMiB), LATER_BYTES)
+    }
+
     val OPTIONS_MIB = listOf(1, 2, 4, 8, 16)
 
     fun normalizedMiB(value: Int): Int =

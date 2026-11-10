@@ -644,7 +644,8 @@ class DramaViewModel(application: Application) : AndroidViewModel(application) {
         clearPreloadedNext()
         val generation = detailId
         val quality = s.qualityLimit
-        val targetBytes = VideoPreloadPolicy.bytes(s.preloadBufferMiB)
+        val targetBytes = VideoPreloadPolicy.bytesFor(
+            VideoPreloadPolicy.Slot.NEXT_EPISODE, s.preloadBufferMiB)
         val originatingVid = s.detail?.episodes?.getOrNull(s.episodeIndex)?.vid
         diagnostics.record("PLAYBACK", "NEXT_PREFETCH_SCHEDULED")
         preloadEpisodeTargetVid = next
@@ -793,7 +794,8 @@ class DramaViewModel(application: Application) : AndroidViewModel(application) {
                     return@launch
                 diagnostics.record("PLAYBACK", "LATER_PREFETCH_SCHEDULED")
                 remote = nativeSource.openVideo(later, qualityLimit = quality,
-                    preload = true, preloadBytes = VideoPreloadPolicy.LATER_BYTES)
+                    preload = true, preloadBytes = VideoPreloadPolicy.bytesFor(
+                        VideoPreloadPolicy.Slot.LATER, bufferMiB))
                 if (!isLaterWarmupUseful(later, quality, bufferMiB, generation))
                     return@launch
                 preloadedLaterVideo = remote
@@ -1502,14 +1504,39 @@ class DramaViewModel(application: Application) : AndroidViewModel(application) {
             retryPlayback()
             return
         }
-        val stale = snapshot.feedItems.map { it.id } +
-            listOfNotNull(snapshot.detail?.drama?.id)
-        staleFeedExcludedIds.addAll(stale)
-        while (staleFeedExcludedIds.size > 45)
+        val failedId = snapshot.detail?.drama?.id
+            ?: snapshot.feedItems.getOrNull(snapshot.feedIndex)?.id
+        if (failedId != null) staleFeedExcludedIds.add(failedId)
+        // An unplayable VID is not evidence that *all* recommendations are
+        // expired. Exclude only the failed drama, keep its screen visible
+        // while requesting a fresh cursor, and retain the Media3 instance.
+        while (staleFeedExcludedIds.size > 24)
             staleFeedExcludedIds.remove(staleFeedExcludedIds.first())
-        diagnostics.record("REELS", "FAILED_QUEUE_REFRESH_REQUESTED")
-        closePlayer()
-        startFeed()
+        val anchor = FeedRefreshPolicy.anchor(
+            snapshot.feedItems, snapshot.feedIndex, snapshot.detail?.drama)
+        if (anchor == null) {
+            closePlayer()
+            startFeed()
+            return
+        }
+        officialFeedJob?.cancel()
+        officialFeedGeneration++
+        feedPrefetchJob?.cancel()
+        feedPrefetchJob = null
+        feedPrefetchTargetSeriesId = null
+        feedHandoffTargetSeriesId = null
+        clearReelWarmVideo()
+        clearFeedLookahead()
+        prefetchedFeedDetails.clear()
+        pendingFeedAdvance = true
+        mutable.update { it.copy(
+            feedItems = listOf(anchor), feedIndex = 0,
+            feedLoading = false, feedHasMore = true, feedError = null,
+            playbackError = null,
+            nextDramaTransition = NextDramaTransition.FINDING_RECOMMENDATION,
+        ) }
+        diagnostics.record("REELS", "FAILED_QUEUE_REFRESH_WITHOUT_PLAYER_RESET")
+        loadOfficialReels(restart = true)
     }
 
     private val prefetchedFeedDetails = linkedMapOf<String, DramaDetail>()
@@ -1639,7 +1666,8 @@ class DramaViewModel(application: Application) : AndroidViewModel(application) {
                     bufferMiB != state.value.preloadBufferMiB) return@launch
                 diagnostics.record("FEED", "SECOND_VIDEO_PREFETCH_START")
                 remote = nativeSource.openVideo(vid, qualityLimit = quality,
-                    preload = true, preloadBytes = VideoPreloadPolicy.LATER_BYTES)
+                    preload = true, preloadBytes = VideoPreloadPolicy.bytesFor(
+                        VideoPreloadPolicy.Slot.LATER, bufferMiB))
                 if (!isSecondUpcomingReel(seriesId) ||
                     quality != state.value.qualityLimit ||
                     bufferMiB != state.value.preloadBufferMiB) return@launch
@@ -1751,8 +1779,8 @@ class DramaViewModel(application: Application) : AndroidViewModel(application) {
                 val bufferMiB = state.value.preloadBufferMiB
                 // The next DRAMA uses a smaller budget than the immediate
                 // next EPISODE. A separate second drama gets only 2 MiB.
-                val targetBytes = minOf(VideoPreloadPolicy.bytes(bufferMiB),
-                    8 * VideoPreloadPolicy.MIB)
+                val targetBytes = VideoPreloadPolicy.bytesFor(
+                    VideoPreloadPolicy.Slot.NEXT_DRAMA, bufferMiB)
                 warming = try {
                     nativeSource.openVideo(first, qualityLimit = quality,
                         preload = true, preloadBytes = targetBytes)

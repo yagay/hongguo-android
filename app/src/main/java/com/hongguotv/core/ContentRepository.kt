@@ -1100,7 +1100,7 @@ constructor(
                             upcomingPlaybackModels.keys.first()
                         )
                     }
-                    current
+                    current ?: throw IOException("播放信息为空")
                 }
         val model = entry.optJSONObject("video_model") ?: JSONObject(entry.str("video_model"))
         if (cached != null && !speculative) resetPlaybackFailures()
