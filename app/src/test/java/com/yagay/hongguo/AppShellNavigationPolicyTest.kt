@@ -39,9 +39,40 @@ class AppShellNavigationPolicyTest {
         )
         assertEquals(AppShellNavigationPolicy.VideoLayer.MINI,
             AppShellNavigationPolicy.videoLayer(mini))
-        assertTrue(AppShellNavigationPolicy.shouldRestoreForHome(mini))
+        assertFalse(AppShellNavigationPolicy.shouldRestoreForHome(mini))
+        assertTrue(AppShellNavigationPolicy.homeTabNeedsFeedNavigation(mini))
         assertFalse(AppShellNavigationPolicy.shouldMinimizeForTab(mini, "mine"))
         assertFalse(AppShellNavigationPolicy.shouldSelectHomeForNewSeries(mini))
+    }
+
+    @Test fun homeAlwaysReturnsToFeedFromCatalogSeriesEvenWhenAlreadySelected() {
+        val catalogSeries = series(PlaybackOrigin.CATALOG)
+        assertTrue(AppShellNavigationPolicy.homeTabNeedsFeedNavigation(catalogSeries))
+        assertFalse(AppShellNavigationPolicy.shouldRestoreForHome(catalogSeries))
+        val fromFeedSeries = series(PlaybackOrigin.SWIPE_FEED)
+        assertTrue(AppShellNavigationPolicy.homeTabNeedsFeedNavigation(fromFeedSeries))
+        val activeFeed = fromFeedSeries.copy(
+            feedMode = true,
+            navigation = PlaybackNavigation().toFeed(),
+        )
+        assertFalse(AppShellNavigationPolicy.homeTabNeedsFeedNavigation(activeFeed))
+        assertTrue(AppShellNavigationPolicy.shouldRestoreForHome(activeFeed))
+    }
+
+    @Test fun feedMiniHomeRestoresFeedButCatalogMiniHomeCreatesFeedSession() {
+        val feedMini = series(PlaybackOrigin.SWIPE_FEED).copy(
+            feedMode = true, miniPlayerVisible = true,
+            navigation = PlaybackNavigation().toFeed().toCatalog(),
+        )
+        assertFalse(AppShellNavigationPolicy.homeTabNeedsFeedNavigation(feedMini))
+        assertTrue(AppShellNavigationPolicy.shouldRestoreForHome(feedMini))
+        val catalogMini = series(PlaybackOrigin.CATALOG).copy(
+            miniPlayerVisible = true,
+            navigation = PlaybackNavigation(PlaybackOrigin.CATALOG,
+                PlaybackDestination.CATALOG),
+        )
+        assertTrue(AppShellNavigationPolicy.homeTabNeedsFeedNavigation(catalogMini))
+        assertFalse(AppShellNavigationPolicy.shouldRestoreForHome(catalogMini))
     }
 
     @Test fun detailsKeepTheUnderlyingVideoWithoutPretendingToBeFullTab() {
