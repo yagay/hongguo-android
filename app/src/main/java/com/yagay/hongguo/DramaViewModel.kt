@@ -649,9 +649,16 @@ class DramaViewModel(application: Application) : AndroidViewModel(application) {
         diagnostics.record("PLAYBACK", "NEXT_PREFETCH_SCHEDULED")
         preloadEpisodeTargetVid = next
         preloadEpisodeJob = viewModelScope.launch {
-            // Start ahead of the first frame if the source is already resolved.
-            // Once a first frame exists, never insert an artificial delay.
-            if (firstFrameFor != originatingVid) delay(1_200)
+            // Give active playback a short exclusive startup window.
+            // First frame releases prefetch immediately, but a background
+            // player with no attached surface cannot block it forever.
+            if (firstFrameFor != originatingVid) {
+                repeat(16) {
+                    if (firstFrameFor != originatingVid &&
+                        isNextWarmupUseful(next, quality, s.preloadBufferMiB, generation))
+                        delay(150)
+                }
+            }
             if (!isNextWarmupUseful(next, quality, s.preloadBufferMiB, generation))
                 return@launch
             var remote: RemoteVideo? = null
@@ -3520,7 +3527,10 @@ class DramaViewModel(application: Application) : AndroidViewModel(application) {
                 // period so it cannot replace a rapid swipe's target.
                 if (version == detailId && api == null) {
                     val latest = state.value
-                    if (latest.feedMode) scheduleSwipePrefetch(latest)
+                    // A new recommendation/model request is optional; do not
+                    // compete for the network until the current first frame.
+                    if (latest.feedMode && firstFrameFor == vid)
+                        scheduleSwipePrefetch(latest)
                     if (index < detail.episodes.lastIndex) {
                         preloadFollowingEpisode()
                     } else if (latest.preloadNext && latest.autoPlayNext) {
