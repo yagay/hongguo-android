@@ -165,7 +165,7 @@ internal object NativeDiskVideoCache {
         ).joinToString("") { "%02x".format(it) }
     }
 
-    suspend fun register(video: RemoteVideo, vid: String, quality: Int) =
+    suspend fun register(context: Context, video: RemoteVideo, vid: String, quality: Int) =
         withContext(Dispatchers.IO) {
             synchronized(registeredKeys) {
                 if (registeredKeys.containsKey(video)) return@withContext
@@ -283,7 +283,7 @@ internal object NativeDiskVideoCache {
     ): Unit = withContext(Dispatchers.IO) {
         if (!enabled(context) || !mayBackgroundPreload(context) ||
             !useful() || !prepare(context)) return@withContext
-        register(video, vid, quality)
+        register(context, video, vid, quality)
         val safeKey = streamKey(video) ?: return@withContext
         val length = minOf(requestedBytes.toLong(), video.total)
         if (length <= 0) return@withContext

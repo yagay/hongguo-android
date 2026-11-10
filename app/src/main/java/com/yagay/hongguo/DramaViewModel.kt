@@ -3631,7 +3631,7 @@ class DramaViewModel(application: Application) : AndroidViewModel(application) {
                         // cache registration for longer than one short grace.
                         val registration = viewModelScope.launch(Dispatchers.IO) {
                             if (NativeDiskVideoCache.prepare(getApplication()))
-                                NativeDiskVideoCache.register(video, vid, quality)
+                                NativeDiskVideoCache.register(getApplication(), video, vid, quality)
                         }
                         val registeredInTime = kotlinx.coroutines.withTimeoutOrNull(250L) {
                             registration.join()
@@ -3737,7 +3737,14 @@ class DramaViewModel(application: Application) : AndroidViewModel(application) {
         if (message == "LOCAL_CACHE_REPLAY_FAILED") {
             diagnostics.record("DISK_CACHE", "COMPLETE_REPLAY_NETWORK_FALLBACK")
             val index = state.value.episodeIndex
-            viewModelScope.launch { delay(80); if (state.value.episodeIndex == index) play(index) }
+            val seriesId = state.value.detail?.drama?.id
+            viewModelScope.launch {
+                delay(80)
+                val current = state.value
+                if (current.episodeIndex == index &&
+                    current.detail?.drama?.id == seriesId &&
+                    current.detail?.episodes?.getOrNull(index)?.vid == expectedVid) play(index)
+            }
             return
         }
         mutable.update { it.copy(playbackError = message, playing = false) }
