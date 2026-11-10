@@ -14,12 +14,12 @@ class ReelDrawerPolicyTest {
     }
 
     @Test
-    fun closedDrawerStillBlocksAccidentalSwipesInSeriesOrSearch() {
+    fun closedDrawerNeverOpensFromRightSwipeInAnyMode() {
         assertFalse(ReelDrawerPolicy.gesturesEnabled(isOpen = false,
             feedMode = false, searchOverlayOpen = false))
         assertFalse(ReelDrawerPolicy.gesturesEnabled(isOpen = false,
             feedMode = true, searchOverlayOpen = true))
-        assertTrue(ReelDrawerPolicy.gesturesEnabled(isOpen = false,
+        assertFalse(ReelDrawerPolicy.gesturesEnabled(isOpen = false,
             feedMode = true, searchOverlayOpen = false))
     }
 }
