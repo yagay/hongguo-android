@@ -500,3 +500,18 @@ Release APK 使用独立 PKCS#12 密钥，`com.yagay.hongguo` 包名；私钥不
 - 磁盘缓存初始化/读取 1 KiB 指纹可能涉及 IO 和网络。继续在 IO 线程注册，但前台起播仅允许最多 **250 ms** 等待，超时直接启动播放器并让后台完成注册。注意：若这次起播时还未取得 key，Media3 会使用原生流回退路径，该次播放可能不写入 SimpleCache；后续有 key 的预加载/播放仍使用磁盘缓存。以首帧体验优先，不牺牲播放成功率。
 - Media3 后台服务若已经活跃，直接配置新视频而不再等待 `playerFlow` 的非空流；首次服务启动仍保留有界等待。新增 `SERVICE_WAIT`、`STREAM_ACQUIRED`、`CACHE_KEY_READY_BEFORE_PLAY`、`CACHE_KEY_DEFERRED_FOR_FIRST_FRAME` 等诊断事件，结合 `SWITCH_TO_FIRST_FRAME` 量化模型、交接及缓存准备延迟。
 - 保留所有既有设置、N+2 和跨剧两个推荐候选预加载、磁盘缓存容量/过期、Debug-only Actions。起播快慢仍受上游接口与设备解码表现影响，需真机诊断验证。
+
+## 2026-11-10：非缓存视频冷启动优化（多开源项目对比）
+
+对比了 `beilunyang/openhongguo` 的匿名设备/可重试网络错误模型、`N3urda/hongguoTV` 的 Kotlin Range 加载与播放器复用，以及 `aston314/hongguo-tv` 的健康来源优先与分阶段播放诊断。参考其原则但不搬运其他项目的身份轮换或播放器架构，沿用本仓库的注册、签名、CENC 与 Media3 服务。
+
+**具体代码问题与修复**：
+
+- `NativeHongguoSource.openVideo(preload=true)` 此前未将 `preload` 传入 `ContentRepository.streamLadder(speculative)`；导致非关键 N+1/N+2/跨剧预取可能消耗和前台同样的多路恢复预算。已改用最多**一条健康线路、4 秒**的后台轻量模型预算；成功后仍准备真实媒体字节，失败时前台照常解析。
+- `NativePlaybackResolver` 以前允许一次空模型重试再叠加最多两次网络重试，而核心每轮已包含最多四条线路与 8 秒期限；现在统一限制为**最多一次外层恢复**，短暂退避（空模型 700 ms、临时网络 800 ms），防止重复完整模型轮次无限拖慢首帧。重试仅针对当前 VID/画质有效。
+- `ContentRepository.streamLadder` 以前第二条候选线路一律新建空连接池，重试结束再回收；即便只是上一条返回空模型也会损失健康 HTTP 连接复用。现在仅**实际连接/超时/DNS**等传输错误才使用隔离的新连接池，非传输类回退延用 OkHttp 共享池。
+- `RemoteVideo.prepare` 的 MP4 索引请求以前使用与长时间视频播放相同的 **45 秒单次请求超时**。现在允许为**起播索引请求单独使用**基于共享连接池的派生客户端：连接 4 秒、读取 8 秒、前台总 12 秒（预取 8 秒）；索引解析成功后，Media3/Range 读取继续使用既有可靠的流媒体客户端，不把短启动期限套到整集播放。
+- `PLAYBACK RANGE_PREPARED` / `RANGE_FAIL` 现在包含毫秒耗时，并另记脱敏的 `CDN_CANDIDATE_N_READY/FAILED`；结合 `MODEL_READY`、`SERVICE_WAIT` 和 `SWITCH_TO_FIRST_FRAME` 能判断接口、CDN 头部与 Media3 哪一段占主要时间。
+- 增加 `PlaybackRoutesTest` 以检查单条后台线路、成功路径优先和空路径冷却。所有普通 push 仍只构建 Debug；本次分支不执行签名 Release。
+
+**限制**：这会缩短不必要的网络回退与 CDN 死等，却不能保证官方播放模型、运营商链路、不同 CDN 节点一定稳定或每次起播达到固定秒数。尤其首次冷加载仍需要设备注册、视频模型与 MP4 索引。真机需核对新日志中 `MODEL_READY ms`、`RANGE_PREPARED ms` 和首帧时间，以确认实际收益。
