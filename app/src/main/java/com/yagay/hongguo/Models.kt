@@ -118,6 +118,9 @@ data class AppState(
     val guessesError: String? = null,
     val playing: Boolean = false,
     val playbackUrl: String? = null,
+    /** Only the first frame actually rendered for this specific media ID
+     * may reveal the SurfaceView; a previous reel frame stays covered. */
+    val renderedVideoVid: String? = null,
     val resumePositionMs: Long = 0L,
     val qualityLimit: Int = 0,
     /** Per upcoming video, not persistent disk storage. 8 MiB by default. */
