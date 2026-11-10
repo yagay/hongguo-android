@@ -1498,8 +1498,11 @@ class DramaViewModel(application: Application) : AndroidViewModel(application) {
         val vid = detail.episodes.firstOrNull()?.vid ?: return
         // Never start a second upstream stream until the immediate next reel
         // has at least its opening range prepared.
-        val firstId = state.value.feedItems.drop(state.value.feedIndex + 1)
-            .firstOrNull { it.id !in state.value.hiddenRecommendationIds }?.id
+        val s = state.value
+        val firstId = SwipePrefetchPolicy.candidates(
+            s.feedItems.map { it.id }, s.feedIndex,
+            s.hiddenRecommendationIds, s.detail?.drama?.id
+        ).firstOrNull()
         if (firstId != reelWarmSeriesId || reelWarmVideo == null) return
         feedSecondWarmJob?.cancel()
         feedSecondTargetSeriesId = seriesId
@@ -1554,15 +1557,19 @@ class DramaViewModel(application: Application) : AndroidViewModel(application) {
         val current = state.value
         if (!current.preloadNext || !mayPreloadFollowingDrama(current) ||
             !NativeDiskVideoCache.mayBackgroundPreload(getApplication())) return
-        val next = current.feedItems.drop(index + 1)
-            .firstOrNull { it.id !in current.hiddenRecommendationIds } ?: return
+        val nextId = SwipePrefetchPolicy.candidates(
+            current.feedItems.map { it.id }, index,
+            current.hiddenRecommendationIds, current.detail?.drama?.id
+        ).firstOrNull() ?: return
+        val next = current.feedItems.firstOrNull { it.id == nextId } ?: return
         if (reelSecondSeriesId == next.id && reelSecondVideo != null)
             promoteSecondSwipeStream(next.id)
         if (reelWarmSeriesId == next.id && reelWarmVideo != null) {
-            val second = current.feedItems.drop(index + 1)
-                .filter { it.id !in current.hiddenRecommendationIds &&
-                    it.id != next.id }.distinctBy { it.id }.getOrNull(0)
-            if (second != null) scheduleSecondSwipeVideo(second.id)
+            val second = SwipePrefetchPolicy.candidates(
+                current.feedItems.map { it.id }, index,
+                current.hiddenRecommendationIds, current.detail?.drama?.id
+            ).getOrNull(1)
+            if (second != null) scheduleSecondSwipeVideo(second)
             return
         }
         if (feedPrefetchTargetSeriesId == next.id &&
@@ -1646,10 +1653,12 @@ class DramaViewModel(application: Application) : AndroidViewModel(application) {
                 warming = null
                 diagnostics.record("FEED", "NEXT_VIDEO_PREPARED")
                 // The second drama can start preparing its model now.
-                val following = state.value.feedItems.drop(state.value.feedIndex + 1)
-                    .filter { it.id !in state.value.hiddenRecommendationIds &&
-                        it.id != next.id }.distinctBy { it.id }.firstOrNull()
-                if (following != null) scheduleSecondSwipeVideo(following.id)
+                val after = state.value
+                val following = SwipePrefetchPolicy.candidates(
+                    after.feedItems.map { it.id }, after.feedIndex,
+                    after.hiddenRecommendationIds, after.detail?.drama?.id
+                ).getOrNull(1)
+                if (following != null) scheduleSecondSwipeVideo(following)
                 if (ready != null && targetBytes > VideoPreloadPolicy.STARTUP_BYTES) {
                     try {
                         withContext(Dispatchers.IO) {
@@ -1700,8 +1709,10 @@ class DramaViewModel(application: Application) : AndroidViewModel(application) {
     private fun isUpcomingReel(seriesId: String): Boolean {
         val current = state.value
         return mayPreloadFollowingDrama(current) &&
-            current.feedItems.drop(current.feedIndex + 1)
-                .firstOrNull { it.id !in current.hiddenRecommendationIds }?.id == seriesId
+            SwipePrefetchPolicy.candidates(
+                current.feedItems.map { it.id }, current.feedIndex,
+                current.hiddenRecommendationIds, current.detail?.drama?.id
+            ).firstOrNull() == seriesId
     }
     private var firstFrameFor: String? = null
     private var playbackStartAtMs = 0L
