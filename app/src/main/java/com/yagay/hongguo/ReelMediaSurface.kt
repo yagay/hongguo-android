@@ -151,7 +151,9 @@ internal fun Media3Reel(
                 pipPlayerView = this
                 this.player = player
                 useController = false
-                setKeepContentOnPlayerReset(true)
+                // Never expose the previous drama's retained last frame while
+                // Media3 changes its MediaItem on a fast vertical swipe.
+                setKeepContentOnPlayerReset(false)
                 resizeMode = if (fillVideo) AspectRatioFrameLayout.RESIZE_MODE_ZOOM
                     else AspectRatioFrameLayout.RESIZE_MODE_FIT
                 onSurfaceType(when (videoSurfaceView) {
