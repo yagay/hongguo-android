@@ -875,26 +875,6 @@ internal fun NativePlayer(
         if (measuredPortraitHeight != null) Spacer(Modifier.weight(1f))
         }
     }
-    // Small, explicit two-way navigation. Do not place it inside the vertical
-    // pager: its click must never be interpreted as a swipe or a video tap.
-    // The app uses ONE service-owned Media3 player in both modes.
-    if (state.feedMode && state.navigation.destination == PlaybackDestination.FEED &&
-        state.returnSeries != null && !searchOverlayOpen && !showComments &&
-        !showEpisodes && (hiddenChromeMask and 1) == 0) {
-        OutlinedButton(
-            onClick = model::returnToPreviousSeries,
-            modifier = Modifier.align(Alignment.TopCenter)
-                .padding(top = 52.dp)
-                .background(Color(0xCC17171B), RoundedCornerShape(24.dp))
-                .testTag("return_to_previous_series"),
-        ) {
-            Icon(Icons.AutoMirrored.Outlined.ArrowBack, null,
-                tint = Color.White, modifier = Modifier.size(16.dp))
-            Spacer(Modifier.width(5.dp))
-            Text("返回刚才的剧集 · 第${state.returnSeries.episode}集",
-                color = Color.White, fontSize = 12.sp, maxLines = 1)
-        }
-    }
     // The search landing slides over (not instead of) the reel video.
     // Its Back arrow dismisses the overlay without navigating away or
     // restarting playback. Search submission follows the home search flow.
