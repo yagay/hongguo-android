@@ -64,7 +64,9 @@ class AppShellNavigationPolicyTest {
             feedMode = true, miniPlayerVisible = true,
             navigation = PlaybackNavigation().toFeed().toCatalog(),
         )
-        assertFalse(AppShellNavigationPolicy.homeTabNeedsFeedNavigation(feedMini))
+        // A minimized feed must allow Home to expand it; otherwise the
+        // same-tab early return makes Home look unresponsive.
+        assertTrue(AppShellNavigationPolicy.homeTabNeedsFeedNavigation(feedMini))
         assertTrue(AppShellNavigationPolicy.shouldRestoreForHome(feedMini))
         val catalogMini = series(PlaybackOrigin.CATALOG).copy(
             miniPlayerVisible = true,
