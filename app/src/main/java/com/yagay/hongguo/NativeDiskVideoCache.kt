@@ -69,8 +69,14 @@ internal object NativeDiskVideoCache {
         // It is still Wi-Fi: do not silently disable all reel prefetching.
         // Mobile/VPN-only transports retain their separate opt-in.
         val wifi = caps.hasTransport(NetworkCapabilities.TRANSPORT_WIFI)
-        return if (wifi) wifiPreload(context) else mobilePreload(context)
+        return allowedTransport(wifi, wifiPreload(context), mobilePreload(context))
     }
+
+    /** Wi-Fi is still Wi-Fi even when Android/OEM flags it as metered.
+     * Pure policy kept separate from ConnectivityManager so it can be tested. */
+    internal fun allowedTransport(
+        isWifi: Boolean, wifiEnabled: Boolean, mobileEnabled: Boolean,
+    ): Boolean = if (isWifi) wifiEnabled else mobileEnabled
 
     /** No secrets or identifiers are logged; helps distinguish a disabled setting
      * from an absent/temporarily unvalidated active transport. */
