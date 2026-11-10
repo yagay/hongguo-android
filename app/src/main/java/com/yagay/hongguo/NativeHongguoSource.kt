@@ -578,7 +578,10 @@ class NativeHongguoSource(
             val ahead = nextVid?.takeIf {
                 it != vid && it.matches(Regex("[0-9]{1,30}"))
             }?.let { listOf(it) }.orEmpty()
-            repository.streamLadder(vid, metadataAhead = ahead)
+            // Low-priority prefetch must not contend with foreground model
+            // recovery or registration through all fallback routes.
+            repository.streamLadder(vid, metadataAhead = ahead,
+                speculative = preload)
         } catch (error: Exception) {
             val code = PlaybackProblem.describe("播放模型", error).substringBefore(" · ")
             diagnostics?.record("PLAYBACK", "MODEL_FAIL_" + code,
@@ -597,8 +600,9 @@ class NativeHongguoSource(
                 .thenByDescending { codecName(it.codec) == "video/avc" }
         ).take(4)
         var last: IOException? = null
-        for (candidate in candidates) {
+        for ((candidateIndex, candidate) in candidates.withIndex()) {
             val video = RemoteVideo(repository.http, candidate.toStreamInfo())
+            val rangeStarted = System.nanoTime()
             try {
                 // Prepare the MP4 index first. Subsequent warm() requests
                 // cache actual media bytes rather than enlarging prepare(),
@@ -614,7 +618,10 @@ class NativeHongguoSource(
                 }
                 kotlinx.coroutines.currentCoroutineContext().ensureActive()
                 diagnostics?.record("PLAYBACK",
-                    if (preload) "NEXT_RANGE_PREPARED" else "RANGE_PREPARED")
+                    if (preload) "NEXT_RANGE_PREPARED" else "RANGE_PREPARED",
+                    (System.nanoTime() - rangeStarted) / 1_000_000)
+                diagnostics?.record("PLAYBACK",
+                    "CDN_CANDIDATE_${candidateIndex + 1}_READY")
                 return@withContext video
             } catch (cancel: CancellationException) {
                 video.close()
@@ -622,7 +629,10 @@ class NativeHongguoSource(
             } catch (error: IOException) {
                 video.close()
                 last = error
-                diagnostics?.record("PLAYBACK", "RANGE_FAIL")
+                diagnostics?.record("PLAYBACK", "RANGE_FAIL",
+                    (System.nanoTime() - rangeStarted) / 1_000_000)
+                diagnostics?.record("PLAYBACK",
+                    "CDN_CANDIDATE_${candidateIndex + 1}_FAILED")
             } catch (error: Exception) {
                 video.close()
                 throw error
