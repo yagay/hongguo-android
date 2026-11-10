@@ -63,9 +63,11 @@ internal object NativeDiskVideoCache {
         val caps = manager.getNetworkCapabilities(active) ?: return false
         if (!caps.hasCapability(NetworkCapabilities.NET_CAPABILITY_INTERNET) ||
             !caps.hasCapability(NetworkCapabilities.NET_CAPABILITY_VALIDATED)) return false
-        val unmeteredWifi = caps.hasTransport(NetworkCapabilities.TRANSPORT_WIFI) &&
-            caps.hasCapability(NetworkCapabilities.NET_CAPABILITY_NOT_METERED)
-        return if (unmeteredWifi) wifiPreload(context) else mobilePreload(context)
+        // An Android Wi-Fi network can be marked metered by the user or OEM.
+        // It is still Wi-Fi: do not silently disable all reel prefetching.
+        // Mobile/VPN-only transports retain their separate opt-in.
+        val wifi = caps.hasTransport(NetworkCapabilities.TRANSPORT_WIFI)
+        return if (wifi) wifiPreload(context) else mobilePreload(context)
     }
 
     /** Stable resource identity, discriminating byte length and requested rendition. */
