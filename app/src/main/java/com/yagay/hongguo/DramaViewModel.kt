@@ -473,6 +473,47 @@ class DramaViewModel(application: Application) : AndroidViewModel(application) {
     private var reelWarmVid: String? = null
     private var reelWarmQuality = 0
     private var reelWarmVideo: RemoteVideo? = null
+    private var feedPrefetchTargetSeriesId: String? = null
+
+    /** A second swipe candidate is allowed a tiny prepared stream, never a decoder. */
+    private var reelSecondSeriesId: String? = null
+    private var reelSecondVid: String? = null
+    private var reelSecondQuality = 0
+    private var reelSecondVideo: RemoteVideo? = null
+    private var feedSecondWarmJob: Job? = null
+    private var feedSecondTargetSeriesId: String? = null
+    private var feedDetailsLookaheadJob: Job? = null
+    private var feedDetailsLookaheadKey: String? = null
+
+    private fun clearFeedLookahead() {
+        feedDetailsLookaheadJob?.cancel()
+        feedDetailsLookaheadJob = null
+        feedDetailsLookaheadKey = null
+        feedSecondWarmJob?.cancel()
+        feedSecondWarmJob = null
+        feedSecondTargetSeriesId = null
+        reelSecondVideo?.close()
+        reelSecondVideo = null
+        reelSecondVid = null
+        reelSecondSeriesId = null
+    }
+
+    private fun promoteSecondSwipeStream(seriesId: String) {
+        if (reelSecondSeriesId != seriesId || reelSecondVideo == null) return
+        // Navigation never closes an already transferred stream.
+        clearReelWarmVideo()
+        feedSecondWarmJob?.cancel()
+        feedSecondWarmJob = null
+        feedSecondTargetSeriesId = null
+        reelWarmVideo = reelSecondVideo
+        reelWarmSeriesId = reelSecondSeriesId
+        reelWarmVid = reelSecondVid
+        reelWarmQuality = reelSecondQuality
+        reelSecondVideo = null
+        reelSecondVid = null
+        reelSecondSeriesId = null
+        diagnostics.record("FEED", "SECOND_STREAM_PROMOTED")
+    }
 
     private fun clearReelWarmVideo() {
         reelWarmVideo?.close()
@@ -605,6 +646,10 @@ class DramaViewModel(application: Application) : AndroidViewModel(application) {
                             diagnostics.record("PLAYBACK", "NEXT_WARM_PARTIAL")
                         }
                     }
+                    // An available N+1 startup prefix is enough for the
+                    // cross-drama task to progress, without waiting for all
+                    // N+1 bytes to be written to disk.
+                    if (state.value.feedMode) scheduleSwipePrefetch(state.value)
                     // Once N+1 is usable, N+2 is allowed a small low-priority
                     // range. Never let this compete with the N+1 initial request.
                     preloadFurtherEpisode(state.value)
@@ -749,6 +794,9 @@ class DramaViewModel(application: Application) : AndroidViewModel(application) {
             hasNextEpisode = snapshot.episodeIndex < detail.episodes.lastIndex,
             hasQueuedNextDrama = false,
         )
+        // Cross-drama planning is independent from the N+1 byte download.
+        // It prepares candidate metadata early while the episode remains primary.
+        if (snapshot.feedMode) scheduleSwipePrefetch(snapshot)
         if (episodeDecision == SeamlessPrefetchPolicy.Next.NEXT_EPISODE) {
             preloadFollowingEpisode()
             return
@@ -2694,6 +2742,7 @@ class DramaViewModel(application: Application) : AndroidViewModel(application) {
         detailJob?.cancel()
         val version = ++detailId
         firstFrameFor = null
+        promoteSecondSwipeStream(drama.id)
         clearPreloadedNext()
         clearPreloadedLater()
         startEpisodeHint = resumeEp
@@ -3116,6 +3165,7 @@ class DramaViewModel(application: Application) : AndroidViewModel(application) {
                 // period so it cannot replace a rapid swipe's target.
                 if (version == detailId && api == null) {
                     val latest = state.value
+                    if (latest.feedMode) scheduleSwipePrefetch(latest)
                     if (index < detail.episodes.lastIndex) {
                         preloadFollowingEpisode()
                     } else if (latest.preloadNext && latest.autoPlayNext) {
