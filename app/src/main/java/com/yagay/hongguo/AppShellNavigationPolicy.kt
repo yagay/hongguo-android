@@ -39,8 +39,8 @@ internal object AppShellNavigationPolicy {
                 videoLayer(state) == VideoLayer.FULL)
 
     fun homeTabNeedsFeedNavigation(state: AppState): Boolean =
-        !state.feedMode || state.navigation.destination !in setOf(
-            PlaybackDestination.FEED, PlaybackDestination.CATALOG)
+        !state.feedMode || state.miniPlayerVisible ||
+            state.navigation.destination != PlaybackDestination.FEED
 
     fun shouldSelectHomeForNewSeries(state: AppState): Boolean =
         state.navigation.destination == PlaybackDestination.SERIES &&
