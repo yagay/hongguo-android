@@ -193,10 +193,16 @@ internal class ReelModeSlideState {
         }
     }
 
-    suspend fun exitRightThen(navigateBack: () -> Unit) {
-        if (exitRunning) return
+    suspend fun exitRightThen(
+        navigateBack: () -> Unit,
+        captureDramaId: String? = null,
+    ) {
+        if (exitRunning || entryCaptureRunning) return
         exitRunning = true
         try {
+            // A real captured frame behind the outgoing player avoids a
+            // black flash when Home toggles the same video to reel mode.
+            if (captureDramaId != null) captureCurrentFrame(captureDramaId)
             entryPrepared = false
             translation.snapTo(0f)
             translation.animateTo(1f,
@@ -229,7 +235,9 @@ internal fun ReelModeSlidePlayer(
         // Two stacked screens are visible for the transition, but only the
         // moving foreground contains a real Media3 PlayerView.
         val transitionVisible = slide.positionFor(state.feedMode) > 0f
-        if (transitionVisible && fromReel) {
+        if (transitionVisible) {
+            // Home can be pressed from a Theater/My series as well. The
+            // outgoing surface still needs a backdrop in that case.
             Box(Modifier.fillMaxSize().testTag("reel_mode_feed_backdrop")) {
                 backdrop()
             }
