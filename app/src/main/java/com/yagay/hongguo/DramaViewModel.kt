@@ -1292,7 +1292,8 @@ class DramaViewModel(application: Application) : AndroidViewModel(application) {
                     nativeSource.officialReelsPage(restart, excluded,
                         realOnly = snapshot.reelsMode == "real",
                         comicOnly = snapshot.reelsMode == "comic",
-                        firstItemOnly = needsFirstDrama)
+                        firstItemOnly = needsFirstDrama,
+                        forceFresh = restart && staleFeedExcludedIds.isNotEmpty())
                 }
                 if (generation != officialFeedGeneration ||
                     (warmingFinaleId == null && !state.value.feedMode) ||
