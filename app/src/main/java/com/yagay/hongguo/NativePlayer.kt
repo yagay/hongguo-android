@@ -509,6 +509,22 @@ internal fun NativePlayer(
                 onSurfaceType = model::recordVideoSurface,
                 onPlayerView = modeSlide::registerPlayerView,
             )
+            // The SurfaceView can briefly retain a decoded frame from the
+            // outgoing reel even after the new metadata is installed.
+            // Keep the destination poster on top until its own FIRST_FRAME.
+            if (state.renderedVideoVid != playingEpisode.vid) {
+                Box(Modifier.fillMaxSize().background(Color.Black)
+                    .testTag("new_reel_waiting_first_frame")) {
+                    if (detail.drama.cover.isNotBlank()) {
+                        AsyncImage(
+                            model = model.cover(detail.drama.cover),
+                            contentDescription = null,
+                            contentScale = ContentScale.Crop,
+                            modifier = Modifier.fillMaxSize(),
+                        )
+                    }
+                }
+            }
         }
         VerticalPager(
             state = pagerState,
@@ -744,11 +760,18 @@ internal fun NativePlayer(
                             Text("本集暂时不能播放", color = Color.White,
                                 fontWeight = FontWeight.Bold)
                             Text(error, color = Color(0xFFD9D4D1), fontSize = 13.sp)
-                            OutlinedButton(onClick = model::retryPlayback) {
+                            OutlinedButton(
+                                onClick = {
+                                    if (state.feedMode) model.refreshFailedReels()
+                                    else model.retryPlayback()
+                                },
+                            ) {
                                 Icon(Icons.Outlined.Refresh, null)
-                                Text("重新尝试")
+                                Text(if (state.feedMode) "刷新推荐列表" else "重新尝试")
                             }
-                            Text("可继续上滑或下滑切换剧集",
+                            Text(if (state.feedMode)
+                                    "继续上滑也会请求新的推荐，不再循环播放失效列表"
+                                 else "可重新尝试或切换其他剧集",
                                 color = Color.LightGray, fontSize = 12.sp)
                         }
                     }
