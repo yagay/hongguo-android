@@ -47,13 +47,22 @@ internal object NativeDiskVideoCache {
         context.getSharedPreferences(PREFS, Context.MODE_PRIVATE)
             .getBoolean("disk_cache_enabled", true)
 
+    /** Reads the new unified control; migrates old two-toggle preferences. */
+    fun preloadMode(context: Context): String {
+        val prefs = context.getSharedPreferences(PREFS, Context.MODE_PRIVATE)
+        return if (prefs.contains("preload_network_mode"))
+            PreloadNetworkPolicy.normalized(prefs.getString("preload_network_mode", null))
+        else PreloadNetworkPolicy.fromLegacy(
+            prefs.getBoolean("preload_wifi", true),
+            prefs.getBoolean("preload_mobile", false),
+        )
+    }
+
     fun wifiPreload(context: Context): Boolean =
-        context.getSharedPreferences(PREFS, Context.MODE_PRIVATE)
-            .getBoolean("preload_wifi", true)
+        PreloadNetworkPolicy.allows(preloadMode(context), isWifi = true)
 
     fun mobilePreload(context: Context): Boolean =
-        context.getSharedPreferences(PREFS, Context.MODE_PRIVATE)
-            .getBoolean("preload_mobile", false)
+        PreloadNetworkPolicy.allows(preloadMode(context), isWifi = false)
 
     /** Use unmetered Wi-Fi by default; never infer "Wi-Fi" from connectivity alone. */
     fun mayBackgroundPreload(context: Context): Boolean {
@@ -69,7 +78,7 @@ internal object NativeDiskVideoCache {
         // It is still Wi-Fi: do not silently disable all reel prefetching.
         // Mobile/VPN-only transports retain their separate opt-in.
         val wifi = caps.hasTransport(NetworkCapabilities.TRANSPORT_WIFI)
-        return allowedTransport(wifi, wifiPreload(context), mobilePreload(context))
+        return PreloadNetworkPolicy.allows(preloadMode(context), wifi)
     }
 
     /** Wi-Fi is still Wi-Fi even when Android/OEM flags it as metered.
