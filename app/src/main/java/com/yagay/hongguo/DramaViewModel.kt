@@ -1251,6 +1251,10 @@ class DramaViewModel(application: Application) : AndroidViewModel(application) {
         startFeed()
     }
 
+    /** Failed feed batches are excluded from the next fresh cursor only.
+     * A successful new batch clears this temporary quarantine. */
+    private val staleFeedExcludedIds = linkedSetOf<String>()
+
     private fun loadOfficialReels(
         restart: Boolean = false,
         warmingFinaleId: String? = null,
@@ -1271,6 +1275,7 @@ class DramaViewModel(application: Application) : AndroidViewModel(application) {
         // suggestions, but never repeats the just-ended drama or hidden IDs.
         val excluded = snapshot.feedItems.mapTo(linkedSetOf()) { it.id }
             .apply {
+                addAll(staleFeedExcludedIds)
                 addAll(snapshot.hiddenRecommendationIds)
                 if (!relaxRecentExclusions) {
                     addAll(homeFeedExcludedIds)
@@ -1307,6 +1312,7 @@ class DramaViewModel(application: Application) : AndroidViewModel(application) {
                             "官方暂未推荐新作品，可上滑重试" else null)
                 }
                 updateNotificationNavigation()
+                if (result.items.isNotEmpty()) staleFeedExcludedIds.clear()
                 diagnostics.record("REELS", "OFFICIAL_BATCH_READY")
                 if (needsFirstDrama && state.value.feedMode) {
                     val first = state.value.feedItems.firstOrNull()
@@ -1479,6 +1485,27 @@ class DramaViewModel(application: Application) : AndroidViewModel(application) {
             relaxRecentExclusions = ended,
         )
     }
+    /** A failed model may belong to an expired official recommendation
+     * list. A regular video retry cannot repair that list. Discard the stale
+     * queue, invalidate the old cursor and request a fresh official page.
+     * This is deliberately user-initiated (button or next swipe after error),
+     * not an infinite automatic retry loop. */
+    fun refreshFailedReels() {
+        val snapshot = state.value
+        if (!snapshot.feedMode) {
+            retryPlayback()
+            return
+        }
+        val stale = snapshot.feedItems.map { it.id } +
+            listOfNotNull(snapshot.detail?.drama?.id)
+        staleFeedExcludedIds.addAll(stale)
+        while (staleFeedExcludedIds.size > 45)
+            staleFeedExcludedIds.remove(staleFeedExcludedIds.first())
+        diagnostics.record("REELS", "FAILED_QUEUE_REFRESH_REQUESTED")
+        closePlayer()
+        startFeed()
+    }
+
     private val prefetchedFeedDetails = linkedMapOf<String, DramaDetail>()
     /** Reuse the last few series details on reverse swipes, without refetching. */
     private val visitedFeedDetails = linkedMapOf<String, DramaDetail>()
@@ -2859,6 +2886,12 @@ class DramaViewModel(application: Application) : AndroidViewModel(application) {
     fun navigateFeed(direction: Int) {
         val current = state.value
         if (!current.feedMode || direction !in setOf(-1, 1)) return
+        // Do not advance into the next entry of a queue whose video models
+        // have already expired or failed. Fetch fresh recommendations.
+        if (direction > 0 && current.playbackError != null) {
+            refreshFailedReels()
+            return
+        }
         // Request the next recommendation on the user's first deliberate swipe.
         deferRestoredFeedRecommendations = false
         val index = OfficialReelsPolicy.nextIndex(
@@ -3399,6 +3432,7 @@ class DramaViewModel(application: Application) : AndroidViewModel(application) {
         firstFrameFor = null
         val checkpoint = library.checkpoint(detail.drama.id, vid)
         mutable.update { it.copy(episodeIndex = index, playbackUrl = null,
+            renderedVideoVid = null,
             resumePositionMs = checkpoint,
             playing = false, playbackError = null) }
         // Independent IO request: comment totals are available before tapping
@@ -3626,7 +3660,12 @@ class DramaViewModel(application: Application) : AndroidViewModel(application) {
     fun firstFrame(expectedVid: String) {
         val s = state.value
         val ep = s.detail?.episodes?.getOrNull(s.episodeIndex) ?: return
-        if (ep.vid != expectedVid || firstFrameFor == ep.vid) return
+        if (ep.vid != expectedVid) return
+        // The background progress fallback can mark firstFrameFor without
+        // a visible surface. Still reveal the frame only on this callback.
+        if (s.renderedVideoVid != expectedVid)
+            mutable.update { it.copy(renderedVideoVid = expectedVid) }
+        if (firstFrameFor == ep.vid) return
         firstFrameFor = ep.vid
         if (s.nextDramaTransition != NextDramaTransition.NONE) {
             mutable.update { it.copy(nextDramaTransition = NextDramaTransition.NONE) }
@@ -4086,6 +4125,7 @@ class DramaViewModel(application: Application) : AndroidViewModel(application) {
         clearPreloadedLater()
         firstFrameFor = null
         mutable.update { it.copy(detail = null, playbackUrl = null,
+            renderedVideoVid = null,
             offlinePlaybackUri = null,
             feedMode = false, navigation = it.navigation.toCatalog()
                 .copy(origin = PlaybackOrigin.CATALOG),
