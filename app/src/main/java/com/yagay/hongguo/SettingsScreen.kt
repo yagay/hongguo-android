@@ -80,11 +80,8 @@ internal fun SettingsScreen(state: AppState, model: DramaViewModel) {
     var confirmClear by remember { mutableStateOf(false) }
     var confirmDiskCacheClear by rememberSaveable { mutableStateOf(false) }
     var diskCacheEnabled by rememberSaveable { mutableStateOf(model.diskCacheEnabled()) }
-    var wifiPreload by rememberSaveable {
-        mutableStateOf(model.wifiBackgroundPreloadEnabled())
-    }
-    var mobilePreload by rememberSaveable {
-        mutableStateOf(model.mobileBackgroundPreloadEnabled())
+    var preloadNetworkMode by rememberSaveable {
+        mutableStateOf(model.preloadNetworkMode())
     }
     var pendingRestore by remember { mutableStateOf<Uri?>(null) }
     var showLogPreview by rememberSaveable { mutableStateOf(false) }
@@ -243,26 +240,16 @@ internal fun SettingsScreen(state: AppState, model: DramaViewModel) {
                         "settings_disk_cache_enabled",
                     )
                     CompactSettingsDivider()
-                    SettingToggle(
-                        "Wi-Fi 积极预加载",
-                        "非计费 Wi-Fi 下提前准备下一集、下下集和下一部",
-                        wifiPreload,
-                        { enabled ->
-                            wifiPreload = enabled
-                            model.setWifiBackgroundPreload(enabled)
+                    CompactSettingsRow(
+                        title = "预加载网络",
+                        value = when (preloadNetworkMode) {
+                            PreloadNetworkPolicy.OFF -> "关闭"
+                            PreloadNetworkPolicy.ALL -> "所有网络"
+                            else -> "仅 Wi-Fi"
                         },
-                        "settings_wifi_preload",
-                    )
-                    CompactSettingsDivider()
-                    SettingToggle(
-                        "移动网络额外预加载",
-                        "默认关闭；关闭不影响当前视频正常播放",
-                        mobilePreload,
-                        { enabled ->
-                            mobilePreload = enabled
-                            model.setMobileBackgroundPreload(enabled)
-                        },
-                        "settings_mobile_preload",
+                        subtitle = "控制下一集、下下集和刷剧下一部的提前加载；不影响当前播放",
+                        tag = "settings_preload_network",
+                        onClick = { choiceSheet = "preload_network" },
                     )
                     CompactSettingsDivider()
                     CompactSettingsRow(
@@ -417,6 +404,11 @@ internal fun SettingsScreen(state: AppState, model: DramaViewModel) {
 
     choiceSheet?.let { choice ->
         val options = when (choice) {
+            "preload_network" -> listOf(
+                PreloadNetworkPolicy.OFF to "关闭预加载",
+                PreloadNetworkPolicy.WIFI to "仅 Wi-Fi（推荐）",
+                PreloadNetworkPolicy.ALL to "所有网络（含移动数据）",
+            )
             "theme_style" -> listOf(
                 "warm" to "暖白精修", "immersive" to "沉浸暗场",
                 "cards" to "内容卡片",
@@ -426,15 +418,29 @@ internal fun SettingsScreen(state: AppState, model: DramaViewModel) {
                 "system" to "跟随系统",
             )
         }
-        val selected = if (choice == "theme_style") state.themeStyle else state.themeMode
+        val selected = when (choice) {
+            "preload_network" -> preloadNetworkMode
+            "theme_style" -> state.themeStyle
+            else -> state.themeMode
+        }
         SettingsChoiceSheet(
-            title = if (choice == "theme_style") "主题样式" else "显示模式",
+            title = when (choice) {
+                "preload_network" -> "预加载网络"
+                "theme_style" -> "主题样式"
+                else -> "显示模式"
+            },
             options = options,
             selected = selected,
             tagPrefix = choice,
             onSelect = {
-                if (choice == "theme_style") model.setThemeStyle(it)
-                else model.setThemeMode(it)
+                when (choice) {
+                    "preload_network" -> {
+                        preloadNetworkMode = it
+                        model.setPreloadNetworkMode(it)
+                    }
+                    "theme_style" -> model.setThemeStyle(it)
+                    else -> model.setThemeMode(it)
+                }
                 choiceSheet = null
             },
             onDismiss = { choiceSheet = null },
