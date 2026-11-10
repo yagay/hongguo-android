@@ -98,6 +98,7 @@ class NativeHongguoSource(
         realOnly: Boolean = false,
         comicOnly: Boolean = false,
         firstItemOnly: Boolean = false,
+        forceFresh: Boolean = false,
     ): CatalogPage = withContext(Dispatchers.IO) {
         // First screen must not wait for several feed pages before showing
         // the first drama. Subsequent pages are fetched after UI handoff.
@@ -110,8 +111,14 @@ class NativeHongguoSource(
                     cursor = reelsCursor)
                 reelsPageNumber = 1
                 val nowMs = System.nanoTime() / 1_000_000L
-                mainReelsExhausted = mainReelsNoNewAtMs != 0L &&
+                // A failed model means the last recommendation queue may
+                // have expired. Explicit refresh must not inherit the
+                // previous 90-second "no new cards" cooldown.
+                if (forceFresh) mainReelsNoNewAtMs = 0L
+                mainReelsExhausted = !forceFresh &&
+                    mainReelsNoNewAtMs != 0L &&
                     nowMs - mainReelsNoNewAtMs in 0L..90_000L
+                if (forceFresh) diagnostics?.record("REELS", "FORCE_FRESH_CURSOR")
                 if (mainReelsExhausted)
                     diagnostics?.record("REELS", "MAIN_RECENT_NO_NEW_CATEGORY_FIRST")
                 realReelsCursor = RecommendationCursor()
