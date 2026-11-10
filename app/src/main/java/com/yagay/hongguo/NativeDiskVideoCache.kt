@@ -61,13 +61,29 @@ internal object NativeDiskVideoCache {
             as? ConnectivityManager ?: return false
         val active = manager.activeNetwork ?: return false
         val caps = manager.getNetworkCapabilities(active) ?: return false
-        if (!caps.hasCapability(NetworkCapabilities.NET_CAPABILITY_INTERNET) ||
-            !caps.hasCapability(NetworkCapabilities.NET_CAPABILITY_VALIDATED)) return false
+        // VALIDATED is a system captive-portal heuristic, not a guarantee that
+        // the native API cannot stream. If the playback request works while
+        // Android hasn't validated the network yet, prefetch must still run.
+        if (!caps.hasCapability(NetworkCapabilities.NET_CAPABILITY_INTERNET)) return false
         // An Android Wi-Fi network can be marked metered by the user or OEM.
         // It is still Wi-Fi: do not silently disable all reel prefetching.
         // Mobile/VPN-only transports retain their separate opt-in.
         val wifi = caps.hasTransport(NetworkCapabilities.TRANSPORT_WIFI)
         return if (wifi) wifiPreload(context) else mobilePreload(context)
+    }
+
+    /** No secrets or identifiers are logged; helps distinguish a disabled setting
+     * from an absent/temporarily unvalidated active transport. */
+    fun preloadBlockReason(context: Context): String? {
+        val manager = context.getSystemService(Context.CONNECTIVITY_SERVICE)
+            as? ConnectivityManager ?: return "CONNECTIVITY_UNAVAILABLE"
+        val active = manager.activeNetwork ?: return "NETWORK_UNAVAILABLE"
+        val caps = manager.getNetworkCapabilities(active) ?: return "NETWORK_CAPABILITIES_UNAVAILABLE"
+        if (!caps.hasCapability(NetworkCapabilities.NET_CAPABILITY_INTERNET))
+            return "NO_INTERNET_CAPABILITY"
+        return if (caps.hasTransport(NetworkCapabilities.TRANSPORT_WIFI)) {
+            if (wifiPreload(context)) null else "WIFI_SETTING_DISABLED"
+        } else if (mobilePreload(context)) null else "MOBILE_SETTING_DISABLED"
     }
 
     /** Stable resource identity, discriminating byte length and requested rendition. */
