@@ -506,14 +506,20 @@ private fun HongguoApp(model: DramaViewModel = viewModel()) {
         // new full player instead of being discarded.
         if (tab == primaryTab &&
             !AppShellNavigationPolicy.shouldMinimizeForTab(state, tab) &&
-            !(tab == "home" &&
-                AppShellNavigationPolicy.homeTabNeedsFeedNavigation(state))) return
+            !(tab == "home" && (
+                AppShellNavigationPolicy.homeTabNeedsFeedNavigation(state) ||
+                    SeriesReturnPolicy.showShortcut(state)))) return
         if (tab == "home") {
             primaryTab = tab
             searchLandingOpen = false
-            // The Home tab always means swipe feed. Expanding the small
-            // player is a separate user action, never an implicit Home action.
-            model.returnToSwipeFeed()
+            // First Home tap in SERIES shows the reel presentation without
+            // replacing the active Media3 item. Tapping the already-selected
+            // Home again restores the series view and current episode.
+            if (state.feedMode && SeriesReturnPolicy.showShortcut(state) &&
+                !state.miniPlayerVisible)
+                model.returnToPreviousSeries()
+            else
+                model.returnToSwipeFeed()
         } else {
             // Apply the player transition BEFORE changing the selected tab.
             // The tab no longer controls whether the full player is rendered.
