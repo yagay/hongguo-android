@@ -561,9 +561,19 @@ class DramaViewModel(application: Application) : AndroidViewModel(application) {
 
     private fun preloadFollowingEpisode() {
         val s = state.value
-        if (!s.preloadNext ||
-            !NativeDiskVideoCache.mayBackgroundPreload(getApplication()) ||
-            (source != null && s.navigation.origin != PlaybackOrigin.SWIPE_FEED)) return
+        if (!s.preloadNext) {
+            diagnostics.record("PLAYBACK", "NEXT_PREFETCH_SKIP_DISABLED")
+            return
+        }
+        if (!NativeDiskVideoCache.mayBackgroundPreload(getApplication())) {
+            diagnostics.record("PLAYBACK", "NEXT_PREFETCH_SKIP_NETWORK_" +
+                (NativeDiskVideoCache.preloadBlockReason(getApplication()) ?: "UNKNOWN"))
+            return
+        }
+        if (source != null && s.navigation.origin != PlaybackOrigin.SWIPE_FEED) {
+            diagnostics.record("PLAYBACK", "NEXT_PREFETCH_SKIP_EXTERNAL_SOURCE")
+            return
+        }
         val next = s.detail?.episodes?.getOrNull(s.episodeIndex + 1)?.vid ?: return
         if (next == preloadedNextVid && preloadedNextQuality == s.qualityLimit) {
             preloadFurtherEpisode(s)
@@ -615,9 +625,13 @@ class DramaViewModel(application: Application) : AndroidViewModel(application) {
                 } catch (first: CancellationException) {
                     throw first
                 } catch (first: Exception) {
-                    if (!PlaybackProblem.isEmptyPlaybackModel(first)) throw first
-                    diagnostics.record("PLAYBACK", "PREFETCH_EMPTY_RETRY")
-                    delay(1_500)
+                    val emptyModel = PlaybackProblem.isEmptyPlaybackModel(first)
+                    val networkFailure = first is IOException
+                    if (!emptyModel && !networkFailure) throw first
+                    diagnostics.record("PLAYBACK",
+                        if (emptyModel) "PREFETCH_EMPTY_RETRY"
+                        else "PREFETCH_NETWORK_RETRY")
+                    delay(if (emptyModel) 1_500 else 2_000)
                     if (!isNextWarmupUseful(
                             next, quality, s.preloadBufferMiB, generation)) return@launch
                     nativeSource.openVideo(next, qualityLimit = quality,
@@ -1425,9 +1439,20 @@ class DramaViewModel(application: Application) : AndroidViewModel(application) {
      * the second drama has a smaller 2 MiB slot and separately cached metadata.
      */
     private fun scheduleSwipePrefetch(snapshot: AppState) {
-        if (!snapshot.feedMode || !snapshot.preloadNext ||
-            snapshot.offlinePlaybackUri != null || deferRestoredFeedRecommendations ||
-            !NativeDiskVideoCache.mayBackgroundPreload(getApplication())) return
+        if (!snapshot.feedMode || snapshot.offlinePlaybackUri != null) return
+        if (!snapshot.preloadNext) {
+            diagnostics.record("FEED", "SWIPE_PREFETCH_SKIP_DISABLED")
+            return
+        }
+        if (deferRestoredFeedRecommendations) {
+            diagnostics.record("FEED", "SWIPE_PREFETCH_SKIP_RESTORE")
+            return
+        }
+        if (!NativeDiskVideoCache.mayBackgroundPreload(getApplication())) {
+            diagnostics.record("FEED", "SWIPE_PREFETCH_SKIP_NETWORK_" +
+                (NativeDiskVideoCache.preloadBlockReason(getApplication()) ?: "UNKNOWN"))
+            return
+        }
         val candidateIds = SwipePrefetchPolicy.candidates(
             snapshot.feedItems.map { it.id }, snapshot.feedIndex,
             snapshot.hiddenRecommendationIds, snapshot.detail?.drama?.id)
@@ -1435,6 +1460,7 @@ class DramaViewModel(application: Application) : AndroidViewModel(application) {
             snapshot.feedItems.firstOrNull { it.id == id }
         }
         if (candidates.isEmpty()) {
+            diagnostics.record("FEED", "SWIPE_PREFETCH_WAIT_RECOMMENDATIONS")
             // The official queue may not yet exist while the first reel starts.
             // Its eventual result calls this planner again.
             if (!snapshot.feedLoading && snapshot.feedHasMore &&
@@ -1628,13 +1654,15 @@ class DramaViewModel(application: Application) : AndroidViewModel(application) {
                 } catch (cancel: CancellationException) {
                     throw cancel
                 } catch (firstFailure: Exception) {
-                    // The official playback model can briefly return an
-                    // empty source. Reuse the same bounded retry as next
-                    // episode preload, BEFORE the last episode finishes.
-                    if (!PlaybackProblem.isEmptyPlaybackModel(firstFailure))
-                        throw firstFailure
-                    diagnostics.record("FEED", "NEXT_MODEL_EMPTY_RETRY")
-                    delay(1_250)
+                    // Upstream sometimes returns an empty model or a transient
+                    // network exception. One bounded attempt, without looping
+                    // against a rate-limited registration service.
+                    val emptyModel = PlaybackProblem.isEmptyPlaybackModel(firstFailure)
+                    if (!emptyModel && firstFailure !is IOException) throw firstFailure
+                    diagnostics.record("FEED",
+                        if (emptyModel) "NEXT_MODEL_EMPTY_RETRY"
+                        else "NEXT_MODEL_NETWORK_RETRY")
+                    delay(if (emptyModel) 1_500 else 2_000)
                     if (!isUpcomingReel(next.id) || !state.value.preloadNext ||
                         state.value.qualityLimit != quality ||
                         state.value.preloadBufferMiB != bufferMiB) return@launch
@@ -1686,8 +1714,13 @@ class DramaViewModel(application: Application) : AndroidViewModel(application) {
                 }
             } catch (e: CancellationException) {
                 throw e
-            } catch (_: Exception) {
-                diagnostics.record("FEED", "NEXT_PRELOAD_UNAVAILABLE")
+            } catch (error: Exception) {
+                diagnostics.record("FEED", when {
+                    PlaybackProblem.isEmptyPlaybackModel(error) ->
+                        "NEXT_PRELOAD_FAIL_EMPTY_MODEL"
+                    error is IOException -> "NEXT_PRELOAD_FAIL_NETWORK_IO"
+                    else -> "NEXT_PRELOAD_FAIL_OTHER"
+                })
             } finally {
                 warming?.close()
                 // Avoid competing playback-model requests. After the next
