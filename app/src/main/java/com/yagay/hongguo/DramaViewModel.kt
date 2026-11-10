@@ -1409,6 +1409,135 @@ class DramaViewModel(application: Application) : AndroidViewModel(application) {
             visitedFeedDetails.remove(visitedFeedDetails.keys.first())
     }
 
+    /**
+     * Feed predictions run alongside episode preloading rather than behind
+     * the full N+1 range warmup. Only the next drama gets a full stream slot;
+     * the second drama has a smaller 2 MiB slot and separately cached metadata.
+     */
+    private fun scheduleSwipePrefetch(snapshot: AppState) {
+        if (!snapshot.feedMode || !snapshot.preloadNext ||
+            snapshot.offlinePlaybackUri != null || deferRestoredFeedRecommendations ||
+            !NativeDiskVideoCache.mayBackgroundPreload(getApplication())) return
+        val candidates = snapshot.feedItems.drop(snapshot.feedIndex + 1)
+            .filter { it.id !in snapshot.hiddenRecommendationIds &&
+                it.id != snapshot.detail?.drama?.id }
+            .distinctBy { it.id }.take(2)
+        if (candidates.isEmpty()) {
+            // The official queue may not yet exist while the first reel starts.
+            // Its eventual result calls this planner again.
+            if (!snapshot.feedLoading && snapshot.feedHasMore &&
+                snapshot.playbackUrl != null) loadOfficialReels()
+            return
+        }
+        diagnostics.record("FEED", "SWIPE_PREFETCH_PLAN_READY")
+        val first = candidates[0]
+        if (reelSecondSeriesId == first.id && reelSecondVideo != null)
+            promoteSecondSwipeStream(first.id)
+        if (reelWarmSeriesId != first.id || reelWarmVideo == null)
+            prefetchFollowingFeedItem(snapshot.feedIndex)
+
+        val second = candidates.getOrNull(1) ?: return
+        if (prefetchedFeedDetails.containsKey(second.id) ||
+            visitedFeedDetails.containsKey(second.id)) {
+            scheduleSecondSwipeVideo(second.id)
+            return
+        }
+        val key = snapshot.detail?.drama?.id + "|" + first.id + "|" + second.id
+        if (feedDetailsLookaheadKey == key &&
+            feedDetailsLookaheadJob?.isActive == true) return
+        feedDetailsLookaheadJob?.cancel()
+        feedDetailsLookaheadKey = key
+        feedDetailsLookaheadJob = viewModelScope.launch {
+            try {
+                // The initial active video and N+1 prefix have priority.
+                delay(900)
+                if (!isSecondUpcomingReel(second.id)) return@launch
+                val detail = nativeSource.detail(second.id)
+                if (!isSecondUpcomingReel(second.id)) return@launch
+                prefetchedFeedDetails[second.id] = detail
+                while (prefetchedFeedDetails.size > 5)
+                    prefetchedFeedDetails.remove(prefetchedFeedDetails.keys.first())
+                diagnostics.record("FEED", "SECOND_DETAIL_PREFETCHED")
+                scheduleSecondSwipeVideo(second.id)
+            } catch (cancel: CancellationException) { throw cancel }
+            catch (_: Exception) {
+                diagnostics.record("FEED", "SECOND_DETAIL_PREFETCH_FAILED")
+            }
+        }
+    }
+
+    private fun isSecondUpcomingReel(seriesId: String): Boolean {
+        val s = state.value
+        if (!s.feedMode || !s.preloadNext ||
+            !NativeDiskVideoCache.mayBackgroundPreload(getApplication())) return false
+        return s.feedItems.drop(s.feedIndex + 1)
+            .filter { it.id !in s.hiddenRecommendationIds &&
+                it.id != s.detail?.drama?.id }
+            .distinctBy { it.id }.getOrNull(1)?.id == seriesId
+    }
+
+    private fun scheduleSecondSwipeVideo(seriesId: String) {
+        if (!isSecondUpcomingReel(seriesId) ||
+            reelSecondSeriesId == seriesId && reelSecondVideo != null ||
+            feedSecondTargetSeriesId == seriesId &&
+                feedSecondWarmJob?.isActive == true) return
+        val detail = prefetchedFeedDetails[seriesId]
+            ?: visitedFeedDetails[seriesId] ?: return
+        val vid = detail.episodes.firstOrNull()?.vid ?: return
+        // Never start a second upstream stream until the immediate next reel
+        // has at least its opening range prepared.
+        val firstId = state.value.feedItems.drop(state.value.feedIndex + 1)
+            .firstOrNull { it.id !in state.value.hiddenRecommendationIds }?.id
+        if (firstId != reelWarmSeriesId || reelWarmVideo == null) return
+        feedSecondWarmJob?.cancel()
+        feedSecondTargetSeriesId = seriesId
+        val quality = state.value.qualityLimit
+        val bufferMiB = state.value.preloadBufferMiB
+        feedSecondWarmJob = viewModelScope.launch {
+            var remote: RemoteVideo? = null
+            try {
+                delay(900)
+                if (!isSecondUpcomingReel(seriesId) ||
+                    quality != state.value.qualityLimit ||
+                    bufferMiB != state.value.preloadBufferMiB) return@launch
+                diagnostics.record("FEED", "SECOND_VIDEO_PREFETCH_START")
+                remote = nativeSource.openVideo(vid, qualityLimit = quality,
+                    preload = true, preloadBytes = VideoPreloadPolicy.LATER_BYTES)
+                if (!isSecondUpcomingReel(seriesId) ||
+                    quality != state.value.qualityLimit ||
+                    bufferMiB != state.value.preloadBufferMiB) return@launch
+                reelSecondVideo?.close()
+                reelSecondVideo = remote
+                reelSecondSeriesId = seriesId
+                reelSecondVid = vid
+                reelSecondQuality = quality
+                val ready = remote
+                remote = null
+                diagnostics.record("FEED", "SECOND_VIDEO_PREPARED")
+                if (ready != null) {
+                    try {
+                        NativeDiskVideoCache.warm(
+                            getApplication(), ready, vid, quality,
+                            VideoPreloadPolicy.LATER_BYTES) {
+                                (isSecondUpcomingReel(seriesId) ||
+                                    reelSecondVideo === ready) &&
+                                    state.value.qualityLimit == quality
+                            }
+                        diagnostics.record("FEED", "SECOND_VIDEO_WARMED")
+                    } catch (cancel: CancellationException) { throw cancel }
+                    catch (_: Exception) {
+                        diagnostics.record("FEED", "SECOND_WARM_PARTIAL")
+                    }
+                }
+            } catch (cancel: CancellationException) { throw cancel }
+            catch (_: Exception) {
+                diagnostics.record("FEED", "SECOND_PREFETCH_UNAVAILABLE")
+            } finally {
+                remote?.close()
+            }
+        }
+    }
+
     private fun prefetchFollowingFeedItem(index: Int) {
         val current = state.value
         if (!current.preloadNext || !mayPreloadFollowingDrama(current) ||
