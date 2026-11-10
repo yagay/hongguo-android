@@ -31,10 +31,16 @@ internal object AppShellNavigationPolicy {
         tab != "home" && videoLayer(state) == VideoLayer.FULL &&
             !state.detailPageVisible
 
+    /** Home is the swipe-feed destination, not the series player toggle.
+     * The mini player's own expand button remains the explicit restore action. */
     fun shouldRestoreForHome(state: AppState): Boolean =
-        state.detail != null &&
+        state.feedMode && state.detail != null &&
             (state.miniPlayerVisible ||
                 videoLayer(state) == VideoLayer.FULL)
+
+    fun homeTabNeedsFeedNavigation(state: AppState): Boolean =
+        !state.feedMode || state.navigation.destination !in setOf(
+            PlaybackDestination.FEED, PlaybackDestination.CATALOG)
 
     fun shouldSelectHomeForNewSeries(state: AppState): Boolean =
         state.navigation.destination == PlaybackDestination.SERIES &&
