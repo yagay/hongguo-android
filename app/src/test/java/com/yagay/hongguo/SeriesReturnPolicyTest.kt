@@ -20,6 +20,11 @@ class SeriesReturnPolicyTest {
 
     @Test fun shortcutOnlyAppearsInFeedWithPreviousFullSeries() {
         assertTrue(SeriesReturnPolicy.showShortcut(state))
+        assertTrue(SeriesReturnPolicy.homeTapReturnsToSeries(state))
+        assertFalse(SeriesReturnPolicy.homeTapReturnsToSeries(
+            state.copy(miniPlayerVisible = true)))
+        assertFalse(SeriesReturnPolicy.homeTapReturnsToSeries(
+            state.copy(feedMode = false)))
         assertFalse(SeriesReturnPolicy.showShortcut(state.copy(returnSeries = null)))
         assertFalse(SeriesReturnPolicy.showShortcut(state.copy(feedMode = false)))
         assertFalse(SeriesReturnPolicy.showShortcut(state.copy(
