@@ -1270,8 +1270,11 @@ class DramaViewModel(application: Application) : AndroidViewModel(application) {
                     } else {
                         pendingFeedAdvance = false
                     }
-                } else if (mayPreloadFollowingDrama(state.value))
-                    prefetchFollowingFeedItem(state.value.feedIndex)
+                } else if (mayPreloadFollowingDrama(state.value)) {
+                    if (state.value.feedMode)
+                        scheduleSwipePrefetch(state.value)
+                    else prefetchFollowingFeedItem(state.value.feedIndex)
+                }
                 val latest = state.value
                 if (!needsFirstDrama && OfficialReelsPolicy.needsMore(
                         latest.feedItems, latest.feedIndex, latest.hiddenRecommendationIds,
