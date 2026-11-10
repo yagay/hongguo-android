@@ -132,6 +132,12 @@ internal class NativeStreamPreloader(
                 while (readyVideo == null && prepareJob?.isActive == true) delay(40)
             }
         }
-        return takeReady(vid, quality)
+        val prepared = takeReady(vid, quality)
+        if (prepared == null && target?.vid == vid) {
+            // Never race a second signed model against an abandoned prefetch.
+            diagnostics.record("PRELOAD_V3", "HANDOFF_TIMEOUT_CANCEL")
+            cancel()
+        }
+        return prepared
     }
 }

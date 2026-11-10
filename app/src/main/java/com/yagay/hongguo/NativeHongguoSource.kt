@@ -41,14 +41,7 @@ class NativeHongguoSource(
     // Only host-level startup timings are retained (no signed URL, key,
     // cookies, or permanent blacklists).
     private val cdnHealth = CdnStartupHealth()
-    // The playback model is cheap to share, while a prepared RemoteVideo
-    // remains single-owner. One-shot, short-lived handoff avoids asking for
-    // a second signed model if the user swipes before CDN warming finishes.
-    private val preparedModelHandoff = PreparedModelHandoff<StreamLadder>()
-    // Serialize only the bounded speculative playback-model request. Never
-    // hold this lane while reading large MP4 ranges; those reads can outlive
-    // a cancelled preload, starving the next user's N+1 request.
-    private val speculativePrepareMutex = kotlinx.coroutines.sync.Mutex()
+    // Media3 source preparation is now scheduled by NativeStreamPreloader.
     private val recommendationLock = Any()
     private var recommendationFeed = RecommendationFeed(repository.http)
     private var accountFeed: FeedAccount? = null
@@ -56,7 +49,6 @@ class NativeHongguoSource(
     /** Called only for a new catalog session; QR cookies never enter logs. */
     fun setAccountRecommendations(session: FeedAccount?) {
         synchronized(recommendationLock) {
-            if (accountFeed != session) preparedModelHandoff.clear()
             accountFeed = session
         }
     }
@@ -585,42 +577,21 @@ class NativeHongguoSource(
      * Prefer an Android-compatible AVC rendition, falling back to HEVC only
      * when available; VVC/bytevc2 is never sent to the decoder.
      */
+    /**
+     * Acquire a normal signed model and a prepared decrypting stream.
+     * The TV-style preload coordinator owns selection and sample loading.
+     * No speculative model request, second model lane or redundant warmup.
+     */
     suspend fun openVideo(
         vid: String, nextVid: String? = null, qualityLimit: Int = 0,
-        preload: Boolean = false,
-        preloadBytes: Int = VideoPreloadPolicy.DEFAULT_BYTES,
-    ): RemoteVideo =
-        withContext(Dispatchers.IO) {
-        val waitingAt = System.nanoTime()
-        var ownsSpeculativeLane = false
-        if (preload) {
-            speculativePrepareMutex.lock()
-            ownsSpeculativeLane = true
-            diagnostics?.record("PLAYBACK", "SPECULATIVE_LANE_WAIT",
-                (System.nanoTime() - waitingAt) / 1_000_000)
-        }
-        try {
+    ): RemoteVideo = withContext(Dispatchers.IO) {
         diagnostics?.record("PLAYBACK", "REGISTER_AND_MODEL_START")
         val started = System.nanoTime()
+        val ahead = nextVid?.takeIf {
+            it != vid && it.matches(Regex("[0-9]{1,30}"))
+        }?.let { listOf(it) }.orEmpty()
         val ladder = try {
-            // Retrieve the next episode's metadata within the same bounded
-            // playback request; the upstream core retains it briefly for
-            // handoff without starting a second anonymous registration.
-            val ahead = nextVid?.takeIf {
-                it != vid && it.matches(Regex("[0-9]{1,30}"))
-            }?.let { listOf(it) }.orEmpty()
-            // Low-priority prefetch must not contend with foreground model
-            // recovery or registration through all fallback routes.
-            val existing = if (preload) null else preparedModelHandoff.take(vid)
-            if (existing != null) {
-                diagnostics?.record("PLAYBACK", "INFLIGHT_MODEL_HANDOFF")
-                existing
-            } else {
-                repository.streamLadder(vid, metadataAhead = ahead,
-                    speculative = preload).also { result ->
-                    if (preload) preparedModelHandoff.offer(vid, result)
-                }
-            }
+            repository.streamLadder(vid, metadataAhead = ahead, speculative = false)
         } catch (error: Exception) {
             val code = PlaybackProblem.describe("播放模型", error).substringBefore(" · ")
             diagnostics?.record("PLAYBACK", "MODEL_FAIL_" + code,
@@ -629,58 +600,34 @@ class NativeHongguoSource(
         }
         diagnostics?.record("PLAYBACK", "MODEL_READY",
             (System.nanoTime() - started) / 1_000_000)
-        // Yield the model lane before CDN index/range warmup (which may
-        // perform multiple HTTP requests). It remains released on any error.
-        if (ownsSpeculativeLane) {
-            speculativePrepareMutex.unlock()
-            ownsSpeculativeLane = false
-        }
         val eligible = ladder.renditions.filter(::canDecode)
         if (eligible.isEmpty()) {
             diagnostics?.record("PLAYBACK", "CODEC_UNSUPPORTED")
             throw IOException("CODEC_NOT_SUPPORTED")
         }
-        // Keep codec/quality preference intact; only reorder CDN hosts
-        // within an equivalent tier based on recent MP4 index success.
         val candidates = eligible.sortedWith(
             compareBy<Rendition> { QualityPolicy.rank(it.quality, qualityLimit) }
                 .thenByDescending { codecName(it.codec) == "video/avc" }
                 .thenBy { cdnHealth.score(it.url) }
         ).take(4)
         var last: IOException? = null
-        // MP4 index preparation must not inherit the long 45-second segment
-        // read timeout. Keep the normal client for playback, and use a
-        // bounded client only until the index is prepared. OkHttp shares its
-        // existing dispatcher and connection pool with this derivative.
         val startupHttp = repository.http.newBuilder()
             .connectTimeout(4, java.util.concurrent.TimeUnit.SECONDS)
             .readTimeout(8, java.util.concurrent.TimeUnit.SECONDS)
-            .callTimeout(if (preload) 8 else 12, java.util.concurrent.TimeUnit.SECONDS)
+            .callTimeout(12, java.util.concurrent.TimeUnit.SECONDS)
             .build()
-        for ((candidateIndex, candidate) in candidates.withIndex()) {
+        for ((index, candidate) in candidates.withIndex()) {
             val video = RemoteVideo(repository.http, candidate.toStreamInfo(), startupHttp)
-            val rangeStarted = System.nanoTime()
+            val start = System.nanoTime()
             try {
-                // Prepare the MP4 index first. Subsequent warm() requests
-                // cache actual media bytes rather than enlarging prepare(),
-                // whose maximum is only 256 KiB.
-                video.prepare(initialBytes = if (preload) 256 * 1024 else 64 * 1024)
-                if (preload) {
-                    // Hand over a useful 1 MiB startup range quickly, then
-                    // the ViewModel grows this same stream in the background.
-                    video.warm(bytes = minOf(
-                        VideoPreloadPolicy.STARTUP_BYTES,
-                        VideoPreloadPolicy.validBytes(preloadBytes),
-                    ))
-                }
+                // The remote index is required before Media3 can preload samples.
+                video.prepare(initialBytes = 64 * 1024)
                 kotlinx.coroutines.currentCoroutineContext().ensureActive()
-                diagnostics?.record("PLAYBACK",
-                    if (preload) "NEXT_RANGE_PREPARED" else "RANGE_PREPARED",
-                    (System.nanoTime() - rangeStarted) / 1_000_000)
+                diagnostics?.record("PLAYBACK", "RANGE_PREPARED",
+                    (System.nanoTime() - start) / 1_000_000)
                 cdnHealth.success(candidate.url,
-                    (System.nanoTime() - rangeStarted) / 1_000_000)
-                diagnostics?.record("PLAYBACK",
-                    "CDN_CANDIDATE_${candidateIndex + 1}_READY")
+                    (System.nanoTime() - start) / 1_000_000)
+                diagnostics?.record("PLAYBACK", "CDN_CANDIDATE_${index + 1}_READY")
                 return@withContext video
             } catch (cancel: CancellationException) {
                 video.close()
@@ -690,19 +637,14 @@ class NativeHongguoSource(
                 last = error
                 cdnHealth.failure(candidate.url)
                 diagnostics?.record("PLAYBACK", "RANGE_FAIL",
-                    (System.nanoTime() - rangeStarted) / 1_000_000)
-                diagnostics?.record("PLAYBACK",
-                    "CDN_CANDIDATE_${candidateIndex + 1}_FAILED")
+                    (System.nanoTime() - start) / 1_000_000)
+                diagnostics?.record("PLAYBACK", "CDN_CANDIDATE_${index + 1}_FAILED")
             } catch (error: Exception) {
                 video.close()
                 throw error
             }
         }
-        preparedModelHandoff.invalidate(vid)
         throw last ?: IOException("MEDIA_PREPARATION_FAILED")
-        } finally {
-            if (ownsSpeculativeLane) speculativePrepareMutex.unlock()
-        }
     }
 
     /** First-party read-only comment pages; website public reviews are
