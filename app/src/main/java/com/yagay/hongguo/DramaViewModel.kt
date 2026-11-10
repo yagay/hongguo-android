@@ -2927,6 +2927,9 @@ class DramaViewModel(application: Application) : AndroidViewModel(application) {
         rememberLastPlaybackMode(false)
         mutable.update {
             it.copy(feedMode = false,
+                returnSeries = Watched(snapshot.detail!!.drama, target.index,
+                    System.currentTimeMillis()),
+                returnFeedItem = null,
                 navigation = it.navigation.toSeries(PlaybackOrigin.SWIPE_FEED),
                 feedLoading = false, detailPageVisible = false,
                 miniPlayerVisible = false)
@@ -3339,6 +3342,10 @@ class DramaViewModel(application: Application) : AndroidViewModel(application) {
             null else source
         val version = ++detailId
         val vid = detail.episodes[index].vid
+        if (!state.value.feedMode && state.value.offlinePlaybackUri == null) {
+            mutable.update { it.copy(returnSeries = Watched(
+                detail.drama, detail.episodes[index].index, System.currentTimeMillis())) }
+        }
         detailJob?.cancel()
         closeNativeVideo()
         val reelCached = state.value.feedMode &&
@@ -3903,6 +3910,66 @@ class DramaViewModel(application: Application) : AndroidViewModel(application) {
         }
     }
 
+    /** Remember the active episode before swapping the sole Media3 source. */
+    private fun checkpointActiveEpisode() {
+        val snapshot = state.value
+        val ep = snapshot.detail?.episodes?.getOrNull(snapshot.episodeIndex) ?: return
+        val player = BackgroundPlaybackService.playerFlow.value ?: return
+        if (player.currentMediaItem?.mediaId != ep.vid) return
+        savePlaybackPosition(ep.vid, player.currentPosition.coerceAtLeast(0L),
+            player.duration.coerceAtLeast(0L))
+    }
+
+    /** Return from the swipe feed to the most recently opened full series.
+     * Same drama and episode: UI-only transition, no playback reload.
+     * Different drama: checkpoint the feed, then reuse the sole Media3 player
+     * to resume the remembered episode. The feed queue/index stays untouched. */
+    fun returnToPreviousSeries() {
+        val snapshot = state.value
+        val previous = snapshot.returnSeries ?: return
+        if (!snapshot.feedMode || snapshot.navigation.destination != PlaybackDestination.FEED)
+            return
+        if (snapshot.detail?.drama?.id == previous.drama.id) {
+            val index = snapshot.detail.episodes.indexOfFirst {
+                it.index == previous.episode
+            }.takeIf { it >= 0 } ?: snapshot.episodeIndex
+            exitFeedToEpisode(index)
+            diagnostics.record("NAVIGATION", "SERIES_RETURN_SAME_SOURCE")
+            return
+        }
+        val activeDrama = snapshot.detail?.drama
+            ?: snapshot.feedItems.getOrNull(snapshot.feedIndex)
+        val activeEpisode = snapshot.detail?.episodes
+            ?.getOrNull(snapshot.episodeIndex)?.index ?: 1
+        checkpointActiveEpisode()
+        mutable.update { it.copy(returnFeedItem = activeDrama?.let { drama ->
+            Watched(drama, activeEpisode, System.currentTimeMillis())
+        }) }
+        rememberLastPlaybackMode(false)
+        open(previous.drama, resumeEp = previous.episode,
+            origin = PlaybackOrigin.SWIPE_FEED)
+        diagnostics.record("NAVIGATION", "SERIES_RETURN_REOPEN_CHECKPOINT")
+    }
+
+    /** When a remembered series differs from the active reel, restore the
+     * original recommendation position rather than replacing the feed queue. */
+    private fun restoreFeedAfterSeriesReturn(): Boolean {
+        val snapshot = state.value
+        val bookmark = snapshot.returnFeedItem ?: return false
+        if (snapshot.navigation.origin != PlaybackOrigin.SWIPE_FEED ||
+            snapshot.feedMode || snapshot.navigation.destination != PlaybackDestination.SERIES)
+            return false
+        checkpointActiveEpisode()
+        val index = snapshot.feedItems.indexOfFirst { it.id == bookmark.drama.id }
+        val safeIndex = index.takeIf { it >= 0 }
+        mutable.update { it.copy(returnFeedItem = null,
+            feedIndex = safeIndex ?: it.feedIndex) }
+        rememberLastPlaybackMode(true)
+        open(bookmark.drama, resumeEp = bookmark.episode, feed = true)
+        diagnostics.record("NAVIGATION", "SERIES_RETURN_ORIGINAL_FEED_POSITION")
+        return true
+    }
+
     /** Explicit Home/刷剧 action. A mini player must never turn the
      * bottom Home tab into a loop that restores an unrelated series. */
     fun returnToSwipeFeed() {
@@ -3918,6 +3985,9 @@ class DramaViewModel(application: Application) : AndroidViewModel(application) {
             backFromPlayer()
             return
         }
+        // Preserve the last series for the new feed's return shortcut even
+        // when this series originally came from Theater or My.
+        checkpointActiveEpisode()
         closePlayer()
         startFeed()
         diagnostics.record("NAVIGATION", "HOME_FEED_NEW_SESSION")
@@ -3925,6 +3995,7 @@ class DramaViewModel(application: Application) : AndroidViewModel(application) {
 
     /** The route, not a mini-player flag, owns Back for full-series video. */
     fun backFromPlayer() {
+        if (restoreFeedAfterSeriesReturn()) return
         if (restoreReelFeed()) return
         // Offline playback opened from the swipe drawer cannot simply
         // restore a different cloud MediaItem. Rejoin its prior swipe queue
@@ -3948,6 +4019,7 @@ class DramaViewModel(application: Application) : AndroidViewModel(application) {
         } else {
             // Default Home is always the swipe feed. Catalog-origin series
             // Back must not minimize into a Home/mini restore loop.
+            checkpointActiveEpisode()
             closePlayer()
             startFeed()
             diagnostics.record("NAVIGATION", "SERIES_BACK_TO_FEED")
