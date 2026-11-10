@@ -515,10 +515,34 @@ private fun HongguoApp(model: DramaViewModel = viewModel()) {
             // First Home tap in SERIES shows the reel presentation without
             // replacing the active Media3 item. Tapping the already-selected
             // Home again restores the series view and current episode.
-            if (SeriesReturnPolicy.homeTapReturnsToSeries(state))
-                model.returnToPreviousSeries()
-            else
-                model.returnToSwipeFeed()
+            when {
+                SeriesReturnPolicy.homeTapReturnsToSeries(state) &&
+                    state.detail != null -> {
+                    val dramaId = state.detail.drama.id
+                    reelSlideScope.launch {
+                        // Use the same frame-captured right-to-left animation
+                        // as tapping into the episode pager from the feed.
+                        val prepared = reelModeSlide.captureThenPrepareEntry(dramaId)
+                        if (prepared) {
+                            val latest = model.state.value
+                            if (SeriesReturnPolicy.homeTapReturnsToSeries(latest))
+                                model.returnToPreviousSeries()
+                            else reelModeSlide.cancelPreparedEntry()
+                        }
+                    }
+                }
+                activeRoute == PlaybackDestination.SERIES &&
+                    state.detail != null -> {
+                    reelSlideScope.launch {
+                        // The current Media3 surface slides off to reveal
+                        // the feed; mode change occurs only after exit.
+                        reelModeSlide.exitRightThen {
+                            model.returnToSwipeFeed()
+                        }
+                    }
+                }
+                else -> model.returnToSwipeFeed()
+            }
         } else {
             // Apply the player transition BEFORE changing the selected tab.
             // The tab no longer controls whether the full player is rendered.
