@@ -804,9 +804,18 @@ class DramaViewModel(application: Application) : AndroidViewModel(application) {
     private fun prepareUpcomingPlayback(snapshot: AppState) {
         val detail = snapshot.detail ?: return
         val currentEpisode = detail.episodes.getOrNull(snapshot.episodeIndex) ?: return
-        if (!snapshot.preloadNext || snapshot.offlinePlaybackUri != null ||
-            !NativeDiskVideoCache.mayBackgroundPreload(getApplication()) ||
-            (firstFrameFor != currentEpisode.vid && snapshot.playbackUrl == null)) return
+        if (snapshot.offlinePlaybackUri != null) return
+        if (!snapshot.preloadNext) {
+            diagnostics.record("PLAYBACK", "PREFETCH_GATE_DISABLED")
+            return
+        }
+        if (!NativeDiskVideoCache.mayBackgroundPreload(getApplication())) {
+            diagnostics.record("PLAYBACK", "PREFETCH_GATE_NETWORK_" +
+                (NativeDiskVideoCache.preloadBlockReason(getApplication()) ?: "UNKNOWN"))
+            return
+        }
+        if (firstFrameFor != currentEpisode.vid && snapshot.playbackUrl == null)
+            return
 
         val episodeDecision = SeamlessPrefetchPolicy.choose(
             enabled = snapshot.preloadNext,
