@@ -674,6 +674,8 @@ class BackgroundPlaybackService : MediaSessionService() {
                 queuedPreloadVid = null
                 diagnostics.record("PRELOAD_V3", "TV_MEDIA3_HANDOFF")
             } else {
+                if (remote != null && remote === queuedPreloadVideo)
+                    discardNativePreload(remote)
                 engine.setMediaSource(
                     ProgressiveMediaSource.Factory(factory).createMediaSource(item))
             }

@@ -217,7 +217,6 @@ class DramaViewModel(application: Application) : AndroidViewModel(application) {
         // policy. Do not dispose live playback's RemoteVideo instance.
         if (!NativeDiskVideoCache.mayBackgroundPreload(getApplication())) {
             cancelPreloading()
-            cancelPreloadDetail()
             cancelFinaleRecommendationWarmup()
         } else {
             val s = state.value
@@ -235,7 +234,6 @@ class DramaViewModel(application: Application) : AndroidViewModel(application) {
             if (enabled) "WIFI_PREFETCH_ON" else "WIFI_PREFETCH_OFF")
         if (!enabled) {
             cancelPreloading()
-            cancelPreloadDetail()
         } else if (NativeDiskVideoCache.mayBackgroundPreload(getApplication()))
             prepareUpcomingPlayback(state.value)
     }
@@ -246,7 +244,6 @@ class DramaViewModel(application: Application) : AndroidViewModel(application) {
             if (enabled) "METERED_PREFETCH_ON" else "METERED_PREFETCH_OFF")
         if (!enabled && !NativeDiskVideoCache.mayBackgroundPreload(getApplication())) {
             cancelPreloading()
-            cancelPreloadDetail()
         } else if (NativeDiskVideoCache.mayBackgroundPreload(getApplication()))
             prepareUpcomingPlayback(state.value)
     }
@@ -257,7 +254,6 @@ class DramaViewModel(application: Application) : AndroidViewModel(application) {
             return
         }
         cancelPreloading()
-        cancelPreloadDetail()
         viewModelScope.launch {
             withContext(Dispatchers.IO) {
                 NativeDiskVideoCache.clear(getApplication())
@@ -272,7 +268,6 @@ class DramaViewModel(application: Application) : AndroidViewModel(application) {
         mutable.update { it.copy(preloadNext = enabled) }
         if (!enabled) {
             cancelPreloading()
-            cancelPreloadDetail()
             cancelFinaleRecommendationWarmup()
         } else {
             // Switching preload ON while a video is already playing should
@@ -292,7 +287,6 @@ class DramaViewModel(application: Application) : AndroidViewModel(application) {
         prefs.edit().putInt("preload_buffer_mib", value).apply()
         mutable.update { it.copy(preloadBufferMiB = value) }
         cancelPreloading()
-        cancelPreloadDetail()
         diagnostics.record("PLAYBACK", "PRELOAD_BUDGET_${value}M")
         val current = state.value
         val vid = current.detail?.episodes?.getOrNull(current.episodeIndex)?.vid
@@ -315,7 +309,6 @@ class DramaViewModel(application: Application) : AndroidViewModel(application) {
             cancelFinaleRecommendationWarmup()
             if (!state.value.feedMode) {
                 cancelPreloading()
-                cancelPreloadDetail()
             }
         } else {
             val snapshot = state.value
@@ -1092,7 +1085,6 @@ class DramaViewModel(application: Application) : AndroidViewModel(application) {
             officialFeedGeneration++
             pendingFeedAdvance = false
             cancelPreloading()
-            cancelPreloadDetail()
             prefetchedFeedDetails.clear()
             val snapshot = state.value
             // Do not stop/recreate Media3 playback solely for a settings
@@ -1189,7 +1181,6 @@ class DramaViewModel(application: Application) : AndroidViewModel(application) {
         cancelPreloading()
 
         cancelPreloading()
-        cancelPreloadDetail()
         prefetchedFeedDetails.clear()
         clearFinaleAdvance()
         failedFeedRefreshPending = true
@@ -2177,7 +2168,6 @@ class DramaViewModel(application: Application) : AndroidViewModel(application) {
         clearFinaleAdvance()
         autoNextTargetDramaId = null
         cancelPreloading()
-        cancelPreloadDetail()
         prefetchedFeedDetails.clear()
         visitedFeedDetails.clear()
         val feedAccount = account.recommendationAccount()
@@ -2319,7 +2309,6 @@ class DramaViewModel(application: Application) : AndroidViewModel(application) {
         // reel to episode mode; the sole Media3 item does not change.
         if (index != snapshot.detail?.episodes?.lastIndex || !snapshot.preloadNext) {
             cancelPreloading()
-            cancelPreloadDetail()
         }
         val currentMediaMatches = snapshot.playbackUrl != null &&
             index == snapshot.episodeIndex &&
@@ -2859,8 +2848,6 @@ class DramaViewModel(application: Application) : AndroidViewModel(application) {
 
     fun setQualityLimit(value: Int, positionMs: Long, durationMs: Long) {
         cancelPreloading()
-        cancelPreloadDetail()
-        cancelPreloading()
         if (value !in setOf(0, 360, 480, 720, 1080)) return
         prefs.edit().putInt("quality_limit", value).apply()
         val s = state.value
@@ -3346,7 +3333,6 @@ class DramaViewModel(application: Application) : AndroidViewModel(application) {
         officialFeedGeneration++
         finaleRecommendationRequestFor = null
         cancelPreloading()
-        cancelPreloadDetail()
         prefetchedFeedDetails.clear()
         visitedFeedDetails.clear()
         ++relatedGeneration
