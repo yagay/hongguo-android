@@ -12,7 +12,14 @@ import okhttp3.Request
 import okhttp3.Response
 
 /** One playback stream. No listening socket or local HTTP service. */
-class RemoteVideo(private val http: OkHttpClient, val info: StreamInfo) : Closeable {
+class RemoteVideo(
+    private val http: OkHttpClient,
+    val info: StreamInfo,
+    // The MP4 startup index has a tighter deadline than normal streaming.
+    // Both clients share OkHttp's connection pool; only the startup call
+    // gives up early enough to try another supported rendition.
+    private val startupHttp: OkHttpClient = http,
+) : Closeable {
     @Volatile private var closed = false
     private val calls = mutableSetOf<Call>()
 
@@ -35,7 +42,7 @@ class RemoteVideo(private val http: OkHttpClient, val info: StreamInfo) : Closea
                 .header("Range", "bytes=$start-$end")
                 .header("Accept-Encoding", "identity")
                 .build()
-        val call = http.newCall(request)
+        val call = (if (::prepared.isInitialized) http else startupHttp).newCall(request)
         synchronized(calls) {
             if (closed) throw IOException("播放请求已取消")
             calls += call
