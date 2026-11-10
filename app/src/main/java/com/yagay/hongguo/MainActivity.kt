@@ -456,7 +456,7 @@ private fun HongguoApp(model: DramaViewModel = viewModel()) {
     fun returnFromSeries() {
         if (ReelReturnPolicy.canRestore(state)) {
             reelSlideScope.launch {
-                reelModeSlide.exitRightThen { model.backFromPlayer() }
+                reelModeSlide.exitRightThen(navigateBack = { model.backFromPlayer() })
             }
         } else {
             model.backFromPlayer()
@@ -518,7 +518,7 @@ private fun HongguoApp(model: DramaViewModel = viewModel()) {
             when {
                 SeriesReturnPolicy.homeTapReturnsToSeries(state) &&
                     state.detail != null -> {
-                    val dramaId = state.detail.drama.id
+                    val dramaId = state.detail?.drama?.id.orEmpty()
                     reelSlideScope.launch {
                         // Use the same frame-captured right-to-left animation
                         // as tapping into the episode pager from the feed.
