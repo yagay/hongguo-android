@@ -515,8 +515,7 @@ private fun HongguoApp(model: DramaViewModel = viewModel()) {
             // First Home tap in SERIES shows the reel presentation without
             // replacing the active Media3 item. Tapping the already-selected
             // Home again restores the series view and current episode.
-            if (state.feedMode && SeriesReturnPolicy.showShortcut(state) &&
-                !state.miniPlayerVisible)
+            if (SeriesReturnPolicy.homeTapReturnsToSeries(state))
                 model.returnToPreviousSeries()
             else
                 model.returnToSwipeFeed()
