@@ -2864,19 +2864,6 @@ class DramaViewModel(application: Application) : AndroidViewModel(application) {
 
     fun mediaError(expectedVid: String, message: String) {
         if (state.value.detail?.episodes?.getOrNull(state.value.episodeIndex)?.vid != expectedVid) return
-        if (message == "LOCAL_CACHE_REPLAY_FAILED") {
-            diagnostics.record("DISK_CACHE", "COMPLETE_REPLAY_NETWORK_FALLBACK")
-            val index = state.value.episodeIndex
-            val seriesId = state.value.detail?.drama?.id
-            viewModelScope.launch {
-                delay(80)
-                val current = state.value
-                if (current.episodeIndex == index &&
-                    current.detail?.drama?.id == seriesId &&
-                    current.detail?.episodes?.getOrNull(index)?.vid == expectedVid) play(index)
-            }
-            return
-        }
         mutable.update { it.copy(playbackError = message, playing = false) }
         diagnostics.record("MEDIA", "FAIL_" + message.substringBefore(" · "))
     }

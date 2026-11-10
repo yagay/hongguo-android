@@ -37,50 +37,6 @@ internal object NativeDiskVideoCache {
     private const val MAX_BYTES = 2L * 1024 * 1024 * 1024
     private const val AGE_MS = 7L * 24 * 60 * 60 * 1000
     private const val PRUNE_INTERVAL_MS = 60L * 60 * 1000
-    // Fingerprinted content index, no signed URLs or keys persisted. Refresh source after one day.
-    private const val COMPLETE_MANIFEST_PREFS = "native_stream_complete_manifest_v1"
-    private const val COMPLETE_REPLAY_MAX_AGE_MS = 24L * 60 * 60 * 1000
-
-    internal data class CompleteVideo(val cacheKey: String, val length: Long)
-
-    private fun completeManifestKey(vid: String, quality: Int): String = key(vid, quality, 0L)
-
-    internal fun parseCompleteManifest(value: String?, now: Long): CompleteVideo? {
-        val parts = value?.split('|') ?: return null
-        if (parts.size != 3) return null
-        val cacheKey = parts[0]
-        val length = parts[1].toLongOrNull() ?: return null
-        val created = parts[2].toLongOrNull() ?: return null
-        if (!cacheKey.matches(Regex("[0-9a-f]{64}")) ||
-            length <= 0L || length > MAX_BYTES || created <= 0L || created > now ||
-            now - created >= COMPLETE_REPLAY_MAX_AGE_MS) return null
-        return CompleteVideo(cacheKey, length)
-    }
-
-    /** Only a fully present, fingerprinted resource can bypass CDN acquisition. */
-    fun findComplete(context: Context, vid: String, quality: Int): CompleteVideo? {
-        if (!enabled(context) || !prepare(context)) return null
-        val prefs = context.applicationContext.getSharedPreferences(
-            COMPLETE_MANIFEST_PREFS, Context.MODE_PRIVATE)
-        val record = parseCompleteManifest(
-            prefs.getString(completeManifestKey(vid, quality), null),
-            System.currentTimeMillis()) ?: return null
-        val ready = cache ?: return null
-        return if (runCatching { ready.isCached(record.cacheKey, 0L, record.length) }
-                .getOrDefault(false)) record else null
-    }
-
-    /** On corruption, force network validation without deleting other cache data. */
-    fun forgetComplete(context: Context, vid: String, quality: Int) {
-        context.applicationContext.getSharedPreferences(COMPLETE_MANIFEST_PREFS,
-            Context.MODE_PRIVATE).edit().remove(completeManifestKey(vid, quality)).apply()
-    }
-
-    /** A missing span must fail rather than silently fetching an outdated source. */
-    fun cachedOnlyFactory(): DataSource.Factory? = cache?.let {
-        CacheDataSource.Factory().setCache(it).setUpstreamDataSourceFactory(null)
-            .setCacheWriteDataSinkFactory(null)
-    }
     @Volatile private var lastPruneMs = 0L
     private val lock = Any()
     @Volatile private var cache: SimpleCache? = null
@@ -186,10 +142,6 @@ internal object NativeDiskVideoCache {
                     ContentMetadataMutations.setContentLength(mutations, video.total)
                     currentCache.applyContentMetadataMutations(fingerprint, mutations)
                 }
-                context.applicationContext.getSharedPreferences(
-                    COMPLETE_MANIFEST_PREFS, Context.MODE_PRIVATE).edit()
-                    .putString(completeManifestKey(vid, quality),
-                        "$fingerprint|${video.total}|${System.currentTimeMillis()}").apply()
             }
         }
 
@@ -311,8 +263,6 @@ internal object NativeDiskVideoCache {
 
     /** Cache persists across ordinary playback close; clear only by user action. */
     suspend fun clear(context: Context) = withContext(Dispatchers.IO) {
-        context.applicationContext.getSharedPreferences(COMPLETE_MANIFEST_PREFS,
-            Context.MODE_PRIVATE).edit().clear().apply()
         if (!prepare(context, ignoreDisabled = true)) return@withContext
         val existing = cache ?: return@withContext
         for (resource in existing.keys.toList()) {

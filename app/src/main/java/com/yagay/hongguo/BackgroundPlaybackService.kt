@@ -107,7 +107,6 @@ class BackgroundPlaybackService : MediaSessionService() {
     )
     private val recentStreams = mutableListOf<RecentStream>()
     private val recentTtlMs = 15 * 60_000L
-    private var cachedOnlySource = false
     private val maxRecentEntries = 6
     private val maxRecentPrefixBytes = 48L * 1024 * 1024
     private var currentQuality = 0
@@ -388,14 +387,6 @@ class BackgroundPlaybackService : MediaSessionService() {
             }
 
             override fun onPlayerError(error: PlaybackException) {
-                if (cachedOnlySource) {
-                    cachedOnlySource = false
-                    NativeDiskVideoCache.forgetComplete(this@BackgroundPlaybackService,
-                        currentVid, currentQuality)
-                    diagnostics.record("DISK_CACHE", "COMPLETE_REPLAY_INVALIDATED")
-                    onError?.invoke("LOCAL_CACHE_REPLAY_FAILED")
-                    return
-                }
                 if (retryAutomatically && !retried && error.errorCode in 2000..2999) {
                     retried = true
                     val position = engine.currentPosition.coerceAtLeast(0L)
@@ -635,37 +626,18 @@ class BackgroundPlaybackService : MediaSessionService() {
             .apply {
                 if (cover.startsWith("https://")) setArtworkUri(Uri.parse(cover))
             }.build()
-        val localCacheKey = if (remote == null &&
-            url.startsWith("native-cache://episode/"))
-            Uri.parse(url).getQueryParameter("cache_key") else null
-        cachedOnlySource = localCacheKey != null
         val item = MediaItem.Builder().setUri(url).setMediaId(vid)
             .apply {
-                if (localCacheKey != null) setCustomCacheKey(localCacheKey)
-                else if (remote != null)
+                if (remote != null)
                     NativeDiskVideoCache.streamKey(remote)?.let { setCustomCacheKey(it) }
+            }.setMediaMetadata(metadata).build()
+        if (remote != null) {
+            val factory = NativeDiskVideoCache.factory(this, remote) { bytes ->
+                diagnostics.record("DISK_CACHE",
+                    "READ_HIT_KIB_${(bytes / 1024).coerceAtLeast(1)}")
             }
-            .setMediaMetadata(metadata).build()
-        if (remote != null || localCacheKey != null) {
-            // CacheDataSource sits ABOVE the decrypted native stream. Cache hits
-            // never reach the upstream HTTP reader, including after app restart.
-            val factory = if (localCacheKey != null) {
-                NativeDiskVideoCache.cachedOnlyFactory()
-            } else if (remote != null) {
-                NativeDiskVideoCache.factory(this, remote) { bytes ->
-                    diagnostics.record("DISK_CACHE",
-                        "READ_HIT_KIB_${(bytes / 1024).coerceAtLeast(1)}")
-                }
-            } else null
-            if (factory == null) {
-                cachedOnlySource = false
-                NativeDiskVideoCache.forgetComplete(this, vid, qualityLimit)
-                diagnostics.record("DISK_CACHE", "COMPLETE_REPLAY_UNAVAILABLE")
-                onError?.invoke("LOCAL_CACHE_REPLAY_FAILED")
-                return
-            }
-            val prepared = if (remote != null && remote === queuedPreloadVideo &&
-                queuedPreloadVid == vid && queuedPreloadItem != null)
+            val prepared = if (remote === queuedPreloadVideo && queuedPreloadVid == vid &&
+                queuedPreloadItem != null)
                 preloadManager.getMediaSource(queuedPreloadItem!!) else null
             if (prepared != null) {
                 engine.setMediaSource(prepared)
@@ -674,16 +646,12 @@ class BackgroundPlaybackService : MediaSessionService() {
                 queuedPreloadVid = null
                 diagnostics.record("PRELOAD_V3", "TV_MEDIA3_HANDOFF")
             } else {
-                if (remote != null && remote === queuedPreloadVideo)
-                    discardNativePreload(remote)
+                if (remote === queuedPreloadVideo) discardNativePreload(remote)
                 engine.setMediaSource(
                     ProgressiveMediaSource.Factory(factory).createMediaSource(item))
             }
-            diagnostics.record("DISK_CACHE", when {
-                localCacheKey != null -> "COMPLETE_REPLAY_STARTED"
-                NativeDiskVideoCache.isReady(this) -> "SOURCE_CACHE_READY"
-                else -> "SOURCE_CACHE_FALLBACK"
-            })
+            diagnostics.record("DISK_CACHE", if (NativeDiskVideoCache.isReady(this))
+                "SOURCE_CACHE_READY" else "SOURCE_CACHE_FALLBACK")
         } else {
             engine.setMediaItem(item)
         }

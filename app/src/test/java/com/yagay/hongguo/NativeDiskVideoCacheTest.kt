@@ -31,19 +31,6 @@ class NativeDiskVideoCacheTest {
         assertNotEquals(original, changed)
     }
 
-    @Test fun completeReplayRequiresFingerprintAndFreshManifest() {
-        val now = 400L * 24 * 60 * 60 * 1000
-        val key = NativeDiskVideoCache.key("video", 720, 3_000_000L)
-        val value = "$key|3000000|$now"
-        assertEquals(NativeDiskVideoCache.CompleteVideo(key, 3_000_000L),
-            NativeDiskVideoCache.parseCompleteManifest(value, now))
-        assertEquals(null, NativeDiskVideoCache.parseCompleteManifest(value,
-            now + 24L * 60 * 60 * 1000))
-        assertEquals(null, NativeDiskVideoCache.parseCompleteManifest(value, now - 1))
-        assertEquals(null, NativeDiskVideoCache.parseCompleteManifest("invalid|3000000|$now", now))
-        assertEquals(null, NativeDiskVideoCache.parseCompleteManifest("$key|0|$now", now))
-    }
-
     @Test fun sevenDayExpiryIsInclusiveAndClockSkewInvalidates() {
         val day = 24L * 60 * 60 * 1000
         val now = 300L * day
