@@ -751,6 +751,8 @@ private fun HongguoApp(model: DramaViewModel = viewModel()) {
                                 error = state.playbackError ?: state.feedError,
                                 onRetry = {
                                     when {
+                                        state.feedMode && state.playbackError != null ->
+                                            model.refreshFailedReels()
                                         state.feedMode && upcoming != null ->
                                             model.open(upcoming, resumeEp = 1, feed = true)
                                         state.feedMode -> model.retryOfficialReels()
