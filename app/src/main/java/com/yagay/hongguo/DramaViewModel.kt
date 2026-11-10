@@ -1425,10 +1425,12 @@ class DramaViewModel(application: Application) : AndroidViewModel(application) {
         if (!snapshot.feedMode || !snapshot.preloadNext ||
             snapshot.offlinePlaybackUri != null || deferRestoredFeedRecommendations ||
             !NativeDiskVideoCache.mayBackgroundPreload(getApplication())) return
-        val candidates = snapshot.feedItems.drop(snapshot.feedIndex + 1)
-            .filter { it.id !in snapshot.hiddenRecommendationIds &&
-                it.id != snapshot.detail?.drama?.id }
-            .distinctBy { it.id }.take(2)
+        val candidateIds = SwipePrefetchPolicy.candidates(
+            snapshot.feedItems.map { it.id }, snapshot.feedIndex,
+            snapshot.hiddenRecommendationIds, snapshot.detail?.drama?.id)
+        val candidates = candidateIds.mapNotNull { id ->
+            snapshot.feedItems.firstOrNull { it.id == id }
+        }
         if (candidates.isEmpty()) {
             // The official queue may not yet exist while the first reel starts.
             // Its eventual result calls this planner again.
@@ -1477,10 +1479,10 @@ class DramaViewModel(application: Application) : AndroidViewModel(application) {
         val s = state.value
         if (!s.feedMode || !s.preloadNext ||
             !NativeDiskVideoCache.mayBackgroundPreload(getApplication())) return false
-        return s.feedItems.drop(s.feedIndex + 1)
-            .filter { it.id !in s.hiddenRecommendationIds &&
-                it.id != s.detail?.drama?.id }
-            .distinctBy { it.id }.getOrNull(1)?.id == seriesId
+        return SwipePrefetchPolicy.candidates(
+            s.feedItems.map { it.id }, s.feedIndex,
+            s.hiddenRecommendationIds, s.detail?.drama?.id
+        ).getOrNull(1) == seriesId
     }
 
     private fun scheduleSecondSwipeVideo(seriesId: String) {
