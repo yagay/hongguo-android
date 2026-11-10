@@ -600,8 +600,17 @@ class NativeHongguoSource(
                 .thenByDescending { codecName(it.codec) == "video/avc" }
         ).take(4)
         var last: IOException? = null
+        // MP4 index preparation must not inherit the long 45-second segment
+        // read timeout. Keep the normal client for playback, and use a
+        // bounded client only until the index is prepared. OkHttp shares its
+        // existing dispatcher and connection pool with this derivative.
+        val startupHttp = repository.http.newBuilder()
+            .connectTimeout(4, java.util.concurrent.TimeUnit.SECONDS)
+            .readTimeout(8, java.util.concurrent.TimeUnit.SECONDS)
+            .callTimeout(if (preload) 8 else 12, java.util.concurrent.TimeUnit.SECONDS)
+            .build()
         for ((candidateIndex, candidate) in candidates.withIndex()) {
-            val video = RemoteVideo(repository.http, candidate.toStreamInfo())
+            val video = RemoteVideo(repository.http, candidate.toStreamInfo(), startupHttp)
             val rangeStarted = System.nanoTime()
             try {
                 // Prepare the MP4 index first. Subsequent warm() requests
