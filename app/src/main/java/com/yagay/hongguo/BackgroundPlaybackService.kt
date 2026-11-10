@@ -68,6 +68,8 @@ class BackgroundPlaybackService : MediaSessionService() {
     private var queuedPreloadItem: MediaItem? = null
     private var queuedPreloadVideo: RemoteVideo? = null
     private var queuedPreloadVid: String? = null
+    private var activePreloadItem: MediaItem? = null
+    private var preloadIndex = 0
     private var nativePreloadDurationMs = 1_500L
     private val audioBoost = PlaybackAudioBoost { code ->
         diagnostics.record("AUDIO_BOOST", code)
@@ -545,8 +547,8 @@ class BackgroundPlaybackService : MediaSessionService() {
         queuedPreloadVideo = video
         queuedPreloadVid = vid
         queuedPreloadItem = item
-        preloadManager.setCurrentPlayingIndex(0)
-        preloadManager.add(source, 1)
+        preloadManager.setCurrentPlayingIndex(preloadIndex)
+        preloadManager.add(source, preloadIndex + 1)
         preloadManager.invalidate()
         diagnostics.record("PRELOAD_V3", "TV_MEDIA3_QUEUED")
         return true
@@ -594,6 +596,7 @@ class BackgroundPlaybackService : MediaSessionService() {
         val previousRemote = remoteVideo
         val previousVid = currentVid
         val previousQuality = currentQuality
+        val previousPreloadItem = activePreloadItem
         // setMediaSource/setMediaItem already replace the previous timeline.
         // An explicit stop() first adds an unnecessary STATE_IDLE transition
         // and can blank the retained video surface during every episode switch.
@@ -641,6 +644,7 @@ class BackgroundPlaybackService : MediaSessionService() {
                 preloadManager.getMediaSource(queuedPreloadItem!!) else null
             if (prepared != null) {
                 engine.setMediaSource(prepared)
+                activePreloadItem = queuedPreloadItem
                 queuedPreloadItem = null
                 queuedPreloadVideo = null
                 queuedPreloadVid = null
@@ -649,12 +653,20 @@ class BackgroundPlaybackService : MediaSessionService() {
                 if (remote === queuedPreloadVideo) discardNativePreload(remote)
                 engine.setMediaSource(
                     ProgressiveMediaSource.Factory(factory).createMediaSource(item))
+                activePreloadItem = null
             }
             diagnostics.record("DISK_CACHE", if (NativeDiskVideoCache.isReady(this))
                 "SOURCE_CACHE_READY" else "SOURCE_CACHE_FALLBACK")
         } else {
             engine.setMediaItem(item)
+            activePreloadItem = null
         }
+        // The previous source is no longer playing: retire its manager entry.
+        preloadIndex = if (preloadIndex >= 1_000_000) 0 else preloadIndex + 1
+        preloadManager.setCurrentPlayingIndex(preloadIndex)
+        if (previousPreloadItem != null && previousPreloadItem !== activePreloadItem)
+            preloadManager.remove(previousPreloadItem)
+        preloadManager.invalidate()
         // Set autoplay intent before preparation, not afterward: an ended
         // player or foreground-service handoff may otherwise remain paused.
         engine.playWhenReady = true
@@ -768,6 +780,8 @@ class BackgroundPlaybackService : MediaSessionService() {
         currentKey = null
         clearRecentVideo()
         discardNativePreload(null)
+        activePreloadItem = null
+        if (::preloadManager.isInitialized) preloadManager.reset()
         remoteVideo?.close()
         remoteVideo = null
         onFirstFrame = null
