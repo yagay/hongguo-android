@@ -204,6 +204,7 @@ class DramaViewModel(application: Application) : AndroidViewModel(application) {
             clearPreloadedLater()
             feedPrefetchJob?.cancel()
             clearReelWarmVideo()
+            clearFeedLookahead()
         } else if (NativeDiskVideoCache.mayBackgroundPreload(getApplication()))
             prepareUpcomingPlayback(state.value)
     }
@@ -217,6 +218,7 @@ class DramaViewModel(application: Application) : AndroidViewModel(application) {
             clearPreloadedLater()
             feedPrefetchJob?.cancel()
             clearReelWarmVideo()
+            clearFeedLookahead()
         } else if (NativeDiskVideoCache.mayBackgroundPreload(getApplication()))
             prepareUpcomingPlayback(state.value)
     }
@@ -230,6 +232,7 @@ class DramaViewModel(application: Application) : AndroidViewModel(application) {
         clearPreloadedLater()
         feedPrefetchJob?.cancel()
         clearReelWarmVideo()
+        clearFeedLookahead()
         viewModelScope.launch {
             withContext(Dispatchers.IO) {
                 NativeDiskVideoCache.clear(getApplication())
@@ -247,6 +250,7 @@ class DramaViewModel(application: Application) : AndroidViewModel(application) {
             clearPreloadedLater()
             feedPrefetchJob?.cancel()
             clearReelWarmVideo()
+            clearFeedLookahead()
             cancelFinaleRecommendationWarmup()
         } else {
             // Switching preload ON while a video is already playing should
@@ -269,6 +273,7 @@ class DramaViewModel(application: Application) : AndroidViewModel(application) {
         clearPreloadedLater()
         feedPrefetchJob?.cancel()
         clearReelWarmVideo()
+        clearFeedLookahead()
         diagnostics.record("PLAYBACK", "PRELOAD_BUDGET_${value}M")
         val current = state.value
         val vid = current.detail?.episodes?.getOrNull(current.episodeIndex)?.vid
@@ -292,6 +297,7 @@ class DramaViewModel(application: Application) : AndroidViewModel(application) {
             if (!state.value.feedMode) {
                 feedPrefetchJob?.cancel()
                 clearReelWarmVideo()
+                clearFeedLookahead()
             }
         } else {
             val snapshot = state.value
@@ -1333,6 +1339,7 @@ class DramaViewModel(application: Application) : AndroidViewModel(application) {
             pendingFeedAdvance = false
             feedPrefetchJob?.cancel()
             clearReelWarmVideo()
+            clearFeedLookahead()
             prefetchedFeedDetails.clear()
             val snapshot = state.value
             // Do not stop/recreate Media3 playback solely for a settings
@@ -2647,6 +2654,7 @@ class DramaViewModel(application: Application) : AndroidViewModel(application) {
         autoNextTargetDramaId = null
         feedPrefetchJob?.cancel()
         clearReelWarmVideo()
+        clearFeedLookahead()
         prefetchedFeedDetails.clear()
         visitedFeedDetails.clear()
         val feedAccount = account.recommendationAccount()
@@ -2777,6 +2785,7 @@ class DramaViewModel(application: Application) : AndroidViewModel(application) {
         if (index != snapshot.detail?.episodes?.lastIndex || !snapshot.preloadNext) {
             feedPrefetchJob?.cancel()
             clearReelWarmVideo()
+            clearFeedLookahead()
         }
         val currentMediaMatches = snapshot.playbackUrl != null &&
             index == snapshot.episodeIndex &&
@@ -3154,6 +3163,7 @@ class DramaViewModel(application: Application) : AndroidViewModel(application) {
         if (index != detail.episodes.lastIndex && !state.value.feedMode) {
             feedPrefetchJob?.cancel()
             clearReelWarmVideo()
+            clearFeedLookahead()
         }
         // Notification commands run while the Activity is STOPPED. Reuse the
         // running foreground service rather than making a forbidden background
@@ -3388,6 +3398,7 @@ class DramaViewModel(application: Application) : AndroidViewModel(application) {
     fun setQualityLimit(value: Int, positionMs: Long, durationMs: Long) {
         feedPrefetchJob?.cancel()
         clearReelWarmVideo()
+        clearFeedLookahead()
         clearPreloadedNext()
         clearPreloadedLater()
         if (value !in setOf(0, 360, 480, 720, 1080)) return
@@ -3737,6 +3748,7 @@ class DramaViewModel(application: Application) : AndroidViewModel(application) {
         finaleRecommendationRequestFor = null
         feedPrefetchJob?.cancel()
         clearReelWarmVideo()
+        clearFeedLookahead()
         prefetchedFeedDetails.clear()
         visitedFeedDetails.clear()
         ++relatedGeneration
