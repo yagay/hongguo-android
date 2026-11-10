@@ -45,8 +45,9 @@ class NativeHongguoSource(
     // remains single-owner. One-shot, short-lived handoff avoids asking for
     // a second signed model if the user swipes before CDN warming finishes.
     private val preparedModelHandoff = PreparedModelHandoff<StreamLadder>()
-    // One bounded background model/index operation at a time, but foreground
-    // openVideo never takes this lock and never waits behind a prefetch job.
+    // Serialize only the bounded speculative playback-model request. Never
+    // hold this lane while reading large MP4 ranges; those reads can outlive
+    // a cancelled preload, starving the next user's N+1 request.
     private val speculativePrepareMutex = kotlinx.coroutines.sync.Mutex()
     private val recommendationLock = Any()
     private var recommendationFeed = RecommendationFeed(repository.http)
@@ -591,8 +592,10 @@ class NativeHongguoSource(
     ): RemoteVideo =
         withContext(Dispatchers.IO) {
         val waitingAt = System.nanoTime()
+        var ownsSpeculativeLane = false
         if (preload) {
             speculativePrepareMutex.lock()
+            ownsSpeculativeLane = true
             diagnostics?.record("PLAYBACK", "SPECULATIVE_LANE_WAIT",
                 (System.nanoTime() - waitingAt) / 1_000_000)
         }
@@ -626,6 +629,12 @@ class NativeHongguoSource(
         }
         diagnostics?.record("PLAYBACK", "MODEL_READY",
             (System.nanoTime() - started) / 1_000_000)
+        // Yield the model lane before CDN index/range warmup (which may
+        // perform multiple HTTP requests). It remains released on any error.
+        if (ownsSpeculativeLane) {
+            speculativePrepareMutex.unlock()
+            ownsSpeculativeLane = false
+        }
         val eligible = ladder.renditions.filter(::canDecode)
         if (eligible.isEmpty()) {
             diagnostics?.record("PLAYBACK", "CODEC_UNSUPPORTED")
@@ -692,7 +701,7 @@ class NativeHongguoSource(
         preparedModelHandoff.invalidate(vid)
         throw last ?: IOException("MEDIA_PREPARATION_FAILED")
         } finally {
-            if (preload) speculativePrepareMutex.unlock()
+            if (ownsSpeculativeLane) speculativePrepareMutex.unlock()
         }
     }
 
