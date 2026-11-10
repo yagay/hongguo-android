@@ -90,6 +90,12 @@ data class AppState(
     /** Official swipe feed: all recommendations or strictly real-person dramas. */
     val reelsMode: String = "all",
     val feedMode: Boolean = false,
+    /** Last explicitly opened full-series page, independent of the swipe
+     * recommendation queue and the currently playing reel. */
+    val returnSeries: Watched? = null,
+    /** The original feed item to restore after temporarily reopening a
+     * different series. Null means feed and series share the same video. */
+    val returnFeedItem: Watched? = null,
     /** One-shot request to show in-player search after a series-detail tag click. */
     val reelSearchRequest: Long = 0L,
     /** A separate, live official swipe stream; never use the three-card home catalog as its pager. */
