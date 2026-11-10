@@ -981,7 +981,8 @@ constructor(
                         // Different upstream hosts do not need new connection
                         // pools just because a previous candidate was empty.
                         // Keep a fresh pool only after a real transport failure.
-                        val client = transport(fresh = retryNeedsFreshConnection)
+                        val freshConnection = retryNeedsFreshConnection
+                        val client = transport(fresh = freshConnection)
                         if (!route.get) postCount++
                         try {
                             val row = if (route.get) {
@@ -1028,8 +1029,7 @@ constructor(
                             // GET 结构不符仍可换备用接口；POST 明确业务/格式错误不继续盲试。
                             if (!route.get && !PlayRetryPlan.temporary(error)) throw error
                         } finally {
-                            if (retryNeedsFreshConnection && attempt > 0)
-                                client.connectionPool.evictAll()
+                            if (freshConnection) client.connectionPool.evictAll()
                         }
                     }
                     if (current == null) {
