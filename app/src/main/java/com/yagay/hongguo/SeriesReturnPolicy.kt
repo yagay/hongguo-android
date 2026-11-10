@@ -9,6 +9,12 @@ internal object SeriesReturnPolicy {
             state.navigation.destination == PlaybackDestination.FEED &&
             state.returnSeries != null
 
+    /** The already-selected Home tab is a two-way presentation toggle only
+     * after the user has entered a full-series page. The active Media3 source
+     * belongs to the playback service, not either of these screens. */
+    fun homeTapReturnsToSeries(state: AppState): Boolean =
+        showShortcut(state) && !state.miniPlayerVisible
+
     fun currentDramaMatches(state: AppState): Boolean =
         state.returnSeries?.drama?.id != null &&
             state.returnSeries.drama.id == state.detail?.drama?.id
