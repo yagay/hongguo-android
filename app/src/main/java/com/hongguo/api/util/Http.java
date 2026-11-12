@@ -131,10 +131,24 @@ public final class Http {
             return new Resp(status, data, conn.getHeaderFields());
         } catch (SocketTimeoutException ignored) {
             throw new SocketTimeoutException("网络请求超时");
+        } catch (java.net.UnknownHostException ignored) {
+            throw new java.net.UnknownHostException("网络域名无法解析");
+        } catch (javax.net.ssl.SSLException ignored) {
+            throw new javax.net.ssl.SSLException("安全连接失败");
         } catch (InterruptedIOException ignored) {
             throw new InterruptedIOException("请求已取消或超时");
+        } catch (java.net.NoRouteToHostException ignored) {
+            throw new java.net.NoRouteToHostException("网络不可达");
+        } catch (java.net.ConnectException ignored) {
+            throw new java.net.ConnectException("网络连接被拒绝");
+        } catch (java.net.SocketException ignored) {
+            throw new java.net.SocketException("网络连接中断");
+        } catch (java.io.EOFException ignored) {
+            throw new java.io.EOFException("网络连接提前关闭");
+        } catch (java.net.ProtocolException ignored) {
+            throw new java.net.ProtocolException("网络协议错误");
         } catch (IOException ignored) {
-            // Transport exception messages may include signed URLs or response fragments.
+            // Preserve safe exception types above but NEVER leak signed URLs or headers.
             throw new IOException("网络请求失败");
         } finally {
             conn.disconnect();

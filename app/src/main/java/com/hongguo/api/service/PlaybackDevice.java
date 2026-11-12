@@ -2,7 +2,6 @@
 package com.hongguo.api.service;
 
 import com.hongguo.api.util.Crypto;
-import com.hongguo.api.util.Http;
 import com.hongguo.api.util.Json;
 
 import javax.crypto.Cipher;
@@ -78,8 +77,6 @@ public final class PlaybackDevice {
     /** 注册失败后在此时长内直接复用失败结果。 */
     static final long FAILURE_COOLDOWN_MS = 10_000L;
 
-    private static final int TIMEOUT_MS = 8_000;
-
     private static final Set<String> ALLOWED_COOKIES =
             new java.util.HashSet<>(Arrays.asList("install_id", "ttreq", "store-region", "store-region-src"));
 
@@ -108,11 +105,65 @@ public final class PlaybackDevice {
         }
     }
 
-    /** 注册失败；消息可直接展示给用户。 */
+    /**
+     * A device-registration failure with strictly allowlisted metadata.
+     * Never expose response JSON, credentials, signed URLs, cookie values or raw transport messages.
+     */
     public static final class RegistrationException extends IOException {
+        private final String code;
+        private final int httpStatus;
+        private final int responseBytes;
+        private final String primaryTransportFailure;
+        private final String fallbackTransportFailure;
+        private final String alternateTransportFailure;
+
         RegistrationException(Throwable cause) {
-            super("匿名播放设备注册失败，请检查网络后重试", cause);
+            this(registrationTransportCode(cause), -1, -1, null, null, null, cause);
         }
+
+        RegistrationException(String code, int httpStatus, int responseBytes) {
+            this(code, httpStatus, responseBytes, null, null, null, null);
+        }
+
+        RegistrationException(String code, String primary, String fallback) {
+            this(code, -1, -1, primary, fallback, null, null);
+        }
+
+        RegistrationException(String code, int httpStatus, String primary, String fallback, String alternate) {
+            this(code, httpStatus, -1, primary, fallback, alternate, null);
+        }
+
+        private RegistrationException(String code, int httpStatus, int responseBytes,
+                                      String primary, String fallback, String alternate, Throwable cause) {
+            super("匿名播放设备注册失败，请检查连接状态后重试", cause);
+            this.code = code;
+            this.httpStatus = httpStatus;
+            this.responseBytes = responseBytes;
+            this.primaryTransportFailure = primary;
+            this.fallbackTransportFailure = fallback;
+            this.alternateTransportFailure = alternate;
+        }
+
+        public String getCode() { return code; }
+        public int getHttpStatus() { return httpStatus; }
+        public int getResponseBytes() { return responseBytes; }
+        public String getPrimaryTransportFailure() { return primaryTransportFailure; }
+        public String getFallbackTransportFailure() { return fallbackTransportFailure; }
+        public String getAlternateTransportFailure() { return alternateTransportFailure; }
+    }
+
+    /** Class-only allowlist: never expose the transport exception message or URL. */
+    static String registrationTransportCode(Throwable error) {
+        if (error instanceof java.net.UnknownHostException) return "DEVICE_REGISTER_DNS_FAILED";
+        if (error instanceof java.net.SocketTimeoutException) return "DEVICE_REGISTER_TIMEOUT";
+        if (error instanceof javax.net.ssl.SSLException) return "DEVICE_REGISTER_TLS_FAILED";
+        if (error instanceof java.net.NoRouteToHostException) return "DEVICE_REGISTER_UNREACHABLE";
+        if (error instanceof java.net.ConnectException) return "DEVICE_REGISTER_CONNECT_FAILED";
+        if (error instanceof java.net.SocketException) return "DEVICE_REGISTER_SOCKET_FAILED";
+        if (error instanceof java.io.EOFException) return "DEVICE_REGISTER_EOF";
+        if (error instanceof java.net.ProtocolException) return "DEVICE_REGISTER_PROTOCOL_FAILED";
+        if (error instanceof IOException) return "DEVICE_REGISTER_NETWORK_FAILED";
+        return "DEVICE_REGISTER_FAILED";
     }
 
     /** 注册响应（状态码 + 正文）。 */
@@ -217,13 +268,41 @@ public final class PlaybackDevice {
         byte[] random = new byte[32];
         RND.nextBytes(random);
         byte[] body = buildBody(now, cdid, random);
-        Reply res = transport.post(REGISTER_URL, headers(body, now), body);
-        if (res.status != 200) throw new IOException("register HTTP " + res.status);
+        Reply res;
+        RegistrationException initialTransportFailure = null;
+        try {
+            res = transport.post(REGISTER_URL, headers(body, now), body);
+        } catch (RegistrationException bothFailed) {
+            // Only network transport failures (not HTTP / invalid response) can use the
+            // independently documented JSON registration API on the other service host.
+            if (bothFailed.getPrimaryTransportFailure() == null
+                    || bothFailed.getFallbackTransportFailure() == null) throw bothFailed;
+            initialTransportFailure = bothFailed;
+            try {
+                res = RegistrationHttp.alternateJsonRegister(now, cdid, REGISTER_UA);
+            } catch (IOException alternateFailure) {
+                if (Thread.currentThread().isInterrupted()) throw new InterruptedIOException("播放请求已取消");
+                throw new RegistrationException("DEVICE_REGISTER_ALTERNATE_FAILED", -1,
+                        bothFailed.getPrimaryTransportFailure(),
+                        bothFailed.getFallbackTransportFailure(),
+                        registrationTransportCode(alternateFailure));
+            }
+        }
+        if (res.status != 200) {
+            if (initialTransportFailure != null) {
+                throw new RegistrationException("DEVICE_REGISTER_ALTERNATE_HTTP", res.status,
+                        initialTransportFailure.getPrimaryTransportFailure(),
+                        initialTransportFailure.getFallbackTransportFailure(), "DEVICE_REGISTER_HTTP");
+            }
+            throw new RegistrationException("DEVICE_REGISTER_HTTP", res.status, -1);
+        }
+        if (res.text == null || res.text.trim().isEmpty())
+            throw new RegistrationException("DEVICE_REGISTER_EMPTY", 200, 0);
         Map<String, Object> j;
         try {
             j = Json.parseObject(res.text);
         } catch (Exception e) {
-            throw new IOException("register response is not JSON");
+            throw new RegistrationException("DEVICE_REGISTER_INVALID_JSON", 200, -1);
         }
         return parse(j, cdid, cookieHeader(res.setCookies));
     }
@@ -358,12 +437,15 @@ public final class PlaybackDevice {
     // ==================== 响应解析 ====================
 
     static Identity parse(Map<String, Object> j, String cdid, String cookie) throws IOException {
-        if (j == null) throw new IOException("register response is empty");
+        if (j == null || j.isEmpty())
+            throw new RegistrationException("DEVICE_REGISTER_INVALID_JSON", 200, -1);
         Object code = j.containsKey("code") ? j.get("code") : j.get("Code");
-        if (Json.optLong(code, 0) != 0) throw new IOException("register rejected");
+        if (Json.optLong(code, 0) != 0)
+            throw new RegistrationException("DEVICE_REGISTER_REJECTED", 200, -1);
         String deviceId = responseId(j, "device_id");
         String iid = responseId(j, "install_id");
-        if (deviceId.isEmpty() || iid.isEmpty()) throw new IOException("register response has no ids");
+        if (deviceId.isEmpty() || iid.isEmpty())
+            throw new RegistrationException("DEVICE_REGISTER_INVALID_IDS", 200, -1);
         return new Identity(deviceId, iid, cdid, cookie);
     }
 
@@ -390,16 +472,39 @@ public final class PlaybackDevice {
 
     private static Reply httpRegister(String url, Map<String, String> headers, byte[] body)
             throws IOException {
-        Http.Req req = new Http.Req(url).method("POST").timeout(TIMEOUT_MS);
-        req.followRedirect = false;
-        for (Map.Entry<String, String> e : headers.entrySet()) req.header(e.getKey(), e.getValue());
-        req.body(body);
-        Http.Resp res = Http.send(req);
-        List<String> setCookies = new java.util.ArrayList<>();
-        for (Map.Entry<String, List<String>> e : res.headers.entrySet()) {
-            if ("Set-Cookie".equalsIgnoreCase(e.getKey())) setCookies.addAll(e.getValue());
+        return RegistrationHttp.post(url, headers, body);
+    }
+
+    /**
+     * HttpURLConnection may deliver the raw gzip-encoded response on some Android stacks.
+     * Decode only when the body has a valid gzip signature; some stacks already decompress.
+     * Bound decompression to avoid processing untrusted oversized responses.
+     */
+    static String decodeRegistrationResponse(byte[] body, String encoding) throws IOException {
+        final int maxBytes = 128 * 1024;
+        if (body == null || body.length == 0) return "";
+        if (body.length > maxBytes) throw new RegistrationException("DEVICE_REGISTER_RESPONSE_TOO_LARGE", 200, -1);
+        byte[] decoded = body;
+        boolean looksGzip = body.length >= 2 && (body[0] & 0xff) == 0x1f && (body[1] & 0xff) == 0x8b;
+        if (looksGzip) {
+            try (java.util.zip.GZIPInputStream gz =
+                     new java.util.zip.GZIPInputStream(new java.io.ByteArrayInputStream(body));
+                 ByteArrayOutputStream output = new ByteArrayOutputStream()) {
+                byte[] buffer = new byte[4096];
+                int count;
+                while ((count = gz.read(buffer)) != -1) {
+                    if (output.size() > maxBytes - count)
+                        throw new RegistrationException("DEVICE_REGISTER_RESPONSE_TOO_LARGE", 200, -1);
+                    output.write(buffer, 0, count);
+                }
+                decoded = output.toByteArray();
+            } catch (RegistrationException e) {
+                throw e;
+            } catch (IOException e) {
+                throw new RegistrationException("DEVICE_REGISTER_INVALID_JSON", 200, -1);
+            }
         }
-        return new Reply(res.status, res.text(), setCookies);
+        return new String(decoded, StandardCharsets.UTF_8);
     }
 
     private static byte[] gzip(byte[] data) throws IOException {

@@ -226,6 +226,299 @@ public class PlaybackSourceTest {
         expectRegistrationFailure();
     }
 
+    // ==================== 故障阶段诊断（不能泄露服务器内容或标识） ====================
+
+    @Test public void registrationFailuresExposeSafeCodesWithoutResponseBody() throws Exception {
+        PlaybackDevice.resetForTest((url, headers, body) -> new PlaybackDevice.Reply(403, "Bearer secret-token"));
+        try {
+            PlaybackDevice.fresh();
+            fail("403 must fail");
+        } catch (PlaybackDevice.RegistrationException failure) {
+            assertEquals("DEVICE_REGISTER_HTTP", failure.getCode());
+            assertEquals(403, failure.getHttpStatus());
+            assertFalse(failure.getMessage().contains("secret-token"));
+            assertFalse(failure.getMessage().contains(REGISTER_SECRET_FOR_TEST));
+        }
+
+        PlaybackDevice.resetForTest((url, headers, body) -> new PlaybackDevice.Reply(200, ""));
+        assertEquals("DEVICE_REGISTER_EMPTY", registrationCode());
+
+        PlaybackDevice.resetForTest((url, headers, body) ->
+                new PlaybackDevice.Reply(200, "not-json?token=secret-token"));
+        assertEquals("DEVICE_REGISTER_INVALID_JSON", registrationCode());
+
+        PlaybackDevice.resetForTest((url, headers, body) ->
+                new PlaybackDevice.Reply(200, "{\"code\":0,\"device_id\":0,\"install_id\":0}"));
+        assertEquals("DEVICE_REGISTER_INVALID_IDS", registrationCode());
+
+        PlaybackDevice.resetForTest((url, headers, body) ->
+                new PlaybackDevice.Reply(200, "{\"code\":101,\"device_id\":0}"));
+        assertEquals("DEVICE_REGISTER_REJECTED", registrationCode());
+    }
+
+    private static final String REGISTER_SECRET_FOR_TEST = "https://private.example.invalid/path?cookie=xyz";
+
+    private static String registrationCode() throws IOException {
+        try {
+            PlaybackDevice.fresh();
+            fail("Expected typed registration failure");
+            return "";
+        } catch (PlaybackDevice.RegistrationException failure) {
+            assertFalse(failure.getMessage().contains("token="));
+            assertFalse(failure.getMessage().contains("cookie="));
+            return failure.getCode();
+        }
+    }
+
+    @Test public void registrationTransportFailuresRemainClassified() throws Exception {
+        PlaybackDevice.resetForTest((url, headers, body) -> {
+            throw new java.net.UnknownHostException("token.private.invalid");
+        });
+        assertEquals("DEVICE_REGISTER_DNS_FAILED", registrationCode());
+
+        PlaybackDevice.resetForTest((url, headers, body) -> {
+            throw new java.net.SocketTimeoutException("private.example");
+        });
+        assertEquals("DEVICE_REGISTER_TIMEOUT", registrationCode());
+
+        PlaybackDevice.resetForTest((url, headers, body) -> {
+            throw new javax.net.ssl.SSLException("certificate https://private.example");
+        });
+        assertEquals("DEVICE_REGISTER_TLS_FAILED", registrationCode());
+    }
+
+    @Test public void registrationDetailsReachAndroidDiagnosticWithoutLeakingSecrets() {
+        PlaybackDevice.RegistrationException error =
+                new PlaybackDevice.RegistrationException("DEVICE_REGISTER_HTTP", 429, -1);
+        com.hongguo.android.PlaybackDiagnostic mapped =
+                com.hongguo.android.PlaybackDiagnostic.Companion.fromPreparationFailure(error);
+        assertEquals("DEVICE_REGISTER_HTTP", mapped.getCode());
+        assertEquals("device_register", mapped.getStage());
+        assertEquals(Integer.valueOf(429), mapped.getHttpStatus());
+        assertTrue(mapped.safeReport().contains("http_status=429"));
+        assertFalse(mapped.safeReport().contains("private.example"));
+    }
+
+    @Test public void registrationDecodesCompressedOrAlreadyDecodedResponses() throws Exception {
+        String json = "{\"code\":0,\"device_id_str\":\"" + DEVICE_ID
+                + "\",\"install_id_str\":\"" + INSTALL_ID + "\"}";
+        byte[] original = json.getBytes(StandardCharsets.UTF_8);
+        assertEquals(json, PlaybackDevice.decodeRegistrationResponse(original, "gzip"));
+        ByteArrayOutputStream buffer = new ByteArrayOutputStream();
+        try (java.util.zip.GZIPOutputStream gzip = new java.util.zip.GZIPOutputStream(buffer)) {
+            gzip.write(original);
+        }
+        assertEquals(json, PlaybackDevice.decodeRegistrationResponse(buffer.toByteArray(), "gzip"));
+    }
+
+    @Test public void registrationRejectsOversizedDecompressedResponses() throws Exception {
+        byte[] oversized = new byte[129 * 1024];
+        Arrays.fill(oversized, (byte) 'x');
+        ByteArrayOutputStream buffer = new ByteArrayOutputStream();
+        try (java.util.zip.GZIPOutputStream gzip = new java.util.zip.GZIPOutputStream(buffer)) {
+            gzip.write(oversized);
+        }
+        try {
+            PlaybackDevice.decodeRegistrationResponse(buffer.toByteArray(), "gzip");
+            fail("Decompression must be bounded");
+        } catch (PlaybackDevice.RegistrationException expected) {
+            assertEquals("DEVICE_REGISTER_RESPONSE_TOO_LARGE", expected.getCode());
+        }
+    }
+
+    @Test public void registrationOkHttpActuallySendsBinaryBodyAndHeaders() throws Exception {
+        okhttp3.mockwebserver.MockWebServer server = new okhttp3.mockwebserver.MockWebServer();
+        try {
+            server.enqueue(new okhttp3.mockwebserver.MockResponse()
+                    .setResponseCode(200)
+                    .addHeader("Set-Cookie", "install_id=test123; Path=/")
+                    .setBody(okReply().text));
+            server.start();
+            byte[] payload = new byte[]{0x74, 0x63, 0x05, 0x10, 0x00, 0x00, (byte) 0xff, 0x01};
+            Map<String, String> headers = new java.util.LinkedHashMap<>();
+            headers.put("Content-Type", "application/octet-stream;tt-data=a");
+            headers.put("x-ss-stub", "ABCD1234");
+            PlaybackDevice.Reply response =
+                    RegistrationHttp.okHttpPost(server.url("/service/2/device_register/").toString(), headers, payload);
+            assertEquals(200, response.status);
+            assertTrue(response.text.contains(DEVICE_ID));
+            assertEquals(1, response.setCookies.size());
+            okhttp3.mockwebserver.RecordedRequest request =
+                    server.takeRequest(3, TimeUnit.SECONDS);
+            assertNotNull(request);
+            assertEquals("POST", request.getMethod());
+            assertEquals("application/octet-stream;tt-data=a", request.getHeader("Content-Type"));
+            assertEquals("ABCD1234", request.getHeader("x-ss-stub"));
+            assertArrayEquals(payload, request.getBody().readByteArray());
+        } finally {
+            server.shutdown();
+        }
+    }
+
+    @Test public void registrationHttpResponseNeverTriggersSecondTransport() throws Exception {
+        okhttp3.mockwebserver.MockWebServer server = new okhttp3.mockwebserver.MockWebServer();
+        try {
+            server.enqueue(new okhttp3.mockwebserver.MockResponse()
+                    .setResponseCode(403).setBody("Do not export server errors: Bearer secret"));
+            server.start();
+            AtomicInteger fallbackCalls = new AtomicInteger();
+            PlaybackDevice.Reply response = RegistrationHttp.postWithFallback(
+                    RegistrationHttp::okHttpPost,
+                    (url, headers, body) -> {
+                        fallbackCalls.incrementAndGet();
+                        throw new AssertionError("HTTP error is not a transport failure");
+                    },
+                    server.url("/service/2/device_register/").toString(),
+                    java.util.Collections.emptyMap(), new byte[]{3});
+            assertEquals(403, response.status);
+            assertEquals("", response.text);
+            assertEquals(0, fallbackCalls.get());
+        } finally {
+            server.shutdown();
+        }
+    }
+
+    @Test public void alternateOfficialRegistrationUsesJsonAndNoAccountCredentials() throws Exception {
+        okhttp3.mockwebserver.MockWebServer server = new okhttp3.mockwebserver.MockWebServer();
+        try {
+            server.enqueue(new okhttp3.mockwebserver.MockResponse()
+                    .setResponseCode(200)
+                    .addHeader("Set-Cookie", "install_id=abc; Path=/")
+                    .setBody(okReply().text));
+            server.start();
+            long now = 1_793_000_000_123L;
+            String cdid = "synthetic-cdid";
+            PlaybackDevice.Reply reply = RegistrationHttp.alternateJsonRegisterAt(
+                    server.url("/service/2/device_register/").toString(), now, cdid, "test/1");
+            assertEquals(200, reply.status);
+            assertTrue(reply.text.contains(DEVICE_ID));
+            assertEquals(1, reply.setCookies.size());
+            okhttp3.mockwebserver.RecordedRequest request = server.takeRequest(3, TimeUnit.SECONDS);
+            assertNotNull(request);
+            assertEquals("POST", request.getMethod());
+            assertEquals("application/json; charset=utf-8", request.getHeader("Content-Type"));
+            assertEquals("test/1", request.getHeader("User-Agent"));
+            assertNull(request.getHeader("Cookie"));
+            assertNull(request.getHeader("x-ss-stub"));
+            assertNull(request.getHeader("Authorization"));
+            assertEquals("8662", request.getRequestUrl().queryParameter("aid"));
+            assertEquals("73932", request.getRequestUrl().queryParameter("version_code"));
+            assertEquals(String.valueOf(now), request.getRequestUrl().queryParameter("_rticket"));
+            assertNull(request.getRequestUrl().queryParameter("iid"));
+            assertNull(request.getRequestUrl().queryParameter("device_id"));
+            Map<String, Object> payload = Json.parseObject(request.getBody().readUtf8());
+            assertEquals(now, Json.optLong(payload.get("_gen_time"), 0L));
+            Map<String, Object> header = Json.optObj(payload.get("header"));
+            assertEquals(cdid, header.get("cdid"));
+            assertEquals("com.phoenix.read", header.get("package"));
+            assertFalse(header.containsKey("account_cookie"));
+            assertFalse(header.containsKey("device_id"));
+        } finally {
+            server.shutdown();
+        }
+    }
+
+    @Test public void alternateRegistrationReportsSafeHttpErrorWithoutLeakingBody() throws Exception {
+        okhttp3.mockwebserver.MockWebServer server = new okhttp3.mockwebserver.MockWebServer();
+        try {
+            server.enqueue(new okhttp3.mockwebserver.MockResponse()
+                    .setResponseCode(429)
+                    .setBody("private_server_response?token=secret"));
+            server.start();
+            PlaybackDevice.Reply reply = RegistrationHttp.alternateJsonRegisterAt(
+                    server.url("/service/2/device_register/").toString(),
+                    1_793_000_000_123L, "synthetic-cdid", "test/1");
+            assertEquals(429, reply.status);
+            assertEquals("", reply.text);
+        } finally {
+            server.shutdown();
+        }
+    }
+
+    @Test public void registrationPreferredTransportSuccessDoesNotRetry() throws Exception {
+        AtomicInteger primary = new AtomicInteger(), fallback = new AtomicInteger();
+        PlaybackDevice.Reply reply = RegistrationHttp.postWithFallback(
+                (url, headers, body) -> {
+                    primary.incrementAndGet();
+                    return okReply();
+                },
+                (url, headers, body) -> {
+                    fallback.incrementAndGet();
+                    throw new AssertionError("No fallback after HTTP response");
+                },
+                PlaybackDevice.REGISTER_URL, java.util.Collections.emptyMap(), new byte[]{1, 2, 3});
+        assertEquals(200, reply.status);
+        assertEquals(1, primary.get());
+        assertEquals(0, fallback.get());
+    }
+
+    @Test public void registrationFallbackPreservesExactBodyHeadersAndHost() throws Exception {
+        AtomicInteger preferredCount = new AtomicInteger(), fallbackCount = new AtomicInteger();
+        Map<String, String> headers = new java.util.LinkedHashMap<>();
+        headers.put("Content-Type", "application/octet-stream;tt-data=a");
+        headers.put("x-ss-stub", "DEADBEEF");
+        byte[] body = new byte[]{1, 2, 3};
+        PlaybackDevice.Reply reply = RegistrationHttp.postWithFallback(
+                (url, h, b) -> {
+                    preferredCount.incrementAndGet();
+                    assertEquals(PlaybackDevice.REGISTER_URL, url);
+                    assertSame(headers, h);
+                    assertSame(body, b);
+                    throw new java.net.ConnectException("private-token.secret");
+                },
+                (url, h, b) -> {
+                    fallbackCount.incrementAndGet();
+                    assertEquals(PlaybackDevice.REGISTER_URL, url);
+                    assertSame(headers, h);
+                    assertSame(body, b);
+                    return okReply();
+                }, PlaybackDevice.REGISTER_URL, headers, body);
+        assertEquals(200, reply.status);
+        assertEquals(1, preferredCount.get());
+        assertEquals(1, fallbackCount.get());
+    }
+
+    @Test public void registrationDoubleTransportFailureHasRedactedIndependentReasons() throws Exception {
+        try {
+            RegistrationHttp.postWithFallback(
+                    (url, h, body) -> {
+                        throw new java.net.ConnectException("https://secret.primary/?token=abc");
+                    },
+                    (url, h, body) -> {
+                        throw new java.io.EOFException("Authorization: Bearer secret-secondary");
+                    }, PlaybackDevice.REGISTER_URL, java.util.Collections.emptyMap(), new byte[]{8});
+            fail("Expected both transports to fail");
+        } catch (PlaybackDevice.RegistrationException failure) {
+            assertEquals("DEVICE_REGISTER_EOF", failure.getCode());
+            assertEquals("DEVICE_REGISTER_CONNECT_FAILED", failure.getPrimaryTransportFailure());
+            assertEquals("DEVICE_REGISTER_EOF", failure.getFallbackTransportFailure());
+            String report = com.hongguo.android.PlaybackDiagnostic.Companion
+                    .fromPreparationFailure(failure).safeReport();
+            assertTrue(report.contains("primary_transport=DEVICE_REGISTER_CONNECT_FAILED"));
+            assertTrue(report.contains("fallback_transport=DEVICE_REGISTER_EOF"));
+            assertFalse(report.contains("secret.primary"));
+            assertFalse(report.contains("secret-secondary"));
+        }
+    }
+
+    @Test public void registrationProtocolResponseFailureDoesNotRetryTransport() throws Exception {
+        AtomicInteger calls = new AtomicInteger();
+        try {
+            RegistrationHttp.postWithFallback(
+                    (url, h, body) -> {
+                        throw new PlaybackDevice.RegistrationException("DEVICE_REGISTER_INVALID_JSON", 200, -1);
+                    },
+                    (url, h, body) -> {
+                        calls.incrementAndGet();
+                        return okReply();
+                    }, PlaybackDevice.REGISTER_URL, java.util.Collections.emptyMap(), new byte[]{8});
+            fail("Invalid JSON must remain terminal");
+        } catch (PlaybackDevice.RegistrationException failure) {
+            assertEquals("DEVICE_REGISTER_INVALID_JSON", failure.getCode());
+        }
+        assertEquals(0, calls.get());
+    }
+
     // ==================== 签名播放请求 ====================
 
     @Test public void playbackRequestIsSignedWithTheRegisteredIdentityAndCookie() throws Exception {
@@ -390,6 +683,56 @@ public class PlaybackSourceTest {
     }
 
     // ==================== video_tab 播放模型 ====================
+
+    @Test public void exhaustedEmptyPlaybackRequestsExposeSafeAttemptCount() throws Exception {
+        PlaybackDevice.resetForTest((url, headers, body) -> okReply());
+        AppSource.setPlaybackTabForTest((vid, identity) -> {
+            throw new AppSource.EmptyPlaybackResponseException();
+        });
+        AppSource.setPlaybackPostForTest((body, identity, host) -> {
+            throw new AppSource.EmptyPlaybackResponseException();
+        });
+        try {
+            AppSource.fetch("7000000000000000001", "auto");
+            fail("Expected an empty model response");
+        } catch (AppSource.EmptyPlaybackResponseException expected) {
+            assertEquals(AppSource.PLAYBACK_ROUTES.length, expected.getAttempts());
+            assertFalse(expected.getMessage().contains(DEVICE_ID));
+        }
+    }
+
+    @Test public void malformedFirstRouteContinuesToPostInsteadOfFailingImmediately() throws Exception {
+        PlaybackDevice.resetForTest((url, headers, body) -> okReply());
+        AppSource.setPlaybackTabForTest((vid, identity) -> {
+            // Server returned an incomplete envelope rather than a playable model.
+            return new java.util.LinkedHashMap<String, Object>();
+        });
+        java.util.concurrent.atomic.AtomicInteger posts = new java.util.concurrent.atomic.AtomicInteger();
+        AppSource.setPlaybackPostForTest((body, identity, host) -> {
+            posts.incrementAndGet();
+            throw new IllegalStateException("post route reached");
+        });
+        try {
+            AppSource.fetch("7000000000000000001", "auto");
+            fail("Expected test POST to be reached");
+        } catch (IllegalStateException expected) {
+            assertEquals("post route reached", expected.getMessage());
+        }
+        assertEquals(1, posts.get());
+    }
+
+    @Test public void nonEmptyButUnavailableModelsHaveDistinctFailure() throws Exception {
+        PlaybackDevice.resetForTest((url, headers, body) -> okReply());
+        AppSource.setPlaybackTabForTest((vid, identity) -> null);
+        AppSource.setPlaybackPostForTest((body, identity, host) -> null);
+        try {
+            AppSource.fetch("7000000000000000001", "auto");
+            fail("Expected a missing model failure");
+        } catch (AppSource.PlaybackModelUnavailableException expected) {
+            assertEquals(AppSource.PLAYBACK_ROUTES.length, expected.getAttempts());
+            assertFalse(expected.getMessage().contains(DEVICE_ID));
+        }
+    }
 
     @Test public void tabRequestCarriesEveryVideoModelField() throws Exception {
         PlaybackDevice.resetForTest((url, headers, body) -> okReply());
