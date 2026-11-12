@@ -70,8 +70,11 @@ dependencies {
     implementation("androidx.media3:media3-session:1.8.0")
     implementation("io.coil-kt:coil-compose:2.7.0")
     implementation("com.squareup.okhttp3:okhttp:4.12.0")
-    // Apache-2.0, published Android AAR with Go core; optional read-only source.
-    implementation("io.github.beilunyang:openhongguo:0.2.0")
+    // Kaixinguo's fork includes the Android playback signing fix.
+    // The release publishes an AAR without Maven POM metadata.
+    implementation("io.github.kadaliao:openhongguo:0.2.1-kx.1") {
+        artifact { type = "aar" }
+    }
     implementation("org.bouncycastle:bcprov-jdk18on:1.79")
     implementation("org.jsoup:jsoup:1.23.2")
     testImplementation("junit:junit:4.13.2")

@@ -1,14 +1,14 @@
 package com.yagay.hongguo
 
 /**
- * One catalog boundary for the optional remote backend and native provider.
+ * One catalog boundary for the optional backend and Kaixinguo SDK.
  *
  * This intentionally does not silently fallback after an explicitly configured
  * backend fails: mixing independent pagination cursors produces duplicates
  * and incorrect filter results. Feed playback uses a separate repository.
  */
 internal class CatalogRepository(
-    private val native: NativeHongguoSource,
+    private val kxg: com.yagay.hongguo.kxg.KxgContentSource,
     private val configuredBackend: () -> WebContractClient?,
 ) {
     suspend fun page(
@@ -23,12 +23,12 @@ internal class CatalogRepository(
         val backend = configuredBackend()
         return if (backend != null) backend.list(
             section, offset, genre, board, query, filters, alreadyShown
-        ) else native.list(section, offset, genre, board, query, filters)
+        ) else kxg.list(section, offset, genre, board, query, filters)
     }
 
     suspend fun filters(genre: String): List<FilterGroup> {
         val backend = configuredBackend()
-        return if (backend != null) backend.filters(genre) else native.filters(genre)
+        return if (backend != null) backend.filters(genre) else kxg.filters(genre)
     }
 
     companion object {

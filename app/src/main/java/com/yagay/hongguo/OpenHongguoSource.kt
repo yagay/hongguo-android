@@ -26,8 +26,8 @@ import dev.openhongguo.Page
 import dev.openhongguo.SeriesSummary
 
 /**
- * Isolated optional SDK bridge; does not replace the existing streaming,
- * login, recommendations, or encrypted Media3 playback stack.
+ * The Kaixinguo SDK now provides the catalog and anonymous playback model.
+ * Authenticated feed, comments and account sessions remain separate.
  *
  * Apache-2.0 SDK 0.2.0 is lazy-created only on explicit read-only discovery or
  * metadata operations. Do not reset a user's anonymous session on media errors.
@@ -36,7 +36,7 @@ internal class OpenHongguoSource(context: Context) {
     private val applicationContext = context.applicationContext
     private val client: OpenhongguoClient by lazy(LazyThreadSafetyMode.SYNCHRONIZED) {
         OpenhongguoClient.create(applicationContext,
-            ClientOptions(retryAttempts = 1, deviceResets = 0))
+            ClientOptions(retryAttempts = 3, deviceResets = 3))
     }
 
     /**
@@ -128,8 +128,12 @@ internal class OpenHongguoSource(context: Context) {
         client.searchAll(query.take(120), options, maxPages.coerceIn(1, 50))
 
     /** Read-only episode metadata; existing player remains authoritative. */
-    suspend fun episodes(id: String): dev.openhongguo.Page<dev.openhongguo.Episode> =
-        client.listEpisodes(checkedId(id))
+    suspend fun series(id: String): Series = client.getSeries(checkedId(id))
+    suspend fun episodes(
+        id: String,
+        options: dev.openhongguo.EpisodeOptions = dev.openhongguo.EpisodeOptions(),
+    ): dev.openhongguo.Page<dev.openhongguo.Episode> =
+        client.listEpisodes(checkedId(id), options)
     /** Playback model is only exposed to compatibility diagnostics; no DRM bypass. */
     suspend fun playbackModel(episodeId: String): dev.openhongguo.PlaybackResult =
         client.resolvePlayback(checkedId(episodeId))

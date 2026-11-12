@@ -133,7 +133,7 @@ class DramaViewModel(application: Application) : AndroidViewModel(application) {
             for (drama in dramas) {
                 currentCoroutineContext().ensureActive()
                 try {
-                    val detail = if (source == null) nativeSource.detail(drama.id)
+                    val detail = if (source == null) kxgSource.detail(drama.id)
                         else source!!.detail(drama.id)
                     val episodes = detail.episodes.size
                     val known = prefs.getInt("track_episode_" + drama.id, -1)
@@ -394,10 +394,10 @@ class DramaViewModel(application: Application) : AndroidViewModel(application) {
         prefs.getBoolean("diagnostic_enabled", true))
     private val publicWebsite = NativeWebsiteSource(diagnostics = diagnostics)
     private val nativeSource = NativeHongguoSource(diagnostics = diagnostics)
-    private val playbackResolver = NativePlaybackResolver(nativeSource, diagnostics)
-    private val catalogRepository = CatalogRepository(nativeSource) { source }
-    /** Independent, lazy, read-only SDK; never used by Media3, account auth or reel paging. */
+    /** Kaixinguo SDK is now the catalog and MP4 playback-model source. */
     private val openHongguo = OpenHongguoSource(application)
+    private val kxgSource = com.yagay.hongguo.kxg.KxgContentSource(openHongguo)
+    private val catalogRepository = CatalogRepository(kxgSource) { source }
     internal val openHongguoDiscovery: OpenHongguoSource get() = openHongguo
     private var sdkDetailJob: Job? = null
     private var sdkDetailGeneration = 0L
@@ -464,10 +464,11 @@ class DramaViewModel(application: Application) : AndroidViewModel(application) {
     private val sleepTimer = SleepTimer { android.os.SystemClock.elapsedRealtime() }
     @Volatile private var activeNativeVideo: RemoteVideo? = null
     @Volatile private var activeNativeVid: String? = null
-    // The upstream TV media source manager owns all media sample preloading.
-    // Only one next-episode/next-drama source may be prepared at a time.
-    private val nativePreloader by lazy {
-        NativeStreamPreloader(viewModelScope, getApplication(), nativeSource, diagnostics)
+    // Kaixinguo now preloads only the next SDK model and CENC index.
+    // One next-episode/next-drama source at a time.
+    private val kxgPreloader by lazy {
+        com.yagay.hongguo.kxg.KxgStreamPreloader(
+            viewModelScope, getApplication(), openHongguo, diagnostics)
     }
     private var preloadDetailJob: Job? = null
     private var preloadDetailId: String? = null
@@ -479,7 +480,7 @@ class DramaViewModel(application: Application) : AndroidViewModel(application) {
     }
     private fun cancelPreloading() {
         cancelPreloadDetail()
-        nativePreloader.cancel()
+        kxgPreloader.cancel()
     }
 
     private fun preloadDurationMs(miB: Int): Long = when {
@@ -492,18 +493,19 @@ class DramaViewModel(application: Application) : AndroidViewModel(application) {
     private fun prepareUpcomingPlayback(snapshot: AppState) {
         val detail = snapshot.detail ?: return
         val current = detail.episodes.getOrNull(snapshot.episodeIndex) ?: return
+        if (source != null) return // Optional backend owns its own streams.
         if (!snapshot.preloadNext || snapshot.offlinePlaybackUri != null ||
             !NativeDiskVideoCache.mayBackgroundPreload(getApplication()) ||
             firstFrameFor != current.vid) return
         val next = detail.episodes.getOrNull(snapshot.episodeIndex + 1)
         if (!snapshot.feedMode && next != null) {
             cancelPreloadDetail()
-            val target = NativeStreamPreloader.Target(
+            val target = com.yagay.hongguo.kxg.KxgStreamPreloader.Target(
                 detail.drama.id, next.vid, snapshot.qualityLimit,
                 preloadDurationMs(snapshot.preloadBufferMiB),
                 detail.drama.title, next.index, detail.episodes.size,
                 detail.drama.cover)
-            nativePreloader.schedule(target) {
+            kxgPreloader.schedule(target) {
                 val s = state.value
                 s.preloadNext && s.qualityLimit == target.quality &&
                     NativeDiskVideoCache.mayBackgroundPreload(getApplication()) &&
@@ -521,14 +523,14 @@ class DramaViewModel(application: Application) : AndroidViewModel(application) {
             if (!snapshot.feedLoading && snapshot.feedHasMore) loadOfficialReels()
             return
         }
-        if (nativePreloader.hasSeries(id) ||
+        if (kxgPreloader.hasSeries(id) ||
             (preloadDetailId == id && preloadDetailJob?.isActive == true)) return
         cancelPreloadDetail()
         preloadDetailId = id
         preloadDetailJob = viewModelScope.launch {
             try {
                 val info = prefetchedFeedDetails[id] ?: visitedFeedDetails[id]
-                    ?: nativeSource.detail(id)
+                    ?: kxgSource.detail(id)
                 val s = state.value
                 if (info.episodes.isEmpty() || !s.preloadNext ||
                     !NativeDiskVideoCache.mayBackgroundPreload(getApplication()) ||
@@ -540,11 +542,11 @@ class DramaViewModel(application: Application) : AndroidViewModel(application) {
                 while (prefetchedFeedDetails.size > 5)
                     prefetchedFeedDetails.remove(prefetchedFeedDetails.keys.first())
                 val first = info.episodes.first()
-                val target = NativeStreamPreloader.Target(
+                val target = com.yagay.hongguo.kxg.KxgStreamPreloader.Target(
                     id, first.vid, s.qualityLimit,
                     preloadDurationMs(s.preloadBufferMiB),
                     info.drama.title, first.index, info.episodes.size, info.drama.cover)
-                nativePreloader.schedule(target) {
+                kxgPreloader.schedule(target) {
                     val latest = state.value
                     latest.preloadNext && latest.qualityLimit == target.quality &&
                         NativeDiskVideoCache.mayBackgroundPreload(getApplication()) &&
@@ -694,7 +696,7 @@ class DramaViewModel(application: Application) : AndroidViewModel(application) {
         mutable.update { it.copy(landingLoading = true, landingError = null) }
         viewModelScope.launch {
             val rank = try {
-                nativeSource.list(Section.RANK, 0, "short_play", "all", "", emptyMap())
+                kxgSource.list(Section.RANK, 0, "short_play", "all", "", emptyMap())
                     .items.take(18)
             } catch (cancel: CancellationException) { throw cancel }
             catch (_: Exception) { emptyList() }
@@ -939,11 +941,20 @@ class DramaViewModel(application: Application) : AndroidViewModel(application) {
                 // categories in sequence. Bound the entire request so the
                 // startup screen cannot spin indefinitely on a stalled host.
                 val result = withTimeout(if (needsFirstDrama) 22_000L else 18_000L) {
-                    nativeSource.officialReelsPage(restart, excluded,
-                        realOnly = snapshot.reelsMode == "real",
-                        comicOnly = snapshot.reelsMode == "comic",
-                        firstItemOnly = needsFirstDrama,
-                        forceFresh = restart && staleFeedExcludedIds.isNotEmpty())
+                    if (appliedRecommendationSession != null) {
+                        // Account-personalized recommendations must stay on the
+                        // authenticated feed; Kaixinguo SDK is anonymous only.
+                        nativeSource.officialReelsPage(restart, excluded,
+                            realOnly = snapshot.reelsMode == "real",
+                            comicOnly = snapshot.reelsMode == "comic",
+                            firstItemOnly = needsFirstDrama,
+                            forceFresh = restart && staleFeedExcludedIds.isNotEmpty())
+                    } else {
+                        kxgSource.reelsPage(restart, excluded,
+                            realOnly = snapshot.reelsMode == "real",
+                            comicOnly = snapshot.reelsMode == "comic",
+                            firstItemOnly = needsFirstDrama)
+                    }
                 }
                 if (generation != officialFeedGeneration ||
                     (warmingFinaleId == null && !state.value.feedMode) ||
@@ -1298,7 +1309,7 @@ class DramaViewModel(application: Application) : AndroidViewModel(application) {
         searchJob = viewModelScope.launch {
             delay(300)
             try {
-                val rows = nativeSource.suggestions(keyword)
+                val rows = kxgSource.suggestions(keyword)
                 if (version == suggestionVersion && state.value.search == keyword) {
                     mutable.update { it.copy(suggestions = rows, suggestionsLoading = false) }
                 }
@@ -1437,7 +1448,7 @@ class DramaViewModel(application: Application) : AndroidViewModel(application) {
             try {
                 val result = source?.list(section, 0, snapshot.genre, snapshot.board,
                     snapshot.query, snapshot.activeFilters, emptyList())
-                    ?: nativeSource.list(section, 0, snapshot.genre, snapshot.board,
+                    ?: kxgSource.list(section, 0, snapshot.genre, snapshot.board,
                         snapshot.query, snapshot.activeFilters)
                 if (generation != searchBrowseGeneration) return@launch
                 val matched = if (section == Section.SEARCH) result.items
@@ -1458,7 +1469,7 @@ class DramaViewModel(application: Application) : AndroidViewModel(application) {
             searchBrowseFiltersJob = viewModelScope.launch {
                 try {
                     val groups = source?.filters(snapshot.genre)
-                        ?: nativeSource.filters(snapshot.genre)
+                        ?: kxgSource.filters(snapshot.genre)
                     if (generation == searchBrowseGeneration)
                         mutableSearchBrowse.update { it.copy(filters = groups) }
                 } catch (e: CancellationException) {
@@ -1481,7 +1492,7 @@ class DramaViewModel(application: Application) : AndroidViewModel(application) {
                 val result = source?.list(section, snapshot.nextOffset,
                     snapshot.genre, snapshot.board, snapshot.query, snapshot.activeFilters,
                     snapshot.items.map { it.id })
-                    ?: nativeSource.list(section, snapshot.nextOffset,
+                    ?: kxgSource.list(section, snapshot.nextOffset,
                         snapshot.genre, snapshot.board, snapshot.query, snapshot.activeFilters)
                 if (generation != searchBrowseGeneration) return@launch
                 val matched = if (section == Section.SEARCH) result.items
@@ -2263,8 +2274,8 @@ class DramaViewModel(application: Application) : AndroidViewModel(application) {
                 current.nextDramaTransition == NextDramaTransition.FINDING_RECOMMENDATION
             pendingFeedAdvance = false
             clearFinaleAdvance()
-            nativePreloader.retainSeries(selected.id)
-            if (nativePreloader.hasSeries(selected.id))
+            kxgPreloader.retainSeries(selected.id)
+            if (kxgPreloader.hasSeries(selected.id))
                 diagnostics.record("FEED", "PRELOAD_V3_HANDOFF_SELECTED")
             autoNextTargetDramaId = if (automaticallyAdvancing) selected.id else null
             mutable.update {
@@ -2439,7 +2450,7 @@ class DramaViewModel(application: Application) : AndroidViewModel(application) {
         val version = ++detailId
         firstFrameFor = null
         cancelPreloadDetail()
-        nativePreloader.retainSeries(drama.id)
+        kxgPreloader.retainSeries(drama.id)
         startEpisodeHint = resumeEp
 
         // Reels frequently revisit a prefetched or recently watched series.
@@ -2537,7 +2548,7 @@ class DramaViewModel(application: Application) : AndroidViewModel(application) {
         detailJob = viewModelScope.launch {
             val started = System.nanoTime()
             try {
-                val result = api?.detail(drama.id) ?: nativeSource.detail(drama.id)
+                val result = api?.detail(drama.id) ?: kxgSource.detail(drama.id)
                 if (version != detailId) return@launch
                 displayAndPlay(resolvedDetail(result), episodeIndexFor(result))
                 diagnostics.record("DETAIL", "SUCCESS", elapsed(started))
@@ -2688,7 +2699,7 @@ class DramaViewModel(application: Application) : AndroidViewModel(application) {
         if (finaleRecommendationRequestFor != null &&
             index != detail.episodes.lastIndex)
             cancelFinaleRecommendationWarmup()
-        nativePreloader.retainVideo(detail.episodes[index].vid, state.value.qualityLimit)
+        kxgPreloader.retainVideo(detail.episodes[index].vid, state.value.qualityLimit)
         // Notification commands run while the Activity is STOPPED. Reuse the
         // running foreground service rather than making a forbidden background
         // service start request on Android 12+.
@@ -2729,11 +2740,9 @@ class DramaViewModel(application: Application) : AndroidViewModel(application) {
                 detail.drama, detail.episodes[index].index, System.currentTimeMillis())) }
         }
         detailJob?.cancel()
-        closeNativeVideo()
-        val cachedNative = nativePreloader.takeReady(vid, state.value.qualityLimit)
-            ?: BackgroundPlaybackService.active?.takeRecentVideo(vid, state.value.qualityLimit)
+        val cachedKxg = kxgPreloader.takeReady(vid, state.value.qualityLimit)
         diagnostics.record("PLAYBACK",
-            if (cachedNative != null) "PRELOAD_V3_HIT" else "PRELOAD_V3_PENDING_OR_MISS")
+            if (cachedKxg != null) "KXG_PRELOAD_HIT" else "KXG_PRELOAD_MISS")
         firstFrameFor = null
         val checkpoint = library.checkpoint(detail.drama.id, vid)
         mutable.update { it.copy(episodeIndex = index, playbackUrl = null,
@@ -2755,62 +2764,33 @@ class DramaViewModel(application: Application) : AndroidViewModel(application) {
                     if (serviceStarted) launchBackgroundMedia(
                         detail, index, url, null, checkpoint, version)
                 } else {
-                    // Current playback must not wait for optional metadata-ahead.
-                    // The independent N+1 task begins after SOURCE_READY.
-                    val ahead: String? = null
+                    // Kaixinguo SDK resolves the MP4 model and content key;
+                    // its CENC range source feeds our ONE service-owned player.
                     val quality = state.value.qualityLimit
-                    // Share one in-flight preload rather than issuing a duplicate model.
-                    val inFlightVideo = if (cachedNative == null)
-                        nativePreloader.takeOrAwait(vid, quality) else null
+                    val inFlight = if (cachedKxg == null)
+                        kxgPreloader.takeOrAwait(vid, quality) else null
                     val resolveStarted = System.nanoTime()
-                    val video = cachedNative ?: inFlightVideo
-                        ?: playbackResolver.resolve(
-                        vid, ahead, quality,
-                        isCurrent = {
-                            val current = state.value
-                            version == detailId &&
-                                current.detail?.episodes
-                                    ?.getOrNull(current.episodeIndex)?.vid == vid &&
-                                current.qualityLimit == quality
-                        },
-                    ) ?: return@launch
-                    diagnostics.record("PLAYBACK", "STREAM_ACQUIRED",
+                    val prepared = cachedKxg ?: inFlight
+                        ?: com.yagay.hongguo.kxg.KxgPlaybackStreams.resolve(
+                            getApplication(), openHongguo, vid, quality)
+                    diagnostics.record("PLAYBACK", "KXG_STREAM_ACQUIRED",
                         elapsed(resolveStarted))
-                    if (version != detailId) {
-                        video.close()
+                    if (version != detailId ||
+                        state.value.detail?.episodes
+                            ?.getOrNull(state.value.episodeIndex)?.vid != vid ||
+                        state.value.qualityLimit != quality) {
+                        com.yagay.hongguo.kxg.KxgPlaybackStreams.forget(prepared.uri)
                         return@launch
                     }
-                    activeNativeVideo = video
-                    activeNativeVid = vid
-                    val nativeUri = "native://episode/" + vid
-                    mutable.update { it.copy(playbackUrl = nativeUri,
-                        playing = true) }
-                    if (serviceStarted) {
-                        // The disk fingerprint may require an upstream read.
-                        // Never hold the active video behind this optional
-                        // cache registration for longer than one short grace.
-                        val registration = viewModelScope.launch(Dispatchers.IO) {
-                            if (NativeDiskVideoCache.prepare(getApplication()))
-                                NativeDiskVideoCache.register(getApplication(), video, vid, quality)
-                        }
-                        val registeredInTime = kotlinx.coroutines.withTimeoutOrNull(250L) {
-                            registration.join()
-                            true
-                        } == true
-                        diagnostics.record("PLAYBACK",
-                            if (registeredInTime) "CACHE_KEY_READY_BEFORE_PLAY"
-                            else "CACHE_KEY_DEFERRED_FOR_FIRST_FRAME")
-                        if (version == detailId) launchBackgroundMedia(
-                            detail, index, nativeUri, video, checkpoint, version)
-                    }
+                    mutable.update { it.copy(playbackUrl = prepared.uri, playing = true) }
+                    if (serviceStarted) launchBackgroundMedia(
+                        detail, index, prepared.uri, null, checkpoint, version)
                 }
                 diagnostics.record("PLAYBACK", "SOURCE_READY", elapsed(started))
                 // First frame/background progress now schedules the next source.
             } catch (e: CancellationException) {
-                if (cachedNative != null && activeNativeVideo !== cachedNative) cachedNative.close()
                 throw e
             } catch (e: Exception) {
-                if (cachedNative != null && activeNativeVideo !== cachedNative) cachedNative.close()
                 if (version == detailId) mutable.update {
                     it.copy(playbackError = errorText("准备播放", e), playing = false)
                 }
