@@ -1,5 +1,25 @@
 # 红果短剧 Android · 原生重写（开发分支）
 
+## 当前 `rewrite-web-native`：开心果数据源与视频核心
+
+默认匿名剧集目录、搜索、排行、筛选、剧集分集、播放模型及渐进式 MP4
+已迁移至开心果 Android 的 `openhongguo` SDK `0.2.1-kx.1`。
+播放器仍是本项目唯一的 `BackgroundPlaybackService` / Media3 ExoPlayer；
+实际视频字节由开心果的 `CencDataSource` 实时按需解密并提供给播放器，
+不再在匿名播放路径获取旧 `RemoteVideo`。预加载沿用同一 SDK
+请求下一集模型与 CENC 索引；磁盘缓存改为新的指纹隔离缓存。
+
+**保留**目前 rewrite 的 UI、导航、刷短剧手势、后台媒体通知、PiP、
+应用内小窗、账号、评论和社交功能。用户主动开启的账号推荐仍走
+原有账号会话，因为开心果 SDK 仅支持匿名目录，不能替代该登录能力。
+明确配置的独立 HTTP API 后端也继续受支持。旧原生核心仍保留用于
+账号与社交兼容模块。
+
+上游的匿名请求可能因设备注册、风控或内容权限失败；
+并非所有 HLS/DASH 或需要登录的内容都可经开心果的 MP4 解密器播放。
+迁移细节见 [docs/KAIXINGUO_MIGRATION.md](docs/KAIXINGUO_MIGRATION.md)。
+
+
 这是 **全新 Android 工程**，不是旧版 `com.hongguo.android` 的 UI 修补。
 
 ## 设计基准

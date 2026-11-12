@@ -36,9 +36,8 @@ anonymous catalog and progressive-MP4 transport are now adapted from
   APIs.
 - Native TV RemoteVideo and its old cache remain as compatibility source code
   for legacy pieces, but no longer power anonymous video playback.
-  The Kaixinguo stream adapter is not wired into the previous RemoteVideo
-  disk-cache/preload manager. Do not report a cache hit for that old cache
-  as an SDK cache hit.
+  The new Kaixinguo cache is independent of the previous RemoteVideo cache;
+  the clear-cache action also removes the legacy files.
 - The Kaixinguo decoder handles progressive MP4 only. HLS/DASH and episodes
   needing an unavailable key must show a recoverable failure; they must not
   switch to fake URLs or bypass content protection.

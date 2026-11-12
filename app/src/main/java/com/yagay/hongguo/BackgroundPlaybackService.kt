@@ -33,6 +33,7 @@ import com.google.common.util.concurrent.Futures
 import com.google.common.util.concurrent.ListenableFuture
 import com.hongguotv.core.RemoteVideo
 import com.yagay.hongguo.kxg.KxgPlaybackStreams
+import com.yagay.hongguo.kxg.KxgDiskCache
 import kotlinx.coroutines.flow.MutableStateFlow
 
 /**
@@ -632,8 +633,11 @@ class BackgroundPlaybackService : MediaSessionService() {
             }.build()
         val item = MediaItem.Builder().setUri(url).setMediaId(vid)
             .apply {
-                if (remote != null)
+                if (remote != null) {
                     NativeDiskVideoCache.streamKey(remote)?.let { setCustomCacheKey(it) }
+                } else if (url.startsWith("kaixinguo-stream://")) {
+                    KxgPlaybackStreams.cacheKey(url)?.let { setCustomCacheKey(it) }
+                }
             }.setMediaMetadata(metadata).build()
         if (remote != null) {
             val factory = NativeDiskVideoCache.factory(this, remote) { bytes ->
@@ -662,7 +666,7 @@ class BackgroundPlaybackService : MediaSessionService() {
             // Kaixinguo resolves the signed MP4 and decrypts ranges in its
             // CencDataSource; this SAME service retains the one ExoPlayer.
             engine.setMediaSource(ProgressiveMediaSource.Factory(
-                KxgPlaybackStreams.factory(this)).createMediaSource(item))
+                KxgDiskCache.factory(this)).createMediaSource(item))
             activePreloadItem = null
             diagnostics.record("PLAYBACK", "KXG_CENC_SOURCE")
         } else {

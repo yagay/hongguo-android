@@ -184,13 +184,13 @@ class DramaViewModel(application: Application) : AndroidViewModel(application) {
     fun mobileBackgroundPreloadEnabled(): Boolean =
         NativeDiskVideoCache.mobilePreload(getApplication())
 
-    fun diskCacheSizeMiB(): Long = NativeDiskVideoCache.sizeBytes() / (1024 * 1024)
+    fun diskCacheSizeMiB(): Long = com.yagay.hongguo.kxg.KxgDiskCache.sizeBytes() / (1024 * 1024)
 
     fun setDiskCacheEnabled(enabled: Boolean) {
         prefs.edit().putBoolean("disk_cache_enabled", enabled).apply()
         diagnostics.record("DISK_CACHE", if (enabled) "ENABLED" else "DISABLED")
         if (enabled) viewModelScope.launch(Dispatchers.IO) {
-            NativeDiskVideoCache.prepare(getApplication())
+            com.yagay.hongguo.kxg.KxgDiskCache.prepare(getApplication())
         }
     }
 
@@ -256,9 +256,11 @@ class DramaViewModel(application: Application) : AndroidViewModel(application) {
         cancelPreloading()
         viewModelScope.launch {
             withContext(Dispatchers.IO) {
+                com.yagay.hongguo.kxg.KxgDiskCache.clear(getApplication())
+                // Also discard the now-unused legacy decrypted RemoteVideo cache.
                 NativeDiskVideoCache.clear(getApplication())
             }
-            diagnostics.record("DISK_CACHE", "USER_CLEARED")
+            diagnostics.record("DISK_CACHE", "KXG_AND_LEGACY_CLEARED")
             mutable.update { it.copy(settingsMessage = "已清理磁盘视频缓存") }
         }
     }
@@ -1275,10 +1277,10 @@ class DramaViewModel(application: Application) : AndroidViewModel(application) {
         // Start the disk index on IO at app launch. The playback path still
         // awaits this only if the user starts a video before initialization ends.
         viewModelScope.launch(Dispatchers.IO) {
-            if (NativeDiskVideoCache.prepare(application))
-                diagnostics.record("DISK_CACHE", "INDEX_READY")
-            else if (NativeDiskVideoCache.enabled(application))
-                diagnostics.record("DISK_CACHE", "INDEX_UNAVAILABLE")
+            if (com.yagay.hongguo.kxg.KxgDiskCache.prepare(application))
+                diagnostics.record("DISK_CACHE", "KXG_INDEX_READY")
+            else if (com.yagay.hongguo.kxg.KxgDiskCache.enabled(application))
+                diagnostics.record("DISK_CACHE", "KXG_INDEX_UNAVAILABLE")
         }
         // The saved login is verified asynchronously after homepage init.
         // If account recommendations were previously opted in, a late

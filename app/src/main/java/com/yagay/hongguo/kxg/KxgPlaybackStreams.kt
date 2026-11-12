@@ -8,6 +8,7 @@ import dev.openhongguo.Stream
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.withContext
 import java.io.IOException
+import java.security.MessageDigest
 
 /**
  * The rewrite app keeps its ONE service-owned ExoPlayer. This is the original
@@ -20,6 +21,7 @@ internal object KxgPlaybackStreams {
     data class Prepared(val uri: String, val episodeId: String, val quality: Int)
 
     @Volatile private var streamRegistry: StreamRegistry? = null
+    private val cacheKeys = LinkedHashMap<String, String>()
     @Volatile private var networkFactory: DataSource.Factory? = null
 
     private fun registry(context: Context): StreamRegistry {
@@ -42,7 +44,9 @@ internal object KxgPlaybackStreams {
         return CencDataSource.Factory(streams, http)
     }
 
+    fun cacheKey(uri: String): String? = synchronized(cacheKeys) { cacheKeys[uri] }
     fun forget(uri: String) {
+        synchronized(cacheKeys) { cacheKeys.remove(uri) }
         streamRegistry?.forget(uri)
     }
 
@@ -60,15 +64,14 @@ internal object KxgPlaybackStreams {
         if (usable.isEmpty() || playback.audioUrl.isNotEmpty()) {
             throw IOException("该集没有开心果支持的单文件 MP4 视频")
         }
-        // Prioritize decoder-friendly AVC when it is available at an equivalent
-        // resolution. A positive quality setting limits the preferred height.
-        val sorted = usable.sortedWith(
-            compareBy<Stream> { if (qualityLimit > 0 && height(it) > qualityLimit) 1 else 0 }
-                .thenByDescending { height(it) }
-                .thenBy { if (it.codec.contains("avc", true) || it.codec.contains("h264", true)) 0 else 1 }
-                .thenByDescending { it.bitrate },
-        )
-        val chosen = sorted.first()
+        // Same resolution preference as Kaixinguo: the best stream not
+        // above the selected cap, or the lowest available if none fits.
+        val capped = if (qualityLimit > 0)
+            usable.filter { lines(it) <= qualityLimit } else usable
+        val order = compareBy<Stream>({ lines(it) }, { it.bitrate })
+        val chosen = (if (capped.isEmpty()) usable.minWithOrNull(order)
+            else capped.maxWithOrNull(order))
+            ?: throw IOException("没有可播放的视频清晰度")
         val key: ByteArray? = if (playback.protected || chosen.protected) {
             val secret = resolved.contentKey
                 ?: throw IOException("当前播放模型没有可用的内容密钥")
@@ -85,9 +88,19 @@ internal object KxgPlaybackStreams {
         val streams = registry(context.applicationContext)
         val uri = streams.register(urls, key)
         try {
-            // Kaixinguo's range parser builds the shared CENC sample layout.
-            // Later Media3 reads reuse that layout and decrypt only requested ranges.
-            streams[uri]?.prepare() ?: throw IOException("无法准备视频数据源")
+            val file = streams[uri]?.prepare() ?: throw IOException("无法准备视频数据源")
+            val digest = MessageDigest.getInstance("SHA-256")
+            digest.update(episodeId.toByteArray(Charsets.UTF_8))
+            digest.update(chosen.definition.toByteArray(Charsets.UTF_8))
+            digest.update(chosen.codec.toByteArray(Charsets.UTF_8))
+            digest.update(file.size.toString().toByteArray(Charsets.UTF_8))
+            digest.update(file.fingerprint.toByteArray(Charsets.UTF_8))
+            key?.let { digest.update(it) }
+            val stable = digest.digest().joinToString("") { "%02x".format(it) }
+            synchronized(cacheKeys) {
+                cacheKeys[uri] = stable
+                while (cacheKeys.size > 32) cacheKeys.remove(cacheKeys.keys.first())
+            }
         } catch (e: Exception) {
             streams.forget(uri)
             throw e
@@ -95,9 +108,10 @@ internal object KxgPlaybackStreams {
         Prepared(uri, episodeId, qualityLimit)
     }
 
-    private fun height(stream: Stream): Int {
-        val measured = stream.height.takeIf { it > 0 }
-        return measured ?: Regex("[0-9]{3,4}").find(stream.definition)
-            ?.value?.toIntOrNull() ?: 0
+    private fun lines(stream: Stream): Int {
+        val label = stream.definition.takeWhile { it in '0'..'9' }.toIntOrNull()
+        if (label != null && label > 0) return label
+        val shorter = minOf(stream.width, stream.height)
+        return if (shorter > 0) shorter else maxOf(stream.width, stream.height)
     }
 }
