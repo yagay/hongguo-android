@@ -118,7 +118,9 @@ internal fun rememberFeedPreview(card: DramaCard?, enabled: Boolean, model: Hong
             // Wake this source's blocked reader before ExoPlayer waits for its playback thread.
             runCatching { handle?.cancelActiveReads() }
             owned?.release()
-            video?.session?.close()
+            // A preview already paid the registration and MP4 indexing cost. Make its
+            // validated session available to an immediate full-player open or return.
+            PlaybackSessionCoordinator.release(video)
             if (pinned) video?.let { Stream.unpin(it.path) }
         }
     }

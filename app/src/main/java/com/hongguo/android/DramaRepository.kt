@@ -17,35 +17,6 @@ import kotlinx.coroutines.isActive
 import kotlinx.coroutines.runInterruptible
 import kotlinx.coroutines.CancellationException
 import java.io.IOException
-import java.net.SocketTimeoutException
-import java.net.UnknownHostException
-import javax.net.ssl.SSLException
-
-data class DramaCard(
-    val id: String,
-    val title: String,
-    val cover: String,
-    val episodeCount: Int,
-    val summary: String,
-)
-
-data class Episode(val id: String, val index: Int, val title: String)
-
-data class DramaDetail(
-    val id: String,
-    val title: String,
-    val cover: String,
-    val summary: String,
-    val episodes: List<Episode>,
-)
-
-data class DramaPage(val items: List<DramaCard>, val hasMore: Boolean, val nextOffset: Int)
-data class PreparedVideo(
-    val episodeId: String,
-    val path: String,
-    val requestId: Long = 0,
-    val session: ProgressiveMedia.Session? = null,
-)
 
 /** UI uses the on-device Java core directly; no localhost service is involved. */
 class DramaRepository {
@@ -71,15 +42,23 @@ class DramaRepository {
         }
 
     suspend fun filters(genre: String): List<FilterGroup> = runInterruptible(Dispatchers.IO) {
-        DiscoveryMapper.filterGroups(Client.filters(genre))
+        if (genre == REAL_LIBRARY_GENRE)
+            DiscoveryMapper.realLibraryTopics(websiteClient.realCategory())
+        else DiscoveryMapper.filterGroups(Client.filters(genre))
     }
 
     suspend fun browse(selection: BrowseSelection, offset: Int, seenIds: List<String>): DramaPage =
         runInterruptible(Dispatchers.IO) {
             val start = offset.coerceAtLeast(0)
             val seen = DiscoveryMapper.seenTail(seenIds)
-            val page = Client.browsePage(selection.genre, DiscoveryMapper.options(selection), seen, start)
-            DiscoveryMapper.page(page.items, page.hasMore, page.nextSkip, start, seen)
+            if (selection.genre == REAL_LIBRARY_GENRE) {
+                // True website catalogue with server-confirmed topic path and pagination.
+                val topic = selection.options["theme"].orEmpty()
+                DiscoveryMapper.realLibraryPage(websiteClient.realCategory(topic, start + 1))
+            } else {
+                val page = Client.browsePage(selection.genre, DiscoveryMapper.options(selection), seen, start)
+                DiscoveryMapper.page(page.items, page.hasMore, page.nextSkip, start, seen)
+            }
         }
 
     suspend fun search(query: String, offset: Int): DramaPage = runInterruptible(Dispatchers.IO) {
@@ -131,6 +110,12 @@ class DramaRepository {
 
     suspend fun prepare(episode: Episode, allowFallback: Boolean = true,
                         progress: (String, Long, Long) -> Unit): PreparedVideo {
+        // Reuse a recent verified progressive session before re-registering the anonymous
+        // playback identity or probing the MP4 again. Every new Media3 player gets a new Reader.
+        PlaybackSessionCoordinator.take(episode.id)?.let {
+            progress("reused", 0, 0)
+            return it
+        }
         val context = currentCoroutineContext()
         var allocated: ProgressiveMedia.Session? = null
         var handedOff = false
@@ -182,28 +167,5 @@ class DramaRepository {
                 } finally { onReader(null) }
             }
         }
-    }
-}
-
-/** Never expose provider response bodies, signed URLs or device identifiers in UI. */
-fun readableFailure(error: Throwable, action: String): String {
-    val chain = generateSequence(error) { it.cause }.take(8).toList()
-    val hint = chain.joinToString(" ") { it.message.orEmpty() }.lowercase()
-    chain.firstNotNullOfOrNull { it as? NoNewRecommendationsException }?.let {
-        return "推荐接口暂未返回新作品（最近已去重 ${it.remembered} 部），可稍后刷新，或切换其他分类继续发现。"
-    }
-    return when {
-        chain.any { it is UnknownHostException } -> "网络连接不可用，请检查网络后重试。"
-        chain.any { it is SocketTimeoutException } -> "连接超时，请稍后重试。"
-        chain.any { it is SSLException } -> "安全连接失败，请检查网络和设备时间。"
-        hint.contains("no space") || hint.contains("enospc") -> "设备存储空间不足，请清理空间后重试。"
-        hint.contains("上游未返回数据") -> "内容服务暂未返回数据，请稍后重试。"
-        hint.contains("empty_episodes") -> "暂时没有获取到可播放剧集，请稍后重试。"
-        hint.contains("风控") || hint.contains("risk") || hint.contains("429") -> "片源服务暂时限制访问，请稍后重试。"
-        hint.contains("无直链") || hint.contains("video_model") || hint.contains("片源") -> "该集片源暂时不可用，可重试或选择其他集。"
-        hint.contains("解密") || hint.contains("cenc") || hint.contains("decrypt") ||
-            hint.contains("封装") || hint.contains("媒体校验") || hint.contains("密钥格式") ||
-            hint.contains("媒体索引") || hint.contains("媒体样本") -> "该集媒体格式暂不支持，可重试或选择其他集。"
-        else -> "${action}失败，请检查网络后重试。"
     }
 }

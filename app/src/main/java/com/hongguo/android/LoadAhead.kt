@@ -18,6 +18,7 @@ import androidx.compose.ui.unit.dp
 import coil.imageLoader
 import coil.request.CachePolicy
 import coil.request.ImageRequest
+import coil.request.Disposable
 
 /** How many grid items may remain below the viewport before the next page is requested. */
 internal const val LoadAheadItems = 12
@@ -34,6 +35,25 @@ internal fun shouldLoadAhead(feed: FeedState, remaining: Int): Boolean =
 internal fun upcomingCovers(items: List<DramaCard>, remaining: Int): List<String> =
     items.drop((items.size - remaining).coerceAtLeast(0)).take(PreloadCovers).map { it.cover }.filter { it.isNotBlank() }
 
+/** Bounds transient cover bookkeeping: Coil owns the actual memory/disk image caches. */
+internal class RecentCoverRequests(private val limit: Int = 128) {
+    init { require(limit > 0) }
+
+    private val recent = LinkedHashSet<String>()
+    val size: Int get() = recent.size
+
+    /** Retain only recent URLs; previously evicted URLs can be served again from Coil's disk cache. */
+    fun select(covers: List<String>): List<String> {
+        val newRequests = ArrayList<String>(covers.size)
+        for (cover in covers) {
+            if (cover.isBlank() || !recent.add(cover)) continue
+            newRequests.add(cover)
+            if (recent.size > limit) recent.remove(recent.first())
+        }
+        return newRequests
+    }
+}
+
 /**
  * Requests the next page as the visible position nears the end, so it is already in the list when the user gets
  * there. Re-evaluated after each page, which also keeps loading while a short page still leaves the end in reach.
@@ -49,21 +69,45 @@ internal fun LoadAheadEffect(
         snapshotFlow { currentEnabled && shouldLoadAhead(currentFeed, totalItems() - 1 - lastVisibleIndex()) }
             .collect { if (it) currentLoad() }
     }
-    CoverPreloadEffect(feed.items, lastVisibleIndex, totalItems)
+    CoverPreloadEffect(feed.items, lastVisibleIndex, totalItems, enabled)
 }
 
 /** Fills Coil's disk cache for the covers about to scroll in, so they appear without waiting for the network. */
 @Composable
-internal fun CoverPreloadEffect(items: List<DramaCard>, lastVisibleIndex: () -> Int, totalItems: () -> Int) {
+internal fun CoverPreloadEffect(items: List<DramaCard>, lastVisibleIndex: () -> Int, totalItems: () -> Int, enabled: Boolean = true) {
     val context = LocalContext.current
     val currentItems by rememberUpdatedState(items)
-    LaunchedEffect(Unit) {
-        val requested = HashSet<String>()
-        snapshotFlow { upcomingCovers(currentItems, totalItems() - 1 - lastVisibleIndex()) }.collect { covers ->
-            covers.filter(requested::add).forEach { cover ->
-                context.imageLoader.enqueue(ImageRequest.Builder(context).data(cover).size(240)
-                    .memoryCachePolicy(CachePolicy.DISABLED).build())
+    val currentEnabled by rememberUpdatedState(enabled)
+    LaunchedEffect(context) {
+        var requested = RecentCoverRequests()
+        val active = LinkedHashMap<String, Disposable>()
+        try {
+            // Include enabled in the snapshot: switching it off must emit even if covers are already empty.
+            snapshotFlow {
+                currentEnabled to (if (currentEnabled)
+                    upcomingCovers(currentItems, totalItems() - 1 - lastVisibleIndex()) else emptyList())
+            }.collect { (allow, covers) ->
+                if (!allow) {
+                    active.values.forEach(Disposable::dispose)
+                    active.clear()
+                    requested = RecentCoverRequests()
+                } else {
+                    requested.select(covers).forEach { cover ->
+                        active[cover] = context.imageLoader.enqueue(ImageRequest.Builder(context).data(cover).size(240)
+                            .memoryCachePolicy(CachePolicy.DISABLED).build())
+                        // Keep only a small bounded window of speculative in-flight requests.
+                        if (active.size > PreloadCovers * 2) {
+                            val oldest = active.entries.first()
+                            oldest.value.dispose()
+                            active.remove(oldest.key)
+                        }
+                    }
+                }
             }
+        } finally {
+            // Screen navigation and composition disposal cancel outstanding downloads.
+            active.values.forEach(Disposable::dispose)
+            active.clear()
         }
     }
 }

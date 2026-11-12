@@ -66,6 +66,10 @@ public final class Stream {
         return AppSource.fetch(vid, quality);
     }
 
+    public static VideoTrack videoTrack(String vid, String quality, Progress progress) throws Exception {
+        return AppSource.fetch(vid, quality, progress);
+    }
+
     private static Path cacheDir() {
         String root = Config.str("runtime.data_dir", null);
         if (root == null || root.trim().isEmpty()) {
@@ -107,15 +111,47 @@ public final class Stream {
         }
     }
 
-    /** Only atomically published .play.mp4 files are cache hits. */
+    /** Cache files are atomically published, but disk errors can corrupt a completed file later. */
+    private static final class VerifiedCache {
+        final long size;
+        final long modified;
+        VerifiedCache(long size, long modified) { this.size = size; this.modified = modified; }
+    }
+    private static final Map<Path, VerifiedCache> VERIFIED = new HashMap<>();
+
+    /** Reject a corrupted completed file before handing it to Media3. A verified unchanged file is cheap to reuse. */
     public static String cachedPath(String vid, String quality) {
         Path out = outputPath(vid, quality);
         synchronized (CACHE_GUARD) {
             try {
-                if (Files.isRegularFile(out) && Files.size(out) > 0) return out.toString();
-            } catch (IOException ignored) { }
+                if (!Files.isRegularFile(out)) { VERIFIED.remove(out); return null; }
+                long size = Files.size(out);
+                if (size < 24) { discardDamagedCache(out); return null; }
+                long modified = Files.getLastModifiedTime(out).toMillis();
+                VerifiedCache known = VERIFIED.get(out);
+                if (known == null || known.size != size || known.modified != modified) {
+                    try {
+                        validateMp4(out);
+                    } catch (IOException | RuntimeException invalid) {
+                        discardDamagedCache(out);
+                        return null;
+                    }
+                    VERIFIED.put(out, new VerifiedCache(size, modified));
+                }
+                return out.toString();
+            } catch (IOException ignored) {
+                VERIFIED.remove(out);
+            }
         }
         return null;
+    }
+
+    /** Preserve a pinned file until its player releases it; the next lookup can then remove it. */
+    private static void discardDamagedCache(Path path) {
+        VERIFIED.remove(path);
+        if (!PINS.containsKey(path.toString())) {
+            try { Files.deleteIfExists(path); } catch (IOException ignored) { }
+        }
     }
 
     public static String ensureDecrypted(String vid, String quality) throws Exception {
@@ -157,7 +193,7 @@ public final class Stream {
             checkCancelled(progress);
             pruneCache(null);
             update(progress, "resolving", 0, -1);
-            VideoTrack track = videoTrack(vid, q);
+            VideoTrack track = videoTrack(vid, q, progress);
             checkCancelled(progress);
             if (track == null || track.url == null || track.url.isEmpty()) {
                 throw new IOException("暂时无法获取本集播放信息");
@@ -207,6 +243,7 @@ public final class Stream {
             synchronized (CACHE_GUARD) {
                 checkCancelled(progress);
                 moveAtomically(playable, out);
+                VERIFIED.remove(out); // An overwrite must always be re-validated on its next cache hit.
                 touch(out);
                 pruneCache(out);
             }
@@ -487,7 +524,7 @@ public final class Stream {
                     if (bytes <= CACHE_BYTES) break;
                     if (candidate.equals(newest) || candidate.equals(protectedPath) || PINS.containsKey(candidate.toString())) continue;
                     long size = Files.size(candidate);
-                    if (Files.deleteIfExists(candidate)) { bytes -= size; removed++; }
+                    if (Files.deleteIfExists(candidate)) { VERIFIED.remove(candidate); bytes -= size; removed++; }
                 }
                 return removed;
             } catch (IOException ignored) { return 0; }

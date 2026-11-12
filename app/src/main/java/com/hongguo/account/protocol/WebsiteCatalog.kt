@@ -32,6 +32,20 @@ class WebsiteCatalogClient internal constructor(http: OkHttpClient, private val 
         return transport.execute(request(url, "text/html,*/*")) { WebsiteCatalog.parseRank(cloudResponse(it), board, page) }
     }
 
+    /**
+     * The real-drama catalogue is distinct from the short-play App feed and the
+     * website's hot-real-drama ranking. Page 1 omits ?page=1 (a redirect).
+     */
+    fun realCategory(topic: String = "", page: Int = 1): RealCategoryPage {
+        require(WebsiteRealCategory.validTopic(topic) && page in 1..100) { "真人剧库请求参数无效" }
+        val url = base.resolve(WebsiteRealCategory.path(topic))!!.newBuilder().apply {
+            if (page > 1) addQueryParameter("page", page.toString())
+        }.build()
+        return transport.execute(request(url, "text/html,*/*")) {
+            WebsiteRealCategory.parse(cloudResponse(it), topic, page)
+        }
+    }
+
     fun suggestions(query: String): List<String> {
         val clean = query.trim()
         if (clean.isEmpty() || clean.length > 80) return emptyList()

@@ -57,6 +57,28 @@ public class StreamMediaTest {
         assertNoTemporaryFiles();
     }
 
+    @Test public void corruptedPublishedCacheIsRemovedAndNeverReused() throws Exception {
+        Path out = output();
+        Files.createDirectories(out.getParent());
+        Files.write(out, new byte[64]);
+        assertNull("An existing but unplayable file must not be a cache hit", Stream.cachedPath("123", "best"));
+        assertFalse("The next attempt should be able to download a replacement", Files.exists(out));
+    }
+
+    @Test public void previouslyVerifiedCacheIsRecheckedAfterContentChanges() throws Exception {
+        Path out = output();
+        byte[] media = plainFixture();
+        try (OneResponse origin = new OneResponse(media, media.length)) {
+            prepare(origin.url(), out, false, null);
+        }
+        assertEquals(out.toString(), Stream.cachedPath("123", "best"));
+        Files.write(out, new byte[media.length]);
+        Files.setLastModifiedTime(out, java.nio.file.attribute.FileTime.fromMillis(
+            System.currentTimeMillis() + 60_000));
+        assertNull("A mutated file may not reuse an earlier validation stamp", Stream.cachedPath("123", "best"));
+        assertFalse(Files.exists(out));
+    }
+
     @Test public void truncatedDownloadNeverBecomesCacheHit() throws Exception {
         byte[] media = plainFixture();
         List<String> stages = new ArrayList<>();

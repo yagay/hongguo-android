@@ -59,7 +59,7 @@ public final class ProgressiveMedia {
         if (vid == null || !vid.matches("[0-9]{1,30}")) throw new IllegalArgumentException("分集编号无效");
         checkOpening(progress);
         emit(progress, "resolving", 0, -1);
-        Stream.VideoTrack track = Stream.videoTrack(vid, quality);
+        Stream.VideoTrack track = Stream.videoTrack(vid, quality, progress);
         checkOpening(progress);
         String root = Config.str("runtime.data_dir", null);
         if (root == null || root.trim().isEmpty()) throw new IOException("媒体存储尚未初始化");
@@ -141,6 +141,7 @@ public final class ProgressiveMedia {
             emit(progress, "index", 0, -1);
             // The first request is tiny: require true 206 support before allocating media buffers.
             fetch(defaultReader, 0, 16, true);
+            emit(progress, "media_range_ok", 0, -1);
             checkOpening(openingProgress);
             long at = 0, moovSize = 0;
             int boxCount = 0;
@@ -166,6 +167,7 @@ public final class ProgressiveMedia {
                 checkOpening(openingProgress);
             }
             if (!ftyp || moovSize == 0 || media.isEmpty()) throw unsupported();
+            emit(progress, "media_boxes_ok", 0, -1);
             Mp4Progressive.Index index;
             try {
                 index = Mp4Progressive.inspect(raw(defaultReader, moovStart, (int) moovSize), moovStart, track.encrypt);
@@ -176,10 +178,12 @@ public final class ProgressiveMedia {
                 throw failure;
             }
             clearMoov = index.clearMoov;
+            emit(progress, "media_moov_ok", 0, -1);
             if (track.encrypt) {
                 String resolvedKey = keyResolver.resolve(track.spadeA);
                 if (!Spade.isValidKey(resolvedKey)) throw unsupported();
                 key = Crypto.unhex(resolvedKey);
+                emit(progress, "media_key_ready", 0, -1);
                 Mp4.Track video = null;
                 for (Mp4.Track t : index.analysis.tracks) {
                     if (index.encryptedTrackIds.contains(t.trackId) && "vide".equals(t.handler)) video = t;
@@ -201,6 +205,7 @@ public final class ProgressiveMedia {
                 try { videoIv = Mp4.verifyVideoIv(store, probeVideo, keyHex, Mp4.trackBaseIvCandidates(probeVideo)); }
                 catch (UncheckedIOException e) { throw e.getCause(); }
                 if (videoIv == null) throw unsupported();
+                emit(progress, "media_crypto_ok", 0, -1);
                 for (Mp4.Track t : index.analysis.tracks) {
                     if (!index.encryptedTrackIds.contains(t.trackId)) continue;
                     List<String> candidates = Mp4.trackBaseIvCandidates(t);
@@ -211,6 +216,7 @@ public final class ProgressiveMedia {
                 }
                 samples.sort(Comparator.comparingLong(s -> s.start));
             } else validateSampleBounds(index);
+            emit(progress, "media_index_ready", 0, -1);
             checkOpening(openingProgress);
         }
 

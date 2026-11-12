@@ -1,6 +1,10 @@
 package com.hongguo.android
 
 import com.hongguo.api.util.Json
+import com.hongguo.account.protocol.RealCategoryEntry
+import com.hongguo.account.protocol.RealCategoryPage
+import com.hongguo.account.protocol.RealCategoryTopic
+import com.hongguo.account.protocol.Series
 import org.junit.Assert.*
 import org.junit.Test
 import java.io.IOException
@@ -72,6 +76,34 @@ class DiscoveryModelsTest {
         assertFalse(DiscoveryMapper.page(raw, true, 18, 18, emptyList()).hasMore)
         assertFalse(DiscoveryMapper.page(raw, true, 36, 18, listOf("18446744073709551615")).hasMore)
         assertEquals(18, DiscoveryMapper.page(raw, true, 0, 18, emptyList()).nextOffset)
+    }
+
+    @Test fun independentRealTabUsesFullWebsiteCategoryInsteadOfRanking() {
+        assertEquals(
+            listOf("短剧", "真人", "漫剧", "AI 剧"),
+            BrowseGenres.map { it.second }
+        )
+        assertEquals(
+            listOf("short_play", REAL_LIBRARY_GENRE, "comic_series", "ai_series"),
+            BrowseGenres.map { it.first }
+        )
+        val entries = listOf(
+            RealCategoryEntry(Series("123", "真人短剧一", description = "都市爱情"), 24),
+            RealCategoryEntry(Series("456", "真人短剧二"), 12),
+        )
+        val topics = listOf(RealCategoryTopic("romance", "爱情"), RealCategoryTopic("urban", "都市"))
+        val first = DiscoveryMapper.realLibraryPage(RealCategoryPage(entries, topics, page = 1, totalPages = 3))
+        assertEquals(1, first.nextOffset)
+        assertTrue(first.hasMore)
+        assertEquals(listOf("123", "456"), first.items.map { it.id })
+        assertEquals("都市爱情", first.items.first().summary)
+        assertEquals(24, first.items.first().episodeCount)
+        val last = DiscoveryMapper.realLibraryPage(RealCategoryPage(entries, topics, page = 3, totalPages = 3))
+        assertEquals(3, last.nextOffset)
+        assertFalse(last.hasMore)
+        assertFalse(DiscoveryMapper.realLibraryPage(RealCategoryPage(emptyList(), topics, page = 1, totalPages = 3)).hasMore)
+        val groups = DiscoveryMapper.realLibraryTopics(RealCategoryPage(entries, topics, page = 1, totalPages = 3))
+        assertEquals(listOf("", "romance", "urban"), groups.single().options.map { it.id })
     }
 
     @Test fun emptyUpstreamResponseHasContentServiceMessageOnHomepage() {

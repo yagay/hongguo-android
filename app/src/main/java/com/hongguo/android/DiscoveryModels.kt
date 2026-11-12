@@ -1,6 +1,17 @@
 package com.hongguo.android
 
 import com.hongguo.api.util.Json
+import com.hongguo.account.protocol.RealCategoryPage
+
+/** Full real-person catalogue is distinct from the ordinary App short_play feed and the ranking. */
+internal const val REAL_LIBRARY_GENRE = "real_library"
+internal val BrowseGenres = listOf(
+    "short_play" to "短剧",
+    REAL_LIBRARY_GENRE to "真人",
+    "comic_series" to "漫剧",
+    "ai_series" to "AI 剧",
+)
+
 
 enum class HomeFeed { RECOMMEND, GUESS, LATEST, COMIC }
 
@@ -29,6 +40,18 @@ internal object DiscoveryMapper {
         FilterOption("hot_score", "最高热度"), FilterOption("online_time", "最新上架"),
         FilterOption("hot_collect", "最高收藏"),
     )
+
+    /** The public website's cursor is the completed page number, not the App's offset. */
+    fun realLibraryPage(page: RealCategoryPage): DramaPage {
+        val cards = page.entries.map { entry ->
+            DramaCard(entry.series.id, entry.series.title, entry.series.cover, entry.episodeCount, entry.series.description)
+        }.distinctBy(DramaCard::id)
+        return DramaPage(cards, page.hasMore, page.page)
+    }
+
+    fun realLibraryTopics(page: RealCategoryPage): List<FilterGroup> =
+        listOf(FilterGroup("theme", "题材", listOf(FilterOption("", "全部")) +
+            page.topics.map { FilterOption(it.id, it.label) }))
 
     fun seenTail(ids: List<String>): List<String> = ids.asReversed().asSequence()
         .filter { it.matches(Regex("[0-9]{1,30}")) }.distinct().take(SEEN_LIMIT).toList().asReversed()

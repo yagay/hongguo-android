@@ -42,6 +42,7 @@ import androidx.compose.ui.draw.alpha
 import androidx.compose.ui.draw.clip
 import androidx.compose.ui.focus.FocusRequester
 import androidx.compose.ui.focus.focusRequester
+import androidx.compose.ui.platform.LocalSoftwareKeyboardController
 import androidx.compose.ui.platform.testTag
 import androidx.compose.ui.semantics.contentType
 import androidx.compose.ui.semantics.semantics
@@ -138,7 +139,8 @@ private fun ColumnScope.PhoneLoginForm(state: AccountState, model: AccountViewMo
     val codeStep = state.phoneStep == PhoneStep.CODE_SENT || (state.busy && (resending || submitted))
     val canSend = !state.busy && valid && state.phoneRemainingSeconds <= 0
     val verify = {
-        if (!state.busy && code.length >= 4) { submitted = true; model.verifySms(code); code = "" }
+        // Keep the entered OTP until login succeeds or the user changes it. Failed verification must remain editable.
+        if (!state.busy && code.length in 4..8) { submitted = true; model.verifySms(code) }
     }
     // The platform asked for a slider: the user passes it personally on the official login page.
     var verificationDismissed by remember(state.suggestWebsiteLogin) { mutableStateOf(false) }
@@ -190,7 +192,11 @@ private fun ColumnScope.PhoneLoginForm(state: AccountState, model: AccountViewMo
         }
     } else {
         val focus = remember { FocusRequester() }
-        LaunchedEffect(Unit) { focus.requestFocus() }
+        val keyboard = LocalSoftwareKeyboardController.current
+        LaunchedEffect(Unit) {
+            focus.requestFocus()
+            keyboard?.show()
+        }
         Row(Modifier.fillMaxWidth(), verticalAlignment = Alignment.CenterVertically) {
             val masked = state.phoneMasked.ifEmpty { phone.take(3) + "****" + phone.takeLast(4) }
             Text("验证码已发送至 $masked", Modifier.weight(1f), color = Muted, fontSize = 13.sp)
@@ -199,11 +205,11 @@ private fun ColumnScope.PhoneLoginForm(state: AccountState, model: AccountViewMo
         OutlinedTextField(value = code, onValueChange = { value -> code = value.filter(Char::isDigit).take(8) },
             label = { Text("短信验证码") }, singleLine = true, shape = RoundedCornerShape(12.dp),
             textStyle = TextStyle(fontSize = 20.sp, letterSpacing = 4.sp, textAlign = TextAlign.Center, color = Ink),
-            keyboardOptions = KeyboardOptions(keyboardType = KeyboardType.NumberPassword, imeAction = ImeAction.Done),
+            keyboardOptions = KeyboardOptions(keyboardType = KeyboardType.Number, imeAction = ImeAction.Done),
             keyboardActions = KeyboardActions(onDone = { verify() }), enabled = !state.busy,
             modifier = Modifier.fillMaxWidth().focusRequester(focus).semantics { contentType = ContentType.SmsOtpCode }
                 .testTag("account_sms_code"))
-        Button(onClick = { verify() }, enabled = !state.busy && code.length >= 4, shape = RoundedCornerShape(12.dp),
+        Button(onClick = { verify() }, enabled = !state.busy && code.length in 4..8, shape = RoundedCornerShape(12.dp),
             modifier = Modifier.fillMaxWidth().heightIn(min = 48.dp).testTag("account_sms_verify")) {
             Text(if (submitted) "正在验证…" else "验证并登录")
         }

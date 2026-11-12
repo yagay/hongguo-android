@@ -232,7 +232,7 @@ internal fun CardsDiscover(state: HongguoUiState, model: HongguoViewModel) {
             val tabs = rememberTabIndicator()
             Row(Modifier.fillMaxWidth().clip(RoundedCornerShape(12.dp)).background(CardSurface).padding(4.dp)
                 .slidingPill(tabs, state.browseDraft.genre, Ink, corner = 9.dp)) {
-                listOf("short_play" to "短剧", "comic_series" to "漫剧", "ai_series" to "AI 剧").forEach { (genre, label) ->
+                BrowseGenres.forEach { (genre, label) ->
                     val selected = state.browseDraft.genre == genre
                     val color by animatedTabColor(selected, Canvas, Muted)
                     Box(Modifier.weight(1f).tabAnchor(tabs, genre).clip(RoundedCornerShape(9.dp))
@@ -245,17 +245,34 @@ internal fun CardsDiscover(state: HongguoUiState, model: HongguoViewModel) {
             }
         }
         item {
-            // The first filter group stays visible as one-tap chips; the rest live in the sheet.
-            val group = state.filterGroups.firstOrNull { it.key == "theme" } ?: state.filterGroups.firstOrNull()
-            Row(Modifier.fillMaxWidth().horizontalScroll(rememberScrollState()), horizontalArrangement = Arrangement.spacedBy(8.dp),
-                verticalAlignment = Alignment.CenterVertically) {
-                val count = state.browseApplied.options.values.count { it.isNotBlank() }
-                DarkChip(if (count > 0) "筛选 · $count" else "全部筛选", count > 0, "cards_filters", Icons.Outlined.Tune) { showFilters = true }
-                group?.options?.filter { it.id.isNotBlank() }?.take(12)?.forEach { option ->
-                    val on = state.browseApplied.options[group.key] == option.id
-                    DarkChip(option.label, on, "cards_quick_${group.key}_${option.id}") {
-                        model.selectFilter(group.key, option.id)
-                        model.applyBrowse()
+            if (state.browseDraft.genre == REAL_LIBRARY_GENRE) {
+                val group = state.filterGroups.firstOrNull { it.key == "theme" }
+                Row(Modifier.fillMaxWidth().horizontalScroll(rememberScrollState()),
+                    horizontalArrangement = Arrangement.spacedBy(8.dp), verticalAlignment = Alignment.CenterVertically) {
+                    val selected = state.browseApplied.options["theme"].orEmpty()
+                    DarkChip(if (selected.isEmpty()) "真人题材" else "题材 · " +
+                        (group?.options?.firstOrNull { it.id == selected }?.label ?: "已选"),
+                        selected.isNotEmpty(), "cards_filters", Icons.Outlined.Tune) { showFilters = true }
+                    group?.options?.filter { it.id.isNotBlank() }?.take(12)?.forEach { option ->
+                        DarkChip(option.label, selected == option.id, "cards_quick_theme_" + option.id) {
+                            model.selectFilter("theme", option.id)
+                            model.applyBrowse()
+                        }
+                    }
+                }
+            } else {
+                // The first filter group stays visible as one-tap chips; the rest live in the sheet.
+                val group = state.filterGroups.firstOrNull { it.key == "theme" } ?: state.filterGroups.firstOrNull()
+                Row(Modifier.fillMaxWidth().horizontalScroll(rememberScrollState()), horizontalArrangement = Arrangement.spacedBy(8.dp),
+                    verticalAlignment = Alignment.CenterVertically) {
+                    val count = state.browseApplied.options.values.count { it.isNotBlank() }
+                    DarkChip(if (count > 0) "筛选 · $count" else "全部筛选", count > 0, "cards_filters", Icons.Outlined.Tune) { showFilters = true }
+                    group?.options?.filter { it.id.isNotBlank() }?.take(12)?.forEach { option ->
+                        val on = state.browseApplied.options[group.key] == option.id
+                        DarkChip(option.label, on, "cards_quick_${group.key}_${option.id}") {
+                            model.selectFilter(group.key, option.id)
+                            model.applyBrowse()
+                        }
                     }
                 }
             }

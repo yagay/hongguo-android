@@ -215,7 +215,7 @@ internal fun CategoryScreen(state: HongguoUiState, model: HongguoViewModel) {
             }
             item(key = "category_genres", span = { GridItemSpan(maxLineSpan) }) {
                 Row(Modifier.fillMaxWidth().horizontalScroll(rememberScrollState()), horizontalArrangement = Arrangement.spacedBy(10.dp)) {
-                    listOf("short_play" to "短剧", "comic_series" to "漫剧", "ai_series" to "AI 剧").forEach { (genre, label) ->
+                    BrowseGenres.forEach { (genre, label) ->
                         SelectorChip(label, state.browseDraft.genre == genre, "genre_$genre") { model.changeGenre(genre) }
                     }
                 }
@@ -231,6 +231,8 @@ internal fun CategoryScreen(state: HongguoUiState, model: HongguoViewModel) {
                                     fontWeight = FontWeight.Medium, color = if (dirty) AccentInk else Ink)
                                 val selectedCount = state.browseDraft.options.values.count { it.isNotBlank() }
                                 Text(if (state.filtersLoading) "正在读取可选条件…"
+                                    else if (state.browseDraft.genre == REAL_LIBRARY_GENRE)
+                                        if (selectedCount > 0) "已选真人剧题材" else "官网真人剧库 · 按题材筛选"
                                     else if (selectedCount > 0) "已选 $selectedCount 项条件" else "按题材、排序等条件查找",
                                     fontSize = 12.sp, lineHeight = 18.sp, color = Muted)
                             }

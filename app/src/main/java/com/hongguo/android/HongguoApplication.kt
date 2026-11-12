@@ -11,6 +11,7 @@ class HongguoApplication : Application() {
 
     override fun onCreate() {
         super.onCreate()
+        AppDiagnostics.initialize(this)
         val preferences = getSharedPreferences("installation", MODE_PRIVATE)
         val deviceId = preferences.getString("device_id", null) ?: run {
             val random = SecureRandom()

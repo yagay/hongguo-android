@@ -1,20 +1,16 @@
 package com.hongguo.android
 
 import com.hongguo.account.protocol.RankBoard
-import com.hongguo.account.protocol.RankEntry
-import com.hongguo.account.protocol.RelatedWork
 import com.hongguo.account.protocol.RelatedWorks
 import android.app.Application
 import androidx.core.content.edit
 import androidx.lifecycle.AndroidViewModel
 import androidx.lifecycle.viewModelScope
 import kotlinx.coroutines.CancellationException
-import kotlinx.coroutines.CoroutineScope
-import kotlinx.coroutines.Dispatchers
-import kotlinx.coroutines.Job
+import kotlinx.coroutines.CompletableDeferred
+  import kotlinx.coroutines.Job
 import kotlinx.coroutines.delay
-import kotlinx.coroutines.SupervisorJob
-import kotlinx.coroutines.currentCoroutineContext
+ import kotlinx.coroutines.currentCoroutineContext
 import kotlinx.coroutines.flow.MutableStateFlow
 import kotlinx.coroutines.flow.asStateFlow
 import kotlinx.coroutines.flow.distinctUntilChanged
@@ -27,79 +23,7 @@ import java.util.concurrent.ConcurrentHashMap
 import com.hongguo.api.service.ProgressiveMedia
 import com.hongguo.account.AccountSessionStatus
 
-private val mediaCleanup = CoroutineScope(SupervisorJob() + Dispatchers.IO)
-
-/** SETTINGS and THEME_STYLE are pages of their own (no bottom bar), opened from 我的 and closed back to where they came from. */
-enum class AppTab { HOME, CATEGORY, SEARCH, FAVORITES, MINE, HISTORY, ACCOUNT, SETTINGS, THEME_STYLE, RANK, PLAY_HISTORY, LOCAL_FAVORITES }
-
-data class FeedState(
-    val items: List<DramaCard> = emptyList(),
-    val loading: Boolean = false,
-    val loadingMore: Boolean = false,
-    val hasMore: Boolean = false,
-    val nextOffset: Int = 0,
-    val error: String? = null,
-    val loaded: Boolean = false,
-)
-
-data class HongguoUiState(
-    val tab: AppTab = AppTab.HOME,
-    val homeFeed: HomeFeed = HomeFeed.GUESS,
-    /** 播放历史 page: this device's records rather than the signed-in account's. */
-    val playHistoryLocal: Boolean = false,
-    val home: FeedState = FeedState(),
-    val category: FeedState = FeedState(),
-    val browseDraft: BrowseSelection = BrowseSelection(),
-    val browseApplied: BrowseSelection = BrowseSelection(),
-    val filterGroups: List<FilterGroup> = emptyList(),
-    val filtersLoading: Boolean = false,
-    val filtersError: String? = null,
-    val favorites: List<LibraryEntry> = emptyList(),
-    val history: List<LibraryEntry> = emptyList(),
-    val libraryCloud: Boolean = false,
-    val query: String = "",
-    val searchedQuery: String = "",
-    val results: List<DramaCard> = emptyList(),
-    val searching: Boolean = false,
-    val loadingMore: Boolean = false,
-    val hasMore: Boolean = false,
-    val nextOffset: Int = 0,
-    val searchError: String? = null,
-    val selectedCard: DramaCard? = null,
-    val detail: DramaDetail? = null,
-    val loadingDetail: Boolean = false,
-    val detailError: String? = null,
-    /** Other seasons and same-IP works of the selected drama; empty when unavailable. */
-    val related: List<RelatedWork> = emptyList(),
-    val suggestions: List<String> = emptyList(),
-    val rankBoard: RankBoard = RankBoard.ALL,
-    val rankEntries: List<RankEntry> = emptyList(),
-    val rankPage: Int = 0,
-    val rankTotalPages: Int = 0,
-    val rankLoading: Boolean = false,
-    val rankError: String? = null,
-    val episodePosition: Int = -1,
-    val preparing: Boolean = false,
-    val preparationStage: String = "",
-    val preparationDone: Long = 0,
-    val preparationTotal: Long = 0,
-    val video: PreparedVideo? = null,
-    val playbackError: String? = null,
-    val playbackStatus: String = "",
-    val firstFrameRendered: Boolean = false,
-    val resumePositionMs: Long = 0,
-    val playerOpen: Boolean = false,
-    val autoPlayNext: Boolean = true,
-    val preloadNext: Boolean = true,
-    val playbackSpeed: Float = 1f,
-    val themeStyle: AppThemeStyle = AppThemeStyle.WARM,
-    val themeMode: ThemeMode? = null,
-    val navBarStyle: NavBarStyle = NavBarStyle.CLASSIC,
-    val themeOnboardingPending: Boolean = false,
-    /** Confirmation after the first-launch picker; cleared only once the snackbar has been shown. */
-    val themeHint: String? = null,
-)
-
+ 
 class HongguoViewModel(application: Application) : AndroidViewModel(application) {
     private val repository = DramaRepository()
     private val library = LibraryStore(application)
@@ -119,11 +43,16 @@ class HongguoViewModel(application: Application) : AndroidViewModel(application)
     private var searchJob: Job? = null
     private var detailJob: Job? = null
     private var mediaJob: Job? = null
+    private var startupTrace: PlaybackStartupTrace? = null
+    private var startupPendingDetail = false
     private var prefetchJob: Job? = null
     private class WarmSlot(val episodeId: String) {
-        var video: PreparedVideo? = null
+        @Volatile var video: PreparedVideo? = null
         @Volatile var taken = false
+        @Volatile var abandoned = false
         @Volatile var reader: ProgressiveMedia.Reader? = null
+        var producer: Job? = null
+        val prepared = CompletableDeferred<PreparedVideo?>()
     }
     @Volatile private var warmSlot: WarmSlot? = null
     private var playerForeground = false
@@ -139,6 +68,7 @@ class HongguoViewModel(application: Application) : AndroidViewModel(application)
     private var pendingAutoPlay = false
     private data class ResumeTarget(val card: DramaCard, val index: Int)
     private val resumeTargets = ConcurrentHashMap<String, ResumeTarget>()
+    private val playbackSavePolicy = PlaybackSavePolicy()
     private data class AccountPlayback(
         val entry: LibraryEntry,
         val owner: String?,
@@ -194,15 +124,25 @@ class HongguoViewModel(application: Application) : AndroidViewModel(application)
         rankJob?.cancel()
         val version = ++rankVersion
         mutableState.update { it.copy(rankLoading = true, rankError = null) }
+        val rankStartedAt = android.os.SystemClock.elapsedRealtime()
+        AppDiagnostics.record("RANK", "LOAD_START", stage = board.name, count = page)
         rankJob = viewModelScope.launch {
             try {
                 val result = repository.rank(board, page)
-                if (version == rankVersion) mutableState.update { it.copy(rankLoading = false, rankPage = result.page, rankTotalPages = result.totalPages,
-                    rankEntries = (it.rankEntries + result.entries).distinctBy { row -> row.series.id }) }
+                if (version == rankVersion) {
+                    AppDiagnostics.record("RANK", "LOAD_OK", stage = board.name,
+                        elapsedMs = android.os.SystemClock.elapsedRealtime() - rankStartedAt, count = result.entries.size)
+                    mutableState.update { it.copy(rankLoading = false, rankPage = result.page, rankTotalPages = result.totalPages,
+                        rankEntries = (it.rankEntries + result.entries).distinctBy { row -> row.series.id }) }
+                }
             } catch (error: CancellationException) {
                 throw error
             } catch (error: Exception) {
-                if (version == rankVersion) mutableState.update { it.copy(rankLoading = false, rankError = readableFailure(error, "加载榜单")) }
+                if (version == rankVersion) {
+                    AppDiagnostics.failure("RANK", error = error,
+                        elapsedMs = android.os.SystemClock.elapsedRealtime() - rankStartedAt)
+                    mutableState.update { it.copy(rankLoading = false, rankError = readableFailure(error, "加载榜单")) }
+                }
             }
         }
     }
@@ -224,6 +164,7 @@ class HongguoViewModel(application: Application) : AndroidViewModel(application)
 
     /** A signed-in account's records come first, until the user picks a source themself. Signing out resets this. */
     fun onAccountSession(signedIn: Boolean) {
+        AppDiagnostics.record("ACCOUNT", "SESSION_STATUS", stage = if (signedIn) "signed_in" else "signed_out")
         if (!signedIn) librarySourceChosen = false
         if (!librarySourceChosen) mutableState.update { it.copy(libraryCloud = signedIn) }
     }
@@ -258,6 +199,7 @@ class HongguoViewModel(application: Application) : AndroidViewModel(application)
         if (rememberOrigin && tab in setOf(AppTab.HISTORY, AppTab.FAVORITES) && state.value.tab !in setOf(AppTab.HISTORY, AppTab.FAVORITES, AppTab.ACCOUNT)) libraryOrigin = state.value.tab
         if (state.value.selectedCard != null) backToSearch()
         mutableState.update { it.copy(tab = tab) }
+        AppDiagnostics.record("NAV", "OPEN", stage = tab.name)
         when (tab) {
             AppTab.HOME -> if (!state.value.home.loaded && !state.value.home.loading) refreshHome()
             AppTab.CATEGORY -> if (!state.value.category.loaded && !state.value.category.loading) {
@@ -284,17 +226,25 @@ class HongguoViewModel(application: Application) : AndroidViewModel(application)
         homeJob?.cancel()
         val previous = if (append) current.home else FeedState()
         mutableState.update { it.copy(home = previous.copy(loading = !append, loadingMore = append, error = null)) }
+        val homeStartedAt = android.os.SystemClock.elapsedRealtime()
+        AppDiagnostics.record("HOME", "LOAD_START", stage = current.homeFeed.name, count = if (append) 1 else 0)
         homeJob = viewModelScope.launch {
             try {
                 val page = if (current.homeFeed == HomeFeed.GUESS) guessPage(append)
                     else repository.discover(current.homeFeed, if (append) previous.nextOffset else 0, previous.items.map { it.id })
                 if (version != homeVersion || !currentCoroutineContext().isActive) return@launch
                 mutableState.update { it.copy(home = mergePage(previous, page, append)) }
+                AppDiagnostics.record("HOME", "LOAD_OK", stage = current.homeFeed.name,
+                    elapsedMs = android.os.SystemClock.elapsedRealtime() - homeStartedAt, count = page.items.size)
             } catch (error: CancellationException) { throw error }
             catch (error: Exception) {
-                if (version == homeVersion) mutableState.update { it.copy(home = previous.copy(
-                    loading = false, loadingMore = false, loaded = true, error = readableFailure(error,
-                        if (current.homeFeed == HomeFeed.GUESS) "加载推荐" else "加载首页"))) }
+                if (version == homeVersion) {
+                    AppDiagnostics.failure("HOME", error = error,
+                        elapsedMs = android.os.SystemClock.elapsedRealtime() - homeStartedAt)
+                    mutableState.update { it.copy(home = previous.copy(
+                        loading = false, loadingMore = false, loaded = true, error = readableFailure(error,
+                            if (current.homeFeed == HomeFeed.GUESS) "加载推荐" else "加载首页"))) }
+                }
             }
         }
     }
@@ -312,14 +262,16 @@ class HongguoViewModel(application: Application) : AndroidViewModel(application)
     }
 
     fun changeGenre(genre: String) {
-        if (genre !in setOf("short_play", "comic_series", "ai_series")) return
+        if (BrowseGenres.none { it.first == genre }) return
         if (genre == state.value.browseDraft.genre) return
         mutableState.update { it.copy(browseDraft = BrowseSelection(genre), filterGroups = emptyList(), filtersError = null) }
+        AppDiagnostics.record("CATEGORY", "GENRE_CHANGED", stage = genre)
         reloadFilters()
         applyBrowse()
     }
 
     fun selectFilter(key: String, value: String) {
+        if (state.value.browseDraft.genre == REAL_LIBRARY_GENRE && key != "theme") return
         if (key !in setOf("theme", "setting", "background", "sort", "gender", "status", "days")) return
         mutableState.update {
             val options = it.browseDraft.options.toMutableMap()
@@ -333,15 +285,23 @@ class HongguoViewModel(application: Application) : AndroidViewModel(application)
         val version = ++filtersVersion
         filtersJob?.cancel()
         mutableState.update { it.copy(filtersLoading = true, filtersError = null) }
+        val filterStartedAt = android.os.SystemClock.elapsedRealtime()
+        AppDiagnostics.record("FILTER", "LOAD_START", stage = genre)
         filtersJob = viewModelScope.launch {
             try {
                 val groups = repository.filters(genre)
                 if (version != filtersVersion || !currentCoroutineContext().isActive) return@launch
                 mutableState.update { it.copy(filterGroups = groups, filtersLoading = false) }
+                AppDiagnostics.record("FILTER", "LOAD_OK", stage = genre,
+                    elapsedMs = android.os.SystemClock.elapsedRealtime() - filterStartedAt, count = groups.size)
             } catch (error: CancellationException) { throw error }
             catch (error: Exception) {
-                if (version == filtersVersion) mutableState.update { it.copy(filtersLoading = false,
-                    filtersError = readableFailure(error, "获取筛选条件")) }
+                if (version == filtersVersion) {
+                    AppDiagnostics.failure("FILTER", error = error,
+                        elapsedMs = android.os.SystemClock.elapsedRealtime() - filterStartedAt)
+                    mutableState.update { it.copy(filtersLoading = false,
+                        filtersError = readableFailure(error, "获取筛选条件")) }
+                }
             }
         }
     }
@@ -377,15 +337,24 @@ class HongguoViewModel(application: Application) : AndroidViewModel(application)
         val previous = if (append) current.category else FeedState()
         val selection = current.browseApplied
         mutableState.update { it.copy(category = previous.copy(loading = !append, loadingMore = append, error = null)) }
+        val browseStartedAt = android.os.SystemClock.elapsedRealtime()
+        AppDiagnostics.record("CATEGORY", "LOAD_START", stage = selection.genre,
+            count = if (append) 1 else 0)
         categoryJob = viewModelScope.launch {
             try {
                 val page = repository.browse(selection, if (append) previous.nextOffset else 0, previous.items.map { it.id })
                 if (version != categoryVersion || !currentCoroutineContext().isActive) return@launch
                 mutableState.update { it.copy(category = mergePage(previous, page, append)) }
+                AppDiagnostics.record("CATEGORY", "LOAD_OK", stage = selection.genre,
+                    elapsedMs = android.os.SystemClock.elapsedRealtime() - browseStartedAt, count = page.items.size)
             } catch (error: CancellationException) { throw error }
             catch (error: Exception) {
-                if (version == categoryVersion) mutableState.update { it.copy(category = previous.copy(
-                    loading = false, loadingMore = false, loaded = true, error = readableFailure(error, "加载分类"))) }
+                if (version == categoryVersion) {
+                    AppDiagnostics.failure("CATEGORY", error = error,
+                        elapsedMs = android.os.SystemClock.elapsedRealtime() - browseStartedAt)
+                    mutableState.update { it.copy(category = previous.copy(
+                        loading = false, loadingMore = false, loaded = true, error = readableFailure(error, "加载分类"))) }
+                }
             }
         }
     }
@@ -483,6 +452,8 @@ class HongguoViewModel(application: Application) : AndroidViewModel(application)
             results = emptyList(), searching = true, loadingMore = false, hasMore = false, nextOffset = 0,
             searchError = null, selectedCard = null, detail = null, video = null, preparing = false,
             playbackError = null, firstFrameRendered = false, playerOpen = false) }
+        val searchStartedAt = android.os.SystemClock.elapsedRealtime()
+        AppDiagnostics.record("SEARCH", "LOAD_START")
         searchJob = viewModelScope.launch {
             try {
                 val page = repository.search(query, 0)
@@ -491,11 +462,17 @@ class HongguoViewModel(application: Application) : AndroidViewModel(application)
                     it.copy(results = page.items.distinctBy(DramaCard::id), searching = false,
                         hasMore = page.hasMore, nextOffset = page.nextOffset)
                 }
+                AppDiagnostics.record("SEARCH", "LOAD_OK",
+                    elapsedMs = android.os.SystemClock.elapsedRealtime() - searchStartedAt, count = page.items.size)
             } catch (error: CancellationException) {
                 throw error
             } catch (error: Exception) {
-                if (version == searchVersion) mutableState.update {
-                    it.copy(searching = false, searchError = readableFailure(error, "搜索"))
+                if (version == searchVersion) {
+                    AppDiagnostics.failure("SEARCH", error = error,
+                        elapsedMs = android.os.SystemClock.elapsedRealtime() - searchStartedAt)
+                    mutableState.update {
+                        it.copy(searching = false, searchError = readableFailure(error, "搜索"))
+                    }
                 }
             }
         }
@@ -534,7 +511,7 @@ class HongguoViewModel(application: Application) : AndroidViewModel(application)
     /** 沉浸暗场 preview: the episode list plus episode 1's progressive session. Writes no history or progress. */
     internal suspend fun previewFirstEpisode(card: DramaCard): Pair<DramaDetail, PreparedVideo> {
         val detail = repository.details(card)
-        val first = detail.episodes.first()
+        val first = detail.episodes.firstOrNull() ?: throw java.io.IOException("EMPTY_EPISODES")
         return detail to repository.prepare(first, allowFallback = false) { _, _, _ -> }
     }
 
@@ -551,7 +528,11 @@ class HongguoViewModel(application: Application) : AndroidViewModel(application)
         pendingAutoPlay = autoPlay
         cancelSearch()
         cancelDetailAndMedia()
+        startupPendingDetail = autoPlay || resume != null
+        startupTrace = if (startupPendingDetail) PlaybackStartupTrace() else null
         val version = ++detailVersion
+        val detailStartedAt = android.os.SystemClock.elapsedRealtime()
+        AppDiagnostics.record("DETAIL", "LOAD_START")
         mutableState.update {
             it.copy(selectedCard = card, detail = null, loadingDetail = true, detailError = null, related = emptyList(),
                 video = null, preparing = false, preparationStage = "", playbackError = null,
@@ -569,6 +550,10 @@ class HongguoViewModel(application: Application) : AndroidViewModel(application)
             try {
                 val detail = repository.details(card)
                 if (version != detailVersion || !currentCoroutineContext().isActive) return@launch
+                AppDiagnostics.record("DETAIL", "LOAD_OK",
+                    elapsedMs = android.os.SystemClock.elapsedRealtime() - detailStartedAt,
+                    count = detail.episodes.size)
+                startupTrace?.mark("detail_ready")
                 val lastId = resume?.episodeId?.takeIf { it.isNotBlank() } ?: preferences.getString("${card.id}.episode", "")
                 val lastIndex = resume?.episodeIndex?.takeIf { it > 0 } ?: preferences.getInt("${card.id}.index", -1)
                 val selected = detail.episodes.indexOfFirst { it.id == lastId }.takeIf { it >= 0 }
@@ -579,12 +564,22 @@ class HongguoViewModel(application: Application) : AndroidViewModel(application)
                     val target = detail.episodes[selected]
                     val position = if (target.id == resume.episodeId || target.index == resume.episodeIndex) resume.positionMs else 0
                     playEpisode(selected, resumeOverrideMs = position)
-                } else if (autoPlay && detail.episodes.isNotEmpty()) playEpisode(selected)
+                } else if (autoPlay && detail.episodes.isNotEmpty()) {
+                    playEpisode(selected)
+                } else if (state.value.preloadNext) {
+                    // Preparing the selected first/resume episode while the user reads details
+                    // moves device registration and index checks off the click-to-play path.
+                    detail.episodes.getOrNull(selected)?.let(::startWarm)
+                }
             } catch (error: CancellationException) {
                 throw error
             } catch (error: Exception) {
-                if (version == detailVersion) mutableState.update {
-                    it.copy(loadingDetail = false, detailError = readableFailure(error, "获取剧集"))
+                if (version == detailVersion) {
+                    AppDiagnostics.failure("DETAIL", error = error,
+                        elapsedMs = android.os.SystemClock.elapsedRealtime() - detailStartedAt)
+                    mutableState.update {
+                        it.copy(loadingDetail = false, detailError = readableFailure(error, "获取剧集"))
+                    }
                 }
             }
         }
@@ -596,7 +591,10 @@ class HongguoViewModel(application: Application) : AndroidViewModel(application)
         val current = state.value
         val detail = current.detail ?: return
         val episode = detail.episodes.getOrNull(position) ?: return
-        val warmed = takePrefetch(episode.id)
+        val warmClaim = takePrefetch(episode.id)
+        if (!startupPendingDetail || startupTrace == null) startupTrace = PlaybackStartupTrace()
+        startupPendingDetail = false
+        startupTrace?.mark("episode_selected")
         ++mediaVersion
         mediaJob?.cancel()
         resumePreparationOnForeground = false
@@ -607,19 +605,50 @@ class HongguoViewModel(application: Application) : AndroidViewModel(application)
             LibraryEntry(cardFor(detail), episode.id, episode.index), accounts.ownerKey)
         while (accountPlaybacks.size > 16) accountPlaybacks.remove(accountPlaybacks.keys.first())
         resumeTargets[episode.id] = ResumeTarget(cardFor(detail), episode.index)
+        AppDiagnostics.record("PLAYBACK", "EPISODE_SELECTED",
+            stage = if (warmClaim != null) "prefetch_claimed" else "direct")
+        if (warmClaim != null) {
+            AppDiagnostics.record("PREFETCH", "CLAIM",
+                stage = if (warmClaim.prepared.isCompleted) "ready" else "inflight")
+        }
         val savedPosition = if (restart) 0 else resumeOverrideMs ?: preferences.getLong("${detail.id}.${episode.id}.position", 0)
         mutableState.update {
             it.copy(episodePosition = position, preparing = true, video = null,
                 preparationStage = "正在获取片源", preparationDone = 0, preparationTotal = 0,
-                playbackError = null, playbackStatus = "", firstFrameRendered = false, resumePositionMs = savedPosition, playerOpen = true)
+                playbackError = null, playbackDiagnostic = null, playbackStatus = "", firstFrameRendered = false, resumePositionMs = savedPosition, playerOpen = true)
         }
         releaseVideo(current.video)
         mediaJob = viewModelScope.launch {
+            var transferredWarm = false
             try {
+                var lastStage = ""
+                // If the preload is still resolving the video address, join that same request
+                // instead of canceling it and registering another anonymous device.
+                val claimWaitStartedAt = android.os.SystemClock.elapsedRealtime()
+                val warmed = warmClaim?.prepared?.await()
+                transferredWarm = warmed != null
+                if (warmClaim != null) {
+                    AppDiagnostics.record("PREFETCH",
+                        if (warmed != null) "HANDOFF_OK" else "HANDOFF_MISS",
+                        elapsedMs = android.os.SystemClock.elapsedRealtime() - claimWaitStartedAt)
+                }
                 val prepared = warmed ?: repository.prepare(episode) { stage, done, total ->
-                    if (version == mediaVersion) mutableState.update {
-                        it.copy(preparationStage = stage, preparationDone = done, preparationTotal = total)
+                    if (version == mediaVersion) {
+                        startupTrace?.mark(stage)
+                        if (stage != lastStage) {
+                            lastStage = stage
+                            AppDiagnostics.record("PLAYBACK", "SOURCE_STAGE", stage = stage)
+                        }
+                        mutableState.update {
+                            it.copy(preparationStage = stage, preparationDone = done, preparationTotal = total)
+                        }
                     }
+                }
+                if (version == mediaVersion) {
+                    startupTrace?.mark("media_ready")
+                    AppDiagnostics.record("PLAYBACK", "MEDIA_READY",
+                        stage = if (warmed != null) "prefetched" else "direct",
+                        elapsedMs = startupTrace?.elapsedMillis())
                 }
                 if (version != mediaVersion || !currentCoroutineContext().isActive) {
                     releaseVideo(prepared)
@@ -627,10 +656,21 @@ class HongguoViewModel(application: Application) : AndroidViewModel(application)
                 }
                 mutableState.update { it.copy(video = prepared.copy(requestId = version.toLong()), preparing = false, playbackStatus = "正在载入播放器") }
             } catch (error: CancellationException) {
+                if (!transferredWarm) abandonClaim(warmClaim)
                 throw error
             } catch (error: Exception) {
-                if (version == mediaVersion) mutableState.update {
-                    it.copy(preparing = false, playbackError = readableFailure(error, "准备播放"), playbackStatus = "")
+                if (!transferredWarm) abandonClaim(warmClaim)
+                if (version == mediaVersion) {
+                    startupTrace?.mark("failed")
+                    val diagnostic = PlaybackDiagnostic.fromPreparationFailure(error)
+                        .copy(startupTimings = startupTrace?.report())
+                    AppDiagnostics.record("PLAYBACK", "PREPARE_ERROR",
+                        code = diagnostic.code, elapsedMs = startupTrace?.elapsedMillis())
+                    android.util.Log.i("HongguoStartup", diagnostic.startupTimings.orEmpty())
+                    mutableState.update {
+                        it.copy(preparing = false, playbackError = diagnostic.message,
+                            playbackDiagnostic = diagnostic, playbackStatus = "")
+                    }
                 }
             }
         }
@@ -641,7 +681,7 @@ class HongguoViewModel(application: Application) : AndroidViewModel(application)
         mediaJob?.cancel()
         resumePreparationOnForeground = false
         takePrefetch(null)
-        mutableState.update { it.copy(preparing = false, preparationStage = "", playbackStatus = "已取消，可重新选择剧集") }
+        mutableState.update { it.copy(preparing = false, preparationStage = "", playbackDiagnostic = null, playbackStatus = "已取消，可重新选择剧集") }
     }
 
     fun retryPlayback() {
@@ -663,7 +703,7 @@ class HongguoViewModel(application: Application) : AndroidViewModel(application)
         takePrefetch(null)
         resumePreparationOnForeground = false
         mutableState.update { it.copy(playerOpen = false, video = null, preparing = false,
-            preparationStage = "", playbackError = null, playbackStatus = "", firstFrameRendered = false) }
+            preparationStage = "", playbackError = null, playbackDiagnostic = null, playbackStatus = "", firstFrameRendered = false) }
         releaseVideo(previous)
     }
 
@@ -686,54 +726,111 @@ class HongguoViewModel(application: Application) : AndroidViewModel(application)
 
     private fun prefetchNext() {
         val current = state.value
-        if (!playerForeground || !bufferReadyForPrefetch || !current.playerOpen || !current.preloadNext || !current.firstFrameRendered || current.playbackError != null) return
+        if (!playerForeground || !bufferReadyForPrefetch || !current.playerOpen || !current.preloadNext ||
+            !current.firstFrameRendered || current.playbackError != null) return
         val requestId = current.video?.requestId ?: return
         val episode = current.detail?.episodes?.getOrNull(current.episodePosition + 1) ?: return
-        if (warmSlot?.episodeId == episode.id) return
-        if (prefetchAttemptedFor == requestId) return
+        if (warmSlot?.episodeId == episode.id || prefetchAttemptedFor == requestId) return
         prefetchAttemptedFor = requestId
+        startWarm(episode)
+    }
+
+    /** One producer may be claimed while it is still opening. Never start a second registration. */
+    private fun startWarm(episode: Episode) {
+        if (warmSlot?.episodeId == episode.id) return
         takePrefetch(null)
         val slot = WarmSlot(episode.id)
         warmSlot = slot
-        prefetchJob = viewModelScope.launch {
+        AppDiagnostics.record("PREFETCH", "START")
+        val warmStartedAt = android.os.SystemClock.elapsedRealtime()
+        val job = viewModelScope.launch {
             var ready = false
+            var lastWarmStage = ""
             try {
-                val prepared = repository.prepare(episode, allowFallback = false) { _, _, _ -> }
+                // A claimed producer was previously opaque: keep fixed stage checkpoints so
+                // exported logs show whether registration, model routing, or CDN/MP4 is slow.
+                val prepared = repository.prepare(episode, allowFallback = false) { stage, _, _ ->
+                    if (stage != lastWarmStage) {
+                        lastWarmStage = stage
+                        AppDiagnostics.record("PREFETCH", "STAGE", stage = stage,
+                            elapsedMs = android.os.SystemClock.elapsedRealtime() - warmStartedAt)
+                    }
+                }
                 slot.video = prepared
-                if (warmSlot !== slot || !playerForeground) return@launch
+                if (slot.abandoned) return@launch
+                slot.prepared.complete(prepared)
+                AppDiagnostics.record("PREFETCH", "READY",
+                    elapsedMs = android.os.SystemClock.elapsedRealtime() - warmStartedAt)
+                if (slot.taken || warmSlot !== slot) return@launch
                 repository.warmNext(prepared) { reader ->
                     slot.reader = reader
                     if (reader != null && (slot.taken || warmSlot !== slot)) reader.close()
                 }
                 ready = true
-            } catch (cancelled: CancellationException) { throw cancelled }
-            catch (_: Exception) { /* Speculative work must never interrupt the current episode. */ }
+            } catch (cancelled: CancellationException) {
+                AppDiagnostics.record("PREFETCH", "CANCELLED",
+                    elapsedMs = android.os.SystemClock.elapsedRealtime() - warmStartedAt)
+                throw cancelled
+            }
+            catch (error: Exception) {
+                if (slot.abandoned || !currentCoroutineContext().isActive) {
+                    AppDiagnostics.record("PREFETCH", "ABANDONED",
+                        elapsedMs = android.os.SystemClock.elapsedRealtime() - warmStartedAt)
+                } else {
+                    AppDiagnostics.failure("PREFETCH", error = error,
+                        elapsedMs = android.os.SystemClock.elapsedRealtime() - warmStartedAt)
+                }
+                /* Speculation must not break the selected episode. */
+            }
             finally {
-                if (!slot.taken && (!ready || warmSlot !== slot)) {
-                    releaseVideo(slot.video)
+                if (!slot.prepared.isCompleted) slot.prepared.complete(null)
+                if (slot.abandoned || (!slot.taken && (!ready || warmSlot !== slot))) {
+                    val unused = slot.video
+                    slot.video = null
+                    releaseVideo(unused)
                     if (warmSlot === slot) warmSlot = null
                 }
             }
         }
+        slot.producer = job
+        prefetchJob = job
     }
 
-    private fun takePrefetch(episodeId: String?): PreparedVideo? {
+    /** Take ownership of an in-flight or completed request, leaving its producer running. */
+    private fun takePrefetch(episodeId: String?): WarmSlot? {
         val slot = warmSlot
         warmSlot = null
-        if (slot != null) slot.taken = episodeId != null && slot.episodeId == episodeId && slot.video != null
-        slot?.reader?.close()
-        slot?.reader = null
-        prefetchJob?.cancel()
         prefetchJob = null
-        if (slot?.taken == true) return slot.video
-        releaseVideo(slot?.video)
+        if (slot != null && episodeId != null && slot.episodeId == episodeId) {
+            slot.taken = true
+            slot.reader?.close()
+            slot.reader = null
+            return slot
+        }
+        if (slot != null) {
+            slot.abandoned = true
+            slot.producer?.cancel()
+            slot.reader?.close()
+            slot.reader = null
+            val unused = slot.video
+            slot.video = null
+            releaseVideo(unused)
+        }
         return null
     }
 
-    private fun releaseVideo(video: PreparedVideo?) {
-        val session = video?.session ?: return
-        mediaCleanup.launch { runCatching { session.close() } }
+    /** If the waiting player is canceled, ensure a producer cannot leave its session orphaned. */
+    private fun abandonClaim(slot: WarmSlot?) {
+        if (slot == null) return
+        slot.abandoned = true
+        slot.producer?.cancel()
+        slot.reader?.close()
+        val unused = slot.video
+        slot.video = null
+        releaseVideo(unused)
     }
+
+    private fun releaseVideo(video: PreparedVideo?) = PlaybackSessionCoordinator.release(video)
 
     fun nextEpisode() {
         val current = state.value
@@ -754,13 +851,30 @@ class HongguoViewModel(application: Application) : AndroidViewModel(application)
     }
 
     fun onPlaybackStatus(episodeId: String, requestId: Long, status: String) {
-        if (isCurrentVideo(episodeId, requestId)) mutableState.update { it.copy(playbackStatus = status) }
+        if (!isCurrentVideo(episodeId, requestId)) return
+        if (status == "正在缓冲") startupTrace?.mark("player_buffering")
+        if (status == "正在播放" || status == "已暂停") startupTrace?.mark("player_ready")
+        if (state.value.playbackStatus != status) {
+            val event = when (status) {
+                "正在缓冲" -> "BUFFERING"
+                "正在播放" -> "PLAYING"
+                "已暂停" -> "PAUSED"
+                else -> "STATE_CHANGED"
+            }
+            AppDiagnostics.record("PLAYER", event)
+        }
+        mutableState.update { it.copy(playbackStatus = status) }
     }
 
     fun onFirstFrame(episodeId: String, requestId: Long) {
         if (!isCurrentVideo(episodeId, requestId)) return
         val alreadyRendered = state.value.firstFrameRendered
-        mutableState.update { it.copy(firstFrameRendered = true) }
+        if (!alreadyRendered) {
+            startupTrace?.mark("first_frame")
+            AppDiagnostics.record("PLAYBACK", "FIRST_FRAME", elapsedMs = startupTrace?.elapsedMillis())
+            startupTrace?.report()?.let { android.util.Log.i("HongguoStartup", it) }
+        }
+        mutableState.update { it.copy(firstFrameRendered = true, playbackDiagnostic = null) }
         accountPlaybacks[requestId]?.takeIf { it.entry.episodeId == episodeId }?.rendered = true
         if (!alreadyRendered) resumeTargets[episodeId]?.let { target ->
             library.recordPlayback(target.card, episodeId, target.index, state.value.resumePositionMs)
@@ -769,8 +883,16 @@ class HongguoViewModel(application: Application) : AndroidViewModel(application)
     }
 
     fun onPlaybackError(episodeId: String, requestId: Long, unsupported: Boolean) {
-        if (isCurrentVideo(episodeId, requestId)) mutableState.update {
+        if (!isCurrentVideo(episodeId, requestId)) return
+        PlaybackSessionCoordinator.invalidate(state.value.video)
+        AppDiagnostics.record("PLAYER", if (unsupported) "DECODER_ERROR" else "MEDIA_ERROR",
+            elapsedMs = startupTrace?.elapsedMillis())
+        startupTrace?.mark("failed")
+        startupTrace?.report()?.let { android.util.Log.i("HongguoStartup", it) }
+        mutableState.update {
             it.copy(playbackError = if (unsupported) "当前设备无法解码这集视频，可重试或选择其他集。" else "视频播放失败，可重试或选择其他集。",
+                playbackDiagnostic = PlaybackDiagnostic.playerFailure(unsupported).copy(
+                    startupTimings = startupTrace?.report()),
                 playbackStatus = "播放失败")
         }
     }
@@ -804,14 +926,18 @@ class HongguoViewModel(application: Application) : AndroidViewModel(application)
         val current = state.value
         if (requestId != null && current.video?.episodeId == episodeId && current.video.requestId != requestId) return
         val target = resumeTargets[episodeId] ?: return
-        val editor = preferences.edit().putLong("${target.card.id}.$episodeId.position", positionMs.coerceAtLeast(0))
-        // The old player's disposal may follow a new selection; it must not replace that selection.
-        val selected = current.detail?.episodes?.getOrNull(current.episodePosition)
-        if (selected?.id == episodeId && current.detail?.id == target.card.id) {
-            editor.putString("${target.card.id}.episode", episodeId).putInt("${target.card.id}.index", target.index)
+        val persist = playbackSavePolicy.shouldWrite(
+            "${target.card.id}:$episodeId", android.os.SystemClock.elapsedRealtime(), force || completed)
+        if (persist) {
+            val editor = preferences.edit().putLong("${target.card.id}.$episodeId.position", positionMs.coerceAtLeast(0))
+            // The old player's disposal may follow a new selection; it must not replace that selection.
+            val selected = current.detail?.episodes?.getOrNull(current.episodePosition)
+            if (selected?.id == episodeId && current.detail?.id == target.card.id) {
+                editor.putString("${target.card.id}.episode", episodeId).putInt("${target.card.id}.index", target.index)
+            }
+            editor.apply()
+            library.updatePosition(target.card, episodeId, target.index, positionMs.coerceAtLeast(0))
         }
-        editor.apply()
-        library.updatePosition(target.card, episodeId, target.index, positionMs.coerceAtLeast(0))
         val playback = requestId?.let { accountPlaybacks[it] }
         if (playback != null && playback.entry.episodeId == episodeId) {
             if (durationMs > 0) playback.durationMs = durationMs
@@ -832,6 +958,8 @@ class HongguoViewModel(application: Application) : AndroidViewModel(application)
     }
 
     private fun cancelDetailAndMedia() {
+        startupTrace = null
+        startupPendingDetail = false
         ++detailVersion
         ++mediaVersion
         detailJob?.cancel()

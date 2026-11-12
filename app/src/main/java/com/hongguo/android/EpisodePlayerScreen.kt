@@ -329,6 +329,15 @@ private fun EpisodePager(state: HongguoUiState, model: HongguoViewModel, detail:
                         verticalArrangement = Arrangement.spacedBy(14.dp)) {
                         Text(state.playbackError, color = Color.White, fontSize = 14.sp, lineHeight = 23.sp,
                             modifier = Modifier.testTag("media_status"))
+                        state.playbackDiagnostic?.let { diagnostic ->
+                            Text(diagnostic.stage + " · " + diagnostic.code, color = Color.White.copy(alpha = .75f),
+                                fontSize = 11.sp, modifier = Modifier.testTag("playback_diagnostic"))
+                            TextButton(onClick = {
+                                val clipboard = context.getSystemService(android.content.Context.CLIPBOARD_SERVICE) as? android.content.ClipboardManager
+                                clipboard?.setPrimaryClip(android.content.ClipData.newPlainText("Hongguo playback diagnostic", diagnostic.safeReport()))
+                                Toast.makeText(context, "诊断信息已复制", Toast.LENGTH_SHORT).show()
+                            }, modifier = Modifier.testTag("copy_playback_diagnostic")) { Text("复制诊断", color = Color.White) }
+                        }
                         Button(onClick = model::retryPlayback, modifier = Modifier.testTag("retry_playback"), shape = RoundedCornerShape(13.dp)) { Text("重新播放") }
                     }
                     state.preparing || (activeVideo != null && playback.player == null) || (playback.isBuffering && playback.playWhenReady) -> {
@@ -401,7 +410,7 @@ private fun EpisodePager(state: HongguoUiState, model: HongguoViewModel, detail:
                     if (video != null && duration > 0) {
                         val target = ((seekFraction ?: fraction) * duration).toLong().coerceIn(0, duration)
                         playback.player?.seekTo(target)
-                        model.savePosition(video.episodeId, target, video.requestId, duration)
+                        model.savePosition(video.episodeId, target, video.requestId, duration, force = true)
                     }
                     seeking = false; seekFraction = null
                 }, enabled = duration > 0 && activeVideo != null && state.playbackError == null,
@@ -610,6 +619,10 @@ private fun playerTime(positionMs: Long): String {
 }
 
 internal fun preparationLabel(stage: String): String = when {
+    stage == "reused" -> "正在恢复已缓存的画面"
+    stage == "device_register" -> "正在连接播放服务"
+    stage == "video_model" -> "正在获取播放地址"
+    stage == "index" -> "正在准备媒体索引"
     stage.contains("download", true) || stage.contains("下载") -> "正在缓冲本集视频"
     stage.contains("decrypt", true) || stage == "processing" || stage.contains("解密") -> "正在准备画面"
     stage.contains("remux", true) || stage.contains("strip", true) || stage.contains("封装") -> "即将开始播放"
