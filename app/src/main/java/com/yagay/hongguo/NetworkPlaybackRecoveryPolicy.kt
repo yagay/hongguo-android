@@ -11,6 +11,24 @@ internal object NetworkPlaybackRecoveryPolicy {
 
     fun isTransientMediaIo(errorCode: Int): Boolean = errorCode in transientIoCodes
 
+    /** Maximum new playback-model requests per continuous reconnection episode. */
+    const val MAX_MODEL_ATTEMPTS = 4
+
+    /**
+     * Allow Media3 to resume on its own first; subsequent failures retry at
+     * increasing intervals. Attempts are 1-based; no tight looping.
+     */
+    fun retryDelayMs(nextAttempt: Int): Long = when (nextAttempt) {
+        1 -> 2_500L
+        2 -> 4_000L
+        3 -> 8_000L
+        else -> 16_000L
+    }
+
+    fun canAttempt(nextAttempt: Int): Boolean =
+        nextAttempt in 1..MAX_MODEL_ATTEMPTS
+
+
     fun shouldArm(
         enabled: Boolean, sourceActive: Boolean, playRequested: Boolean,
         ended: Boolean, offlineFile: Boolean,

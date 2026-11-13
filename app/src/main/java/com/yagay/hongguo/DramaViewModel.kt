@@ -259,6 +259,7 @@ class DramaViewModel(application: Application) : AndroidViewModel(application) {
     fun setAutomaticPlaybackRetry(enabled: Boolean) {
         prefs.edit().putBoolean("playback_auto_retry", enabled).apply()
         mutable.update { it.copy(retryPlaybackAutomatically = enabled) }
+        BackgroundPlaybackService.active?.setPlaybackAutoRetry(enabled)
     }
 
     private val diagnostics = DiagnosticLog(File(application.filesDir, "diagnostics"),
@@ -2450,10 +2451,14 @@ class DramaViewModel(application: Application) : AndroidViewModel(application) {
 
     private fun recoverNetworkPlayback(expectedVid: String, positionMs: Long) {
         val snapshot = state.value
+        val service = BackgroundPlaybackService.active ?: return
         if (!snapshot.retryPlaybackAutomatically ||
             snapshot.offlinePlaybackUri != null ||
             snapshot.detail?.episodes?.getOrNull(snapshot.episodeIndex)?.vid != expectedVid ||
-            BackgroundPlaybackService.active == null) return
+            !service.isNetworkRecoveryCurrent(expectedVid)) {
+            service.networkRecoveryAttemptFailed(expectedVid, retryable = false)
+            return
+        }
         diagnostics.record("NETWORK_RESUME", "REFETCH_PLAYBACK_MODEL")
         playAt(snapshot.episodeIndex, positionMs.coerceAtLeast(0L))
     }
@@ -2475,8 +2480,10 @@ class DramaViewModel(application: Application) : AndroidViewModel(application) {
         // A reconnect retains the previous service-owned media item and
         // notification while the signed playback model is fetched again.
         // Ordinary user swipes/selections still pause for transitions.
-        if (networkResumeMs == null)
+        if (networkResumeMs == null) {
+            BackgroundPlaybackService.active?.cancelNetworkRecoveryForManualAction()
             BackgroundPlaybackService.active?.pauseForTransition()
+        }
         // The mini player must survive autoplay while another page is open.
         if (!state.value.miniPlayerVisible)
             mutable.update { it.copy(detailPageVisible = false) }
@@ -2525,6 +2532,12 @@ class DramaViewModel(application: Application) : AndroidViewModel(application) {
                 if (api != null) {
                     val url = api.playableUrl(vid)
                     if (version != detailId) return@launch
+                    if (networkResumeMs != null &&
+                        BackgroundPlaybackService.active
+                            ?.isNetworkRecoveryCurrent(vid) != true) {
+                        diagnostics.record("NETWORK_RESUME", "STALE_MODEL_DISCARDED")
+                        return@launch
+                    }
                     mutable.update { it.copy(playbackUrl = url, playing = true) }
                     if (serviceStarted) launchBackgroundMedia(
                         detail, index, url, null, checkpoint, version)
@@ -2540,8 +2553,13 @@ class DramaViewModel(application: Application) : AndroidViewModel(application) {
                     if (version != detailId ||
                         state.value.detail?.episodes
                             ?.getOrNull(state.value.episodeIndex)?.vid != vid ||
-                        state.value.qualityLimit != quality) {
+                        state.value.qualityLimit != quality ||
+                        (networkResumeMs != null &&
+                            BackgroundPlaybackService.active
+                                ?.isNetworkRecoveryCurrent(vid) != true)) {
                         com.yagay.hongguo.kxg.KxgPlaybackStreams.forget(prepared.uri)
+                        if (networkResumeMs != null)
+                            diagnostics.record("NETWORK_RESUME", "STALE_MODEL_DISCARDED")
                         return@launch
                     }
                     mutable.update { it.copy(playbackUrl = prepared.uri, playing = true) }
@@ -2555,8 +2573,14 @@ class DramaViewModel(application: Application) : AndroidViewModel(application) {
                 throw e
             } catch (e: Exception) {
                 if (version == detailId) {
-                    if (networkResumeMs != null)
-                        diagnostics.record("NETWORK_RESUME", "MODEL_REFRESH_FAILED")
+                    if (networkResumeMs != null) {
+                        val retryable = PlaybackProblem.isTransientTransport(e)
+                        diagnostics.record("NETWORK_RESUME",
+                            if (retryable) "MODEL_REFRESH_TRANSIENT_FAILURE"
+                            else "MODEL_REFRESH_PERMANENT_FAILURE")
+                        BackgroundPlaybackService.active
+                            ?.networkRecoveryAttemptFailed(vid, retryable)
+                    }
                     mutable.update {
                         it.copy(playbackError = errorText("准备播放", e), playing = false)
                     }

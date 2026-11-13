@@ -42,4 +42,18 @@ class NetworkPlaybackRecoveryPolicyTest {
         // Seeking backwards must not jump forward to an older checkpoint.
         assertEquals(1_000L, p.resumeMs(1_000L, 81_000L))
     }
+
+    @Test fun modelRefreshRetriesAreBoundedWithBackoff() {
+        val p = NetworkPlaybackRecoveryPolicy
+        assertEquals(4, p.MAX_MODEL_ATTEMPTS)
+        assertFalse(p.canAttempt(0))
+        for (attempt in 1..p.MAX_MODEL_ATTEMPTS) {
+            assertTrue(p.canAttempt(attempt))
+        }
+        assertFalse(p.canAttempt(p.MAX_MODEL_ATTEMPTS + 1))
+        assertEquals(2_500L, p.retryDelayMs(1))
+        assertEquals(4_000L, p.retryDelayMs(2))
+        assertEquals(8_000L, p.retryDelayMs(3))
+        assertEquals(16_000L, p.retryDelayMs(4))
+    }
 }

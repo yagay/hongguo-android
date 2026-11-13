@@ -140,6 +140,58 @@ class BackgroundPlaybackService : MediaSessionService() {
     private var currentSourceIsOffline = false
     private var onNetworkRecovered: ((Long) -> Unit)? = null
     private var networkRecoveryTask: Runnable? = null
+    private var networkModelAttempts = 0
+    /** The user wanted this media to play before connectivity was lost. */
+    private var networkRecoveryPlayRequested = false
+
+    /** Clear only this episode's automatic recovery, never the Media3 item. */
+    private fun cancelNetworkRecovery() {
+        networkGeneration++
+        cancelNetworkResumeTask()
+        awaitingNetworkResume = false
+        networkRefreshIssued = false
+        networkModelAttempts = 0
+        networkRecoveryPlayRequested = false
+    }
+
+    /** A manual pause/episode change must beat an in-flight reconnect request. */
+    fun cancelNetworkRecoveryForManualAction() {
+        cancelNetworkRecovery()
+    }
+
+    /** Called by ViewModel before publishing a refreshed signed stream. */
+    fun isNetworkRecoveryCurrent(vid: String): Boolean =
+        currentKey != null && currentVid == vid &&
+            networkModelAttempts > 0 && networkRefreshIssued &&
+            networkRecoveryPlayRequested && retryAutomatically
+
+    /** The model request failed, or the refreshed Media3 item failed to load. */
+    fun networkRecoveryAttemptFailed(vid: String, retryable: Boolean) {
+        if (currentVid != vid || currentKey == null ||
+            networkModelAttempts == 0 || !networkRecoveryPlayRequested) return
+        // Stale model failures after another request started cannot schedule
+        // additional work; the callback always runs on our main thread.
+        networkRefreshIssued = false
+        if (!retryable || !retryAutomatically) {
+            diagnostics.record("NETWORK_RESUME", "NON_RETRYABLE_FAILURE")
+            cancelNetworkRecovery()
+            return
+        }
+        if (!NetworkPlaybackRecoveryPolicy.canAttempt(networkModelAttempts + 1)) {
+            diagnostics.record("NETWORK_RESUME", "MAX_RETRIES_EXHAUSTED")
+            cancelNetworkRecovery()
+            return
+        }
+        awaitingNetworkResume = true
+        diagnostics.record("NETWORK_RESUME", "ATTEMPT_FAILED_RETRY_SCHEDULED")
+        if (networkValidated) scheduleNetworkResume()
+        else diagnostics.record("NETWORK_RESUME", "RETRY_WAITING_FOR_NETWORK")
+    }
+
+    fun setPlaybackAutoRetry(enabled: Boolean) {
+        retryAutomatically = enabled
+        if (!enabled) cancelNetworkRecovery()
+    }
 
     private fun isNetworkValidated(): Boolean = runCatching {
         val network = connectivity.activeNetwork ?: return@runCatching false
@@ -173,8 +225,10 @@ class BackgroundPlaybackService : MediaSessionService() {
     private fun armNetworkResumeIfNeeded() {
         if (!::engine.isInitialized || currentKey == null) return
         if (NetworkPlaybackRecoveryPolicy.shouldArm(
-                retryAutomatically, true, engine.playWhenReady || autoStartPending,
+                retryAutomatically, true,
+                networkRecoveryPlayRequested || engine.playWhenReady || autoStartPending,
                 engine.playbackState == Player.STATE_ENDED, currentSourceIsOffline)) {
+            networkRecoveryPlayRequested = true
             awaitingNetworkResume = true
             lastGoodPositionMs = NetworkPlaybackRecoveryPolicy.resumeMs(
                 engine.currentPosition, lastGoodPositionMs)
@@ -196,7 +250,11 @@ class BackgroundPlaybackService : MediaSessionService() {
             else -> "DEFAULT_NETWORK_CHANGED"
         })
         if (!available) {
+            // A fresh network epoch receives its own bounded retry budget.
+            // Let the already-playing source remain untouched.
+            networkModelAttempts = 0
             networkRefreshIssued = false
+            networkRecoveryPlayRequested = false
             cancelNetworkResumeTask()
             armNetworkResumeIfNeeded()
         } else {
@@ -205,7 +263,11 @@ class BackgroundPlaybackService : MediaSessionService() {
             if (changedNetwork && !::engine.isInitialized) return
             if (changedNetwork && ::engine.isInitialized &&
                 engine.playbackState in setOf(Player.STATE_BUFFERING, Player.STATE_IDLE) &&
-                !engine.isPlaying) armNetworkResumeIfNeeded()
+                !engine.isPlaying) {
+                networkModelAttempts = 0
+                networkRefreshIssued = false
+                armNetworkResumeIfNeeded()
+            }
             if (awaitingNetworkResume) {
                 networkRefreshIssued = false
                 // Let Media3 resume by itself before requesting a new model.
@@ -214,8 +276,16 @@ class BackgroundPlaybackService : MediaSessionService() {
         }
     }
 
-    private fun scheduleNetworkResume() {
+    private fun scheduleNetworkResume(
+        delayMs: Long =
+            NetworkPlaybackRecoveryPolicy.retryDelayMs(networkModelAttempts + 1),
+    ) {
         if (!awaitingNetworkResume || !networkValidated || networkRefreshIssued) return
+        if (!NetworkPlaybackRecoveryPolicy.canAttempt(networkModelAttempts + 1)) {
+            diagnostics.record("NETWORK_RESUME", "MAX_RETRIES_EXHAUSTED")
+            cancelNetworkRecovery()
+            return
+        }
         cancelNetworkResumeTask()
         val generation = networkGeneration
         val work = Runnable {
@@ -223,13 +293,15 @@ class BackgroundPlaybackService : MediaSessionService() {
             if (generation != networkGeneration || !::engine.isInitialized ||
                 currentKey == null || currentSourceIsOffline) return@Runnable
             if (engine.isPlaying) {
-                awaitingNetworkResume = false
+                cancelNetworkRecovery()
                 diagnostics.record("NETWORK_RESUME", "MEDIA3_RESUMED_WITHOUT_RELOAD")
                 return@Runnable
             }
             if (!NetworkPlaybackRecoveryPolicy.shouldRefresh(
                     awaitingNetworkResume, networkValidated,
-                    engine.playWhenReady || autoStartPending, engine.isPlaying,
+                    networkRecoveryPlayRequested &&
+                        (engine.playWhenReady || autoStartPending),
+                    engine.isPlaying,
                     engine.playbackState == Player.STATE_ENDED)) {
                 diagnostics.record("NETWORK_RESUME", "RELOAD_SKIPPED_NOT_PLAYING")
                 return@Runnable
@@ -238,16 +310,23 @@ class BackgroundPlaybackService : MediaSessionService() {
             val callback = onNetworkRecovered ?: return@Runnable
             networkRefreshIssued = true
             awaitingNetworkResume = false
+            networkModelAttempts++
             val position = NetworkPlaybackRecoveryPolicy.resumeMs(
                 engine.currentPosition, lastGoodPositionMs)
-            diagnostics.record("NETWORK_RESUME", "REFRESH_SIGNED_STREAM")
+            diagnostics.record("NETWORK_RESUME",
+                "REFRESH_SIGNED_STREAM_ATTEMPT_" + networkModelAttempts)
             // The ViewModel resolves the current episode again with a fresh
             // playable URI + CENC model, without creating a second player.
             // A stale delayed callback cannot reopen a newer video.
-            callback(position)
+            try {
+                callback(position)
+            } catch (_: Exception) {
+                diagnostics.record("NETWORK_RESUME", "REFRESH_CALLBACK_FAILED")
+                networkRecoveryAttemptFailed(currentVid, true)
+            }
         }
         networkRecoveryTask = work
-        main.postDelayed(work, 2_500L)
+        main.postDelayed(work, delayMs)
     }
 
     override fun onCreate() {
@@ -405,8 +484,8 @@ class BackgroundPlaybackService : MediaSessionService() {
                     reason == Player.PLAY_WHEN_READY_CHANGE_REASON_USER_REQUEST) {
                     // Respect an explicit user pause (or a manual episode
                     // transition) even if network connectivity changes.
-                    awaitingNetworkResume = false
-                    cancelNetworkResumeTask()
+                    autoStartPending = false
+                    cancelNetworkRecovery()
                 } else if (playWhenReady && !networkValidated) {
                     armNetworkResumeIfNeeded()
                 }
@@ -425,8 +504,9 @@ class BackgroundPlaybackService : MediaSessionService() {
             override fun onIsPlayingChanged(isPlaying: Boolean) {
                 if (isPlaying) {
                     autoStartPending = false
-                    awaitingNetworkResume = false
-                    cancelNetworkResumeTask()
+                    if (networkModelAttempts > 0)
+                        diagnostics.record("NETWORK_RESUME", "PLAYBACK_RESTORED")
+                    cancelNetworkRecovery()
                     diagnostics.record("BACKGROUND", "PLAYING")
                 }
             }
@@ -520,11 +600,21 @@ class BackgroundPlaybackService : MediaSessionService() {
                         engine.play()
                         return
                     } else {
-                        // Keep a recovery ticket for a future actual handoff,
-                        // even if Media3 has moved to STATE_IDLE.
+                        // Retry a fresh playback model even if no further
+                        // network callback arrives on the same connection.
                         armNetworkResumeIfNeeded()
-                        diagnostics.record("NETWORK_RESUME", "WAIT_FOR_NEXT_HANDOFF")
+                        if (networkModelAttempts > 0) {
+                            if (!networkRefreshIssued)
+                                networkRecoveryAttemptFailed(currentVid, true)
+                        } else if (networkValidated) {
+                            scheduleNetworkResume()
+                        }
                     }
+                } else if (networkModelAttempts > 0) {
+                    // Do not retry a codec error, refused stream or other
+                    // permanent Media3 failure merely because it followed
+                    // a temporary network outage.
+                    networkRecoveryAttemptFailed(currentVid, retryable = false)
                 }
                 diagnostics.record("BACKGROUND", "MEDIA_ERROR")
                 onError?.invoke(PlaybackProblem.media(
@@ -631,10 +721,19 @@ class BackgroundPlaybackService : MediaSessionService() {
         onNetworkRecovered = networkRecovered
         outroMs = endingMs.coerceAtLeast(0)
         if (currentKey == key) return
+        // The requested video is the same but the signed CENC model is new.
+        // Preserve the retry budget until Media3 actually starts playing.
+        val continuingNetworkRecovery = currentVid == vid &&
+            networkModelAttempts > 0 && networkRefreshIssued &&
+            networkRecoveryPlayRequested
         networkGeneration++
         networkRefreshIssued = false
-        awaitingNetworkResume = false
+        awaitingNetworkResume = continuingNetworkRecovery
         cancelNetworkResumeTask()
+        if (!continuingNetworkRecovery) {
+            networkModelAttempts = 0
+            networkRecoveryPlayRequested = false
+        }
         currentSourceIsOffline = url.startsWith("content://") ||
             url.startsWith("file://") || url.startsWith("android.resource://")
         lastGoodPositionMs = positionMs.coerceAtLeast(0L)
@@ -694,6 +793,11 @@ class BackgroundPlaybackService : MediaSessionService() {
         engine.playWhenReady = true
         engine.prepare()
         engine.play()
+        if (continuingNetworkRecovery && networkValidated) {
+            // Some CDN streams stay BUFFERING indefinitely instead of
+            // dispatching an error. Treat that as a failed attempt too.
+            scheduleNetworkResume(delayMs = 15_000L)
+        }
         if (previousRemote != null && previousRemote !== remote)
             previousRemote.close()
         diagnostics.record("BACKGROUND", "NEXT_SOURCE_PLAY_REQUESTED")
@@ -794,11 +898,8 @@ class BackgroundPlaybackService : MediaSessionService() {
             engine.clearMediaItems()
         }
         currentKey = null
-        networkGeneration++
-        awaitingNetworkResume = false
-        networkRefreshIssued = false
+        cancelNetworkRecovery()
         onNetworkRecovered = null
-        cancelNetworkResumeTask()
         remoteVideo?.close()
         remoteVideo = null
         onFirstFrame = null
