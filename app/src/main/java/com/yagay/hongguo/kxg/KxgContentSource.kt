@@ -107,6 +107,42 @@ internal class KxgContentSource(private val sdk: OpenHongguoSource) {
     }
 
     /**
+     * Only the short-drama ranking endpoint exposes a provider-authored score
+     * such as "997万推荐". A filtered/discovered SeriesSummary has no such
+     * field, so join rank entries to catalog posters by exact series ID.
+     * No per-poster requests, no heat->recommendation conversion.
+     */
+    suspend fun rankRecommendationLabels(content: String): Map<String, String> {
+        require(content in setOf("all", "human", "comic_series_rank", "ai_playlet"))
+        val first = sdk.shortRank(ShortRankQuery(content = content))
+        val matched = linkedMapOf<String, String>()
+        fun capture(rows: List<dev.openhongguo.RankItem>) {
+            rows.forEach { item ->
+                if (item.seriesId.isNotBlank()) {
+                    RecommendationDisplayMetric.fromSource(item.score)?.let { label ->
+                        matched[item.seriesId] = label
+                    }
+                }
+            }
+        }
+        capture(first.items)
+        // The default chart can be the heat board. Request the dedicated
+        // "推荐榜" once, when the SDK actually exposes it.
+        val group = first.contents.firstOrNull { it.id == content }
+            ?: first.contents.firstOrNull { it.selected }
+        val recommendBoard = group?.boards?.firstOrNull {
+            it.name.contains("推荐", ignoreCase = true)
+        }
+        if (recommendBoard != null && recommendBoard.id.isNotBlank() &&
+            recommendBoard.id != first.board) {
+            val recommendations = sdk.shortRank(ShortRankQuery(
+                content = content, board = recommendBoard.id))
+            capture(recommendations.items)
+        }
+        return matched
+    }
+
+    /**
      * The list endpoint generally returns covers/titles without genre tags.
      * Reuse the SDK's existing ten-series batch detail endpoint; caller runs
      * this AFTER publishing the original list so image loading is not blocked.
@@ -214,5 +250,7 @@ internal class KxgContentSource(private val sdk: OpenHongguoSource) {
     }
 
     private fun toDrama(row: SeriesSummary): Drama =
-        Drama(row.id, row.title, row.coverUrl, row.episodeCount, row.description)
+        Drama(row.id, row.title, row.coverUrl, row.episodeCount,
+            row.description, categories = row.category.trim()
+                .takeIf(String::isNotBlank)?.let { listOf(it) }.orEmpty())
 }

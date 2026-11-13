@@ -522,25 +522,29 @@ private fun CatalogPoster(drama: Drama, cover: String,
         // is shown only when the upstream explicitly calls it "推荐":
         // never substitute play count, heat, followers or local likes.
         val cardTags = CatalogPosterMetadata.tags(drama)
-        val providerRecommendation = drama.recommendationLabel
-        if (cardTags.isNotEmpty() || providerRecommendation != null) {
+        val isRecommendedScore = drama.recommendationLabel != null
+        val visibleStatistic = drama.recommendationLabel ?: drama.activityLabel
+        if (cardTags.isNotEmpty() || visibleStatistic != null) {
             Row(Modifier.fillMaxWidth()
                     .testTag("poster_metadata_" + drama.id),
                 verticalAlignment = Alignment.CenterVertically,
                 horizontalArrangement = Arrangement.spacedBy(6.dp)) {
-                if (providerRecommendation != null) {
+                if (visibleStatistic != null) {
                     Text(
-                        providerRecommendation,
-                        color = HongguoColors.accent,
+                        visibleStatistic,
+                        color = if (isRecommendedScore)
+                            HongguoColors.accent else HongguoColors.muted,
                         fontWeight = FontWeight.Medium,
                         fontSize = 10.sp, maxLines = 1,
                         overflow = TextOverflow.Ellipsis,
-                        modifier = Modifier.testTag("poster_recommendation_" + drama.id),
+                        modifier = Modifier.testTag(
+                            (if (isRecommendedScore) "poster_recommendation_"
+                            else "poster_activity_") + drama.id),
                     )
                 }
                 if (cardTags.isNotEmpty()) {
                     Row(
-                        modifier = (if (providerRecommendation == null)
+                        modifier = (if (visibleStatistic == null)
                             Modifier.fillMaxWidth() else Modifier.weight(1f))
                             .horizontalScroll(rememberScrollState())
                             .testTag("poster_categories_" + drama.id),

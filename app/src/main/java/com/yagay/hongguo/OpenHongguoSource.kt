@@ -304,6 +304,9 @@ internal class OpenHongguoSource(context: Context) {
             season = series.seasonIndex.takeIf { it > 0 },
             statusText = rows.firstOrNull { it.kind == 11 }?.text,
             rows = rows,
+            heat = series.heat.coerceAtLeast(0L),
+            followCount = series.followCount.coerceAtLeast(0L),
+            playCount = series.playCount.coerceAtLeast(0L),
         )
     }
 }

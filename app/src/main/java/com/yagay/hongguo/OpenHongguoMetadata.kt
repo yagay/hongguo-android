@@ -35,6 +35,9 @@ data class OpenHongguoMetadata(
     /** Explicit provider-authored declaration only, never inferred from genre. */
     val authorAiStatement: String? = null,
     val rows: List<OpenHongguoInfoRow> = emptyList(),
+    val heat: Long = 0L,
+    val followCount: Long = 0L,
+    val playCount: Long = 0L,
 )
 
 object OpenHongguoMetadataParser {
@@ -76,6 +79,9 @@ object OpenHongguoMetadataParser {
             statusText = primary.statusText ?: supplement.statusText,
             authorAiStatement = primary.authorAiStatement ?: supplement.authorAiStatement,
             rows = (primary.rows + supplement.rows).distinct().take(80),
+            heat = primary.heat.takeIf { it > 0 } ?: supplement.heat,
+            followCount = primary.followCount.takeIf { it > 0 } ?: supplement.followCount,
+            playCount = primary.playCount.takeIf { it > 0 } ?: supplement.playCount,
         )
     }
 

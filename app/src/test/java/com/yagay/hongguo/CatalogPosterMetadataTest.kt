@@ -46,4 +46,26 @@ class CatalogPosterMetadataTest {
         assertEquals("990万推荐",
             CatalogPosterMetadata.merge(original, meta).recommendationLabel)
     }
+
+    @Test fun sourceActivityMetricsRemainClearlyLabelled() {
+        val original = Drama("123", "原剧")
+        val metadata = OpenHongguoMetadata(
+            seriesId = "123", followCount = 348000L,
+            heat = 9_970_000L, playCount = 44_000_000L,
+        )
+        val result = CatalogPosterMetadata.merge(original, metadata)
+        assertEquals("34万追剧", result.activityLabel)
+        assertNull(result.recommendationLabel)
+    }
+
+    @Test fun onlyOfficialScoreCountsAsRecommendation() {
+        val original = Drama("123", "原剧", recommendationLabel = "997万推荐")
+        val metadata = OpenHongguoMetadata(
+            seriesId = "123", heat = 9_970_000L,
+        )
+        val result = CatalogPosterMetadata.merge(original, metadata)
+        assertEquals("997万推荐", result.recommendationLabel)
+        assertEquals("997万热度", result.activityLabel)
+    }
+
 }

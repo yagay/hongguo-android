@@ -493,10 +493,56 @@ class DramaViewModel(application: Application) : AndroidViewModel(application) {
     /** Independent read-only enrichment: never holds up cover/list rendering. */
     private var posterMetadataJob: Job? = null
     private val posterMetadataCache = linkedMapOf<String, OpenHongguoMetadata?>()
+    private var posterRankJob: Job? = null
+    private val posterRankRecommendations = linkedMapOf<String, String>()
+    private val posterRankLoadedScopes = mutableSetOf<String>()
 
-    private fun decorateCatalogPoster(drama: Drama): Drama =
-        posterMetadataCache[drama.id]?.let { CatalogPosterMetadata.merge(drama, it) }
-            ?: drama
+    private fun decorateCatalogPoster(drama: Drama): Drama {
+        val result = posterMetadataCache[drama.id]
+            ?.let { CatalogPosterMetadata.merge(drama, it) } ?: drama
+        val rankLabel = posterRankRecommendations[result.id]
+        return if (result.recommendationLabel == null && rankLabel != null)
+            result.copy(recommendationLabel = rankLabel) else result
+    }
+
+    /** RankItem.score can explicitly be "997万推荐"; filtered SeriesSummary
+     * does not contain that field. Match by stable series ID, not a guess.
+     */
+    private fun loadCatalogRankRecommendations(version: Long) {
+        posterRankJob?.cancel()
+        val snapshot = state.value
+        if (source != null || snapshot.items.isEmpty() ||
+            snapshot.section == Section.RANK) return
+        val scope = when {
+            snapshot.section !in setOf(Section.BROWSE, Section.LATEST) -> "all"
+            snapshot.genre == "comic_series" -> "comic_series_rank"
+            snapshot.genre == "ai_series" -> "ai_playlet"
+            else -> "human"
+        }
+        if (scope in posterRankLoadedScopes) return
+        posterRankJob = viewModelScope.launch {
+            val labels = try {
+                withContext(Dispatchers.IO) {
+                    kxgSource.rankRecommendationLabels(scope)
+                }
+            } catch (e: CancellationException) {
+                throw e
+            } catch (_: Exception) {
+                diagnostics.record("CATALOG", "RANK_SCORE_ENRICHMENT_UNAVAILABLE")
+                return@launch
+            }
+            if (version != requestId) return@launch
+            posterRankLoadedScopes += scope
+            posterRankRecommendations.putAll(labels)
+            diagnostics.record("CATALOG", "RANK_RECOMMENDATION_LABELS_" + labels.size)
+            if (labels.isNotEmpty()) {
+                mutable.update { current ->
+                    if (version != requestId) current else current.copy(
+                        items = current.items.map(::decorateCatalogPoster))
+                }
+            }
+        }
+    }
 
     private fun loadCatalogPosterMetadata(version: Long) {
         posterMetadataJob?.cancel()
@@ -1368,6 +1414,7 @@ class DramaViewModel(application: Application) : AndroidViewModel(application) {
         nativeSource.setAccountRecommendations(feedAccount)
         pageJob?.cancel()
         posterMetadataJob?.cancel()
+        posterRankJob?.cancel()
         val version = ++requestId
         val s = state.value
         mutable.update { it.copy(items = emptyList(), loading = true, moreLoading = false,
@@ -1387,6 +1434,7 @@ class DramaViewModel(application: Application) : AndroidViewModel(application) {
                 }
                 diagnostics.record("CATALOG", "SUCCESS", elapsed(started))
                 loadCatalogPosterMetadata(version)
+                loadCatalogRankRecommendations(version)
             } catch (e: CancellationException) {
                 throw e
             } catch (e: Exception) {
@@ -1429,6 +1477,7 @@ class DramaViewModel(application: Application) : AndroidViewModel(application) {
                         hasMore = mergedPage.hasMore, moreLoading = false)
                 }
                 loadCatalogPosterMetadata(version)
+                loadCatalogRankRecommendations(version)
                 if (!mergedPage.hasMore && result.hasMore) {
                     diagnostics.record("CATALOG", "PAGINATION_NO_PROGRESS")
                 }
@@ -2271,6 +2320,7 @@ class DramaViewModel(application: Application) : AndroidViewModel(application) {
             categories = result.drama.categories.ifEmpty { drama.categories },
             recommendationLabel = result.drama.recommendationLabel
                 ?: drama.recommendationLabel,
+            activityLabel = result.drama.activityLabel ?: drama.activityLabel,
         ))
         fun episodeIndexFor(result: DramaDetail): Int {
             val remembered = resumeEp ?: state.value.library

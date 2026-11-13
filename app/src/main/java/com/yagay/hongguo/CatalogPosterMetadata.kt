@@ -17,6 +17,8 @@ internal object CatalogPosterMetadata {
             recommendationLabel = drama.recommendationLabel
                 ?: RecommendationDisplayMetric.fromSourceRows(
                     metadata.rows.map(OpenHongguoInfoRow::text)),
+            activityLabel = drama.activityLabel ?: CatalogActivityMetric.label(
+                metadata.followCount, metadata.heat, metadata.playCount),
         )
     }
 
