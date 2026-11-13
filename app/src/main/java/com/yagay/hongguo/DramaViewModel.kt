@@ -2310,9 +2310,18 @@ class DramaViewModel(application: Application) : AndroidViewModel(application) {
             if (direction > 0 && OfficialReelsPolicy.needsMore(
                     current.feedItems, index, current.hiddenRecommendationIds,
                     current.feedHasMore, current.feedLoading)) loadOfficialReels()
-        } else if (direction > 0 && current.feedHasMore) {
+        } else if (direction > 0) {
+            // No ready video: accept the gesture immediately, then keep
+            // playing the current media while obtaining a real next drama.
+            // This also works after a temporary timeout or exhausted cursor.
             pendingFeedAdvance = true
-            if (!current.feedLoading) loadOfficialReels()
+            diagnostics.record("REELS",
+                if (current.feedLoading) "SWIPE_WAITING_FOR_NEXT_BATCH"
+                else "SWIPE_FETCH_NEXT_BATCH")
+            if (!current.feedLoading) {
+                val resetCursor = current.feedError != null || !current.feedHasMore
+                loadOfficialReels(restart = resetCursor)
+            }
         }
     }
 

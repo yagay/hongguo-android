@@ -167,9 +167,10 @@ internal fun NativePlayer(
     val nextFeedDrama = if (state.feedMode) state.feedItems.drop(state.feedIndex + 1)
         .firstOrNull { it.id !in state.hiddenRecommendationIds } else null
     val activeFeedPage = if (previousFeedDrama != null) 1 else 0
-    val nextFeedPage = state.feedMode &&
-        (nextFeedDrama != null || state.feedHasMore || state.feedLoading ||
-            state.feedError != null)
+    // Keep a forward gesture slot even while the next recommendation is
+    // loading or the cursor reports no more items. A user swipe can refresh
+    // the live cursor; never hard-disable forward swiping at the queue edge.
+    val nextFeedPage = state.feedMode
     val feedPages = activeFeedPage + 1 + if (nextFeedPage) 1 else 0
     val activePage = if (state.feedMode) activeFeedPage
         else state.episodeIndex.coerceIn(0, detail.episodes.lastIndex)
@@ -350,8 +351,22 @@ internal fun NativePlayer(
             } else if (!scrolling && !recentering && userScrollArmed) {
                 userScrollArmed = false
                 if (state.feedMode) {
-                    if (settled != latestActivePage)
+                    if (settled != latestActivePage) {
+                        val originalIndex = model.state.value.feedIndex
                         model.navigateFeed(if (settled > latestActivePage) 1 else -1)
+                        // No next item yet: leave the current video on screen
+                        // instead of getting stuck on the virtual next page.
+                        // The pending request may advance as soon as it yields
+                        // a fresh recommendation; video playback is unaffected.
+                        if (model.state.value.feedIndex == originalIndex) {
+                            recenteringPager = true
+                            try {
+                                pagerState.scrollToPage(latestActivePage)
+                            } finally {
+                                recenteringPager = false
+                            }
+                        }
+                    }
                 } else model.playIfDifferent(settled)
             }
         }
@@ -359,7 +374,9 @@ internal fun NativePlayer(
     // A feed/series mode change can alter the pager's page index without
     // changing the current episode. Recenter immediately, without simulating
     // a user swipe or scrolling through all intermediate episodes.
-    LaunchedEffect(state.episodeIndex, state.feedMode, activePage) {
+    // feedIndex is essential: after the first reel activePage remains 1,
+    // even though a new drama and queue index have arrived.
+    LaunchedEffect(state.episodeIndex, state.feedIndex, state.feedMode, activePage) {
         if (pagerState.settledPage != activePage) {
             recenteringPager = true
             try {
@@ -529,8 +546,10 @@ internal fun NativePlayer(
         VerticalPager(
             state = pagerState,
             beyondViewportPageCount = 1,
-            userScrollEnabled = !pagerRecenterPending && !searchOverlayOpen &&
-                !showComments && !showEpisodes && focusedPlaybackSetting == null,
+            // A transient mismatch in the tiny 2/3-page window must not
+            // disable gestures; programmatic re-centering is filtered above.
+            userScrollEnabled = !searchOverlayOpen && !showComments &&
+                !showEpisodes && focusedPlaybackSetting == null,
             modifier = Modifier.fillMaxSize().testTag("episode_vertical_pager"),
         ) { page ->
             val episode = detail.episodes.getOrNull(
