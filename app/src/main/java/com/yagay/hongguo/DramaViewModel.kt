@@ -2288,8 +2288,7 @@ class DramaViewModel(application: Application) : AndroidViewModel(application) {
         }
 
         if (ready != null && readyIndex != null) {
-            diagnostics.record("FEED", if (prefetched != null)
-                "DETAIL_PREFETCH_INSTANT" else "DETAIL_RECENT_INSTANT")
+            diagnostics.record("FEED", "DETAIL_RECENT_INSTANT")
             displayAndPlay(ready, readyIndex)
             return
         }

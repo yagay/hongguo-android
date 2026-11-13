@@ -388,7 +388,6 @@ class BackgroundPlaybackService : MediaSessionService() {
 
     private val checkpoint = object : Runnable {
         override fun run() {
-            pruneRecentStreams()
             if (::engine.isInitialized && currentKey != null) {
                 val duration = engine.duration.takeIf { it > 0 } ?: 0L
                 if (engine.isPlaying && onTimer?.invoke() == true) engine.pause()
