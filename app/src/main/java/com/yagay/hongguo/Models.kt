@@ -10,6 +10,8 @@ data class Drama(
     val completionStatus: String? = null,
     val actors: List<String> = emptyList(),
     val categories: List<String> = emptyList(),
+    /** Source-provided numeric recommendation label, NOT unique people. */
+    val recommendationLabel: String? = null,
 )
 data class Episode(val index: Int, val vid: String, val title: String = "")
 data class DramaDetail(val drama: Drama, val episodes: List<Episode>)

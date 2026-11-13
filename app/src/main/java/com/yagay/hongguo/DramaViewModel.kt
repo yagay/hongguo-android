@@ -2219,6 +2219,8 @@ class DramaViewModel(application: Application) : AndroidViewModel(application) {
             completionStatus = result.drama.completionStatus ?: drama.completionStatus,
             actors = result.drama.actors.ifEmpty { drama.actors },
             categories = result.drama.categories.ifEmpty { drama.categories },
+            recommendationLabel = result.drama.recommendationLabel
+                ?: drama.recommendationLabel,
         ))
         fun episodeIndexFor(result: DramaDetail): Int {
             val remembered = resumeEp ?: state.value.library

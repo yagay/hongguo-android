@@ -7,6 +7,7 @@ import com.yagay.hongguo.Episode
 import com.yagay.hongguo.FilterGroup
 import com.yagay.hongguo.FilterOption
 import com.yagay.hongguo.OpenHongguoSource
+import com.yagay.hongguo.RecommendationDisplayMetric
 import com.yagay.hongguo.Section
 import dev.openhongguo.DiscoverOptions
 import dev.openhongguo.EpisodeOptions
@@ -77,7 +78,9 @@ internal class KxgContentSource(private val sdk: OpenHongguoSource) {
                 }
                 val page = sdk.shortRank(ShortRankQuery(content = content, cursor = next))
                 rows = page.items.filter { it.seriesId.isNotBlank() }.map {
-                    Drama(it.seriesId, it.title, it.coverUrl, it.episodeCount)
+                    Drama(it.seriesId, it.title, it.coverUrl, it.episodeCount,
+                        recommendationLabel =
+                            RecommendationDisplayMetric.fromSource(it.score))
                 }
                 more = page.hasMore
                 newCursor = page.cursor
@@ -133,7 +136,9 @@ internal class KxgContentSource(private val sdk: OpenHongguoSource) {
             cursor = page.cursor
         }
         return DramaDetail(Drama(series.id, series.title, series.coverUrl,
-            series.episodeCount, series.description), episodes.sortedBy(Episode::index))
+            series.episodeCount, series.description,
+            recommendationLabel = RecommendationDisplayMetric.fromSourceRows(
+                series.rows.map { it.text })), episodes.sortedBy(Episode::index))
     }
 
     private val reelCursors = mutableMapOf<String, String>()
@@ -166,7 +171,9 @@ internal class KxgContentSource(private val sdk: OpenHongguoSource) {
                         content = content, cursor = cursor.takeIf(String::isNotBlank)))
                     Triple(
                         result.items.filter { it.seriesId.isNotBlank() }.map {
-                            Drama(it.seriesId, it.title, it.coverUrl, it.episodeCount)
+                            Drama(it.seriesId, it.title, it.coverUrl, it.episodeCount,
+                                recommendationLabel =
+                                    RecommendationDisplayMetric.fromSource(it.score))
                         }, result.hasMore, result.cursor
                     )
                 }

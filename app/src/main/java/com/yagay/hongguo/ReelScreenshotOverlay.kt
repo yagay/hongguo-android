@@ -324,6 +324,16 @@ internal fun ReelScreenshotOverlay(
                 Icon(Icons.Outlined.KeyboardArrowRight, "查看剧集详情",
                     tint = white, modifier = Modifier.size(20.dp))
             }
+            // Display the exact provider recommendation value when present.
+            // It is a source score, not a count of distinct recommending users.
+            if (state.feedMode && showTags) {
+                detail.drama.recommendationLabel?.let { label ->
+                    Text(label, color = Color(0xFFFFDEA0),
+                        fontSize = 11.sp, lineHeight = 14.sp,
+                        maxLines = 1,
+                        modifier = Modifier.testTag("reel_recommendation_metric"))
+                }
+            }
             val actorAndGenreTags = detail.drama.actors.take(2)
                 .map { "演员 $it" } + detail.drama.categories.take(4)
             if (showTags && actorAndGenreTags.isNotEmpty()) {
