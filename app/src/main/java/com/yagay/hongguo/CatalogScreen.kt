@@ -517,19 +517,43 @@ private fun CatalogPoster(drama: Drama, cover: String,
             lineHeight = 17.sp, fontSize = 13.sp, fontWeight = FontWeight.SemiBold,
             color = HongguoColors.ink,
         )
-        if (drama.categories.isNotEmpty()) {
-            // Horizontally scrollable real genre chips retain individual labels
-            // without squeezing the poster or cutting off all but one label.
+        // Real category/actor labels are filled in asynchronously from the
+        // SDK's ten-series batch detail endpoint. A recommendation number
+        // is shown only when the upstream explicitly calls it "推荐":
+        // never substitute play count, heat, followers or local likes.
+        val cardTags = CatalogPosterMetadata.tags(drama)
+        val providerRecommendation = drama.recommendationLabel
+        if (cardTags.isNotEmpty() || providerRecommendation != null) {
             Row(Modifier.fillMaxWidth()
-                    .horizontalScroll(rememberScrollState())
-                    .testTag("poster_categories_" + drama.id),
-                horizontalArrangement = Arrangement.spacedBy(4.dp)) {
-                drama.categories.take(5).forEach { category ->
-                    Text(category, color = HongguoColors.muted, fontSize = 10.sp,
-                        maxLines = 1,
-                        modifier = Modifier.background(HongguoColors.surface,
-                            RoundedCornerShape(4.dp))
-                            .padding(horizontal = 5.dp, vertical = 3.dp))
+                    .testTag("poster_metadata_" + drama.id),
+                verticalAlignment = Alignment.CenterVertically,
+                horizontalArrangement = Arrangement.spacedBy(6.dp)) {
+                if (providerRecommendation != null) {
+                    Text(
+                        providerRecommendation,
+                        color = HongguoColors.accent,
+                        fontWeight = FontWeight.Medium,
+                        fontSize = 10.sp, maxLines = 1,
+                        overflow = TextOverflow.Ellipsis,
+                        modifier = Modifier.testTag("poster_recommendation_" + drama.id),
+                    )
+                }
+                if (cardTags.isNotEmpty()) {
+                    Row(
+                        modifier = (if (providerRecommendation == null)
+                            Modifier.fillMaxWidth() else Modifier.weight(1f))
+                            .horizontalScroll(rememberScrollState())
+                            .testTag("poster_categories_" + drama.id),
+                        horizontalArrangement = Arrangement.spacedBy(4.dp),
+                    ) {
+                        cardTags.forEach { category ->
+                            Text(category, color = HongguoColors.muted,
+                                fontSize = 10.sp, maxLines = 1,
+                                modifier = Modifier.background(
+                                    HongguoColors.surface, RoundedCornerShape(4.dp))
+                                    .padding(horizontal = 5.dp, vertical = 3.dp))
+                        }
+                    }
                 }
             }
         }

@@ -490,6 +490,47 @@ class DramaViewModel(application: Application) : AndroidViewModel(application) {
         mutable.update { it.copy(recentSearches = emptyList()) }
     }
     private var pageJob: Job? = null
+    /** Independent read-only enrichment: never holds up cover/list rendering. */
+    private var posterMetadataJob: Job? = null
+    private val posterMetadataCache = linkedMapOf<String, OpenHongguoMetadata?>()
+
+    private fun decorateCatalogPoster(drama: Drama): Drama =
+        posterMetadataCache[drama.id]?.let { CatalogPosterMetadata.merge(drama, it) }
+            ?: drama
+
+    private fun loadCatalogPosterMetadata(version: Long) {
+        posterMetadataJob?.cancel()
+        if (source != null || state.value.items.isEmpty()) return
+        val ids = state.value.items.map { it.id }.distinct().filter {
+            it.matches(Regex("[1-9][0-9]{0,29}")) && it !in posterMetadataCache
+        }
+        if (ids.isEmpty()) return
+        posterMetadataJob = viewModelScope.launch {
+            for (chunk in ids.chunked(10)) {
+                val received = try {
+                    // The SDK batches up to ten series per call. Do not put
+                    // a network request into each LazyVerticalGrid item.
+                    withContext(Dispatchers.IO) { kxgSource.posterMetadata(chunk) }
+                } catch (e: CancellationException) {
+                    throw e
+                } catch (_: Exception) {
+                    diagnostics.record("CATALOG", "POSTER_METADATA_BATCH_UNAVAILABLE")
+                    continue
+                }
+                if (version != requestId) return@launch
+                chunk.forEach { id -> posterMetadataCache[id] = received[id] }
+                while (posterMetadataCache.size > 180)
+                    posterMetadataCache.remove(posterMetadataCache.keys.first())
+                if (received.isNotEmpty()) {
+                    mutable.update { current ->
+                        if (version != requestId) current else current.copy(
+                            items = current.items.map(::decorateCatalogPoster))
+                    }
+                }
+            }
+        }
+    }
+
     private var detailJob: Job? = null
     private var downloadJob: Job? = null
     private var commentsJob: Job? = null
@@ -1326,6 +1367,7 @@ class DramaViewModel(application: Application) : AndroidViewModel(application) {
         appliedRecommendationSession = feedAccount
         nativeSource.setAccountRecommendations(feedAccount)
         pageJob?.cancel()
+        posterMetadataJob?.cancel()
         val version = ++requestId
         val s = state.value
         mutable.update { it.copy(items = emptyList(), loading = true, moreLoading = false,
@@ -1338,9 +1380,13 @@ class DramaViewModel(application: Application) : AndroidViewModel(application) {
                 val result = catalogRepository.page(
                     s.section, 0, s.genre, s.board, s.search, s.activeFilters)
                 if (version != requestId) return@launch
-                mutable.update { it.copy(items = result.items, nextOffset = result.nextOffset,
-                    hasMore = result.hasMore, loading = false) }
+                mutable.update {
+                    it.copy(items = result.items.map(::decorateCatalogPoster),
+                        nextOffset = result.nextOffset,
+                        hasMore = result.hasMore, loading = false)
+                }
                 diagnostics.record("CATALOG", "SUCCESS", elapsed(started))
+                loadCatalogPosterMetadata(version)
             } catch (e: CancellationException) {
                 throw e
             } catch (e: Exception) {
@@ -1375,11 +1421,14 @@ class DramaViewModel(application: Application) : AndroidViewModel(application) {
                     s.activeFilters, s.items.map { it.id })
                 if (version != requestId) return@launch
                 val mergedPage = CatalogRepository.mergePage(
-                    s.items, result, s.nextOffset)
+                    state.value.items,
+                    result.copy(items = result.items.map(::decorateCatalogPoster)),
+                    s.nextOffset)
                 mutable.update {
                     it.copy(items = mergedPage.items, nextOffset = mergedPage.nextOffset,
                         hasMore = mergedPage.hasMore, moreLoading = false)
                 }
+                loadCatalogPosterMetadata(version)
                 if (!mergedPage.hasMore && result.hasMore) {
                     diagnostics.record("CATALOG", "PAGINATION_NO_PROGRESS")
                 }

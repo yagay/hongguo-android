@@ -106,6 +106,22 @@ internal class KxgContentSource(private val sdk: OpenHongguoSource) {
         CatalogPage(unique, hasMore, after)
     }
 
+    /**
+     * The list endpoint generally returns covers/titles without genre tags.
+     * Reuse the SDK's existing ten-series batch detail endpoint; caller runs
+     * this AFTER publishing the original list so image loading is not blocked.
+     */
+    suspend fun posterMetadata(ids: List<String>):
+        Map<String, com.yagay.hongguo.OpenHongguoMetadata> {
+        if (ids.isEmpty()) return emptyMap()
+        val allowed = ids.distinct().take(10)
+            .filter { it.matches(Regex("[1-9][0-9]{0,29}")) }
+        if (allowed.isEmpty()) return emptyMap()
+        return sdk.batchDetails(allowed)
+            .filter { it.seriesId in allowed }
+            .associateBy { it.seriesId }
+    }
+
     suspend fun filters(genre: String): List<FilterGroup> =
         sdk.filterPanel(genre).map { group ->
             FilterGroup(group.key, group.name, group.options.map {
