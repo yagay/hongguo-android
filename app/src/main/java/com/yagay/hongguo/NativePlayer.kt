@@ -628,13 +628,10 @@ internal fun NativePlayer(
                             PlaybackCenterIndicatorPolicy.Indicator.FINDING_NEXT_DRAMA,
                             PlaybackCenterIndicatorPolicy.Indicator.PREPARING_NEXT_VIDEO,
                             PlaybackCenterIndicatorPolicy.Indicator.RETRY_NEXT_DRAMA -> {
+                                // Direct on-video feedback rather than a
+                                // floating dark rounded loading card.
                                 Column(
                                     modifier = Modifier
-                                        .background(
-                                            Color.Black.copy(alpha = 0.65f),
-                                            RoundedCornerShape(15.dp),
-                                        )
-                                        .padding(horizontal = 17.dp, vertical = 13.dp)
                                         .testTag("next_drama_loading_feedback"),
                                     horizontalAlignment = Alignment.CenterHorizontally,
                                     verticalArrangement = Arrangement.spacedBy(9.dp),
