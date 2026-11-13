@@ -78,11 +78,6 @@ import java.time.format.DateTimeFormatter
 internal fun SettingsScreen(state: AppState, model: DramaViewModel) {
     var address by remember(state.backend) { mutableStateOf(state.backend) }
     var confirmClear by remember { mutableStateOf(false) }
-    var confirmDiskCacheClear by rememberSaveable { mutableStateOf(false) }
-    var diskCacheEnabled by rememberSaveable { mutableStateOf(model.diskCacheEnabled()) }
-    var preloadNetworkMode by rememberSaveable {
-        mutableStateOf(model.preloadNetworkMode())
-    }
     var pendingRestore by remember { mutableStateOf<Uri?>(null) }
     var showLogPreview by rememberSaveable { mutableStateOf(false) }
     var backendExpanded by rememberSaveable { mutableStateOf(false) }
@@ -228,39 +223,15 @@ internal fun SettingsScreen(state: AppState, model: DramaViewModel) {
                 }
             }
             item {
-                CompactSettingsSection("视频缓存与预加载") {
-                    SettingToggle(
-                        "磁盘缓存",
-                        "私有缓存 · 最多 2 GiB · 7 天后过期；重复播放优先读取本地片段",
-                        diskCacheEnabled,
-                        { enabled ->
-                            diskCacheEnabled = enabled
-                            model.setDiskCacheEnabled(enabled)
-                        },
-                        "settings_disk_cache_enabled",
+                CompactSettingsSection("视频读取") {
+                    Text(
+                        "开心果原生模式：直接分段读取 MP4 并在 Media3 内解密播放；不再缓存视频文件到磁盘，也不使用旧版预加载队列。",
+                        color = HongguoColors.muted, fontSize = 12.sp,
                     )
-                    CompactSettingsDivider()
-                    CompactSettingsRow(
-                        title = "预加载网络",
-                        value = when (preloadNetworkMode) {
-                            PreloadNetworkPolicy.OFF -> "关闭"
-                            PreloadNetworkPolicy.ALL -> "所有网络"
-                            else -> "仅 Wi-Fi"
-                        },
-                        subtitle = "控制下一集、下下集和刷剧下一部的提前加载；不影响当前播放",
-                        tag = "settings_preload_network",
-                        onClick = { choiceSheet = "preload_network" },
+                    Text(
+                        "升级后自动清理旧视频缓存；收藏、观看历史和手动下载的离线文件不受影响。",
+                        color = HongguoColors.muted, fontSize = 11.sp,
                     )
-                    CompactSettingsDivider()
-                    CompactSettingsRow(
-                        title = "清理磁盘视频缓存",
-                        subtitle = "已缓存约 ${model.diskCacheSizeMiB()} MiB；停止播放后可清理",
-                        tag = "settings_clear_disk_video_cache",
-                        onClick = { confirmDiskCacheClear = true },
-                    )
-                    state.settingsMessage?.let {
-                        Text(it, color = HongguoColors.muted, fontSize = 11.sp)
-                    }
                 }
             }
             item {
@@ -404,11 +375,6 @@ internal fun SettingsScreen(state: AppState, model: DramaViewModel) {
 
     choiceSheet?.let { choice ->
         val options = when (choice) {
-            "preload_network" -> listOf(
-                PreloadNetworkPolicy.OFF to "关闭预加载",
-                PreloadNetworkPolicy.WIFI to "仅 Wi-Fi（推荐）",
-                PreloadNetworkPolicy.ALL to "所有网络（含移动数据）",
-            )
             "theme_style" -> listOf(
                 "warm" to "暖白精修", "immersive" to "沉浸暗场",
                 "cards" to "内容卡片",
@@ -419,13 +385,11 @@ internal fun SettingsScreen(state: AppState, model: DramaViewModel) {
             )
         }
         val selected = when (choice) {
-            "preload_network" -> preloadNetworkMode
             "theme_style" -> state.themeStyle
             else -> state.themeMode
         }
         SettingsChoiceSheet(
             title = when (choice) {
-                "preload_network" -> "预加载网络"
                 "theme_style" -> "主题样式"
                 else -> "显示模式"
             },
@@ -434,10 +398,6 @@ internal fun SettingsScreen(state: AppState, model: DramaViewModel) {
             tagPrefix = choice,
             onSelect = {
                 when (choice) {
-                    "preload_network" -> {
-                        preloadNetworkMode = it
-                        model.setPreloadNetworkMode(it)
-                    }
                     "theme_style" -> model.setThemeStyle(it)
                     else -> model.setThemeMode(it)
                 }
@@ -458,19 +418,6 @@ internal fun SettingsScreen(state: AppState, model: DramaViewModel) {
                 model.importLocalBackup(uri)
             },
             onDismiss = { pendingRestore = null },
-        )
-    }
-    if (confirmDiskCacheClear) {
-        HongguoConfirmDialog(
-            title = "清理视频缓存？",
-            message = "删除已缓存在本机的流媒体片段。不会删除收藏、历史或单独下载的离线文件。",
-            confirmLabel = "清理",
-            destructive = true,
-            onConfirm = {
-                confirmDiskCacheClear = false
-                model.clearDiskVideoCache()
-            },
-            onDismiss = { confirmDiskCacheClear = false },
         )
     }
     if (confirmClear) {

@@ -19,11 +19,10 @@ import androidx.media3.common.Player
 import androidx.media3.common.util.UnstableApi
 import androidx.media3.datasource.DataSource
 import androidx.media3.exoplayer.ExoPlayer
+import androidx.media3.exoplayer.DefaultRenderersFactory
 import androidx.media3.exoplayer.analytics.AnalyticsListener
 import androidx.media3.exoplayer.DecoderReuseEvaluation
 import androidx.media3.exoplayer.source.ProgressiveMediaSource
-import androidx.media3.exoplayer.source.preload.DefaultPreloadManager
-import androidx.media3.exoplayer.source.preload.TargetPreloadStatusControl
 import androidx.media3.session.CommandButton
 import androidx.media3.session.MediaSession
 import androidx.media3.session.MediaSessionService
@@ -33,7 +32,6 @@ import com.google.common.util.concurrent.Futures
 import com.google.common.util.concurrent.ListenableFuture
 import com.hongguotv.core.RemoteVideo
 import com.yagay.hongguo.kxg.KxgPlaybackStreams
-import com.yagay.hongguo.kxg.KxgDiskCache
 import kotlinx.coroutines.flow.MutableStateFlow
 
 /**
@@ -66,13 +64,6 @@ class BackgroundPlaybackService : MediaSessionService() {
                 .getBoolean("log_enabled", true))
     }
     private lateinit var engine: ExoPlayer
-    private lateinit var preloadManager: DefaultPreloadManager
-    private var queuedPreloadItem: MediaItem? = null
-    private var queuedPreloadVideo: RemoteVideo? = null
-    private var queuedPreloadVid: String? = null
-    private var activePreloadItem: MediaItem? = null
-    private var preloadIndex = 0
-    private var nativePreloadDurationMs = 1_500L
     private val audioBoost = PlaybackAudioBoost { code ->
         diagnostics.record("AUDIO_BOOST", code)
     }
@@ -100,20 +91,6 @@ class BackgroundPlaybackService : MediaSessionService() {
     private val previousCommand = SessionCommand(PREVIOUS, Bundle.EMPTY)
     private val nextCommand = SessionCommand(NEXT, Bundle.EMPTY)
     private var remoteVideo: RemoteVideo? = null
-    /** Reusable recently played native streams, ordered oldest to newest.
-     * All accesses are on the service main thread. No active stream is cached.
-     */
-    private data class RecentStream(
-        val video: RemoteVideo,
-        val vid: String,
-        val quality: Int,
-        val savedAtMs: Long,
-    )
-    private val recentStreams = mutableListOf<RecentStream>()
-    private val recentTtlMs = 15 * 60_000L
-    private val maxRecentEntries = 6
-    private val maxRecentPrefixBytes = 48L * 1024 * 1024
-    private var currentQuality = 0
     private var currentKey: String? = null
     private var currentVid: String = ""
     private var previousAllowed = false
@@ -153,25 +130,20 @@ class BackgroundPlaybackService : MediaSessionService() {
             "web_rewrite_settings", MODE_PRIVATE
         ).getInt("playback_audio_boost_db", 0)
             .takeIf(AudioBoostPolicy::valid) ?: 0
-        // Same builder and source pipeline as upstream hongguoTV.
-        val preloadBuilder = DefaultPreloadManager.Builder(
-            this,
-            TargetPreloadStatusControl<Int, DefaultPreloadManager.PreloadStatus> { rank ->
-                if (rank == 1)
-                    DefaultPreloadManager.PreloadStatus.specifiedRangeLoaded(
-                        nativePreloadDurationMs)
-                else DefaultPreloadManager.PreloadStatus.specifiedRangeLoaded(0L)
-            })
-        preloadManager = preloadBuilder.build()
-        engine = preloadBuilder.buildExoPlayer().apply {
-            setAudioAttributes(
-                androidx.media3.common.AudioAttributes.Builder()
-                    .setUsage(C.USAGE_MEDIA)
-                    .setContentType(C.AUDIO_CONTENT_TYPE_MOVIE)
-                    .build(), true)
-            setHandleAudioBecomingNoisy(true)
-            setWakeMode(androidx.media3.common.C.WAKE_MODE_NETWORK)
-        }
+        // Follow Kaixinguo's direct ExoPlayer -> CencDataSource pipeline.
+        // Keep the ONE service-owned player for notifications and PiP.
+        engine = ExoPlayer.Builder(this)
+            .setRenderersFactory(
+                DefaultRenderersFactory(this).setEnableDecoderFallback(true))
+            .build().apply {
+                setAudioAttributes(
+                    androidx.media3.common.AudioAttributes.Builder()
+                        .setUsage(C.USAGE_MEDIA)
+                        .setContentType(C.AUDIO_CONTENT_TYPE_MOVIE)
+                        .build(), true)
+                setHandleAudioBecomingNoisy(true)
+                setWakeMode(C.WAKE_MODE_NETWORK)
+            }
         val intent = Intent(this, MainActivity::class.java)
             .addFlags(Intent.FLAG_ACTIVITY_SINGLE_TOP or Intent.FLAG_ACTIVITY_CLEAR_TOP)
         val activityIntent = PendingIntent.getActivity(
@@ -461,110 +433,6 @@ class BackgroundPlaybackService : MediaSessionService() {
         }
     }
 
-    private fun clearRecentVideo() {
-        recentStreams.forEach { it.video.close() }
-        recentStreams.clear()
-    }
-
-    private fun prefixBytes(video: RemoteVideo): Long =
-        runCatching { video.cachedBytes(0L).toLong().coerceAtLeast(0L) }
-            .getOrDefault(0L)
-
-    private fun pruneRecentStreams() {
-        val now = android.os.SystemClock.elapsedRealtime()
-        val expired = recentStreams.filter { now - it.savedAtMs >= recentTtlMs }
-        expired.forEach { old ->
-            recentStreams.remove(old)
-            old.video.close()
-        }
-        if (expired.isNotEmpty()) diagnostics.record("BACKGROUND", "RECENT_STREAM_EXPIRED")
-        // Memory is bounded by both entry count and already cached prefix.
-        // This is an estimate; the native core may hold non-prefix ranges.
-        while (recentStreams.size > maxRecentEntries ||
-            recentStreams.sumOf { prefixBytes(it.video) } > maxRecentPrefixBytes) {
-            val evicted = recentStreams.removeAt(0)
-            evicted.video.close()
-            diagnostics.record("BACKGROUND", "RECENT_STREAM_EVICTED")
-        }
-    }
-
-    private fun rememberRecentVideo(vid: String, quality: Int, video: RemoteVideo) {
-        if (vid.isBlank()) {
-            video.close()
-            return
-        }
-        // Do not cache a second owner of the same handle.
-        recentStreams.removeAll { old ->
-            if (old.vid == vid && old.quality == quality) {
-                if (old.video !== video) old.video.close()
-                true
-            } else false
-        }
-        recentStreams.add(RecentStream(video, vid, quality,
-            android.os.SystemClock.elapsedRealtime()))
-        pruneRecentStreams()
-        diagnostics.record("BACKGROUND", "RECENT_STREAM_STORED")
-    }
-
-    /** Transfer cached ownership once. Entries remain usable for up to 15 minutes
-     * unless pressure forces earlier eviction. Quality must match exactly.
-     */
-    fun takeRecentVideo(vid: String, quality: Int): RemoteVideo? {
-        pruneRecentStreams()
-        val index = recentStreams.indexOfLast {
-            it.vid == vid && it.quality == quality
-        }
-        if (index < 0) {
-            diagnostics.record("BACKGROUND", "RECENT_STREAM_MISS")
-            return null
-        }
-        val cached = recentStreams.removeAt(index).video
-        diagnostics.record("BACKGROUND", "RECENT_STREAM_REUSED")
-        return cached
-    }
-
-
-    /** Queue exactly one encrypted video as a shared TV-style Media3 media source. */
-    fun queueNativePreload(
-        vid: String, quality: Int, video: RemoteVideo,
-        title: String, episode: Int, totalEpisodes: Int,
-        cover: String, durationMs: Long,
-    ): Boolean {
-        if (!::preloadManager.isInitialized || currentVid == vid) return false
-        if (queuedPreloadVideo === video && queuedPreloadVid == vid) return true
-        discardNativePreload(queuedPreloadVideo)
-        nativePreloadDurationMs = durationMs
-        val metadata = MediaMetadata.Builder()
-            .setTitle(BackgroundNavigationPolicy.title(title, episode))
-            .setArtist(BackgroundNavigationPolicy.episodeLabel(episode, totalEpisodes))
-            .setAlbumTitle(title)
-            .apply { if (cover.startsWith("https://")) setArtworkUri(Uri.parse(cover)) }
-            .build()
-        val item = MediaItem.Builder().setUri("native://episode/$vid")
-            .setMediaId(vid)
-            .apply { NativeDiskVideoCache.streamKey(video)?.let { setCustomCacheKey(it) } }
-            .setMediaMetadata(metadata).build()
-        val source = ProgressiveMediaSource.Factory(
-            NativeDiskVideoCache.factory(this, video)).createMediaSource(item)
-        queuedPreloadVideo = video
-        queuedPreloadVid = vid
-        queuedPreloadItem = item
-        preloadManager.setCurrentPlayingIndex(preloadIndex)
-        preloadManager.add(source, preloadIndex + 1)
-        preloadManager.invalidate()
-        diagnostics.record("PRELOAD_V3", "TV_MEDIA3_QUEUED")
-        return true
-    }
-
-    fun discardNativePreload(video: RemoteVideo?) {
-        if (video != null && queuedPreloadVideo !== video) return
-        val item = queuedPreloadItem ?: return
-        if (::preloadManager.isInitialized) preloadManager.remove(item)
-        queuedPreloadItem = null
-        queuedPreloadVideo = null
-        queuedPreloadVid = null
-    }
-
     /** Called on main by the UI after metadata + encrypted media are ready. */
     fun configure(
         key: String,
@@ -596,14 +464,10 @@ class BackgroundPlaybackService : MediaSessionService() {
         outroMs = endingMs.coerceAtLeast(0)
         if (currentKey == key) return
         val previousRemote = remoteVideo
-        val previousVid = currentVid
-        val previousQuality = currentQuality
-        val previousPreloadItem = activePreloadItem
         // setMediaSource/setMediaItem already replace the previous timeline.
         // An explicit stop() first adds an unnecessary STATE_IDLE transition
         // and can blank the retained video surface during every episode switch.
         remoteVideo = remote
-        currentQuality = qualityLimit
         currentKey = key
         diagnostics.record("BACKGROUND", "SOURCE_CONFIGURED")
         currentVid = vid
@@ -631,67 +495,32 @@ class BackgroundPlaybackService : MediaSessionService() {
             .apply {
                 if (cover.startsWith("https://")) setArtworkUri(Uri.parse(cover))
             }.build()
-        val item = MediaItem.Builder().setUri(url).setMediaId(vid)
-            .apply {
-                if (remote != null) {
-                    NativeDiskVideoCache.streamKey(remote)?.let { setCustomCacheKey(it) }
-                } else if (url.startsWith("kaixinguo-stream://")) {
-                    KxgPlaybackStreams.cacheKey(url)?.let { setCustomCacheKey(it) }
-                }
-            }.setMediaMetadata(metadata).build()
+        val item = MediaItem.Builder()
+            .setUri(url).setMediaId(vid)
+            .setMediaMetadata(metadata).build()
         if (remote != null) {
-            val factory = NativeDiskVideoCache.factory(this, remote) { bytes ->
-                diagnostics.record("DISK_CACHE",
-                    "READ_HIT_KIB_${(bytes / 1024).coerceAtLeast(1)}")
-            }
-            val prepared = if (remote === queuedPreloadVideo && queuedPreloadVid == vid &&
-                queuedPreloadItem != null)
-                preloadManager.getMediaSource(queuedPreloadItem!!) else null
-            if (prepared != null) {
-                engine.setMediaSource(prepared)
-                activePreloadItem = queuedPreloadItem
-                queuedPreloadItem = null
-                queuedPreloadVideo = null
-                queuedPreloadVid = null
-                diagnostics.record("PRELOAD_V3", "TV_MEDIA3_HANDOFF")
-            } else {
-                if (remote === queuedPreloadVideo) discardNativePreload(remote)
-                engine.setMediaSource(
-                    ProgressiveMediaSource.Factory(factory).createMediaSource(item))
-                activePreloadItem = null
-            }
-            diagnostics.record("DISK_CACHE", if (NativeDiskVideoCache.isReady(this))
-                "SOURCE_CACHE_READY" else "SOURCE_CACHE_FALLBACK")
-        } else if (url.startsWith("kaixinguo-stream://")) {
-            // Kaixinguo resolves the signed MP4 and decrypts ranges in its
-            // CencDataSource; this SAME service retains the one ExoPlayer.
+            // Optional legacy backend: direct decrypted range reads without
+            // either old SimpleCache or a second Media3 preload manager.
             engine.setMediaSource(ProgressiveMediaSource.Factory(
-                KxgDiskCache.factory(this)).createMediaSource(item))
-            activePreloadItem = null
-            diagnostics.record("PLAYBACK", "KXG_CENC_SOURCE")
+                DataSource.Factory { NativeVideoDataSource(remote) }
+            ).createMediaSource(item))
+            diagnostics.record("PLAYBACK", "NATIVE_DIRECT_RANGE_SOURCE")
+        } else if (url.startsWith("kaixinguo-stream://")) {
+            // Exact Kaixinguo approach: registry -> CENC -> Media3.
+            // No persistent disk cache, cached MediaSource or duplicate player.
+            engine.setMediaSource(ProgressiveMediaSource.Factory(
+                KxgPlaybackStreams.factory(this)).createMediaSource(item))
+            diagnostics.record("PLAYBACK", "KXG_DIRECT_CENC_SOURCE")
         } else {
             engine.setMediaItem(item)
-            activePreloadItem = null
         }
-        // The previous source is no longer playing: retire its manager entry.
-        preloadIndex = if (preloadIndex >= 1_000_000) 0 else preloadIndex + 1
-        preloadManager.setCurrentPlayingIndex(preloadIndex)
-        if (previousPreloadItem != null && previousPreloadItem !== activePreloadItem)
-            preloadManager.remove(previousPreloadItem)
-        preloadManager.invalidate()
         // Set autoplay intent before preparation, not afterward: an ended
         // player or foreground-service handoff may otherwise remain paused.
         engine.playWhenReady = true
         engine.prepare()
         engine.play()
-        if (previousRemote != null && previousRemote !== remote &&
-            previousVid.isNotBlank()) {
-            // Keep a bounded LRU of recently played native streams, without
-            // creating a second decoder or re-requesting their media model.
-            rememberRecentVideo(previousVid, previousQuality, previousRemote)
-        } else if (previousRemote != null && previousRemote !== remote) {
+        if (previousRemote != null && previousRemote !== remote)
             previousRemote.close()
-        }
         diagnostics.record("BACKGROUND", "NEXT_SOURCE_PLAY_REQUESTED")
     }
 
@@ -790,10 +619,6 @@ class BackgroundPlaybackService : MediaSessionService() {
             engine.clearMediaItems()
         }
         currentKey = null
-        clearRecentVideo()
-        discardNativePreload(null)
-        activePreloadItem = null
-        if (::preloadManager.isInitialized) preloadManager.reset()
         remoteVideo?.close()
         remoteVideo = null
         onFirstFrame = null
@@ -873,9 +698,6 @@ class BackgroundPlaybackService : MediaSessionService() {
         if (active === this) active = null
         remoteVideo?.close()
         remoteVideo = null
-        clearRecentVideo()
-        discardNativePreload(null)
-        if (::preloadManager.isInitialized) preloadManager.release()
         if (::session.isInitialized) session.release()
         if (::engine.isInitialized) engine.release()
         super.onDestroy()

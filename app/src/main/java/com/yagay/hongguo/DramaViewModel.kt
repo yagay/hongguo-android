@@ -67,7 +67,6 @@ class DramaViewModel(application: Application) : AndroidViewModel(application) {
             }
             ++detailId
             detailJob?.cancel()
-            cancelPreloading()
             closeNativeVideo()
             clearSocial()
             clearEngagement()
@@ -175,127 +174,6 @@ class DramaViewModel(application: Application) : AndroidViewModel(application) {
         mutable.update { it.copy(hiddenRecommendationIds = emptySet()) }
     }
 
-    fun diskCacheEnabled(): Boolean =
-        NativeDiskVideoCache.enabled(getApplication())
-
-    fun wifiBackgroundPreloadEnabled(): Boolean =
-        NativeDiskVideoCache.wifiPreload(getApplication())
-
-    fun mobileBackgroundPreloadEnabled(): Boolean =
-        NativeDiskVideoCache.mobilePreload(getApplication())
-
-    fun diskCacheSizeMiB(): Long = com.yagay.hongguo.kxg.KxgDiskCache.sizeBytes() / (1024 * 1024)
-
-    fun setDiskCacheEnabled(enabled: Boolean) {
-        prefs.edit().putBoolean("disk_cache_enabled", enabled).apply()
-        diagnostics.record("DISK_CACHE", if (enabled) "ENABLED" else "DISABLED")
-        if (enabled) viewModelScope.launch(Dispatchers.IO) {
-            com.yagay.hongguo.kxg.KxgDiskCache.prepare(getApplication())
-        }
-    }
-
-    fun preloadNetworkMode(): String =
-        NativeDiskVideoCache.preloadMode(getApplication())
-
-    /** A single selection changes all prefetch lanes at once. Current
-     * playback and the disk cache of already played bytes are untouched. */
-    fun setPreloadNetworkMode(value: String) {
-        if (value !in setOf(
-                PreloadNetworkPolicy.OFF,
-                PreloadNetworkPolicy.WIFI,
-                PreloadNetworkPolicy.ALL,
-            )) return
-        val before = NativeDiskVideoCache.preloadMode(getApplication())
-        if (before == value) return
-        prefs.edit()
-            .putString("preload_network_mode", value)
-            .remove("preload_wifi")
-            .remove("preload_mobile")
-            .apply()
-        diagnostics.record("PLAYBACK", "PREFETCH_NETWORK_MODE_" + value.uppercase())
-        // Release obsolete jobs when moving to a more restrictive network
-        // policy. Do not dispose live playback's RemoteVideo instance.
-        if (!NativeDiskVideoCache.mayBackgroundPreload(getApplication())) {
-            cancelPreloading()
-            cancelFinaleRecommendationWarmup()
-        } else {
-            val s = state.value
-            val currentVid = s.detail?.episodes?.getOrNull(s.episodeIndex)?.vid
-            if (s.preloadNext && s.offlinePlaybackUri == null &&
-                (firstFrameFor == currentVid || s.playbackUrl != null)) {
-                prepareUpcomingPlayback(s)
-            }
-        }
-    }
-
-    fun setWifiBackgroundPreload(enabled: Boolean) {
-        prefs.edit().putBoolean("preload_wifi", enabled).apply()
-        diagnostics.record("DISK_CACHE",
-            if (enabled) "WIFI_PREFETCH_ON" else "WIFI_PREFETCH_OFF")
-        if (!enabled) {
-            cancelPreloading()
-        } else if (NativeDiskVideoCache.mayBackgroundPreload(getApplication()))
-            prepareUpcomingPlayback(state.value)
-    }
-
-    fun setMobileBackgroundPreload(enabled: Boolean) {
-        prefs.edit().putBoolean("preload_mobile", enabled).apply()
-        diagnostics.record("DISK_CACHE",
-            if (enabled) "METERED_PREFETCH_ON" else "METERED_PREFETCH_OFF")
-        if (!enabled && !NativeDiskVideoCache.mayBackgroundPreload(getApplication())) {
-            cancelPreloading()
-        } else if (NativeDiskVideoCache.mayBackgroundPreload(getApplication()))
-            prepareUpcomingPlayback(state.value)
-    }
-
-    fun clearDiskVideoCache() {
-        if (BackgroundPlaybackService.playerFlow.value?.currentMediaItem != null) {
-            mutable.update { it.copy(settingsMessage = "请先关闭播放器再清理视频缓存") }
-            return
-        }
-        cancelPreloading()
-        viewModelScope.launch {
-            withContext(Dispatchers.IO) {
-                com.yagay.hongguo.kxg.KxgDiskCache.clear(getApplication())
-                // Also discard the now-unused legacy decrypted RemoteVideo cache.
-                NativeDiskVideoCache.clear(getApplication())
-            }
-            diagnostics.record("DISK_CACHE", "KXG_AND_LEGACY_CLEARED")
-            mutable.update { it.copy(settingsMessage = "已清理磁盘视频缓存") }
-        }
-    }
-
-    fun setPreloadNext(enabled: Boolean) {
-        prefs.edit().putBoolean("preload_next_episode", enabled).apply()
-        mutable.update { it.copy(preloadNext = enabled) }
-        if (!enabled) {
-            cancelPreloading()
-            cancelFinaleRecommendationWarmup()
-        } else {
-            // Switching preload ON while a video is already playing should
-            // work immediately, not only after another first-frame callback.
-            val snapshot = state.value
-            val currentVid = snapshot.detail?.episodes
-                ?.getOrNull(snapshot.episodeIndex)?.vid
-            if (currentVid != null && currentVid == firstFrameFor)
-                prepareUpcomingPlayback(snapshot)
-        }
-    }
-
-    /** Change the actual encrypted-video prefetch budget without restart. */
-    fun setPreloadBufferMiB(value: Int) {
-        if (value !in VideoPreloadPolicy.OPTIONS_MIB ||
-            value == state.value.preloadBufferMiB) return
-        prefs.edit().putInt("preload_buffer_mib", value).apply()
-        mutable.update { it.copy(preloadBufferMiB = value) }
-        cancelPreloading()
-        diagnostics.record("PLAYBACK", "PRELOAD_BUDGET_${value}M")
-        val current = state.value
-        val vid = current.detail?.episodes?.getOrNull(current.episodeIndex)?.vid
-        if (current.preloadNext && vid != null && vid == firstFrameFor)
-            prepareUpcomingPlayback(current)
-    }
-
     fun setAutoPlayNext(enabled: Boolean) {
         prefs.edit().putBoolean("auto_play_next", enabled).apply()
         mutable.update { it.copy(autoPlayNext = enabled) }
@@ -309,15 +187,6 @@ class DramaViewModel(application: Application) : AndroidViewModel(application) {
             // Manual episode selection remains supported, but no longer
             // issue background official requests for automatic finale play.
             cancelFinaleRecommendationWarmup()
-            if (!state.value.feedMode) {
-                cancelPreloading()
-            }
-        } else {
-            val snapshot = state.value
-            val current = snapshot.detail?.episodes
-                ?.getOrNull(snapshot.episodeIndex)?.vid
-            if (snapshot.preloadNext && current == firstFrameFor)
-                prepareUpcomingPlayback(snapshot)
         }
     }
 
@@ -466,111 +335,6 @@ class DramaViewModel(application: Application) : AndroidViewModel(application) {
     private val sleepTimer = SleepTimer { android.os.SystemClock.elapsedRealtime() }
     @Volatile private var activeNativeVideo: RemoteVideo? = null
     @Volatile private var activeNativeVid: String? = null
-    // Kaixinguo now preloads only the next SDK model and CENC index.
-    // One next-episode/next-drama source at a time.
-    private val kxgPreloader by lazy {
-        com.yagay.hongguo.kxg.KxgStreamPreloader(
-            viewModelScope, getApplication(), openHongguo, diagnostics)
-    }
-    private var preloadDetailJob: Job? = null
-    private var preloadDetailId: String? = null
-
-    private fun cancelPreloadDetail() {
-        preloadDetailJob?.cancel()
-        preloadDetailJob = null
-        preloadDetailId = null
-    }
-    private fun cancelPreloading() {
-        cancelPreloadDetail()
-        kxgPreloader.cancel()
-    }
-
-    private fun preloadDurationMs(miB: Int): Long = when {
-        miB <= 4 -> 1000L
-        miB <= 8 -> 1500L
-        miB <= 12 -> 2000L
-        else -> 3000L
-    }
-
-    private fun prepareUpcomingPlayback(snapshot: AppState) {
-        val detail = snapshot.detail ?: return
-        val current = detail.episodes.getOrNull(snapshot.episodeIndex) ?: return
-        if (source != null) return // Optional backend owns its own streams.
-        if (!snapshot.preloadNext || snapshot.offlinePlaybackUri != null ||
-            !NativeDiskVideoCache.mayBackgroundPreload(getApplication()) ||
-            firstFrameFor != current.vid) return
-        val next = detail.episodes.getOrNull(snapshot.episodeIndex + 1)
-        if (!snapshot.feedMode && next != null) {
-            cancelPreloadDetail()
-            val target = com.yagay.hongguo.kxg.KxgStreamPreloader.Target(
-                detail.drama.id, next.vid, snapshot.qualityLimit,
-                preloadDurationMs(snapshot.preloadBufferMiB),
-                detail.drama.title, next.index, detail.episodes.size,
-                detail.drama.cover)
-            kxgPreloader.schedule(target) {
-                val s = state.value
-                s.preloadNext && s.qualityLimit == target.quality &&
-                    NativeDiskVideoCache.mayBackgroundPreload(getApplication()) &&
-                    s.detail?.drama?.id == target.seriesId &&
-                    (s.detail?.episodes?.getOrNull(s.episodeIndex + 1)?.vid == target.vid ||
-                        s.detail?.episodes?.getOrNull(s.episodeIndex)?.vid == target.vid)
-            }
-            return
-        }
-        if (!snapshot.feedMode && !snapshot.autoPlayNext) return
-        val id = SwipePrefetchPolicy.candidates(
-            snapshot.feedItems.map { it.id }, snapshot.feedIndex,
-            snapshot.hiddenRecommendationIds, detail.drama.id).firstOrNull()
-        if (id == null) {
-            if (!snapshot.feedLoading && snapshot.feedHasMore) loadOfficialReels()
-            return
-        }
-        if (kxgPreloader.hasSeries(id) ||
-            (preloadDetailId == id && preloadDetailJob?.isActive == true)) return
-        cancelPreloadDetail()
-        preloadDetailId = id
-        preloadDetailJob = viewModelScope.launch {
-            try {
-                val info = prefetchedFeedDetails[id] ?: visitedFeedDetails[id]
-                    ?: kxgSource.detail(id)
-                val s = state.value
-                if (info.episodes.isEmpty() || !s.preloadNext ||
-                    !NativeDiskVideoCache.mayBackgroundPreload(getApplication()) ||
-                    SwipePrefetchPolicy.candidates(
-                        s.feedItems.map { it.id }, s.feedIndex,
-                        s.hiddenRecommendationIds, s.detail?.drama?.id
-                    ).firstOrNull() != id) return@launch
-                prefetchedFeedDetails[id] = info
-                while (prefetchedFeedDetails.size > 5)
-                    prefetchedFeedDetails.remove(prefetchedFeedDetails.keys.first())
-                val first = info.episodes.first()
-                val target = com.yagay.hongguo.kxg.KxgStreamPreloader.Target(
-                    id, first.vid, s.qualityLimit,
-                    preloadDurationMs(s.preloadBufferMiB),
-                    info.drama.title, first.index, info.episodes.size, info.drama.cover)
-                kxgPreloader.schedule(target) {
-                    val latest = state.value
-                    latest.preloadNext && latest.qualityLimit == target.quality &&
-                        NativeDiskVideoCache.mayBackgroundPreload(getApplication()) &&
-                        (latest.detail?.drama?.id == id ||
-                            SwipePrefetchPolicy.candidates(
-                                latest.feedItems.map { it.id }, latest.feedIndex,
-                                latest.hiddenRecommendationIds, latest.detail?.drama?.id
-                            ).firstOrNull() == id)
-                }
-                diagnostics.record("FEED", "PRELOAD_V3_NEAREST_SCHEDULED")
-            } catch (e: CancellationException) { throw e }
-            catch (_: Exception) {
-                diagnostics.record("FEED", "PRELOAD_V3_DETAIL_UNAVAILABLE")
-            } finally {
-                if (preloadDetailId == id) {
-                    preloadDetailId = null
-                    preloadDetailJob = null
-                }
-            }
-        }
-    }
-
     fun nativeVideoFor(vid: String): RemoteVideo? =
         if (activeNativeVid == vid) activeNativeVideo else null
     private fun closeNativeVideo() {
@@ -1030,10 +794,6 @@ class DramaViewModel(application: Application) : AndroidViewModel(application) {
                     } else {
                         pendingFeedAdvance = false
                     }
-                } else if (mayPreloadFollowingDrama(state.value)) {
-                    if (state.value.feedMode)
-                        prepareUpcomingPlayback(state.value)
-                    else prepareUpcomingPlayback(state.value)
                 }
                 val latest = state.value
                 if (!needsFirstDrama && OfficialReelsPolicy.needsMore(
@@ -1108,8 +868,6 @@ class DramaViewModel(application: Application) : AndroidViewModel(application) {
             officialFeedJob?.cancel()
             officialFeedGeneration++
             pendingFeedAdvance = false
-            cancelPreloading()
-            prefetchedFeedDetails.clear()
             val snapshot = state.value
             // Do not stop/recreate Media3 playback solely for a settings
             // change. Preserve the visible drama while rebuilding the queue.
@@ -1203,10 +961,7 @@ class DramaViewModel(application: Application) : AndroidViewModel(application) {
         }
         officialFeedJob?.cancel()
         officialFeedGeneration++
-        cancelPreloading()
 
-        cancelPreloading()
-        prefetchedFeedDetails.clear()
         clearFinaleAdvance()
         failedFeedRefreshPending = true
         pendingFeedAdvance = true
@@ -1220,7 +975,6 @@ class DramaViewModel(application: Application) : AndroidViewModel(application) {
         loadOfficialReels(restart = true)
     }
 
-    private val prefetchedFeedDetails = linkedMapOf<String, DramaDetail>()
     /** Reuse the last few series details on reverse swipes, without refetching. */
     private val visitedFeedDetails = linkedMapOf<String, DramaDetail>()
     private fun rememberFeedDetail(detail: DramaDetail) {
@@ -1229,13 +983,6 @@ class DramaViewModel(application: Application) : AndroidViewModel(application) {
         while (visitedFeedDetails.size > 4)
             visitedFeedDetails.remove(visitedFeedDetails.keys.first())
     }
-
-    /**
-     * Feed predictions run alongside episode preloading rather than behind
-     * the full N+1 range warmup. Only the next drama gets a full stream slot;
-     * the second drama has a smaller 2 MiB slot and separately cached metadata.
-     */
-    // Old multi-drama speculation removed; use shared TV preload manager.
 
     private var firstFrameFor: String? = null
     private var playbackStartAtMs = 0L
@@ -1255,10 +1002,7 @@ class DramaViewModel(application: Application) : AndroidViewModel(application) {
             reelsMode = prefs.getString("reels_mode", "all")
                 ?.takeIf { it == "all" || it == "real" } ?: "all",
             autoPlayNext = prefs.getBoolean("auto_play_next", true),
-            preloadNext = prefs.getBoolean("preload_next_episode", true),
-            preloadBufferMiB = VideoPreloadPolicy.normalizedMiB(
-                prefs.getInt("preload_buffer_mib", VideoPreloadPolicy.DEFAULT_MIB)
-            ),
+
             episodeUpdateNotificationsEnabled = prefs.getBoolean("episode_update_notifications", false),
             skipIntroSeconds = prefs.getInt("skip_intro_seconds", 0).coerceIn(0, 120),
             skipOutroSeconds = prefs.getInt("skip_outro_seconds", 0).coerceIn(0, 120),
@@ -1286,13 +1030,16 @@ class DramaViewModel(application: Application) : AndroidViewModel(application) {
                 .onFailure { diagnostics.record("TRACKING", "STARTUP_SCHEDULER_UNAVAILABLE") }
         }
         diagnostics.record("APP", "START")
-        // Start the disk index on IO at app launch. The playback path still
-        // awaits this only if the user starts a video before initialization ends.
+        // Upstream Kaixinguo does not persist decrypted video bytes.
+        // Reclaim both old cache folders once at startup; never touch
+        // downloads, cover images, account data or offline episode files.
         viewModelScope.launch(Dispatchers.IO) {
-            if (com.yagay.hongguo.kxg.KxgDiskCache.prepare(application))
-                diagnostics.record("DISK_CACHE", "KXG_INDEX_READY")
-            else if (com.yagay.hongguo.kxg.KxgDiskCache.enabled(application))
-                diagnostics.record("DISK_CACHE", "KXG_INDEX_UNAVAILABLE")
+            val removed = listOf("kaixinguo_cenc_cache_v1", "native_stream_cache_v1")
+                .map { java.io.File(application.cacheDir, it) }
+                .filter { it.exists() }
+                .count { it.deleteRecursively() }
+            diagnostics.record("PLAYBACK", "UPSTREAM_KXG_DIRECT_SOURCE")
+            if (removed > 0) diagnostics.record("DISK_CACHE", "LEGACY_VIDEO_CACHE_REMOVED")
         }
         // The saved login is verified asynchronously after homepage init.
         // If account recommendations were previously opted in, a late
@@ -2192,8 +1939,6 @@ class DramaViewModel(application: Application) : AndroidViewModel(application) {
         pendingFeedAdvance = false
         clearFinaleAdvance()
         autoNextTargetDramaId = null
-        cancelPreloading()
-        prefetchedFeedDetails.clear()
         visitedFeedDetails.clear()
         val feedAccount = account.recommendationAccount()
         appliedRecommendationSession = feedAccount
@@ -2289,9 +2034,6 @@ class DramaViewModel(application: Application) : AndroidViewModel(application) {
                 current.nextDramaTransition == NextDramaTransition.FINDING_RECOMMENDATION
             pendingFeedAdvance = false
             clearFinaleAdvance()
-            kxgPreloader.retainSeries(selected.id)
-            if (kxgPreloader.hasSeries(selected.id))
-                diagnostics.record("FEED", "PRELOAD_V3_HANDOFF_SELECTED")
             autoNextTargetDramaId = if (automaticallyAdvancing) selected.id else null
             mutable.update {
                 it.copy(feedIndex = index,
@@ -2340,11 +2082,6 @@ class DramaViewModel(application: Application) : AndroidViewModel(application) {
         officialFeedGeneration++
         finaleRecommendationRequestFor = null
         pendingFeedAdvance = false
-        // Keep the prepared following drama while switching only the UI from
-        // reel to episode mode; the sole Media3 item does not change.
-        if (index != snapshot.detail?.episodes?.lastIndex || !snapshot.preloadNext) {
-            cancelPreloading()
-        }
         val currentMediaMatches = snapshot.playbackUrl != null &&
             index == snapshot.episodeIndex &&
             BackgroundPlaybackService.playerFlow.value?.currentMediaItem?.mediaId == target.vid
@@ -2364,13 +2101,6 @@ class DramaViewModel(application: Application) : AndroidViewModel(application) {
         // A mode change alone must not reset the position or pause the player.
         if (!currentMediaMatches) {
             play(index)
-        } else if (index == snapshot.detail?.episodes?.lastIndex &&
-            snapshot.autoPlayNext && snapshot.preloadNext) {
-            // Entering the series screen cancelled the official feed request
-            // above. Re-arm finale prefetch while retaining this exact
-            // playing media item and its current progress.
-            diagnostics.record("REELS", "FINALE_PRELOAD_REARM_ON_MODE_SWITCH")
-            prepareUpcomingPlayback(state.value)
         }
     }
 
@@ -2409,8 +2139,6 @@ class DramaViewModel(application: Application) : AndroidViewModel(application) {
         if (OfficialReelsPolicy.needsMore(current.feedItems, current.feedIndex,
                 current.hiddenRecommendationIds, current.feedHasMore, current.feedLoading)) {
             loadOfficialReels()
-        } else if (current.preloadNext) {
-            prepareUpcomingPlayback(state.value)
         }
         return true
     }
@@ -2473,8 +2201,6 @@ class DramaViewModel(application: Application) : AndroidViewModel(application) {
         detailJob?.cancel()
         val version = ++detailId
         firstFrameFor = null
-        cancelPreloadDetail()
-        kxgPreloader.retainSeries(drama.id)
         startEpisodeHint = resumeEp
 
         // Reels frequently revisit a prefetched or recently watched series.
@@ -2483,10 +2209,8 @@ class DramaViewModel(application: Application) : AndroidViewModel(application) {
         // displays a full-screen "reading episodes" loading page even though
         // we already have the episodes in memory.
         val api = if (origin == PlaybackOrigin.SWIPE_FEED) null else source
-        val prefetched = if (api == null) prefetchedFeedDetails.remove(drama.id) else null
-        val cached = if (origin == PlaybackOrigin.SWIPE_FEED)
+        val immediate = if (origin == PlaybackOrigin.SWIPE_FEED)
             visitedFeedDetails[drama.id] else null
-        val immediate = prefetched ?: cached
         fun resolvedDetail(result: DramaDetail) = result.copy(drama = result.drama.copy(
             title = result.drama.title.ifBlank { drama.title },
             cover = result.drama.cover.ifBlank { drama.cover },
@@ -2706,7 +2430,6 @@ class DramaViewModel(application: Application) : AndroidViewModel(application) {
                     // Discard any cached decoder/source from the dead session.
                     // The next media load performs the existing authenticated
                     // stream request rather than reopening a stale data source.
-                    cancelPreloading()
                     diagnostics.record("BACKGROUND", "FOREGROUND_RECONNECT")
                     play(current.episodeIndex)
                 }
@@ -2723,7 +2446,6 @@ class DramaViewModel(application: Application) : AndroidViewModel(application) {
         if (finaleRecommendationRequestFor != null &&
             index != detail.episodes.lastIndex)
             cancelFinaleRecommendationWarmup()
-        kxgPreloader.retainVideo(detail.episodes[index].vid, state.value.qualityLimit)
         // Notification commands run while the Activity is STOPPED. Reuse the
         // running foreground service rather than making a forbidden background
         // service start request on Android 12+.
@@ -2764,9 +2486,6 @@ class DramaViewModel(application: Application) : AndroidViewModel(application) {
                 detail.drama, detail.episodes[index].index, System.currentTimeMillis())) }
         }
         detailJob?.cancel()
-        val cachedKxg = kxgPreloader.takeReady(vid, state.value.qualityLimit)
-        diagnostics.record("PLAYBACK",
-            if (cachedKxg != null) "KXG_PRELOAD_HIT" else "KXG_PRELOAD_MISS")
         firstFrameFor = null
         val checkpoint = library.checkpoint(detail.drama.id, vid)
         mutable.update { it.copy(episodeIndex = index, playbackUrl = null,
@@ -2791,12 +2510,9 @@ class DramaViewModel(application: Application) : AndroidViewModel(application) {
                     // Kaixinguo SDK resolves the MP4 model and content key;
                     // its CENC range source feeds our ONE service-owned player.
                     val quality = state.value.qualityLimit
-                    val inFlight = if (cachedKxg == null)
-                        kxgPreloader.takeOrAwait(vid, quality) else null
                     val resolveStarted = System.nanoTime()
-                    val prepared = cachedKxg ?: inFlight
-                        ?: com.yagay.hongguo.kxg.KxgPlaybackStreams.resolve(
-                            getApplication(), openHongguo, vid, quality)
+                    val prepared = com.yagay.hongguo.kxg.KxgPlaybackStreams.resolve(
+                        getApplication(), openHongguo, vid, quality)
                     diagnostics.record("PLAYBACK", "KXG_STREAM_ACQUIRED",
                         elapsed(resolveStarted))
                     if (version != detailId ||
@@ -2851,7 +2567,6 @@ class DramaViewModel(application: Application) : AndroidViewModel(application) {
     }
 
     fun setQualityLimit(value: Int, positionMs: Long, durationMs: Long) {
-        cancelPreloading()
         if (value !in setOf(0, 360, 480, 720, 1080)) return
         prefs.edit().putInt("quality_limit", value).apply()
         val s = state.value
@@ -2898,16 +2613,10 @@ class DramaViewModel(application: Application) : AndroidViewModel(application) {
         // startup bandwidth and the upstream registration/session lock.
         if (s.feedMode && !deferRestoredFeedRecommendations &&
             OfficialReelsPolicy.needsMore(s.feedItems,
-                s.feedIndex, s.hiddenRecommendationIds, s.feedHasMore,
-                s.feedLoading) &&
-            (!s.preloadNext ||
-                s.episodeIndex >= (s.detail?.episodes?.lastIndex ?: 0))) {
-            // A live episode's next range beats new official feed pages.
-            // Request more recommendations after the next episode is warm.
+                s.feedIndex, s.hiddenRecommendationIds, s.feedHasMore, s.feedLoading)) {
             diagnostics.record("REELS", "POST_FIRST_FRAME_TOP_UP")
             loadOfficialReels()
         }
-        prepareUpcomingPlayback(s)
     }
 
 
@@ -2929,7 +2638,6 @@ class DramaViewModel(application: Application) : AndroidViewModel(application) {
         library.record(s.detail.drama, ep.index)
         rememberLastPlaybackMode(s.feedMode)
         updateLibrary()
-        prepareUpcomingPlayback(s)
     }
 
     /** Media3-driven actual progress, persisted independently of history.
@@ -3323,8 +3031,6 @@ class DramaViewModel(application: Application) : AndroidViewModel(application) {
         officialFeedJob?.cancel()
         officialFeedGeneration++
         finaleRecommendationRequestFor = null
-        cancelPreloading()
-        prefetchedFeedDetails.clear()
         visitedFeedDetails.clear()
         ++relatedGeneration
         relatedJob?.cancel()
@@ -3335,7 +3041,6 @@ class DramaViewModel(application: Application) : AndroidViewModel(application) {
         ++detailId
         detailJob?.cancel()
         closeNativeVideo()
-        cancelPreloading()
         firstFrameFor = null
         mutable.update { it.copy(detail = null, playbackUrl = null,
             renderedVideoVid = null,

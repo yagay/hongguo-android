@@ -9,7 +9,6 @@ import java.io.ByteArrayOutputStream
 import java.io.IOException
 import java.io.InterruptedIOException
 import java.util.UUID
-import java.security.MessageDigest
 
 /**
  * StreamRegistry keeps the episodes' files the player may read, by the URI
@@ -23,7 +22,7 @@ class StreamRegistry(private val http: DataSource.Factory) {
         val uri = "$SCHEME://episode/${UUID.randomUUID()}.mp4"
         synchronized(this) {
             streams[uri] = StreamSource(sources, key, http)
-            while (streams.size > 8) streams.remove(streams.keys.first())
+            while (streams.size > 3) streams.remove(streams.keys.first())
         }
         return uri
     }
@@ -43,7 +42,7 @@ class StreamRegistry(private val http: DataSource.Factory) {
  * shares them.
  */
 class StreamSource(val sources: List<String>, private val key: ByteArray?, private val http: DataSource.Factory) {
-    class File(val size: Long, val layout: Layout?, val fingerprint: String)
+    class File(val size: Long, val layout: Layout?)
 
     /** The source that answered last, which reads try first. */
     @Volatile
@@ -67,12 +66,7 @@ class StreamSource(val sources: List<String>, private val key: ByteArray?, priva
                     }
                 }
                 good = i
-                // A small file-byte fingerprint prevents stale clear cache use
-                // if the upstream silently replaces the MP4 with the same ID.
-                val fingerprint = MessageDigest.getInstance("SHA-256")
-                    .digest(head.take(1024).toByteArray())
-                    .joinToString("") { "%02x".format(it) }
-                return File(total, layout, fingerprint).also { file = it }
+                return File(total, layout).also { file = it }
             } catch (e: InterruptedIOException) {
                 throw e // the player gave up on this read: another may try again
             } catch (e: IOException) {

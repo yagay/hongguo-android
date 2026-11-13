@@ -125,8 +125,6 @@ data class AppState(
     val renderedVideoVid: String? = null,
     val resumePositionMs: Long = 0L,
     val qualityLimit: Int = 0,
-    /** Per upcoming video, not persistent disk storage. 8 MiB by default. */
-    val preloadBufferMiB: Int = VideoPreloadPolicy.DEFAULT_MIB,
     val defaultPlaybackSpeed: Float = 1f,
     /** Full-screen playback-only display brightness: -1 follows Android system. */
     val videoBrightnessPercent: Int = -1,
@@ -149,7 +147,6 @@ data class AppState(
     val themeStyle: String = "warm",
     val themeMode: String = "light",
     val autoPlayNext: Boolean = true,
-    val preloadNext: Boolean = true,
     val skipIntroSeconds: Int = 0,
     val skipOutroSeconds: Int = 0,
     val retryPlaybackAutomatically: Boolean = true,

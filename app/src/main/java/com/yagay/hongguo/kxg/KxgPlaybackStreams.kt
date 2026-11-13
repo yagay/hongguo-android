@@ -8,7 +8,6 @@ import dev.openhongguo.Stream
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.withContext
 import java.io.IOException
-import java.security.MessageDigest
 
 /**
  * The rewrite app keeps its ONE service-owned ExoPlayer. This is the original
@@ -21,7 +20,6 @@ internal object KxgPlaybackStreams {
     data class Prepared(val uri: String, val episodeId: String, val quality: Int)
 
     @Volatile private var streamRegistry: StreamRegistry? = null
-    private val cacheKeys = LinkedHashMap<String, String>()
     @Volatile private var networkFactory: DataSource.Factory? = null
 
     private fun registry(context: Context): StreamRegistry {
@@ -44,9 +42,7 @@ internal object KxgPlaybackStreams {
         return CencDataSource.Factory(streams, http)
     }
 
-    fun cacheKey(uri: String): String? = synchronized(cacheKeys) { cacheKeys[uri] }
     fun forget(uri: String) {
-        synchronized(cacheKeys) { cacheKeys.remove(uri) }
         streamRegistry?.forget(uri)
     }
 
@@ -85,26 +81,10 @@ internal object KxgPlaybackStreams {
         } else null
         val urls = listOf(chosen.url.trim(), chosen.backupUrl.trim())
             .filter { it.startsWith("https://") }.distinct()
+        // Like Kaixinguo upstream: register directly. CencDataSource.open()
+        // resolves the header and decrypts on Media3's loader thread.
         val streams = registry(context.applicationContext)
         val uri = streams.register(urls, key)
-        try {
-            val file = streams[uri]?.prepare() ?: throw IOException("无法准备视频数据源")
-            val digest = MessageDigest.getInstance("SHA-256")
-            digest.update(episodeId.toByteArray(Charsets.UTF_8))
-            digest.update(chosen.definition.toByteArray(Charsets.UTF_8))
-            digest.update(chosen.codec.toByteArray(Charsets.UTF_8))
-            digest.update(file.size.toString().toByteArray(Charsets.UTF_8))
-            digest.update(file.fingerprint.toByteArray(Charsets.UTF_8))
-            key?.let { digest.update(it) }
-            val stable = digest.digest().joinToString("") { "%02x".format(it) }
-            synchronized(cacheKeys) {
-                cacheKeys[uri] = stable
-                while (cacheKeys.size > 32) cacheKeys.remove(cacheKeys.keys.first())
-            }
-        } catch (e: Exception) {
-            streams.forget(uri)
-            throw e
-        }
         Prepared(uri, episodeId, qualityLimit)
     }
 

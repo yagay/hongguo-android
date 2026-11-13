@@ -265,22 +265,6 @@ internal fun PlaybackExperienceSheet(
                     HorizontalDivider(color = HongguoColors.divider)
                     PlaybackToggle("自动连播下一集／下一部推荐", state.autoPlayNext,
                         model::setAutoPlayNext, "player_auto_next")
-                    PlaybackToggle("预加载下一集及下一部视频", state.preloadNext,
-                        model::setPreloadNext, "player_preload_next")
-                    if (state.preloadNext) {
-                        PlaybackHeading("预加载视频大小（每部）")
-                        PlaybackChoices(
-                            VideoPreloadPolicy.OPTIONS_MIB.map { it to "${it} MB" },
-                            state.preloadBufferMiB,
-                            model::setPreloadBufferMiB,
-                            "player_preload_buffer_mib",
-                        )
-                        Text(
-                            "默认 8 MB，最高 16 MB；缓存实际视频开头，切换时复用。容量越大，移动网络流量和内存占用越高。",
-                            fontSize = 11.sp,
-                            color = HongguoColors.muted,
-                        )
-                    }
                     PlaybackToggle("播放失败自动重试", state.retryPlaybackAutomatically,
                         model::setAutomaticPlaybackRetry, "player_auto_retry")
 
