@@ -2363,6 +2363,9 @@ class DramaViewModel(application: Application) : AndroidViewModel(application) {
                 savePlaybackPosition(current.vid, position, duration)
             },
             timerExpired = ::shouldPauseForTimer,
+            networkRecovered = { position ->
+                recoverNetworkPlayback(current.vid, position)
+            },
         )
         updateNotificationNavigation()
     }
@@ -2441,7 +2444,21 @@ class DramaViewModel(application: Application) : AndroidViewModel(application) {
     }
 
 
-    fun play(index: Int) {
+    /** Manual transitions keep their original semantics. Network reconnection
+     * uses the same pipeline but supplies the exact Media3 resume position. */
+    fun play(index: Int) = playAt(index, null)
+
+    private fun recoverNetworkPlayback(expectedVid: String, positionMs: Long) {
+        val snapshot = state.value
+        if (!snapshot.retryPlaybackAutomatically ||
+            snapshot.offlinePlaybackUri != null ||
+            snapshot.detail?.episodes?.getOrNull(snapshot.episodeIndex)?.vid != expectedVid ||
+            BackgroundPlaybackService.active == null) return
+        diagnostics.record("NETWORK_RESUME", "REFETCH_PLAYBACK_MODEL")
+        playAt(snapshot.episodeIndex, positionMs.coerceAtLeast(0L))
+    }
+
+    private fun playAt(index: Int, networkResumeMs: Long?) {
         val detail = state.value.detail ?: return
         if (index !in detail.episodes.indices) return
         if (finaleRecommendationRequestFor != null &&
@@ -2455,7 +2472,11 @@ class DramaViewModel(application: Application) : AndroidViewModel(application) {
                 Intent(getApplication<Application>(), BackgroundPlaybackService::class.java))
         }.isSuccess
         if (!serviceStarted) diagnostics.record("PLAYBACK", "SERVICE_START_DENIED")
-        BackgroundPlaybackService.active?.pauseForTransition()
+        // A reconnect retains the previous service-owned media item and
+        // notification while the signed playback model is fetched again.
+        // Ordinary user swipes/selections still pause for transitions.
+        if (networkResumeMs == null)
+            BackgroundPlaybackService.active?.pauseForTransition()
         // The mini player must survive autoplay while another page is open.
         if (!state.value.miniPlayerVisible)
             mutable.update { it.copy(detailPageVisible = false) }
@@ -2488,7 +2509,7 @@ class DramaViewModel(application: Application) : AndroidViewModel(application) {
         }
         detailJob?.cancel()
         firstFrameFor = null
-        val checkpoint = library.checkpoint(detail.drama.id, vid)
+        val checkpoint = networkResumeMs ?: library.checkpoint(detail.drama.id, vid)
         mutable.update { it.copy(episodeIndex = index, playbackUrl = null,
             renderedVideoVid = null,
             resumePositionMs = checkpoint,
@@ -2528,12 +2549,17 @@ class DramaViewModel(application: Application) : AndroidViewModel(application) {
                         detail, index, prepared.uri, null, checkpoint, version)
                 }
                 diagnostics.record("PLAYBACK", "SOURCE_READY", elapsed(started))
-                // First frame/background progress now schedules the next source.
+                // Background continuity is owned by the service's network
+                // listener; no Activity/Compose callback is required.
             } catch (e: CancellationException) {
                 throw e
             } catch (e: Exception) {
-                if (version == detailId) mutable.update {
-                    it.copy(playbackError = errorText("准备播放", e), playing = false)
+                if (version == detailId) {
+                    if (networkResumeMs != null)
+                        diagnostics.record("NETWORK_RESUME", "MODEL_REFRESH_FAILED")
+                    mutable.update {
+                        it.copy(playbackError = errorText("准备播放", e), playing = false)
+                    }
                 }
             }
         }
