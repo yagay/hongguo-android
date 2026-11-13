@@ -815,6 +815,7 @@ private fun HongguoApp(model: DramaViewModel = viewModel()) {
                         HongguoPrimaryNavigation(
                             selectedTab = primaryTab,
                             onSelect = ::selectPrimaryTab,
+                            separateFromPlayer = darkPlayer,
                         )
                     }
                 }
@@ -824,6 +825,8 @@ private fun HongguoApp(model: DramaViewModel = viewModel()) {
                 Spacer(Modifier.fillMaxWidth()
                     .background(
                         when {
+                            showPrimaryNavigation && darkPlayer ->
+                                HongguoColors.playerControlBackground
                             showPrimaryNavigation -> HongguoColors.surface
                             darkPlayer -> HongguoColors.playerBackground
                             else -> HongguoColors.background

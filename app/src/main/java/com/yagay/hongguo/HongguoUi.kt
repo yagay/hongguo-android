@@ -316,37 +316,51 @@ internal fun HongguoIconAction(
 internal fun HongguoPrimaryNavigation(
     selectedTab: String,
     onSelect: (String) -> Unit,
+    /** Distinguish the player episode/time strip from the primary tabs. */
+    separateFromPlayer: Boolean = false,
 ) {
-    // Keep all three primary destinations visually identical. A separate
-    // browse-style bar made Theater/My taller and changed the selected colors
-    // when navigating away from the reel feed.
+    // Preserve the exact 40dp total height in every mode: changing the app
+    // nav height would shift the uncropped portrait player viewport.
     val height = HongguoUi.primaryNavHeight
-    val backgroundColor = HongguoColors.playerChrome
+    val topDivider = if (separateFromPlayer) 1.dp else 0.dp
+    val topInset = if (separateFromPlayer) 3.dp else 0.dp
+    val tabsHeight = height - topDivider - topInset
+    val backgroundColor = if (separateFromPlayer)
+        HongguoColors.playerControlBackground else HongguoColors.playerChrome
     val activeColor = HongguoColors.ink
     val inactiveColor = HongguoColors.playerChromeMuted
     Surface(color = backgroundColor, shape = RoundedCornerShape(0.dp)) {
-        Row(
-            modifier = Modifier.fillMaxWidth().height(height),
-            horizontalArrangement = Arrangement.SpaceEvenly,
-            verticalAlignment = Alignment.CenterVertically,
-        ) {
-            listOf(
-                Triple("home", "首页", Icons.Outlined.Home),
-                Triple("theater", "剧场", Icons.Outlined.Theaters),
-                Triple("mine", "我的", Icons.Outlined.PersonOutline),
-            ).forEach { (tab, label, icon) ->
-                Box(
-                    modifier = Modifier.weight(1f).height(height)
-                        .clickable { onSelect(tab) }
-                        .testTag("primary_tab_" + tab),
-                    contentAlignment = Alignment.Center,
-                ) {
-                    Icon(
-                        imageVector = icon,
-                        contentDescription = label,
-                        modifier = Modifier.size(HongguoUi.primaryNavIconSize),
-                        tint = if (selectedTab == tab) activeColor else inactiveColor,
-                    )
+        Column(Modifier.fillMaxWidth().height(height)) {
+            if (separateFromPlayer) {
+                HorizontalDivider(
+                    thickness = topDivider,
+                    color = HongguoColors.divider,
+                )
+                androidx.compose.foundation.layout.Spacer(Modifier.height(topInset))
+            }
+            Row(
+                modifier = Modifier.fillMaxWidth().height(tabsHeight),
+                horizontalArrangement = Arrangement.SpaceEvenly,
+                verticalAlignment = Alignment.CenterVertically,
+            ) {
+                listOf(
+                    Triple("home", "首页", Icons.Outlined.Home),
+                    Triple("theater", "剧场", Icons.Outlined.Theaters),
+                    Triple("mine", "我的", Icons.Outlined.PersonOutline),
+                ).forEach { (tab, label, icon) ->
+                    Box(
+                        modifier = Modifier.weight(1f).height(tabsHeight)
+                            .clickable { onSelect(tab) }
+                            .testTag("primary_tab_" + tab),
+                        contentAlignment = Alignment.Center,
+                    ) {
+                        Icon(
+                            imageVector = icon,
+                            contentDescription = label,
+                            modifier = Modifier.size(HongguoUi.primaryNavIconSize),
+                            tint = if (selectedTab == tab) activeColor else inactiveColor,
+                        )
+                    }
                 }
             }
         }
