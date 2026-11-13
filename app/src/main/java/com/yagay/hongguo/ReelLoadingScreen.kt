@@ -212,6 +212,10 @@ internal fun ReelLoadingScreen(
                     }
                 }
 
+                if (state.feedMode) {
+                    ReelRecommendationHint(status = state.feedRecommendationStatus)
+                }
+
                 if (failed) {
                     Text(error.orEmpty(),
                         color = Color(0xFFFFB09A), fontSize = 12.sp,

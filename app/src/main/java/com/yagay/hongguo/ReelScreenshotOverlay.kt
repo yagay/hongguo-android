@@ -258,6 +258,11 @@ internal fun ReelScreenshotOverlay(
                 .padding(start = 15.dp, end = 90.dp, bottom = 18.dp),
             verticalArrangement = Arrangement.spacedBy(9.dp),
         ) {
+            // A small source indicator above caption controls; hidden with
+            // the title when the viewer chooses clear-screen mode.
+            if (state.feedMode && showTitle) {
+                ReelRecommendationHint(status = state.feedRecommendationStatus)
+            }
             if (showDanmakuControls) Row(
                 horizontalArrangement = Arrangement.spacedBy(7.dp),
                 verticalAlignment = Alignment.CenterVertically) {

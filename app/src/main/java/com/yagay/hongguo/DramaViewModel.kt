@@ -936,15 +936,20 @@ class DramaViewModel(application: Application) : AndroidViewModel(application) {
                     addAll(localContent.recentlySwiped())
                 }
             }
-        mutable.update { it.copy(feedLoading = true, feedError = null) }
+        // Capture which source THIS request uses, not the account state
+        // when the asynchronous response eventually arrives.
+        val usesAccountRecommendation = appliedRecommendationSession != null
+        mutable.update { it.copy(feedLoading = true, feedError = null,
+            feedRecommendationStatus =
+                ReelRecommendationStatusPolicy.loading(usesAccountRecommendation)) }
         officialFeedJob = viewModelScope.launch {
             try {
                 // The recommendation endpoint may retry several official
                 // categories in sequence. Bound the entire request so the
                 // startup screen cannot spin indefinitely on a stalled host.
                 val result = withTimeout(if (needsFirstDrama) 22_000L else 18_000L) {
-                    if (appliedRecommendationSession != null) {
-                        // Account-personalized recommendations must stay on the
+                    if (usesAccountRecommendation) {
+                        // Account-aware recommendations must stay on the
                         // authenticated feed; Kaixinguo SDK is anonymous only.
                         nativeSource.officialReelsPage(restart, excluded,
                             realOnly = snapshot.reelsMode == "real",
@@ -972,6 +977,8 @@ class DramaViewModel(application: Application) : AndroidViewModel(application) {
                     current.copy(feedItems = merged,
                         feedHasMore = result.hasMore,
                         feedLoading = false,
+                        feedRecommendationStatus = ReelRecommendationStatusPolicy.received(
+                            usesAccountRecommendation, merged.size > current.feedItems.size),
                         feedError = if (merged.size == current.feedItems.size)
                             "官方暂未推荐新作品，可上滑重试" else null)
                 }
@@ -1043,6 +1050,8 @@ class DramaViewModel(application: Application) : AndroidViewModel(application) {
                             activeFinaleRecommendation(warmingFinaleId)))) {
                     mutable.update { it.copy(feedLoading = false,
                         preparingDetail = if (needsFirstDrama) false else it.preparingDetail,
+                        feedRecommendationStatus =
+                            ReelRecommendationStatusPolicy.failed(usesAccountRecommendation),
                         feedError = "获取官方推荐超时，请点击重新获取") }
                     diagnostics.record("REELS", "OFFICIAL_TIMEOUT")
                     failedFeedRefreshUnavailable(
@@ -1059,6 +1068,8 @@ class DramaViewModel(application: Application) : AndroidViewModel(application) {
                             activeFinaleRecommendation(warmingFinaleId)))) {
                     mutable.update { it.copy(feedLoading = false,
                         preparingDetail = if (needsFirstDrama) false else it.preparingDetail,
+                        feedRecommendationStatus =
+                            ReelRecommendationStatusPolicy.failed(usesAccountRecommendation),
                         feedError = OfficialReelsFailure.userMessage(error)) }
                     diagnostics.record("REELS",
                         "OFFICIAL_FAIL_" + OfficialReelsFailure.code(error))
@@ -1108,6 +1119,7 @@ class DramaViewModel(application: Application) : AndroidViewModel(application) {
                 feedItems = retained,
                 feedIndex = 0,
                 feedLoading = false,
+                feedRecommendationStatus = ReelRecommendationStatus.NOT_REQUESTED,
                 feedHasMore = true,
                 feedError = null,
             ) }
@@ -2199,6 +2211,7 @@ class DramaViewModel(application: Application) : AndroidViewModel(application) {
             feedItems = drama?.let(::listOf).orEmpty(),
             feedIndex = 0,
             feedLoading = false,
+            feedRecommendationStatus = ReelRecommendationStatus.NOT_REQUESTED,
             feedHasMore = true,
             feedError = null,
             nextDramaTransition = NextDramaTransition.NONE,

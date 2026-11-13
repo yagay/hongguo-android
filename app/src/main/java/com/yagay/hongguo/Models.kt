@@ -102,6 +102,8 @@ data class AppState(
     val feedItems: List<Drama> = emptyList(),
     val feedIndex: Int = 0,
     val feedLoading: Boolean = false,
+    /** Last actual recommendation request outcome; login alone is not proof. */
+    val feedRecommendationStatus: ReelRecommendationStatus = ReelRecommendationStatus.NOT_REQUESTED,
     val feedHasMore: Boolean = false,
     val feedError: String? = null,
     /** User-visible handoff after the final episode; reset on next first frame. */
