@@ -18,7 +18,14 @@ data class Drama(
 data class Episode(val index: Int, val vid: String, val title: String = "")
 data class DramaDetail(val drama: Drama, val episodes: List<Episode>)
 data class RelatedDrama(val drama: Drama, val season: String, val upcoming: Boolean)
-data class CatalogPage(val items: List<Drama>, val hasMore: Boolean, val nextOffset: Int)
+data class CatalogPage(
+    val items: List<Drama>,
+    val hasMore: Boolean,
+    val nextOffset: Int,
+    val personalizationEvidence: com.hongguotv.core.PersonalizationEvidence =
+        com.hongguotv.core.PersonalizationEvidence.UNDECLARED,
+    val categoryFallback: Boolean = false,
+)
 data class CommentEntry(
     val id: String,
     val author: String,
