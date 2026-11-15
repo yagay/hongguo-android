@@ -322,9 +322,15 @@ class NativeHongguoSource(
         withContext(Dispatchers.IO) {
             val session = synchronized(recommendationLock) { accountFeed }
                 ?: throw IOException("未开启账号推荐，无法执行对照检查")
-            val withAccount = RecommendationFeed(repository.http, account = session).page(1)
+            // The normal repository uses an in-memory CookieJar for CDN routing.
+            // Isolate both probes from that jar: the guest control MUST NEVER
+            // inherit an authenticated Set-Cookie from an earlier app request.
+            val probeHttp = repository.http.newBuilder()
+                .cookieJar(okhttp3.CookieJar.NO_COOKIES)
+                .build()
+            val withAccount = RecommendationFeed(probeHttp, account = session).page(1)
             kotlinx.coroutines.currentCoroutineContext().ensureActive()
-            val anonymous = RecommendationFeed(repository.http).page(1)
+            val anonymous = RecommendationFeed(probeHttp).page(1)
             val a = withAccount.items.map { it.id }.distinct().take(20)
             val b = anonymous.items.map { it.id }.distinct().take(20)
             if (a.isEmpty() || b.isEmpty())
