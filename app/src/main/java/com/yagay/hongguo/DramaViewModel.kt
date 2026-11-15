@@ -617,6 +617,20 @@ class DramaViewModel(application: Application) : AndroidViewModel(application) {
     private var requestId = 0L
     private var detailId = 0L
     private var pendingFeedAdvance = false
+    /**
+     * Resolve a strictly verified adjacent season at the full-series finale.
+     * A manual playback selection cancels the lookup; late network results
+     * must never replace another video or awaken a closed player.
+     */
+    private var nextSeasonJob: Job? = null
+    private var nextSeasonFor: String? = null
+
+    private fun cancelNextSeasonLookup() {
+        nextSeasonJob?.cancel()
+        nextSeasonJob = null
+        nextSeasonFor = null
+    }
+
     /** Final-episode auto-next survives empty/duplicate official responses. */
     private var finaleAdvanceFor: String? = null
     /** Only this automatically selected drama keeps the loading indicator. */
@@ -2098,6 +2112,7 @@ class DramaViewModel(application: Application) : AndroidViewModel(application) {
         resumeEp: Int? = null,
         deferRecommendations: Boolean = false,
     ) {
+        cancelNextSeasonLookup()
         val current = state.value
         if (drama != null && drama.id in current.hiddenRecommendationIds) return
         deferRestoredFeedRecommendations = deferRecommendations && drama != null
@@ -2360,6 +2375,7 @@ class DramaViewModel(application: Application) : AndroidViewModel(application) {
         showDetails: Boolean = false,
         origin: PlaybackOrigin = if (feed) PlaybackOrigin.SWIPE_FEED
             else PlaybackOrigin.CATALOG) {
+        cancelNextSeasonLookup()
         val keepNextDramaPreparing = autoNextTargetDramaId == drama.id
         autoNextTargetDramaId = null
         if (finaleAdvanceFor != null && finaleAdvanceFor != drama.id) {
@@ -2372,7 +2388,8 @@ class DramaViewModel(application: Application) : AndroidViewModel(application) {
         // Auto-advancing to the next drama should not unexpectedly expand a
         // minimized reel. Explicit new selections outside the current feed
         // still open fullscreen as usual.
-        val retainMini = feed && state.value.feedMode && state.value.miniPlayerVisible
+        val retainMini = state.value.miniPlayerVisible &&
+            (feed && state.value.feedMode || keepNextDramaPreparing)
         BackgroundPlaybackService.active?.pauseForTransition()
         sdkDetailGeneration++
         sdkDetailJob?.cancel()
@@ -2428,7 +2445,7 @@ class DramaViewModel(application: Application) : AndroidViewModel(application) {
                 showDetails -> it.navigation.toSeries(origin).toDetails()
                 // Auto-next while the user deliberately browses Home must
                 // remain a mini player and never interrupt the catalog page.
-                feed && retainMini -> it.navigation.toCatalog()
+                retainMini -> it.navigation.toCatalog()
                 feed -> it.navigation.toFeed()
                 else -> it.navigation.toSeries(origin)
             },
@@ -2650,6 +2667,7 @@ class DramaViewModel(application: Application) : AndroidViewModel(application) {
     private fun playAt(index: Int, networkResumeMs: Long?) {
         val detail = state.value.detail ?: return
         if (index !in detail.episodes.indices) return
+        if (networkResumeMs == null) cancelNextSeasonLookup()
         if (finaleRecommendationRequestFor != null &&
             index != detail.episodes.lastIndex)
             cancelFinaleRecommendationWarmup()
@@ -2919,6 +2937,63 @@ class DramaViewModel(application: Application) : AndroidViewModel(application) {
      * queue. Keep the existing Media3 session until a new recommended
      * episode is resolved; never restart episode one of the finished drama.
      */
+    /** Prefer an exact adjacent, playable official season to an unrelated
+     * recommendation. Never infer an episode or season ID from similar names.
+     * If verification fails/times out, preserve the existing official-feed
+     * finale fallback.
+     */
+    private fun continueWithNextSeasonOrRecommendation() {
+        val s = state.value
+        val detail = s.detail ?: return
+        val expectedVid = detail.episodes.getOrNull(s.episodeIndex)?.vid ?: return
+        if (!SeasonAutoplayPolicy.shouldCheck(
+                s.autoPlayNext, s.feedMode, s.offlinePlaybackUri != null,
+                s.episodeIndex == detail.episodes.lastIndex)) {
+            continueWithOfficialRecommendation()
+            return
+        }
+        val id = detail.drama.id
+        if (nextSeasonFor == id && nextSeasonJob?.isActive == true) return
+        cancelNextSeasonLookup()
+        nextSeasonFor = id
+        mutable.update {
+            it.copy(nextDramaTransition = NextDramaTransition.FINDING_RECOMMENDATION)
+        }
+        diagnostics.record("SEASONS", "AUTONEXT_LOOKUP_START")
+        nextSeasonJob = viewModelScope.launch {
+            val next = try {
+                withTimeout(4_500L) {
+                    nativeSource.nextConfirmedSeason(id, detail.drama.title)
+                }
+            } catch (e: CancellationException) {
+                if (e !is TimeoutCancellationException) throw e
+                diagnostics.record("SEASONS", "AUTONEXT_LOOKUP_TIMEOUT")
+                null
+            } catch (_: Exception) {
+                diagnostics.record("SEASONS", "AUTONEXT_LOOKUP_UNAVAILABLE")
+                null
+            }
+            val now = state.value
+            if (nextSeasonFor != id ||
+                !SeasonAutoplayPolicy.isSameFinishedEpisode(
+                    id, expectedVid, now.detail?.drama?.id,
+                    now.detail?.episodes?.getOrNull(now.episodeIndex)?.vid,
+                    now.autoPlayNext,
+                ) || now.feedMode || now.offlinePlaybackUri != null) return@launch
+            nextSeasonFor = null
+            nextSeasonJob = null
+            if (next != null && next.id != id) {
+                diagnostics.record("SEASONS", "AUTONEXT_VERIFIED_NEXT_SEASON")
+                autoNextTargetDramaId = next.id
+                open(next, resumeEp = 1, feed = false,
+                    origin = now.navigation.origin)
+            } else {
+                diagnostics.record("SEASONS", "AUTONEXT_NO_VERIFIED_NEXT")
+                continueWithOfficialRecommendation()
+            }
+        }
+    }
+
     private fun continueWithOfficialRecommendation() {
         val snapshot = state.value
         val finishedDrama = snapshot.detail?.drama ?: return
@@ -3033,7 +3108,7 @@ class DramaViewModel(application: Application) : AndroidViewModel(application) {
                 }
             }
             ReelAutoplayPolicy.Action.NEXT_DRAMA -> {
-                continueWithOfficialRecommendation()
+                continueWithNextSeasonOrRecommendation()
             }
         }
     }
@@ -3264,6 +3339,7 @@ class DramaViewModel(application: Application) : AndroidViewModel(application) {
     }
 
     fun closePlayer() {
+        cancelNextSeasonLookup()
         BackgroundPlaybackService.stopActive("CLOSE_PLAYER")
         sdkDetailGeneration++
         sdkDetailJob?.cancel()
