@@ -68,6 +68,8 @@ class NativeHongguoSource(
     // rediscovering the same duplicate pages on every restart.
     private var mainReelsExhausted = false
     private var mainReelsNoNewAtMs = 0L
+    /** A saturated guest feed must not suppress the first new account request. */
+    private var reelsAccountSession: FeedAccount? = null
     private var realReelsCursor = RecommendationCursor()
     private var realReelsFeed = RecommendationFeed(repository.http, cursor = realReelsCursor,
         category = DramaCategory.REAL)
@@ -113,6 +115,14 @@ class NativeHongguoSource(
         reelsLock.withLock {
             if (restart) {
                 val accountForSession = synchronized(recommendationLock) { accountFeed }
+                if (accountForSession != reelsAccountSession) {
+                    mainReelsExhausted = false
+                    mainReelsNoNewAtMs = 0L
+                    diagnostics?.record("REELS", "ACCOUNT_CONTEXT_CURSOR_RESET")
+                }
+                reelsAccountSession = accountForSession
+                diagnostics?.record("REELS", if (accountForSession == null)
+                    "ANONYMOUS_DYNAMIC_CONTEXT" else "ACCOUNT_COOKIE_ONLY_UNVERIFIED")
                 reelsCursor = RecommendationCursor()
                 reelsFeed = RecommendationFeed(repository.http,
                     account = accountForSession,
@@ -160,6 +170,12 @@ class NativeHongguoSource(
                 excluded.toList().takeLast(300).forEach(reelsCursor::markSeen)
             }
             val candidates = mutableListOf<Series>()
+            val sources = linkedMapOf<String, ReelItemAttribution>()
+            val accountMode = reelsAccountSession != null
+            val dynamicOrigin = if (accountMode) ReelRecommendationOrigin.ACCOUNT_DYNAMIC
+                else ReelRecommendationOrigin.ANONYMOUS_OFFICIAL_DYNAMIC
+            val categoryOrigin = if (accountMode) ReelRecommendationOrigin.ACCOUNT_CATEGORY
+                else ReelRecommendationOrigin.ANONYMOUS_OFFICIAL_CATEGORY
             val dynamicEvidence = mutableSetOf<PersonalizationEvidence>()
             var upstreamMore = true
             var officialFailure: Exception? = null
@@ -173,7 +189,10 @@ class NativeHongguoSource(
                         comicReelsEnd) return@repeat
                     try {
                         val page = comicCategoryPage()
-                        comicItems += page.items.filter { it.id !in excluded }
+                        val received = page.items.filter { it.id !in excluded }
+                        comicItems += received
+                        received.forEach { sources.putIfAbsent(it.id,
+                            ReelItemAttribution(categoryOrigin)) }
                     } catch (cancel: kotlinx.coroutines.CancellationException) {
                         throw cancel
                     } catch (error: Exception) {
@@ -190,7 +209,8 @@ class NativeHongguoSource(
                 diagnostics?.record("REELS", "COMIC_DYNAMIC_BATCH")
                 return@withLock CatalogPage(unique.map { it.toDrama() },
                     hasMore = !comicReelsEnd, nextOffset = comicReelsPageNumber,
-                    categoryFallback = true)
+                    categoryFallback = true,
+                    itemAttributions = sources.filterKeys { id -> unique.any { it.id == id } })
             }
             // Always try dynamic official recommendations first, including in real-only mode.
             // In real-only mode, admit exclusively explicit server-typed real dramas.
@@ -202,8 +222,14 @@ class NativeHongguoSource(
                     reelsPageNumber++
                     dynamicEvidence += page.personalizationEvidence
                     upstreamMore = page.hasMore
-                    candidates += page.items.filter { it.id !in excluded &&
+                    val received = page.items.filter { it.id !in excluded &&
                         (!realOnly || isExplicitReal(it)) }
+                    candidates += received
+                    received.forEach { sources.putIfAbsent(it.id,
+                        ReelItemAttribution(dynamicOrigin, page.personalizationEvidence)) }
+                    diagnostics?.record("REELS", if (accountMode)
+                        "ACCOUNT_DYNAMIC_ITEMS_" + received.size else
+                        "ANONYMOUS_DYNAMIC_ITEMS_" + received.size)
                 } catch (cancel: kotlinx.coroutines.CancellationException) {
                     throw cancel
                 } catch (failure: Exception) {
@@ -229,7 +255,10 @@ class NativeHongguoSource(
                         realReelsEnd) return@repeat
                     try {
                         val page = realCategoryPage()
-                        candidates += page.items.filter { it.id !in excluded }
+                        val received = page.items.filter { it.id !in excluded }
+                        candidates += received
+                        received.forEach { sources.putIfAbsent(it.id,
+                            ReelItemAttribution(categoryOrigin)) }
                         diagnostics?.record("REELS", "REAL_CATEGORY_FALLBACK")
                     } catch (cancel: kotlinx.coroutines.CancellationException) {
                         throw cancel
@@ -255,7 +284,10 @@ class NativeHongguoSource(
                     try {
                         val page = if (type == DramaCategory.REAL) realCategoryPage()
                             else comicCategoryPage()
-                        candidates += page.items.filter { it.id !in excluded }
+                        val received = page.items.filter { it.id !in excluded }
+                        candidates += received
+                        received.forEach { sources.putIfAbsent(it.id,
+                            ReelItemAttribution(categoryOrigin)) }
                         diagnostics?.record("REELS",
                             if (type == DramaCategory.REAL)
                                 "GENERAL_REAL_FALLBACK" else "GENERAL_COMIC_FALLBACK")
@@ -284,8 +316,9 @@ class NativeHongguoSource(
                     mainReelsExhausted -> "GENERAL_CATEGORY_DYNAMIC_BATCH"
                     else -> "OFFICIAL_DYNAMIC_BATCH"
                 })
+            val containsCategory = unique.any { sources[it.id]?.origin == categoryOrigin }
             val evidence = when {
-                dynamicCandidateCount == 0 -> PersonalizationEvidence.UNDECLARED
+                dynamicCandidateCount == 0 || containsCategory -> PersonalizationEvidence.UNDECLARED
                 PersonalizationEvidence.SERVER_ENABLED in dynamicEvidence &&
                     PersonalizationEvidence.SERVER_DISABLED in dynamicEvidence ->
                     PersonalizationEvidence.UNDECLARED
@@ -304,6 +337,7 @@ class NativeHongguoSource(
             CatalogPage(unique.map { it.toDrama() },
                 personalizationEvidence = evidence,
                 categoryFallback = dynamicCandidateCount == 0,
+                itemAttributions = sources.filterKeys { id -> unique.any { it.id == id } },
                 hasMore = when {
                     realOnly -> (!mainReelsExhausted && upstreamMore) || !realReelsEnd
                     mainReelsExhausted -> !realReelsEnd || !comicReelsEnd
@@ -327,20 +361,31 @@ class NativeHongguoSource(
             // inherit an authenticated Set-Cookie from an earlier app request.
             val probeHttp = repository.http.newBuilder()
                 .cookieJar(okhttp3.CookieJar.NO_COOKIES)
+                .connectTimeout(6, java.util.concurrent.TimeUnit.SECONDS)
+                .readTimeout(10, java.util.concurrent.TimeUnit.SECONDS)
+                .callTimeout(13, java.util.concurrent.TimeUnit.SECONDS)
                 .build()
+            // Guest-vs-guest variation is the baseline. A difference between
+            // one account and one guest is not sufficient to prove personalization.
             val withAccount = RecommendationFeed(probeHttp, account = session).page(1)
             kotlinx.coroutines.currentCoroutineContext().ensureActive()
             val anonymous = RecommendationFeed(probeHttp).page(1)
+            kotlinx.coroutines.currentCoroutineContext().ensureActive()
+            val secondAnonymous = RecommendationFeed(probeHttp).page(1)
             val a = withAccount.items.map { it.id }.distinct().take(20)
             val b = anonymous.items.map { it.id }.distinct().take(20)
-            if (a.isEmpty() || b.isEmpty())
+            val c = secondAnonymous.items.map { it.id }.distinct().take(20)
+            if (a.isEmpty() || b.isEmpty() || c.isEmpty())
                 throw IOException("推荐接口未提供足够的对照数据")
-            diagnostics?.record("REELS", "ACCOUNT_ANONYMOUS_COMPARISON_COMPLETE")
+            diagnostics?.record("REELS", "ACCOUNT_GUEST_GUEST_BASELINE_DONE")
             RecommendationComparison(
                 accountCount = a.size,
                 anonymousCount = b.size,
                 overlapCount = a.toSet().intersect(b.toSet()).size,
                 identicalOrder = a == b,
+                secondAnonymousCount = c.size,
+                anonymousBaselineOverlap = b.toSet().intersect(c.toSet()).size,
+                anonymousBaselineIdenticalOrder = b == c,
             )
         }
 
