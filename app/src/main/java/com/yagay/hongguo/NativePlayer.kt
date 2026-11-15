@@ -865,6 +865,7 @@ internal fun NativePlayer(
                 speedPreset = state.danmakuSpeed,
                 tracks = state.danmakuDensity,
                 fontSizeSp = state.danmakuFontSize,
+                opacityPercent = state.danmakuOpacity,
                 modifier = Modifier.fillMaxWidth().align(Alignment.TopCenter)
                     .padding(top = 58.dp)
             )
