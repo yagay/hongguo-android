@@ -489,7 +489,10 @@ class RecommendationFeed(
             val normalized = JSONObject().put("code", 0)
                 .put("data", JSONObject().put("tab_item", JSONArray().put(tab)))
             // 单列响应的 has_more=false 仍可能带来新作品，由去重和最多三批尝试共同收敛。
-            return parse(normalized)
+            val parsed = parse(normalized)
+            return parsed.first.copy(
+                personalizationEvidence = PersonalizationEvidenceParser.inspect(result, data, view),
+            ) to parsed.second
         }
 
         internal fun parseCategory(result: JSONObject): Pair<CatalogPage, String> {
@@ -611,7 +614,9 @@ class RecommendationFeed(
             // Live offsets 0,1,2 return new cards despite false/missing has_more and
             // bottom_unlimited. This feed is not a category paginator. The caller stops
             // on duplicate-only batches and bounds each browse session to 100 pages.
-            return CatalogPage(items, true, trialHints = hints) to session
+            return CatalogPage(items, true, trialHints = hints,
+                personalizationEvidence = PersonalizationEvidenceParser.inspect(result, tab),
+            ) to session
         }
     }
 }
