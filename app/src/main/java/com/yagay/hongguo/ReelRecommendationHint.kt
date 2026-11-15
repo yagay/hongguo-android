@@ -2,8 +2,11 @@ package com.yagay.hongguo
 
 import androidx.compose.foundation.background
 import androidx.compose.foundation.clickable
+import androidx.compose.foundation.rememberScrollState
+import androidx.compose.foundation.verticalScroll
 import androidx.compose.foundation.layout.Arrangement
 import androidx.compose.foundation.layout.Column
+import androidx.compose.foundation.layout.heightIn
 import androidx.compose.foundation.layout.Row
 import androidx.compose.foundation.layout.padding
 import androidx.compose.foundation.layout.size
@@ -75,7 +78,11 @@ internal fun ReelRecommendationHint(
             onDismissRequest = { explanationOpen = false },
             title = { Text("刷剧推荐来源与个性化核验") },
             text = {
-                Column(verticalArrangement = Arrangement.spacedBy(10.dp)) {
+                Column(
+                    modifier = Modifier.heightIn(max = 410.dp)
+                        .verticalScroll(rememberScrollState()),
+                    verticalArrangement = Arrangement.spacedBy(10.dp),
+                ) {
                     Text(status.explanation)
                     if (status.accountRequest) {
                         Text("账号请求成功不等于个性化排序已获证实。可使用与刷剧相同的签名链路，读取两组独立账号／游客样本，核对作品重合、排序以及两种来源本身的变化。")
