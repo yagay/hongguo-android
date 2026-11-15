@@ -1,5 +1,7 @@
 package com.yagay.hongguo
 
+import com.hongguotv.core.PersonalizationEvidence
+
 /**
  * Evidence about the LAST reel page request, not a guess based on login UI.
  *
@@ -44,8 +46,23 @@ enum class ReelRecommendationStatus(
         true, false,
     ),
     ACCOUNT_RECEIVED(
-        "账号官方推荐 · 已获取",
-        "已通过登录账号会话向官方接口请求并成功收到新的推荐作品。但客户端无法确认服务端是否执行了个性化排序。",
+        "账号官方推荐 · 未获个性化证明",
+        "本轮官方动态推荐使用了已登录的账号会话，并返回了作品；但响应中没有可识别的服务端个性化声明。账号登录、请求成功和新作品都不能证明排序经过个性化处理。",
+        true, true,
+    ),
+    ACCOUNT_SERVER_ENABLED(
+        "账号推荐 · 服务端标记个性化",
+        "本轮账号动态推荐响应明确包含已启用个性化的标志。这是服务端声明，不是客户端独立审计排序算法；如果官方协议更改，仍需重新核实该字段语义。",
+        true, true,
+    ),
+    ACCOUNT_SERVER_DISABLED(
+        "账号推荐 · 未启用个性化",
+        "本轮账号动态推荐响应明确包含个性化未启用的标志，不能作为账号定制排序的证据。",
+        true, true,
+    ),
+    ACCOUNT_CATEGORY_FALLBACK(
+        "账号请求 · 分类推荐兜底",
+        "本轮可展示的作品全部来自官方分类选择接口，未从动态推荐流得到可展示作品。即使请求带有账号 Cookie，也不能将分类结果判为个性化推荐。",
         true, true,
     ),
     ACCOUNT_EMPTY(
@@ -65,10 +82,20 @@ internal object ReelRecommendationStatusPolicy {
         if (account) ReelRecommendationStatus.ACCOUNT_LOADING
         else ReelRecommendationStatus.ANONYMOUS_LOADING
 
-    fun received(account: Boolean, newItems: Boolean): ReelRecommendationStatus =
+    fun received(
+        account: Boolean,
+        newItems: Boolean,
+        evidence: PersonalizationEvidence = PersonalizationEvidence.UNDECLARED,
+        categoryFallback: Boolean = false,
+    ): ReelRecommendationStatus =
         if (account) {
-            if (newItems) ReelRecommendationStatus.ACCOUNT_RECEIVED
-            else ReelRecommendationStatus.ACCOUNT_EMPTY
+            if (!newItems) ReelRecommendationStatus.ACCOUNT_EMPTY
+            else if (categoryFallback) ReelRecommendationStatus.ACCOUNT_CATEGORY_FALLBACK
+            else when (evidence) {
+                PersonalizationEvidence.SERVER_ENABLED -> ReelRecommendationStatus.ACCOUNT_SERVER_ENABLED
+                PersonalizationEvidence.SERVER_DISABLED -> ReelRecommendationStatus.ACCOUNT_SERVER_DISABLED
+                PersonalizationEvidence.UNDECLARED -> ReelRecommendationStatus.ACCOUNT_RECEIVED
+            }
         } else {
             if (newItems) ReelRecommendationStatus.ANONYMOUS_RECEIVED
             else ReelRecommendationStatus.ANONYMOUS_EMPTY
