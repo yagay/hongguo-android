@@ -3,6 +3,8 @@ package com.yagay.hongguo
 import com.hongguotv.core.PlaybackDeviceRegistrationException
 import com.hongguotv.core.EmptyPlaybackResponseException
 import com.hongguotv.core.ContentHttpException
+import dev.openhongguo.OpenhongguoException
+import dev.openhongguo.ErrorCode
 import java.io.EOFException
 import java.io.IOException
 import java.net.ConnectException
@@ -40,7 +42,15 @@ object PlaybackProblem {
     fun describe(stage: String, failure: Throwable): String {
         val chain = generateSequence(failure) { it.cause }.take(8).toList()
         val messages = chain.mapNotNull { it.message }
+        val sdkCode = chain.filterIsInstance<OpenhongguoException>().firstOrNull()?.code
         val code = when {
+            sdkCode == ErrorCode.ANONYMOUS_LIMITED -> "PLAYBACK_ANONYMOUS_LIMITED"
+            sdkCode == ErrorCode.DEVICE_REJECTED -> "PLAYBACK_DEVICE_REJECTED"
+            sdkCode == ErrorCode.TRANSPORT -> "NETWORK_IO"
+            sdkCode == ErrorCode.RATE_LIMITED -> "UPSTREAM_RATE_LIMIT"
+            sdkCode == ErrorCode.AUTHENTICATION_REQUIRED -> "UPSTREAM_UNAUTHORIZED"
+            sdkCode == ErrorCode.SIGNATURE_REJECTED -> "UPSTREAM_FORBIDDEN"
+            sdkCode == ErrorCode.CONTENT_UNAVAILABLE -> "CONTENT_UNAVAILABLE"
             chain.any { it is PlaybackDeviceRegistrationException } && chain.any { it is UnknownHostException } ->
                 "DEVICE_REGISTER_DNS"
             chain.any { it is PlaybackDeviceRegistrationException } && chain.any { it is SocketTimeoutException } ->
@@ -73,6 +83,9 @@ object PlaybackProblem {
             "DEVICE_REGISTER_DNS" -> "设备注册阶段无法解析服务器域名"
             "DEVICE_REGISTER_TIMEOUT" -> "设备注册阶段请求超时"
             "PLAYBACK_EMPTY_RESPONSE" -> "播放模型接口返回空响应，上游暂不可用"
+            "PLAYBACK_ANONYMOUS_LIMITED" -> "匿名播放模型未返回内容"
+            "PLAYBACK_DEVICE_REJECTED" -> "播放设备身份被服务端拒绝"
+            "CONTENT_UNAVAILABLE" -> "当前视频暂不可获取"
             "UPSTREAM_RATE_LIMIT" -> "上游请求频率受限"
             "NETWORK_DNS" -> "无法解析服务器域名"
             "NETWORK_TIMEOUT" -> "网络请求超时"
