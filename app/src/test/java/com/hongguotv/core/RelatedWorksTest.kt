@@ -92,6 +92,28 @@ class RelatedWorksTest {
     }
 
     @Test
+    fun onlyProviderReservationItemIdsEnableUpcomingBooking() {
+        val sample = """{"code":0,"data":[{"show_type":547,"video_data":[
+            {"series_id":"901","title":"系列剧第二季","content_type":1007,
+                "episode_cnt":0,"subscribe_item":{"item_id":"999000111"}},
+            {"series_id":"902","title":"系列剧第三季","content_type":1007,
+                "episode_cnt":0,"item_id":"0"},
+            {"series_id":"903","title":"系列剧第四季","content_type":1007,
+                "episode_cnt":0,"subscribe_data":{"item_id":"888000222"}},
+            {"series_id":"904","title":"系列剧第五季","content_type":1004,
+                "episode_cnt":12,"item_id":"777000333"}
+        ]}]}"""
+        val parsed = RelatedWorks.parse(sample, "900")
+        assertEquals(listOf("901", "902", "903", "904"), parsed.map { it.series.id })
+        assertEquals("999000111", parsed[0].reservationItemId)
+        assertNull(parsed[1].reservationItemId)
+        assertEquals("888000222", parsed[2].reservationItemId)
+        assertNull(parsed[3].reservationItemId)
+        // The series ID is never used as a reservation item fallback.
+        assertNotEquals("901", parsed[0].reservationItemId)
+    }
+
+    @Test
     fun sourceUsesOfficialRelatedCellAndEmptyResponseFailoverWithExplicitRefresh() {
         var calls = 0
         val repository =
