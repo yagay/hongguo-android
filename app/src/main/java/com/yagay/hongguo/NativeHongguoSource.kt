@@ -312,6 +312,32 @@ class NativeHongguoSource(
         }
     }
 
+    /**
+     * Optional, read-only A/B sample of the SAME official tab endpoint.
+     * Fresh cursors ensure the probe cannot alter current playback or paging.
+     * Different lists are a clue, never proof of server-side personalization:
+     * anonymous feeds can also randomize or rotate experiments.
+     */
+    suspend fun comparePersonalizationSamples(): RecommendationComparison =
+        withContext(Dispatchers.IO) {
+            val session = synchronized(recommendationLock) { accountFeed }
+                ?: throw IOException("未开启账号推荐，无法执行对照检查")
+            val withAccount = RecommendationFeed(repository.http, account = session).page(1)
+            kotlinx.coroutines.currentCoroutineContext().ensureActive()
+            val anonymous = RecommendationFeed(repository.http).page(1)
+            val a = withAccount.items.map { it.id }.distinct().take(20)
+            val b = anonymous.items.map { it.id }.distinct().take(20)
+            if (a.isEmpty() || b.isEmpty())
+                throw IOException("推荐接口未提供足够的对照数据")
+            diagnostics?.record("REELS", "ACCOUNT_ANONYMOUS_COMPARISON_COMPLETE")
+            RecommendationComparison(
+                accountCount = a.size,
+                anonymousCount = b.size,
+                overlapCount = a.toSet().intersect(b.toSet()).size,
+                identicalOrder = a == b,
+            )
+        }
+
     private val episodeComments by lazy { AppCommentPages() }
     private val publicComments by lazy { PublicComments(repository.http) }
     private val timedComments by lazy { TimedComments() }
