@@ -754,7 +754,7 @@ class NativeHongguoSource(
     /** Signed first-party related-work cells; upcoming seasons never playable. */
     suspend fun related(id: String): List<RelatedDrama> = withContext(Dispatchers.IO) {
         repository.related(id).map {
-            RelatedDrama(it.series.toDrama(), it.label, it.upcoming)
+            RelatedDrama(it.series.toDrama(), it.label, it.upcoming, it.reservationItemId)
         }
     }
 
