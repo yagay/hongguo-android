@@ -41,6 +41,38 @@ class DanmakuLayoutTest {
         assertEquals(1f, DanmakuLayout.progress(9_100L, 2_000L), 0.001f)
     }
 
+    @Test fun activeWindowExcludesExpiredAndFutureEntries() {
+        val rows = listOf(
+            DanmakuEntry("expired", "old", 500L),
+            DanmakuEntry("boundary", "boundary", 1_000L),
+            DanmakuEntry("live", "live", 1_001L),
+            DanmakuEntry("now", "now", 8_000L),
+            DanmakuEntry("future", "later", 9_000L),
+        )
+        val arranged = DanmakuLayout.arrange(rows, lanes = 5)
+        assertEquals(listOf("live", "now"),
+            DanmakuLayout.visibleAt(arranged, 8_000L, 7_000L, 5).map { it.id })
+        assertEquals(emptyList<String>(),
+            DanmakuLayout.visibleAt(arranged, 30_000L, 7_000L, 5).map { it.id })
+    }
+
+    @Test fun activeWindowMatchesReferenceDuringPlaybackAndSeeks() {
+        val arranged = DanmakuLayout.arrange(
+            (0..250).map { i -> DanmakuEntry("id$i", "弹幕$i", i * 1_750L) },
+            lanes = 5,
+        )
+        val duration = DanmakuLayout.flightForSpeed(1)
+        for (time in listOf(0L, 1L, 1_000L, 7_000L, 50_000L,
+            88_000L, 200_000L, 438_000L, 500_000L, 2_000_000L)) {
+            val expected = arranged.filter {
+                it.startMs <= time && time < it.startMs + duration
+            }.take(5)
+            assertEquals(expected, DanmakuLayout.visibleAt(arranged, time, duration, 5))
+        }
+        assertEquals(emptyList<DanmakuLayout.Placed>(),
+            DanmakuLayout.visibleAt(arranged, 1_000L, duration, 0))
+    }
+
     @Test fun orderIndependentAndPausedPositionStable() {
         val items = listOf(
             DanmakuEntry("b", "two", 100L), DanmakuEntry("a", "one", 100L),
