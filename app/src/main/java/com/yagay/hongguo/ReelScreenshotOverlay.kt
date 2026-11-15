@@ -93,6 +93,7 @@ internal fun ReelScreenshotOverlay(
     onReal: () -> Unit,
     onRecommend: () -> Unit,
     onSearch: () -> Unit,
+    onPersonalizationCompare: (() -> Unit)? = null,
     showTopButtons: Boolean = true,
     showSideButtons: Boolean = true,
     showTitle: Boolean = true,
@@ -261,7 +262,13 @@ internal fun ReelScreenshotOverlay(
             // A small source indicator above caption controls; hidden with
             // the title when the viewer chooses clear-screen mode.
             if (state.feedMode && showTitle) {
-                ReelRecommendationHint(status = state.feedRecommendationStatus)
+                ReelRecommendationHint(
+                    status = state.feedRecommendationStatus,
+                    comparison = state.comparison,
+                    comparing = state.comparisonLoading,
+                    compareError = state.comparisonError,
+                    onCompare = onPersonalizationCompare,
+                )
             }
             if (showDanmakuControls) Row(
                 horizontalArrangement = Arrangement.spacedBy(7.dp),
