@@ -73,6 +73,94 @@ class DanmakuLayoutTest {
             DanmakuLayout.visibleAt(arranged, 1_000L, duration, 0))
     }
 
+    @Test fun shortCommentsCanFollowInOneLaneBeforeFullFlightEnds() {
+        val comments = listOf(
+            DanmakuEntry("first", "short", 1_000L),
+            DanmakuEntry("second", "short", 3_000L),
+            DanmakuEntry("tooSoon", "short", 3_500L),
+        )
+        val placed = DanmakuLayout.arrangeCollisionAware(
+            comments, lanes = 1, durationMs = 7_000L,
+            viewportWidthPx = 400f, safeGapPx = 12f,
+            measureTextPx = { 80f },
+        )
+        assertEquals(listOf("first", "second"), placed.map { it.id })
+        assertEquals(listOf(0, 0), placed.map { it.lane })
+        assertEquals(listOf("first", "second"),
+            DanmakuLayout.visibleAt(placed, 4_000L, 7_000L, 10).map { it.id })
+    }
+
+    @Test fun longFastFollowerCannotCatchEarlierShortComment() {
+        val comments = listOf(
+            DanmakuEntry("short", "short", 0L),
+            DanmakuEntry("long", "much longer text", 2_000L),
+        )
+        val measure: (String) -> Float = {
+            if (it == "short") 80f else 600f
+        }
+        val singleLane = DanmakuLayout.arrangeCollisionAware(
+            comments, 1, 7_000L, 400f, 12f, measure,
+        )
+        assertEquals(listOf("short"), singleLane.map { it.id })
+        val twoLanes = DanmakuLayout.arrangeCollisionAware(
+            comments, 2, 7_000L, 400f, 12f, measure,
+        )
+        assertEquals(listOf(0, 1), twoLanes.map { it.lane })
+    }
+
+    @Test fun collisionCheckRemainsSafeThroughEntireOverlap() {
+        val comments = (0..90).map { index ->
+            DanmakuEntry("id$index", "msg$index", index * 230L)
+        }
+        val placed = DanmakuLayout.arrangeCollisionAware(
+            comments, 3, 7_000L, 412f, 14f,
+            measureTextPx = {
+                val id = it.removePrefix("msg").toInt()
+                50f + (id % 7) * 46f
+            },
+        )
+        val reverse = DanmakuLayout.arrangeCollisionAware(
+            comments.reversed(), 3, 7_000L, 412f, 14f,
+            measureTextPx = {
+                val id = it.removePrefix("msg").toInt()
+                50f + (id % 7) * 46f
+            },
+        )
+        assertEquals(placed, reverse)
+        for (lane in 0..2) {
+            val inLane = placed.filter { it.lane == lane }
+            for ((previous, next) in inLane.zipWithNext()) {
+                val start = next.startMs
+                val end = minOf(previous.startMs + 7_000L, next.startMs + 7_000L)
+                if (start >= end) continue
+                for (time in start..end step 250L) {
+                    val prevX = DanmakuLayout.xPosition(412f, previous.widthPx,
+                        DanmakuLayout.progress(time, previous.startMs, 7_000L))
+                    val nextX = DanmakuLayout.xPosition(412f, next.widthPx,
+                        DanmakuLayout.progress(time, next.startMs, 7_000L))
+                    assertTrue("lane $lane at $time had overlapping comments",
+                        nextX - (prevX + previous.widthPx) >= 13.5f)
+                }
+            }
+        }
+    }
+
+    @Test fun collisionSchedulerChangesWithScreenWidthAndRemainsSeekSafe() {
+        val comments = listOf(
+            DanmakuEntry("a", "a", 0L), DanmakuEntry("b", "b", 1_500L)
+        )
+        val wide = DanmakuLayout.arrangeCollisionAware(
+            comments, 1, 7_000L, 600f, 10f, measureTextPx = { 65f })
+        val narrow = DanmakuLayout.arrangeCollisionAware(
+            comments, 1, 7_000L, 180f, 10f, measureTextPx = { 65f })
+        assertEquals(2, wide.size)
+        assertEquals(1, narrow.size)
+        assertEquals(listOf("a", "b"),
+            DanmakuLayout.visibleAt(wide, 2_000L, 7_000L, 10).map { it.id })
+        assertEquals(listOf("a"),
+            DanmakuLayout.visibleAt(wide, 800L, 7_000L, 10).map { it.id })
+    }
+
     @Test fun orderIndependentAndPausedPositionStable() {
         val items = listOf(
             DanmakuEntry("b", "two", 100L), DanmakuEntry("a", "one", 100L),
