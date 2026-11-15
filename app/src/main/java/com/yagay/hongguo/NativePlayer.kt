@@ -181,8 +181,14 @@ internal fun NativePlayer(
     // Between the feed's small paging window and the series' full episode
     // count the old page can exist for one composition before scrollToPage.
     // Do not draw a black placeholder over the stable video in that frame.
+    val holdingForwardRecommendation = state.feedMode &&
+        pagerState.currentPage > activePage &&
+        state.nextDramaTransition in setOf(
+            NextDramaTransition.FINDING_RECOMMENDATION,
+            NextDramaTransition.UNAVAILABLE,
+        )
     val pagerRecenterPending = pagerState.currentPage != activePage &&
-        !pagerState.isScrollInProgress
+        !pagerState.isScrollInProgress && !holdingForwardRecommendation
     val playback = remember(state.episodeIndex) { ReelPlaybackControls() }
     var showResumeFeedback by remember(detail.drama.id, state.episodeIndex) {
         mutableStateOf(false)
