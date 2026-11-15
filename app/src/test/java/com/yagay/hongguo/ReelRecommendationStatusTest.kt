@@ -17,6 +17,11 @@ class ReelRecommendationStatusTest {
         assertEquals(ReelRecommendationStatus.ACCOUNT_RECEIVED, account)
         assertTrue(account.accountRequest)
         assertTrue(account.received)
+        // Confirmation of account requests and proof of personalized ranking
+        // are separate concepts; don't call the signed feed "unverified" in
+        // its compact label while keeping the caveat in the explanation.
+        assertEquals("账号官方推荐已接入", account.shortLabel)
+        assertTrue(account.explanation.contains("服务端"))
         val anonymous = ReelRecommendationStatusPolicy.received(false, newItems = true)
         assertEquals(ReelRecommendationStatus.ANONYMOUS_RECEIVED, anonymous)
         assertFalse(anonymous.accountRequest)
