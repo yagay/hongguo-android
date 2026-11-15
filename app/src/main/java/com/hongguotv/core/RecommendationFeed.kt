@@ -152,15 +152,32 @@ class NoNewRecommendationsException(val rememberedCount: Int = 0) : IOException(
  */
 data class FeedAccount(val cookie: String, val device: Map<String, String> = emptyMap())
 
+/** A credential-free, identifier-free summary safe for diagnostic logs. */
+enum class FeedResponseKind { DYNAMIC_TAB, DYNAMIC_CELL, CATEGORY }
+data class FeedResponseSummary(
+    val kind: FeedResponseKind,
+    val hadAccountCookie: Boolean,
+    val signedDeviceIdentity: Boolean,
+    val businessCode: Int,
+    val itemCount: Int,
+    val serverSessionPresent: Boolean,
+    val personalizationFlag: PersonalizationEvidence,
+)
+
 class RecommendationFeed(
     private val http: OkHttpClient,
     private val account: FeedAccount? = null,
     private val cursor: RecommendationCursor = RecommendationCursor(),
     private val category: DramaCategory? = null,
     private val playbackSession: PlaybackDeviceSession? = null,
+    private val onSummary: ((FeedResponseSummary) -> Unit)? = null,
 ) {
+    // An account response may set a session cookie on the shared repository
+    // CookieJar. Never allow a subsequent anonymous feed to inherit it.
+    // Account requests explicitly attach their own opt-in Cookie header.
     private val accountHttp =
-        http.newBuilder().followRedirects(false).followSslRedirects(false).build()
+        http.newBuilder().cookieJar(okhttp3.CookieJar.NO_COOKIES)
+            .followRedirects(false).followSslRedirects(false).build()
 
     fun page(page: Int): CatalogPage =
         synchronized(cursor) {
@@ -343,6 +360,16 @@ class RecommendationFeed(
                         return@repeat
                     throw failure
                 }
+                val responseKind = when {
+                    category != null -> FeedResponseKind.CATEGORY
+                    flow != null -> FeedResponseKind.DYNAMIC_CELL
+                    else -> FeedResponseKind.DYNAMIC_TAB
+                }
+                val businessCode = result.optInt("code", -1)
+                if (businessCode != 0) runCatching {
+                    onSummary?.invoke(FeedResponseSummary(responseKind, account != null,
+                        signed, businessCode, 0, false, PersonalizationEvidence.UNDECLARED))
+                }
                 val parsed =
                     runCatching {
                         when {
@@ -376,6 +403,11 @@ class RecommendationFeed(
                             }
                             throw problem
                         }
+                runCatching {
+                    onSummary?.invoke(FeedResponseSummary(responseKind, account != null,
+                        signed, businessCode, parsed.first.items.size,
+                        parsed.second.isNotBlank(), parsed.first.personalizationEvidence))
+                }
                 val nextSession = parsed.second.ifBlank { cursor.session }
                 val discoveredFlow = if (category == null && flow == null) cellFlow(result) else null
                 cursor.offset = when {
