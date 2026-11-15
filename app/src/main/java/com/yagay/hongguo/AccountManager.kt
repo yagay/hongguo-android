@@ -393,6 +393,59 @@ internal class AccountManager(app: Application, private val scope: CoroutineScop
         }
     }
 
+    /**
+     * Explicit, user-initiated upcoming-series reservation. The write is only
+     * allowed when the official related-cell provided a distinct item_id.
+     * Confirmation requires a fresh account list read, never a local toggle.
+     */
+    fun reserveUpcoming(work: RelatedDrama) {
+        if (!work.upcoming) return
+        val itemId = work.reservationItemId
+            ?.takeIf { it.matches(Regex("[1-9][0-9]{0,18}")) }
+        if (itemId == null) {
+            mutable.update { it.copy(message = "该作品暂未提供可验证的预约入口") }
+            return
+        }
+        val session = credentials ?: return
+        val token = epoch
+        if (state.value.profile == null || state.value.busy ||
+            state.value.reservationsLoading) return
+        if (state.value.upcoming.any { it.series.id == work.drama.id }) {
+            mutable.update { it.copy(message = "这部短剧已在我的预约中") }
+            return
+        }
+        mutable.update { it.copy(busy = true, message = "正在提交预约…") }
+        scope.launch {
+            var acknowledged = false
+            try {
+                val rows = withContext(Dispatchers.IO) {
+                    cloud.reserve(session, itemId)
+                    acknowledged = true
+                    cloud.reservations(session, false)
+                }
+                if (token == epoch && credentials === session) mutable.update {
+                    it.copy(
+                        upcoming = rows,
+                        message = if (rows.any { row -> row.series.id == work.drama.id })
+                            "预约已在云端列表确认"
+                        else "服务器已受理预约，但预约列表尚未确认；请稍后刷新",
+                    )
+                }
+            } catch (e: CancellationException) {
+                throw e
+            } catch (e: Exception) {
+                if (token == epoch && credentials === session) mutable.update {
+                    it.copy(message = if (acknowledged)
+                        "预约请求已受理，云端列表刷新失败；请稍后检查，避免重复预约"
+                    else "预约失败：" + explain(e))
+                }
+            } finally {
+                if (token == epoch && credentials === session)
+                    mutable.update { it.copy(busy = false) }
+            }
+        }
+    }
+
     /** Only explicit user action writes cloud favorites; read-back confirms it. */
     fun cloudFavorite(seriesId: String, add: Boolean) {
         val session = credentials ?: return
