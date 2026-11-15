@@ -8,6 +8,7 @@ import com.hongguotv.core.TimedComments
 import org.json.JSONObject
 import com.hongguotv.core.ContentRepository
 import com.hongguotv.core.RecommendationFeed
+import com.hongguotv.core.PersonalizationEvidence
 import com.hongguotv.core.RecommendationCursor
 import com.hongguotv.core.NoNewRecommendationsException
 import com.hongguotv.core.Series
@@ -159,6 +160,7 @@ class NativeHongguoSource(
                 excluded.toList().takeLast(300).forEach(reelsCursor::markSeen)
             }
             val candidates = mutableListOf<Series>()
+            val dynamicEvidence = mutableSetOf<PersonalizationEvidence>()
             var upstreamMore = true
             var officialFailure: Exception? = null
             // Comic uses its own official category cursor rather than mixing
@@ -187,7 +189,8 @@ class NativeHongguoSource(
                     throw failure ?: NoNewRecommendationsException()
                 diagnostics?.record("REELS", "COMIC_DYNAMIC_BATCH")
                 return@withLock CatalogPage(unique.map { it.toDrama() },
-                    hasMore = !comicReelsEnd, nextOffset = comicReelsPageNumber)
+                    hasMore = !comicReelsEnd, nextOffset = comicReelsPageNumber,
+                    categoryFallback = true)
             }
             // Always try dynamic official recommendations first, including in real-only mode.
             // In real-only mode, admit exclusively explicit server-typed real dramas.
@@ -197,6 +200,7 @@ class NativeHongguoSource(
                 try {
                     val page = reelsFeed.page(reelsPageNumber)
                     reelsPageNumber++
+                    dynamicEvidence += page.personalizationEvidence
                     upstreamMore = page.hasMore
                     candidates += page.items.filter { it.id !in excluded &&
                         (!realOnly || isExplicitReal(it)) }
@@ -212,6 +216,9 @@ class NativeHongguoSource(
                     upstreamMore = false
                 }
             }
+            // If all displayable cards come from a category selector, the signed-in
+            // cookie cannot establish that any shown item was personalized.
+            val dynamicCandidateCount = candidates.size
             var realCategoryFailure: Exception? = null
             if (realOnly &&
                 candidates.size < (if (firstItemOnly) 1 else 5) && !realReelsEnd) {
@@ -277,7 +284,26 @@ class NativeHongguoSource(
                     mainReelsExhausted -> "GENERAL_CATEGORY_DYNAMIC_BATCH"
                     else -> "OFFICIAL_DYNAMIC_BATCH"
                 })
+            val evidence = when {
+                dynamicCandidateCount == 0 -> PersonalizationEvidence.UNDECLARED
+                PersonalizationEvidence.SERVER_ENABLED in dynamicEvidence &&
+                    PersonalizationEvidence.SERVER_DISABLED in dynamicEvidence ->
+                    PersonalizationEvidence.UNDECLARED
+                PersonalizationEvidence.SERVER_ENABLED in dynamicEvidence ->
+                    PersonalizationEvidence.SERVER_ENABLED
+                PersonalizationEvidence.SERVER_DISABLED in dynamicEvidence ->
+                    PersonalizationEvidence.SERVER_DISABLED
+                else -> PersonalizationEvidence.UNDECLARED
+            }
+            diagnostics?.record("REELS", when {
+                dynamicCandidateCount == 0 -> "ACCOUNT_OR_ANON_CATEGORY_FALLBACK"
+                evidence == PersonalizationEvidence.SERVER_ENABLED -> "SERVER_PERSONALIZATION_ENABLED"
+                evidence == PersonalizationEvidence.SERVER_DISABLED -> "SERVER_PERSONALIZATION_DISABLED"
+                else -> "SERVER_PERSONALIZATION_UNDECLARED"
+            })
             CatalogPage(unique.map { it.toDrama() },
+                personalizationEvidence = evidence,
+                categoryFallback = dynamicCandidateCount == 0,
                 hasMore = when {
                     realOnly -> (!mainReelsExhausted && upstreamMore) || !realReelsEnd
                     mainReelsExhausted -> !realReelsEnd || !comicReelsEnd
