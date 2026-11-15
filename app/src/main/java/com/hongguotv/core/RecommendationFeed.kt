@@ -27,11 +27,14 @@ internal constructor(
     internal var needsBootstrap = false
     @Volatile internal var unsignedFallback = false
     @Volatile internal var signedProfile: PlaybackDeviceSession.Profile? = null
+    /** A cell-change feed that repeats previously seen IDs must not trap the cursor. */
+    internal var tabOnlyRecovery = false
 
     internal fun restartServer() {
         session = ""
         offset = 0
         cellFlow = null
+        tabOnlyRecovery = false
         needsBootstrap = false
     }
 
@@ -44,6 +47,7 @@ internal constructor(
                     it.needsBootstrap = needsBootstrap
                     it.unsignedFallback = unsignedFallback
                     it.signedProfile = signedProfile
+                    it.tabOnlyRecovery = tabOnlyRecovery
                 }
             }
 
@@ -162,6 +166,8 @@ data class FeedResponseSummary(
     val itemCount: Int,
     val serverSessionPresent: Boolean,
     val personalizationFlag: PersonalizationEvidence,
+    val freshCount: Int = -1,
+    val tabOnlyRecovery: Boolean = false,
 )
 
 class RecommendationFeed(
@@ -185,7 +191,9 @@ class RecommendationFeed(
             if (page == cursor.lastPage) return@synchronized checkNotNull(cursor.lastResult)
             if (page != cursor.expectedPage) throw IOException("推荐已刷新，请重新获取")
             if (category == null && cursor.needsBootstrap) cursor.restartServer()
-            repeat(3) { attempt ->
+            // First duplicate-only cell page triggers one bounded official-tab
+            // recovery; extra attempts are used for tab offset progression.
+            repeat(5) { attempt ->
                 val signed = category == null && playbackSession != null && !cursor.unsignedFallback
                 val identity = if (signed) {
                     RequestScope.ensureActive()
@@ -403,13 +411,9 @@ class RecommendationFeed(
                             }
                             throw problem
                         }
-                runCatching {
-                    onSummary?.invoke(FeedResponseSummary(responseKind, account != null,
-                        signed, businessCode, parsed.first.items.size,
-                        parsed.second.isNotBlank(), parsed.first.personalizationEvidence))
-                }
                 val nextSession = parsed.second.ifBlank { cursor.session }
-                val discoveredFlow = if (category == null && flow == null) cellFlow(result) else null
+                val discoveredFlow = if (category == null && flow == null &&
+                    !cursor.tabOnlyRecovery) cellFlow(result) else null
                 cursor.offset = when {
                     flow != null -> {
                         val next = result.getJSONObject("data").optLong("next_offset", -1)
@@ -426,7 +430,25 @@ class RecommendationFeed(
                 val seen = cursor.seenIds()
                 val fresh = parsed.first.copy(items = parsed.first.items.filter { it.id !in seen })
                 cursor.remember(parsed.first.items.map { it.id })
-                // 游标已经按对应协议推进，整页重复时继续读取下一批，不重复请求同一偏移。
+                runCatching {
+                    onSummary?.invoke(FeedResponseSummary(responseKind, account != null,
+                        signed, businessCode, parsed.first.items.size,
+                        parsed.second.isNotBlank(), parsed.first.personalizationEvidence,
+                        freshCount = fresh.items.size,
+                        tabOnlyRecovery = cursor.tabOnlyRecovery))
+                }
+                // Repeated cell data with advancing offset can still be the same
+                // six titles. Do not mistake it for the end of personalized
+                // recommendations: retry the same OFFICIAL tab with an isolated
+                // server session, keeping seen IDs to avoid replaying videos.
+                if (fresh.items.isEmpty() && flow != null &&
+                    !cursor.tabOnlyRecovery) {
+                    cursor.restartServer()
+                    cursor.tabOnlyRecovery = true
+                    return@repeat
+                }
+                // Continue a bounded tab-only session if an offset contains only
+                // already-seen cards; never make an unbounded retry loop.
                 if (fresh.items.isEmpty()) return@repeat
                 cursor.expectedPage = page + 1
                 cursor.lastPage = page
