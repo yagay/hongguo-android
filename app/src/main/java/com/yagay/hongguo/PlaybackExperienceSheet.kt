@@ -253,6 +253,12 @@ internal fun PlaybackExperienceSheet(
                                 state.danmakuFontSize, model::setDanmakuFontSize,
                                 "danmaku_font",
                             )
+                            PlaybackHeading("弹幕透明度")
+                            PlaybackChoices(
+                                listOf(40, 60, 80, 100).map { it to "$it%" },
+                                state.danmakuOpacity, model::setDanmakuOpacity,
+                                "danmaku_opacity",
+                            )
                         }
                         PlaybackQuickSetting.PREFERENCES -> {
                     if (state.feedMode) {
