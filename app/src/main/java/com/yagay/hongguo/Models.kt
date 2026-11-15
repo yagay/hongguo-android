@@ -24,6 +24,15 @@ data class RecommendationComparison(
     val secondAnonymousCount: Int = 0,
     val anonymousBaselineOverlap: Int = 0,
     val anonymousBaselineIdenticalOrder: Boolean = false,
+    /** A second independent signed-account/guest comparison pair. */
+    val secondAccountCount: Int = 0,
+    val secondAccountGuestOverlap: Int = 0,
+    val secondAccountGuestIdenticalOrder: Boolean = false,
+    /** Variation within one account, measured without mutating the swipe feed. */
+    val accountBaselineOverlap: Int = 0,
+    val accountBaselineIdenticalOrder: Boolean = false,
+    /** Number of successful server responses that actually used device signing. */
+    val signedAccountSamples: Int = 0,
 )
 
 data class Episode(val index: Int, val vid: String, val title: String = "")
