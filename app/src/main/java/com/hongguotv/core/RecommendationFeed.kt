@@ -194,16 +194,31 @@ class RecommendationFeed(
             // First duplicate-only cell page triggers one bounded official-tab
             // recovery; extra attempts are used for tab offset progression.
             repeat(5) { attempt ->
-                val signed = category == null && playbackSession != null && !cursor.unsignedFallback
-                val identity = if (signed) {
+                val attemptSigned = category == null && playbackSession != null &&
+                    !cursor.unsignedFallback
+                val identity = if (attemptSigned) {
                     RequestScope.ensureActive()
-                    playbackSession!!.profile(accountHttp).also {
+                    try {
+                        playbackSession!!.profile(accountHttp).also {
+                            RequestScope.ensureActive()
+                            // Bind a server cursor to its registered identity.
+                            if (cursor.signedProfile !== it && cursor.hasProgress)
+                                cursor.restartServer()
+                            cursor.signedProfile = it
+                        }
+                    } catch (failure: PlaybackDeviceRegistrationException) {
+                        // A verified account has a working Cookie-only route.
+                        // An optional anonymous device registration failure must
+                        // not block it. Never substitute a guest feed or silently
+                        // fall back after arbitrary network/authorization errors.
+                        if (account == null) throw failure
                         RequestScope.ensureActive()
-                        // 服务端分页会话随注册身份使用；换身份或进程恢复后重读入口，保留去重。
-                        if (cursor.signedProfile !== it && cursor.hasProgress) cursor.restartServer()
-                        cursor.signedProfile = it
+                        cursor.unsignedFallback = true
+                        cursor.restartServer()
+                        null
                     }
                 } else null
+                val signed = identity != null
                 val requestVersion = if (signed) "74332" else "73532"
                 val params =
                     linkedMapOf(
