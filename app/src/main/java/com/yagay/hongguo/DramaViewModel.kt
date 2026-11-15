@@ -875,7 +875,8 @@ class DramaViewModel(application: Application) : AndroidViewModel(application) {
                         after.hiddenRecommendationIds,
                     )
                     if (next != null) {
-                        pendingFeedAdvance = false
+                        // Let navigateFeed consume the pending flag so it can
+                        // show PREPARING_VIDEO until the new media first frame.
                         if (failedFeedRefreshPending) {
                             failedFeedRefreshPending = false
                             diagnostics.record("REELS", "FAILED_QUEUE_REPLACEMENT_READY")
