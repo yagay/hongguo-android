@@ -40,6 +40,7 @@ import java.io.IOException
 class NativeHongguoSource(
     private val repository: ContentRepository = ContentRepository(),
     private val diagnostics: DiagnosticLog? = null,
+    private val recommendationDeviceSession: PlaybackDeviceSession = PlaybackDeviceSession.shared,
 ) {
     private val websiteCovers = NativeWebsiteSource(diagnostics = diagnostics)
     // Only host-level startup timings are retained (no signed URL, key,
@@ -89,7 +90,7 @@ class NativeHongguoSource(
         // this anonymous registration identity to category selectors.
         // Code 110 falls back to the account Cookie without losing login.
         playbackSession = if (account != null && category == null)
-            PlaybackDeviceSession.shared else null,
+            recommendationDeviceSession else null,
         onSummary = ::recordReelResponse)
 
     /** Called only for a new catalog session; QR cookies never enter logs. */
@@ -155,10 +156,19 @@ class NativeHongguoSource(
         // First screen must not wait for several feed pages before showing
         // the first drama. Subsequent pages are fetched after UI handoff.
         reelsLock.withLock {
-            if (restart) {
-                val accountForSession = synchronized(recommendationLock) { accountFeed }
-                if (accountForSession != reelsAccountSession)
+            // Account verification may complete while the player is already open.
+            // Finale/queued swipe continuation can request restart=false; never
+            // let that reuse a previously initialized guest feed after login.
+            // This check is under reelsLock, so all three cursors are rebound
+            // atomically to one identity without mixing account and guest rows.
+            val accountForSession = synchronized(recommendationLock) { accountFeed }
+            val contextChanged = accountForSession != reelsAccountSession
+            if (restart || contextChanged) {
+                if (contextChanged) {
                     diagnostics?.record("REELS", "ACCOUNT_CONTEXT_CURSOR_RESET")
+                    if (!restart)
+                        diagnostics?.record("REELS", "ACCOUNT_LATE_BIND_REBUILT")
+                }
                 mainReelsExhausted = false
                 diagnostics?.record("REELS", "MAIN_DYNAMIC_FRESH_SESSION")
                 reelsAccountSession = accountForSession
