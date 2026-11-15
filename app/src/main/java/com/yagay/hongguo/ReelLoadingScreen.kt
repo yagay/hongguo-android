@@ -229,7 +229,8 @@ internal fun ReelLoadingScreen(
             if (state.feedMode) {
                 Box(Modifier.align(Alignment.TopCenter).padding(top = 62.dp)) {
                     ReelRecommendationHint(
-                        status = state.feedRecommendationStatus,
+                        status = ReelRecommendationAttributionPolicy.statusFor(
+                            drama?.id, state.feedItemAttributions, state.feedRecommendationStatus),
                         comparison = state.comparison,
                         comparing = state.comparisonLoading,
                         compareError = state.comparisonError,
