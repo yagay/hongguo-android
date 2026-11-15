@@ -69,6 +69,13 @@ class NativeHongguoSource(
         diagnostics?.record("REELS_WIRE",
             "${route}_ITEMS_${summary.itemCount.coerceIn(0,999)}_${flag}" +
                 if (summary.serverSessionPresent) "_SESSION" else "_NOSESSION")
+        if (summary.freshCount >= 0) {
+            diagnostics?.record("REELS_WIRE",
+                "${route}_FRESH_${summary.freshCount.coerceIn(0,999)}")
+        }
+        if (summary.tabOnlyRecovery) {
+            diagnostics?.record("REELS_WIRE", "TAB_RECOVERY_AFTER_CELL_DUPLICATES")
+        }
     }
 
     private fun reelFeed(
@@ -95,10 +102,9 @@ class NativeHongguoSource(
     private var reelsCursor = RecommendationCursor()
     private var reelsFeed = reelFeed(null, reelsCursor)
     private var reelsPageNumber = 1
-    // A saturated official tab should not spend another 30-50 seconds
-    // rediscovering the same duplicate pages on every restart.
+    // Exhaustion is scoped only to a live swipe cursor. Every explicit new
+    // session retries the official dynamic stream before category fallback.
     private var mainReelsExhausted = false
-    private var mainReelsNoNewAtMs = 0L
     /** A saturated guest feed must not suppress the first new account request. */
     private var reelsAccountSession: FeedAccount? = null
     private var realReelsCursor = RecommendationCursor()
@@ -144,28 +150,20 @@ class NativeHongguoSource(
         reelsLock.withLock {
             if (restart) {
                 val accountForSession = synchronized(recommendationLock) { accountFeed }
-                if (accountForSession != reelsAccountSession) {
-                    mainReelsExhausted = false
-                    mainReelsNoNewAtMs = 0L
+                if (accountForSession != reelsAccountSession)
                     diagnostics?.record("REELS", "ACCOUNT_CONTEXT_CURSOR_RESET")
-                }
+                mainReelsExhausted = false
+                diagnostics?.record("REELS", "MAIN_DYNAMIC_FRESH_SESSION")
                 reelsAccountSession = accountForSession
                 diagnostics?.record("REELS", if (accountForSession == null)
                     "ANONYMOUS_DYNAMIC_CONTEXT" else "ACCOUNT_COOKIE_ONLY_UNVERIFIED")
                 reelsCursor = RecommendationCursor()
                 reelsFeed = reelFeed(accountForSession, reelsCursor)
                 reelsPageNumber = 1
-                val nowMs = System.nanoTime() / 1_000_000L
-                // A failed model means the last recommendation queue may
-                // have expired. Explicit refresh must not inherit the
-                // previous 90-second "no new cards" cooldown.
-                if (forceFresh) mainReelsNoNewAtMs = 0L
-                mainReelsExhausted = !forceFresh &&
-                    mainReelsNoNewAtMs != 0L &&
-                    nowMs - mainReelsNoNewAtMs in 0L..90_000L
+                // A duplicate-only response from the previous session must
+                // never bypass the official dynamic feed when the user returns
+                // or explicitly refreshes. Keep seen IDs separate for UI dedup.
                 if (forceFresh) diagnostics?.record("REELS", "FORCE_FRESH_CURSOR")
-                if (mainReelsExhausted)
-                    diagnostics?.record("REELS", "MAIN_RECENT_NO_NEW_CATEGORY_FIRST")
                 realReelsCursor = RecommendationCursor()
                 realReelsFeed = reelFeed(accountForSession, realReelsCursor, DramaCategory.REAL)
                 // This confirms only the request's authenticated/anonymous
@@ -258,7 +256,6 @@ class NativeHongguoSource(
                     diagnostics?.record("REELS", "MAIN_" + OfficialReelsFailure.code(failure))
                     if (failure is NoNewRecommendationsException) {
                         mainReelsExhausted = true
-                        mainReelsNoNewAtMs = System.nanoTime() / 1_000_000L
                     }
                     upstreamMore = false
                 }
