@@ -182,6 +182,7 @@ class DramaViewModel(application: Application) : AndroidViewModel(application) {
             // must stop immediately when the user disables autoplay.
             pendingFeedAdvance = false
             autoNextTargetDramaId = null
+            cancelNextSeasonLookup()
             clearFinaleAdvance()
             mutable.update { it.copy(nextDramaTransition = NextDramaTransition.NONE) }
             // Manual episode selection remains supported, but no longer
