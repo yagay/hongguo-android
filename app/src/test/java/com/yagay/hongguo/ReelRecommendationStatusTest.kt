@@ -22,6 +22,21 @@ class ReelRecommendationStatusTest {
         assertFalse(anonymous.accountRequest)
     }
 
+    @Test fun serverFlagAndCategoryFallbackHaveDistinctStatuses() {
+        assertEquals(ReelRecommendationStatus.ACCOUNT_SERVER_ENABLED,
+            ReelRecommendationStatusPolicy.received(true, true,
+                com.hongguotv.core.PersonalizationEvidence.SERVER_ENABLED))
+        assertEquals(ReelRecommendationStatus.ACCOUNT_SERVER_DISABLED,
+            ReelRecommendationStatusPolicy.received(true, true,
+                com.hongguotv.core.PersonalizationEvidence.SERVER_DISABLED))
+        assertEquals(ReelRecommendationStatus.ACCOUNT_CATEGORY_FALLBACK,
+            ReelRecommendationStatusPolicy.received(true, true,
+                com.hongguotv.core.PersonalizationEvidence.SERVER_ENABLED,
+                categoryFallback = true))
+        assertEquals(ReelRecommendationStatus.ACCOUNT_RECEIVED,
+            ReelRecommendationStatusPolicy.received(true, true))
+    }
+
     @Test fun accountFailureDoesNotClaimPersonalization() {
         assertEquals(ReelRecommendationStatus.ACCOUNT_FAILED,
             ReelRecommendationStatusPolicy.failed(true))
