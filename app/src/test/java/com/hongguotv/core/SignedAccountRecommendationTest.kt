@@ -8,7 +8,6 @@ import okhttp3.ResponseBody.Companion.toResponseBody
 import org.json.JSONArray
 import org.json.JSONObject
 import org.junit.Assert.assertEquals
-import org.junit.Assert.assertFalse
 import org.junit.Assert.assertNotNull
 import org.junit.Assert.assertNull
 import org.junit.Assert.assertTrue
@@ -109,8 +108,23 @@ class SignedAccountRecommendationTest {
         assertTrue(cursor.unsignedFallback)
     }
 
-    @Test fun unsignedCategoryDoesNotRequireAnyPlaybackRegistration() {
-        val cursor = RecommendationCursor()
-        assertFalse(cursor.unsignedFallback)
+    @Test fun categoryRequestsNeverStartAnonymousPlaybackRegistration() {
+        var registrations = 0
+        val session = PlaybackDeviceSession {
+            registrations++
+            DeviceRegister.Registered("333", "444")
+        }
+        val requests = mutableListOf<Request>()
+        val category = JSONObject().put("code", 0).put("data",
+            JSONObject().put("video_data", JSONArray().put(JSONObject()
+                .put("series_id", "104").put("series_title", "Category title"))))
+            .toString()
+        val feed = RecommendationFeed(client(requests) { category },
+            account = FeedAccount("sessionid=test-account"),
+            playbackSession = session, category = DramaCategory.REAL)
+        assertEquals("104", feed.page(1).items.single().id)
+        assertEquals(0, registrations)
+        assertEquals("sessionid=test-account", requests.single().header("Cookie"))
+        assertNull(requests.single().url.queryParameter("device_id"))
     }
 }
