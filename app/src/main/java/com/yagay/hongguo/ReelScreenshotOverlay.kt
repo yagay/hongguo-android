@@ -5,6 +5,7 @@ import androidx.compose.foundation.clickable
 import androidx.compose.foundation.Canvas
 import androidx.compose.foundation.gestures.detectTapGestures
 import androidx.compose.foundation.gestures.detectDragGestures
+import androidx.compose.foundation.gestures.detectHorizontalDragGestures
 import androidx.compose.foundation.horizontalScroll
 import androidx.compose.foundation.rememberScrollState
 import androidx.compose.foundation.layout.Arrangement
@@ -425,11 +426,48 @@ internal fun ReelBottomDock(
             playedFraction = fraction,
             onSeek = playback::seekTo,
             onPreview = { seeking = it },
+            externalPreviewFraction = seeking,
             modifier = Modifier.testTag("reel_seek"),
         )
         Row(
+            // Give the entire episode-status / completion / time row a
+            // horizontally scrubbable seek target (34dp plus the 12dp line).
+            // Detect only horizontal drags after touch slop, so a simple tap
+            // on the episode entry still opens the episode picker and a
+            // vertical swipe keeps its existing navigation behavior.
             modifier = Modifier.fillMaxWidth()
                 .height(HongguoUi.playbackDockRowHeight)
+                .pointerInput(duration, episode?.vid) {
+                    if (duration <= 0L) return@pointerInput
+                    var draggedFraction: Float? = null
+                    detectHorizontalDragGestures(
+                        onDragStart = { start ->
+                            val value = PlaybackSeekGeometry.fractionAt(
+                                start.x, size.width.toFloat())
+                            draggedFraction = value
+                            seeking = value
+                        },
+                        onHorizontalDrag = { change, _ ->
+                            val value = PlaybackSeekGeometry.fractionAt(
+                                change.position.x, size.width.toFloat())
+                            draggedFraction = value
+                            seeking = value
+                            change.consume()
+                        },
+                        onDragEnd = {
+                            draggedFraction?.let { value ->
+                                playback.seekTo(PlaybackSeekGeometry.positionAt(
+                                    duration, value))
+                            }
+                            draggedFraction = null
+                            seeking = null
+                        },
+                        onDragCancel = {
+                            draggedFraction = null
+                            seeking = null
+                        },
+                    )
+                }
                 .testTag("player_dock_meta"),
             verticalAlignment = Alignment.CenterVertically,
             horizontalArrangement = Arrangement.spacedBy(4.dp),
