@@ -959,7 +959,9 @@ class DramaViewModel(application: Application) : AndroidViewModel(application) {
             comparisonLoading = true, comparison = null, comparisonError = null) }
         comparisonJob = viewModelScope.launch {
             try {
-                val sample = withTimeout(55_000L) {
+                // Two signed-account and two guest probes each have their own
+                // bounded call timeout. Leave room for initial device registration.
+                val sample = withTimeout(85_000L) {
                     nativeSource.comparePersonalizationSamples()
                 }
                 if (appliedRecommendationSession != sourceAccount) return@launch
