@@ -365,17 +365,29 @@ class CloudAccountClient(private val http: OkHttpClient) {
      * acknowledges the write; account-list confirmation is a separate operation.
      */
     fun reserve(credentials: AccountCredentials, work: RelatedWork) {
-        require(work.upcoming && work.series.id.matches(Regex("[0-9]{1,19}")))
-        val id = work.series.id.toLongOrNull() ?: throw IllegalArgumentException("预约编号无效")
-        val body =
-            JSONObject()
-                .put("item_id", id)
-                .put("item_type", 3)
-                .put("op_type", 1)
-                .put("subscribe_source", 0)
-                .toString()
-                .toByteArray()
-        json(credentials, "/reading/bookapi/search/uncover_subscribe/v1/", body = body, gzip = true)
+        require(work.upcoming)
+        reserve(credentials, work.reservationItemId
+            ?: throw IllegalArgumentException("服务端未提供可验证的预约条目编号"))
+    }
+
+    /**
+     * This RPC expects subscribe_item.item_id, which is NOT always a series ID.
+     * A successful response only acknowledges the request; callers must query
+     * the account reservation list to confirm the visible state.
+     */
+    fun reserve(credentials: AccountCredentials, reservationItemId: String) {
+        require(reservationItemId.matches(Regex("[1-9][0-9]{0,18}"))) {
+            "预约条目编号无效"
+        }
+        val id = reservationItemId.toLong()
+        val body = JSONObject()
+            .put("item_id", id)
+            .put("item_type", 3)
+            .put("op_type", 1)
+            .put("subscribe_source", 0)
+            .toString().toByteArray()
+        json(credentials, "/reading/bookapi/search/uncover_subscribe/v1/",
+            body = body, gzip = true)
     }
 
     fun upload(credentials: AccountCredentials, progress: CloudProgress, episodeCount: Int) {
