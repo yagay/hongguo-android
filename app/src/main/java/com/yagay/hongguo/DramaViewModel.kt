@@ -826,7 +826,13 @@ class DramaViewModel(application: Application) : AndroidViewModel(application) {
                         localContent.recentlySwiped().toSet()
                     val merged = OfficialReelsPolicy.append(
                         current.feedItems, result.items, exclusions)
+                    val incoming = if (usesAccountRecommendation) result.itemAttributions
+                        else result.items.associate { drama -> drama.id to ReelItemAttribution(
+                            ReelRecommendationOrigin.ANONYMOUS_KAIXINGUO) }
+                    val attributions = ReelRecommendationAttributionPolicy.merge(
+                        current.feedItemAttributions, current.feedItems, merged, incoming)
                     current.copy(feedItems = merged,
+                        feedItemAttributions = attributions,
                         feedHasMore = result.hasMore,
                         feedLoading = false,
                         feedRecommendationStatus = ReelRecommendationStatusPolicy.received(
@@ -953,7 +959,7 @@ class DramaViewModel(application: Application) : AndroidViewModel(application) {
             comparisonLoading = true, comparison = null, comparisonError = null) }
         comparisonJob = viewModelScope.launch {
             try {
-                val sample = withTimeout(35_000L) {
+                val sample = withTimeout(55_000L) {
                     nativeSource.comparePersonalizationSamples()
                 }
                 if (appliedRecommendationSession != sourceAccount) return@launch
@@ -1003,6 +1009,8 @@ class DramaViewModel(application: Application) : AndroidViewModel(application) {
                 snapshot.feedItems, snapshot.feedIndex, snapshot.detail?.drama)
             mutable.update { it.copy(
                 feedItems = retained,
+                feedItemAttributions = ReelRecommendationAttributionPolicy.retained(
+                    snapshot.feedItemAttributions, retained),
                 feedIndex = 0,
                 feedLoading = false,
                 feedRecommendationStatus = ReelRecommendationStatus.NOT_REQUESTED,
@@ -2093,6 +2101,11 @@ class DramaViewModel(application: Application) : AndroidViewModel(application) {
             feedMode = true,
             navigation = it.navigation.toFeed(),
             feedItems = drama?.let(::listOf).orEmpty(),
+            feedItemAttributions = drama?.let { selected ->
+                current.feedItemAttributions[selected.id]?.let {
+                    origin -> mapOf(selected.id to origin)
+                }
+            }.orEmpty(),
             feedIndex = 0,
             feedLoading = false,
             feedRecommendationStatus = ReelRecommendationStatus.NOT_REQUESTED,
