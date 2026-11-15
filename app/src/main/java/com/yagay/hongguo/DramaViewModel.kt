@@ -2577,6 +2577,13 @@ class DramaViewModel(application: Application) : AndroidViewModel(application) {
                 nextEpisode(current.vid)
             },
             failed = { mediaError(current.vid, it) },
+            recovering = { status ->
+                if (state.value.detail?.episodes
+                        ?.getOrNull(state.value.episodeIndex)?.vid == current.vid) {
+                    mutable.update { it.copy(playbackRecoveryMessage = status.ifBlank { null },
+                        playbackError = null) }
+                }
+            },
             checkpoint = { position, duration ->
                 savePlaybackPosition(current.vid, position, duration)
             },
@@ -2738,7 +2745,8 @@ class DramaViewModel(application: Application) : AndroidViewModel(application) {
         mutable.update { it.copy(episodeIndex = index, playbackUrl = null,
             renderedVideoVid = null,
             resumePositionMs = checkpoint,
-            playing = false, playbackError = null) }
+            playing = false, playbackError = null,
+            playbackRecoveryMessage = null) }
         // Independent IO request: comment totals are available before tapping
         // the comment action, without delaying playback address preparation.
         loadComments(reset = true)
@@ -2760,29 +2768,108 @@ class DramaViewModel(application: Application) : AndroidViewModel(application) {
                     if (serviceStarted) launchBackgroundMedia(
                         detail, index, url, null, checkpoint, version)
                 } else {
-                    // Kaixinguo SDK resolves the MP4 model and content key;
-                    // its CENC range source feeds our ONE service-owned player.
+                    // Kaixinguo remains the primary MP4/CENC pipeline. Its
+                    // anonymous SDK has its own retry/device-reset budget.
+                    // Only a verified, bounded failure activates the existing
+                    // separately signed native source; both use ONE Media3.
                     val quality = state.value.qualityLimit
-                    val resolveStarted = System.nanoTime()
-                    val prepared = com.yagay.hongguo.kxg.KxgPlaybackStreams.resolve(
-                        getApplication(), openHongguo, vid, quality)
-                    diagnostics.record("PLAYBACK", "KXG_STREAM_ACQUIRED",
-                        elapsed(resolveStarted))
-                    if (version != detailId ||
-                        state.value.detail?.episodes
-                            ?.getOrNull(state.value.episodeIndex)?.vid != vid ||
-                        state.value.qualityLimit != quality ||
-                        (networkResumeMs != null &&
-                            BackgroundPlaybackService.active
-                                ?.isNetworkRecoveryCurrent(vid) != true)) {
-                        com.yagay.hongguo.kxg.KxgPlaybackStreams.forget(prepared.uri)
-                        if (networkResumeMs != null)
-                            diagnostics.record("NETWORK_RESUME", "STALE_MODEL_DISCARDED")
-                        return@launch
+                    val nativeFirst = networkResumeMs != null &&
+                        (BackgroundPlaybackService.active
+                            ?.networkModelAttemptFor(vid) ?: 0) >= 2
+                    var failure: Exception? = null
+                    var prepared: com.yagay.hongguo.kxg.KxgPlaybackStreams.Prepared? = null
+                    if (!nativeFirst) {
+                        for (attempt in 1..2) {
+                            try {
+                                val resolveStarted = System.nanoTime()
+                                prepared = withTimeout(40_000L) {
+                                    com.yagay.hongguo.kxg.KxgPlaybackStreams.resolve(
+                                        getApplication(), openHongguo, vid, quality)
+                                }
+                                diagnostics.record("PLAYBACK", "KXG_STREAM_ACQUIRED",
+                                    elapsed(resolveStarted))
+                                break
+                            } catch (cancelled: CancellationException) {
+                                throw cancelled
+                            } catch (error: Exception) {
+                                failure = error
+                                val retry = state.value.retryPlaybackAutomatically &&
+                                    networkResumeMs == null &&
+                                    PlaybackSourceRecoveryPolicy.retrySdk(error, attempt)
+                                if (!retry) break
+                                diagnostics.record("PLAYBACK", "KXG_SOURCE_RETRY_2")
+                                mutable.update { it.copy(
+                                    playbackRecoveryMessage = "视频地址暂时不可用，正在重试 2/2",
+                                    playbackError = null) }
+                                delay(PlaybackSourceRecoveryPolicy.retryDelayMs(error))
+                                currentCoroutineContext().ensureActive()
+                                if (version != detailId ||
+                                    state.value.detail?.episodes
+                                        ?.getOrNull(state.value.episodeIndex)?.vid != vid ||
+                                    state.value.qualityLimit != quality) return@launch
+                            }
+                        }
                     }
-                    mutable.update { it.copy(playbackUrl = prepared.uri, playing = true) }
-                    if (serviceStarted) launchBackgroundMedia(
-                        detail, index, prepared.uri, null, checkpoint, version)
+                    val shouldUseNative = nativeFirst ||
+                        (prepared == null && failure != null &&
+                            state.value.retryPlaybackAutomatically &&
+                            PlaybackSourceRecoveryPolicy.nativeFallback(failure!!))
+                    if (prepared != null) {
+                        val uri = prepared.uri
+                        if (version != detailId ||
+                            state.value.detail?.episodes
+                                ?.getOrNull(state.value.episodeIndex)?.vid != vid ||
+                            state.value.qualityLimit != quality ||
+                            (networkResumeMs != null &&
+                                BackgroundPlaybackService.active
+                                    ?.isNetworkRecoveryCurrent(vid) != true)) {
+                            com.yagay.hongguo.kxg.KxgPlaybackStreams.forget(uri)
+                            diagnostics.record("PLAYBACK", "STALE_KXG_MODEL_DISCARDED")
+                            return@launch
+                        }
+                        mutable.update { it.copy(playbackUrl = uri, playing = true,
+                            playbackRecoveryMessage = null) }
+                        if (serviceStarted) launchBackgroundMedia(
+                            detail, index, uri, null, checkpoint, version)
+                    } else if (shouldUseNative) {
+                        diagnostics.record("PLAYBACK", "SIGNED_NATIVE_FALLBACK_START")
+                        mutable.update { it.copy(
+                            playbackRecoveryMessage = "正在尝试备用播放线路",
+                            playbackError = null) }
+                        // No account cookie, player swap or persistent video
+                        // cache. The native path has its own deadline, routes,
+                        // rendition validation and CENC reader.
+                        val remote = withTimeout(35_000L) {
+                            nativeSource.openVideo(vid, qualityLimit = quality)
+                        }
+                        val uri = "native-stream://$vid"
+                        if (version != detailId ||
+                            state.value.detail?.episodes
+                                ?.getOrNull(state.value.episodeIndex)?.vid != vid ||
+                            state.value.qualityLimit != quality ||
+                            (networkResumeMs != null &&
+                                BackgroundPlaybackService.active
+                                    ?.isNetworkRecoveryCurrent(vid) != true)) {
+                            remote.close()
+                            diagnostics.record("PLAYBACK", "STALE_NATIVE_MODEL_DISCARDED")
+                            return@launch
+                        }
+                        try {
+                            if (!serviceStarted) throw IOException("播放服务未就绪")
+                            launchBackgroundMedia(
+                                detail, index, uri, remote, checkpoint, version)
+                            if (BackgroundPlaybackService.active?.ownsVideo(remote) != true)
+                                throw IOException("播放服务已更换或关闭")
+                            mutable.update { it.copy(playbackUrl = uri, playing = true,
+                                playbackRecoveryMessage = null) }
+                            diagnostics.record("PLAYBACK", "SIGNED_NATIVE_FALLBACK_READY")
+                        } finally {
+                            if (BackgroundPlaybackService.active?.ownsVideo(remote) != true)
+                                remote.close()
+                        }
+                    } else {
+                        throw (failure ?: IOException("视频播放模型不可用"))
+                    }
                 }
                 diagnostics.record("PLAYBACK", "SOURCE_READY", elapsed(started))
                 // Background continuity is owned by the service's network
@@ -2791,16 +2878,21 @@ class DramaViewModel(application: Application) : AndroidViewModel(application) {
                 throw e
             } catch (e: Exception) {
                 if (version == detailId) {
-                    if (networkResumeMs != null) {
-                        val retryable = PlaybackProblem.isTransientTransport(e)
+                    val description = errorText("准备播放", e)
+                    val pending = if (networkResumeMs != null) {
+                        val retryable = PlaybackSourceRecoveryPolicy.nativeFallback(e) ||
+                            PlaybackProblem.isTransientTransport(e)
                         diagnostics.record("NETWORK_RESUME",
                             if (retryable) "MODEL_REFRESH_TRANSIENT_FAILURE"
                             else "MODEL_REFRESH_PERMANENT_FAILURE")
                         BackgroundPlaybackService.active
-                            ?.networkRecoveryAttemptFailed(vid, retryable)
-                    }
+                            ?.networkRecoveryAttemptFailed(vid, retryable) == true
+                    } else false
                     mutable.update {
-                        it.copy(playbackError = errorText("准备播放", e), playing = false)
+                        if (pending) it.copy(playbackRecoveryMessage =
+                            "播放源暂时不可用，正在重新获取", playbackError = null, playing = false)
+                        else it.copy(playbackRecoveryMessage = null,
+                            playbackError = description, playing = false)
                     }
                 }
             }
@@ -2852,7 +2944,8 @@ class DramaViewModel(application: Application) : AndroidViewModel(application) {
 
     fun mediaError(expectedVid: String, message: String) {
         if (state.value.detail?.episodes?.getOrNull(state.value.episodeIndex)?.vid != expectedVid) return
-        mutable.update { it.copy(playbackError = message, playing = false) }
+        mutable.update { it.copy(playbackError = message,
+            playbackRecoveryMessage = null, playing = false) }
         diagnostics.record("MEDIA", "FAIL_" + message.substringBefore(" · "))
     }
 
@@ -2863,8 +2956,9 @@ class DramaViewModel(application: Application) : AndroidViewModel(application) {
         if (ep.vid != expectedVid) return
         // The background progress fallback can mark firstFrameFor without
         // a visible surface. Still reveal the frame only on this callback.
-        if (s.renderedVideoVid != expectedVid)
-            mutable.update { it.copy(renderedVideoVid = expectedVid) }
+        if (s.renderedVideoVid != expectedVid || s.playbackRecoveryMessage != null)
+            mutable.update { it.copy(renderedVideoVid = expectedVid,
+                playbackRecoveryMessage = null, playbackError = null) }
         if (firstFrameFor == ep.vid) return
         firstFrameFor = ep.vid
         if (s.nextDramaTransition != NextDramaTransition.NONE) {
