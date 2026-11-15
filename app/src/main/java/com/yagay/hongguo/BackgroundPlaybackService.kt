@@ -105,6 +105,7 @@ class BackgroundPlaybackService : MediaSessionService() {
     private var backgroundProgressBase = -1L
     private var onFinished: (() -> Unit)? = null
     private var onError: ((String) -> Unit)? = null
+    private var onRecovering: ((String) -> Unit)? = null
     private var onCheckpoint: ((Long, Long) -> Unit)? = null
     private var onTimer: (() -> Boolean)? = null
     private var outroMs = 0L
@@ -138,6 +139,7 @@ class BackgroundPlaybackService : MediaSessionService() {
     private var networkGeneration = 0L
     private var lastGoodPositionMs = 0L
     private var currentSourceIsOffline = false
+    private var currentSourceIsKaixinguo = false
     private var onNetworkRecovered: ((Long) -> Unit)? = null
     private var networkRecoveryTask: Runnable? = null
     private var networkModelAttempts = 0
@@ -165,28 +167,31 @@ class BackgroundPlaybackService : MediaSessionService() {
             networkModelAttempts > 0 && networkRefreshIssued &&
             networkRecoveryPlayRequested && retryAutomatically
 
-    /** The model request failed, or the refreshed Media3 item failed to load. */
-    fun networkRecoveryAttemptFailed(vid: String, retryable: Boolean) {
+    /** Returns true only while another source-model refresh is possible. */
+    fun networkRecoveryAttemptFailed(vid: String, retryable: Boolean): Boolean {
         if (currentVid != vid || currentKey == null ||
-            networkModelAttempts == 0 || !networkRecoveryPlayRequested) return
-        // Stale model failures after another request started cannot schedule
-        // additional work; the callback always runs on our main thread.
+            networkModelAttempts == 0 || !networkRecoveryPlayRequested) return false
         networkRefreshIssued = false
         if (!retryable || !retryAutomatically) {
             diagnostics.record("NETWORK_RESUME", "NON_RETRYABLE_FAILURE")
             cancelNetworkRecovery()
-            return
+            return false
         }
         if (!NetworkPlaybackRecoveryPolicy.canAttempt(networkModelAttempts + 1)) {
             diagnostics.record("NETWORK_RESUME", "MAX_RETRIES_EXHAUSTED")
             cancelNetworkRecovery()
-            return
+            return false
         }
         awaitingNetworkResume = true
         diagnostics.record("NETWORK_RESUME", "ATTEMPT_FAILED_RETRY_SCHEDULED")
+        onRecovering?.invoke("播放源暂时不可用，正在等待重试")
         if (networkValidated) scheduleNetworkResume()
         else diagnostics.record("NETWORK_RESUME", "RETRY_WAITING_FOR_NETWORK")
+        return true
     }
+
+    fun networkModelAttemptFor(vid: String): Int =
+        if (currentVid == vid && networkRecoveryPlayRequested) networkModelAttempts else 0
 
     fun setPlaybackAutoRetry(enabled: Boolean) {
         retryAutomatically = enabled
@@ -284,6 +289,7 @@ class BackgroundPlaybackService : MediaSessionService() {
         if (!NetworkPlaybackRecoveryPolicy.canAttempt(networkModelAttempts + 1)) {
             diagnostics.record("NETWORK_RESUME", "MAX_RETRIES_EXHAUSTED")
             cancelNetworkRecovery()
+            onError?.invoke("MEDIA_IO_ERROR · 播放源恢复次数已用尽")
             return
         }
         cancelNetworkResumeTask()
@@ -507,6 +513,7 @@ class BackgroundPlaybackService : MediaSessionService() {
                     if (networkModelAttempts > 0)
                         diagnostics.record("NETWORK_RESUME", "PLAYBACK_RESTORED")
                     cancelNetworkRecovery()
+                    onRecovering?.invoke("")
                     diagnostics.record("BACKGROUND", "PLAYING")
                 }
             }
@@ -580,6 +587,8 @@ class BackgroundPlaybackService : MediaSessionService() {
             }
 
             override fun onPlayerError(error: PlaybackException) {
+                val code = PlaybackProblem.media(
+                    error.errorCodeName, error.cause?.javaClass?.simpleName)
                 val transientIo = NetworkPlaybackRecoveryPolicy
                     .isTransientMediaIo(error.errorCode)
                 if (transientIo && retryAutomatically && !currentSourceIsOffline) {
@@ -587,11 +596,17 @@ class BackgroundPlaybackService : MediaSessionService() {
                         engine.currentPosition, lastGoodPositionMs)
                     if (!networkValidated) {
                         armNetworkResumeIfNeeded()
-                        diagnostics.record("NETWORK_RESUME", "OFFLINE_ERROR_DEFERRED")
-                    } else if (!retried) {
-                        // One immediate retry for brief CDN interruptions.
-                        // Never spin while Android reports no validated network.
+                        if (awaitingNetworkResume) {
+                            onRecovering?.invoke("网络已断开，连接恢复后自动继续")
+                            diagnostics.record("NETWORK_RESUME", "OFFLINE_ERROR_DEFERRED")
+                            return
+                        }
+                    } else if (!retried && !currentSourceIsKaixinguo) {
+                        // The Kaixinguo CENC registry remembers a failed header
+                        // permanently. prepare() on the same URI repeats that
+                        // exception; always refresh its signed model instead.
                         retried = true
+                        onRecovering?.invoke("网络中断，正在恢复媒体数据")
                         diagnostics.record("NETWORK_RESUME", "MEDIA3_IO_RETRY_ONCE")
                         val position = NetworkPlaybackRecoveryPolicy.resumeMs(
                             engine.currentPosition, lastGoodPositionMs)
@@ -600,25 +615,27 @@ class BackgroundPlaybackService : MediaSessionService() {
                         engine.play()
                         return
                     } else {
-                        // Retry a fresh playback model even if no further
-                        // network callback arrives on the same connection.
                         armNetworkResumeIfNeeded()
-                        if (networkModelAttempts > 0) {
+                        val pending = if (networkModelAttempts > 0) {
                             if (!networkRefreshIssued)
                                 networkRecoveryAttemptFailed(currentVid, true)
-                        } else if (networkValidated) {
-                            scheduleNetworkResume()
+                            else true
+                        } else {
+                            if (networkValidated) scheduleNetworkResume()
+                            awaitingNetworkResume
+                        }
+                        if (pending) {
+                            onRecovering?.invoke("播放中断，正在重新获取视频地址")
+                            diagnostics.record("NETWORK_RESUME", "MEDIA_ERROR_RECOVERY_PENDING")
+                            return
                         }
                     }
                 } else if (networkModelAttempts > 0) {
-                    // Do not retry a codec error, refused stream or other
-                    // permanent Media3 failure merely because it followed
-                    // a temporary network outage.
+                    // Never repeat a codec, authorization or permanent failure.
                     networkRecoveryAttemptFailed(currentVid, retryable = false)
                 }
                 diagnostics.record("BACKGROUND", "MEDIA_ERROR")
-                onError?.invoke(PlaybackProblem.media(
-                    error.errorCodeName, error.cause?.javaClass?.simpleName))
+                onError?.invoke(code)
             }
         })
         // Migration cleanup for the old duplicate progress notification.
@@ -708,6 +725,7 @@ class BackgroundPlaybackService : MediaSessionService() {
         backgroundProgress: () -> Unit,
         finished: () -> Unit,
         failed: (String) -> Unit,
+        recovering: (String) -> Unit,
         checkpoint: (Long, Long) -> Unit,
         timerExpired: () -> Boolean,
         networkRecovered: (Long) -> Unit,
@@ -716,6 +734,7 @@ class BackgroundPlaybackService : MediaSessionService() {
         onBackgroundProgress = backgroundProgress
         onFinished = finished
         onError = failed
+        onRecovering = recovering
         onCheckpoint = checkpoint
         onTimer = timerExpired
         onNetworkRecovered = networkRecovered
@@ -736,6 +755,7 @@ class BackgroundPlaybackService : MediaSessionService() {
         }
         currentSourceIsOffline = url.startsWith("content://") ||
             url.startsWith("file://") || url.startsWith("android.resource://")
+        currentSourceIsKaixinguo = url.startsWith("kaixinguo-stream://")
         lastGoodPositionMs = positionMs.coerceAtLeast(0L)
         val previousRemote = remoteVideo
         // setMediaSource/setMediaItem already replace the previous timeline.
