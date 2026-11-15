@@ -228,7 +228,13 @@ internal fun ReelLoadingScreen(
             // the loading text column, so switching to playback does not jump.
             if (state.feedMode) {
                 Box(Modifier.align(Alignment.TopCenter).padding(top = 62.dp)) {
-                    ReelRecommendationHint(status = state.feedRecommendationStatus)
+                    ReelRecommendationHint(
+                        status = state.feedRecommendationStatus,
+                        comparison = state.comparison,
+                        comparing = state.comparisonLoading,
+                        compareError = state.comparisonError,
+                        onCompare = model::comparePersonalizationWithAnonymous,
+                    )
                 }
             }
             TextButton(
