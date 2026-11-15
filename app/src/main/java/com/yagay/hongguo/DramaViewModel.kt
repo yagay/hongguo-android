@@ -830,7 +830,9 @@ class DramaViewModel(application: Application) : AndroidViewModel(application) {
                         feedHasMore = result.hasMore,
                         feedLoading = false,
                         feedRecommendationStatus = ReelRecommendationStatusPolicy.received(
-                            usesAccountRecommendation, merged.size > current.feedItems.size),
+                            usesAccountRecommendation, merged.size > current.feedItems.size,
+                            evidence = result.personalizationEvidence,
+                            categoryFallback = result.categoryFallback),
                         feedError = if (merged.size == current.feedItems.size)
                             "官方暂未推荐新作品，可上滑重试" else null)
                 }
