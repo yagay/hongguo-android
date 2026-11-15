@@ -56,7 +56,7 @@ enum class ReelRecommendationStatus(
         true, false,
     ),
     ACCOUNT_RECEIVED(
-        "账号官方推荐已接入 · 排序待验证",
+        "账号官方推荐已接入",
         "该作品来自携带登录 Cookie 的官方动态推荐，说明账号请求已经成功。实际是否使用设备签名以诊断中的 SIGNED/UNSIGNED 为准；服务端未明确确认是否按个人偏好排序，可使用独立对照检测进一步观察。",
         true, true,
     ),
