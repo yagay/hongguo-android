@@ -33,6 +33,15 @@ internal object OfficialReelsPolicy {
             .distinctBy { it.id }
     }
 
+    /**
+     * Cold-start restoration can show an existing video while the recommendation
+     * queue is still empty. Prioritize the FIRST playable batch in that case:
+     * do not block the user's first forward swipe on several HTTP pages.
+     */
+    fun needsImmediateNext(
+        items: List<Drama>, position: Int, hidden: Set<String>,
+    ): Boolean = nextIndex(items, position, 1, hidden) == null
+
     /** Read ahead when fewer than three visible titles remain after the current. */
     fun needsMore(
         items: List<Drama>, position: Int, hidden: Set<String>,
