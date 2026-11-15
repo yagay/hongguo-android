@@ -438,8 +438,10 @@ internal fun DramaDetailScreen(state: AppState, model: DramaViewModel) {
                         horizontalArrangement = Arrangement.spacedBy(12.dp)) {
                         state.relatedWorks.take(18).forEach { work ->
                             Column(Modifier.width(94.dp)
-                                .clickable(enabled = !work.upcoming) {
-                                    model.openRelatedDrama(work.drama)
+                                .clickable(enabled = !work.upcoming ||
+                                    work.reservationItemId != null) {
+                                    if (work.upcoming) model.reserveUpcoming(work)
+                                    else model.openRelatedDrama(work.drama)
                                 }, verticalArrangement = Arrangement.spacedBy(6.dp)) {
                                 AsyncImage(model = model.cover(work.drama.cover),
                                     contentDescription = work.drama.title,
@@ -447,7 +449,9 @@ internal fun DramaDetailScreen(state: AppState, model: DramaViewModel) {
                                     modifier = Modifier.width(90.dp).height(122.dp)
                                         .clip(RoundedCornerShape(8.dp)))
                                 if (work.season.isNotBlank() || work.upcoming)
-                                    Text(if (work.upcoming) "待上线" else work.season,
+                                    Text(if (work.upcoming)
+                                        if (work.reservationItemId != null) "待上线 · 预约" else "待上线"
+                                    else work.season,
                                         color = DetailMuted, fontSize = 11.sp,
                                         maxLines = 1, overflow = TextOverflow.Ellipsis)
                                 Text(work.drama.title, color = DetailText,
