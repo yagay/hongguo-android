@@ -767,6 +767,11 @@ internal fun NativePlayer(
                                 verticalArrangement = Arrangement.spacedBy(10.dp),
                             ) {
                                 CircularProgressIndicator(color = Color.White)
+                                state.playbackRecoveryMessage?.let { recovery ->
+                                    Text(recovery, color = Color.White,
+                                        fontSize = 13.sp,
+                                        modifier = Modifier.testTag("playback_retry_status"))
+                                }
                                 if (state.nextDramaTransition ==
                                     NextDramaTransition.PREPARING_VIDEO) {
                                     Text(
