@@ -21,6 +21,7 @@ import androidx.media3.common.PlaybackException
 import androidx.media3.common.Player
 import androidx.media3.common.util.UnstableApi
 import androidx.media3.datasource.DataSource
+import androidx.media3.datasource.HttpDataSource
 import androidx.media3.exoplayer.ExoPlayer
 import androidx.media3.exoplayer.DefaultRenderersFactory
 import androidx.media3.exoplayer.analytics.AnalyticsListener
@@ -125,6 +126,8 @@ class BackgroundPlaybackService : MediaSessionService() {
     private var lastProgressMs = 0L
     private var lastProgressObservedAtMs = 0L
     private var stalledRecoveryDone = false
+    private var bufferingSinceMs = 0L
+    private var bufferingRecoveryIssued = false
     private var lastForegroundRequested: Boolean? = null
     private var lastForegroundActive: Boolean? = null
 
@@ -551,6 +554,12 @@ class BackgroundPlaybackService : MediaSessionService() {
                     })
                     previousPlaybackState = state
                 }
+                if (state == Player.STATE_BUFFERING) {
+                    if (bufferingSinceMs == 0L)
+                        bufferingSinceMs = android.os.SystemClock.elapsedRealtime()
+                } else {
+                    bufferingSinceMs = 0L
+                }
                 if (state == Player.STATE_READY) {
                     readySinceMs = android.os.SystemClock.elapsedRealtime()
                     lastProgressMs = engine.currentPosition.coerceAtLeast(0L)
@@ -589,8 +598,13 @@ class BackgroundPlaybackService : MediaSessionService() {
             override fun onPlayerError(error: PlaybackException) {
                 val code = PlaybackProblem.media(
                     error.errorCodeName, error.cause?.javaClass?.simpleName)
+                val httpStatus = generateSequence(error.cause) { it.cause }
+                    .take(8).filterIsInstance<HttpDataSource.InvalidResponseCodeException>()
+                    .firstOrNull()?.responseCode
                 val transientIo = NetworkPlaybackRecoveryPolicy
-                    .isTransientMediaIo(error.errorCode)
+                    .isTransientMediaIo(error.errorCode) ||
+                    (httpStatus != null &&
+                        NetworkPlaybackRecoveryPolicy.isTransientHttpStatus(httpStatus))
                 if (transientIo && retryAutomatically && !currentSourceIsOffline) {
                     lastGoodPositionMs = NetworkPlaybackRecoveryPolicy.resumeMs(
                         engine.currentPosition, lastGoodPositionMs)
@@ -661,6 +675,22 @@ class BackgroundPlaybackService : MediaSessionService() {
         override fun run() {
             if (::engine.isInitialized && currentKey != null) {
                 val duration = engine.duration.takeIf { it > 0 } ?: 0L
+                // Some CDN range requests never fail; Media3 remains BUFFERING.
+                // Reacquire a fresh model once per source after a bounded stall,
+                // rather than keeping a spinner indefinitely or looping prepare.
+                if (retryAutomatically && !currentSourceIsOffline &&
+                    networkValidated && engine.playWhenReady &&
+                    engine.playbackState == Player.STATE_BUFFERING &&
+                    bufferingSinceMs > 0L && !bufferingRecoveryIssued &&
+                    android.os.SystemClock.elapsedRealtime() - bufferingSinceMs >= 22_000L) {
+                    bufferingRecoveryIssued = true
+                    diagnostics.record("NETWORK_RESUME", "MEDIA3_BUFFERING_STALL_22S")
+                    armNetworkResumeIfNeeded()
+                    if (awaitingNetworkResume) {
+                        onRecovering?.invoke("缓冲时间较长，正在重新获取播放地址")
+                        scheduleNetworkResume(delayMs = 0L)
+                    }
+                }
                 if (engine.isPlaying && onTimer?.invoke() == true) engine.pause()
                 if (engine.isPlaying && !outroDone && outroMs > 0L &&
                     duration > outroMs + 5_000L &&
@@ -775,6 +805,8 @@ class BackgroundPlaybackService : MediaSessionService() {
         autoStartPending = true
         startRecoveryTried = false
         stalledRecoveryDone = false
+        bufferingSinceMs = 0L
+        bufferingRecoveryIssued = false
         readySinceMs = 0L
         lastProgressMs = 0L
         lastProgressObservedAtMs = 0L
