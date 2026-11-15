@@ -892,6 +892,7 @@ internal fun NativePlayer(
             onReal = { model.setReelsMode("real") },
             onRecommend = { model.setReelsMode("all") },
             onSearch = { searchOverlayOpen = true },
+            onPersonalizationCompare = model::comparePersonalizationWithAnonymous,
             showTopButtons = (hiddenChromeMask and 1) == 0,
             showSideButtons = (hiddenChromeMask and 2) == 0,
             showTitle = (hiddenChromeMask and 4) == 0,
