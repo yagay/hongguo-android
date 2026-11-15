@@ -21,6 +21,9 @@ data class RecommendationComparison(
     val anonymousCount: Int,
     val overlapCount: Int,
     val identicalOrder: Boolean,
+    val secondAnonymousCount: Int = 0,
+    val anonymousBaselineOverlap: Int = 0,
+    val anonymousBaselineIdenticalOrder: Boolean = false,
 )
 
 data class Episode(val index: Int, val vid: String, val title: String = "")
@@ -33,6 +36,7 @@ data class CatalogPage(
     val personalizationEvidence: com.hongguotv.core.PersonalizationEvidence =
         com.hongguotv.core.PersonalizationEvidence.UNDECLARED,
     val categoryFallback: Boolean = false,
+    val itemAttributions: Map<String, ReelItemAttribution> = emptyMap(),
 )
 data class CommentEntry(
     val id: String,
@@ -123,6 +127,8 @@ data class AppState(
     val feedLoading: Boolean = false,
     /** Last actual recommendation request outcome; login alone is not proof. */
     val feedRecommendationStatus: ReelRecommendationStatus = ReelRecommendationStatus.NOT_REQUESTED,
+    /** Per-title provenance; credentials and timestamps are never persisted. */
+    val feedItemAttributions: Map<String, ReelItemAttribution> = emptyMap(),
     val comparisonLoading: Boolean = false,
     val comparison: RecommendationComparison? = null,
     val comparisonError: String? = null,
