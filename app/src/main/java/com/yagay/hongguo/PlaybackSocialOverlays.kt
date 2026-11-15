@@ -280,7 +280,7 @@ internal fun TimedDanmakuOverlay(
         Paint(Paint.ANTI_ALIAS_FLAG).apply {
             color = android.graphics.Color.WHITE
             textSize = textSizePx
-            typeface = Typeface.create("sans-serif-medium", Typeface.NORMAL)
+            typeface = Typeface.create("sans-serif", Typeface.NORMAL)
             isSubpixelText = true
         }
     }
