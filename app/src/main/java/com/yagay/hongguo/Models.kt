@@ -175,6 +175,8 @@ data class AppState(
     val playbackAudioBoostDb: Int = 0,
     val sleepTimerLabel: String = "关闭",
     val playbackError: String? = null,
+    /** Non-terminal; disappears after the new Media3 source starts playing. */
+    val playbackRecoveryMessage: String? = null,
     val library: List<Watched> = emptyList(),
     val favorites: List<Watched> = emptyList(),
     val likedDramaIds: Set<String> = emptySet(),
