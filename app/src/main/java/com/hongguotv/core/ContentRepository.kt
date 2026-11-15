@@ -102,6 +102,7 @@ data class CatalogPage(
     val ranking: ComicRanking? = null,
     val discovery: DiscoveryInfo? = null,
     val trialHints: Map<String, TrialHint> = emptyMap(),
+    val personalizationEvidence: PersonalizationEvidence = PersonalizationEvidence.UNDECLARED,
 )
 
 data class StreamInfo(val url: String, val key: ByteArray?, val quality: String)
