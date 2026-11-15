@@ -1090,6 +1090,10 @@ internal fun NativePlayer(
             showEpisodes = false
             model.openRelatedDrama(work.drama)
         },
+        onReserveUpcoming = { work ->
+            showEpisodes = false
+            model.reserveUpcoming(work)
+        },
     )
 }
 
