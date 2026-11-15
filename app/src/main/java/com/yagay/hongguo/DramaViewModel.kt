@@ -942,6 +942,41 @@ class DramaViewModel(application: Application) : AndroidViewModel(application) {
      * invalidates the old anonymous cursor and keeps the current playing
      * drama while new items arrive. Never leak credentials to diagnostics.
      */
+    private var comparisonJob: Job? = null
+
+    /** User-requested, read-only comparison; it never changes active cursors or playback. */
+    fun comparePersonalizationWithAnonymous() {
+        val sourceAccount = appliedRecommendationSession ?: return
+        if (state.value.comparisonLoading) return
+        comparisonJob?.cancel()
+        mutable.update { it.copy(
+            comparisonLoading = true, comparison = null, comparisonError = null) }
+        comparisonJob = viewModelScope.launch {
+            try {
+                val sample = withTimeout(35_000L) {
+                    nativeSource.comparePersonalizationSamples()
+                }
+                if (appliedRecommendationSession != sourceAccount) return@launch
+                mutable.update { it.copy(
+                    comparisonLoading = false, comparison = sample, comparisonError = null) }
+            } catch (timeout: TimeoutCancellationException) {
+                if (appliedRecommendationSession == sourceAccount) mutable.update {
+                    it.copy(comparisonLoading = false, comparisonError = "对照检查超时，请稍后重试")
+                }
+                diagnostics.record("REELS", "ACCOUNT_ANONYMOUS_COMPARISON_TIMEOUT")
+            } catch (cancel: CancellationException) {
+                throw cancel
+            } catch (failure: Exception) {
+                if (appliedRecommendationSession == sourceAccount) mutable.update {
+                    it.copy(comparisonLoading = false, comparisonError =
+                        "对照请求失败，暂时无法判断推荐差异")
+                }
+                diagnostics.record("REELS",
+                    "COMPARISON_" + OfficialReelsFailure.code(failure))
+            }
+        }
+    }
+
     fun setAccountRecommendations(enabled: Boolean) {
         account.setAccountRecommendations(enabled)
         applyRecommendationAccountIfChanged()
@@ -950,6 +985,9 @@ class DramaViewModel(application: Application) : AndroidViewModel(application) {
     private fun applyRecommendationAccountIfChanged() {
         val session = account.recommendationAccount()
         if (session == appliedRecommendationSession) return
+        comparisonJob?.cancel()
+        mutable.update { it.copy(
+            comparisonLoading = false, comparison = null, comparisonError = null) }
         appliedRecommendationSession = session
         nativeSource.setAccountRecommendations(session)
         diagnostics.record("REELS",
