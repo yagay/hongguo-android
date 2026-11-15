@@ -11,6 +11,10 @@ internal object NetworkPlaybackRecoveryPolicy {
 
     fun isTransientMediaIo(errorCode: Int): Boolean = errorCode in transientIoCodes
 
+    /** Retry only temporary CDN status codes, never auth or rate-limit denials. */
+    fun isTransientHttpStatus(responseCode: Int): Boolean =
+        responseCode in setOf(500, 502, 503, 504)
+
     /** Maximum new playback-model requests per continuous reconnection episode. */
     const val MAX_MODEL_ATTEMPTS = 4
 
