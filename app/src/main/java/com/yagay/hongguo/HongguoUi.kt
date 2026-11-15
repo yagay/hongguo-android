@@ -65,6 +65,7 @@ import androidx.compose.ui.Modifier
 import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.graphics.vector.ImageVector
 import androidx.compose.ui.platform.testTag
+import androidx.compose.ui.platform.LocalDensity
 import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
@@ -92,16 +93,28 @@ internal object HongguoUi {
     val primaryNavHeight = 40.dp
     val primaryNavIconSize = 27.dp
     val playbackSeekTouchHeight = 12.dp
+    /** Keeps 0% and 100% outside the OS back-gesture edge zone. */
+    val playbackSeekHorizontalInset = 24.dp
     val playbackDockRowHeight = 34.dp
     val playbackDockTimeSize = 12.sp
     val playbackDockTitleSize = 12.sp
 }
 
-/** Shared coordinate mapping for the progress bar and its wider gesture row. */
+/**
+ * Shared coordinate mapping for the progress bar and its wider gesture row.
+ * Both use the same 24dp internal inset so the visual endpoint and the seek
+ * gesture always agree. Input still covers the entire dock width.
+ */
 internal object PlaybackSeekGeometry {
-    fun fractionAt(xPx: Float, widthPx: Float): Float =
-        if (!xPx.isFinite() || !widthPx.isFinite() || widthPx <= 0f) 0f
-        else (xPx / widthPx).coerceIn(0f, 1f)
+    fun safeInsetPx(widthPx: Float, insetPx: Float): Float =
+        if (!widthPx.isFinite() || widthPx <= 0f || !insetPx.isFinite()) 0f
+        else insetPx.coerceIn(0f, widthPx * 0.4f)
+
+    fun fractionAt(xPx: Float, widthPx: Float, insetPx: Float = 0f): Float {
+        if (!xPx.isFinite() || !widthPx.isFinite() || widthPx <= 0f) return 0f
+        val inset = safeInsetPx(widthPx, insetPx)
+        return ((xPx - inset) / (widthPx - inset * 2f)).coerceIn(0f, 1f)
+    }
 
     fun positionAt(durationMs: Long, fraction: Float): Long =
         if (durationMs <= 0L || !fraction.isFinite()) 0L
@@ -742,6 +755,9 @@ internal fun HongguoPlayerSeekTrack(
     var dragging by remember(durationMs) { mutableStateOf<Float?>(null) }
     val currentSeek by rememberUpdatedState(onSeek)
     val currentPreview by rememberUpdatedState(onPreview)
+    val seekInsetPx = with(LocalDensity.current) {
+        HongguoUi.playbackSeekHorizontalInset.toPx()
+    }
     Canvas(
         modifier.fillMaxWidth()
             .height(HongguoUi.playbackSeekTouchHeight)
@@ -749,7 +765,7 @@ internal fun HongguoPlayerSeekTrack(
                 detectTapGestures { point ->
                     if (durationMs > 0L && size.width > 0) {
                         val fraction = PlaybackSeekGeometry.fractionAt(
-                            point.x, size.width.toFloat())
+                            point.x, size.width.toFloat(), seekInsetPx)
                         currentSeek(PlaybackSeekGeometry.positionAt(durationMs, fraction))
                     }
                 }
@@ -759,7 +775,7 @@ internal fun HongguoPlayerSeekTrack(
                     onDragStart = { start ->
                         if (durationMs > 0L && size.width > 0) {
                             val value = PlaybackSeekGeometry.fractionAt(
-                                start.x, size.width.toFloat())
+                                start.x, size.width.toFloat(), seekInsetPx)
                             dragging = value
                             currentPreview(value)
                         }
@@ -778,7 +794,7 @@ internal fun HongguoPlayerSeekTrack(
                     onDrag = { change, _ ->
                         if (durationMs > 0L && size.width > 0) {
                             val value = PlaybackSeekGeometry.fractionAt(
-                                change.position.x, size.width.toFloat())
+                                change.position.x, size.width.toFloat(), seekInsetPx)
                             dragging = value
                             currentPreview(value)
                         }
@@ -788,19 +804,22 @@ internal fun HongguoPlayerSeekTrack(
             },
     ) {
         val y = size.height / 2f
+        val inset = PlaybackSeekGeometry.safeInsetPx(size.width, seekInsetPx)
+        val trackEnd = size.width - inset
         drawLine(
             color = HongguoColors.playerChromeTrack,
-            start = Offset(0f, y),
-            end = Offset(size.width, y),
+            start = Offset(inset, y),
+            end = Offset(trackEnd, y),
             strokeWidth = 2.dp.toPx(),
             cap = StrokeCap.Round,
         )
         drawLine(
             color = HongguoColors.accent,
-            start = Offset(0f, y),
+            start = Offset(inset, y),
             end = Offset(
-                size.width * (dragging ?: externalPreviewFraction ?: playedFraction)
-                    .coerceIn(0f, 1f), y,
+                inset + (trackEnd - inset) *
+                    (dragging ?: externalPreviewFraction ?: playedFraction)
+                        .coerceIn(0f, 1f), y,
             ),
             strokeWidth = 2.dp.toPx(),
             cap = StrokeCap.Round,
