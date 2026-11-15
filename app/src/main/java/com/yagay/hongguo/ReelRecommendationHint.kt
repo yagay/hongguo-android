@@ -40,7 +40,8 @@ internal fun ReelRecommendationHint(
     var explanationOpen by remember { mutableStateOf(false) }
     val tint = when {
         status.failed -> Color(0xFFFFB7AA)
-        status.accountRequest && status.received -> Color(0xFF94DFB4)
+        status == ReelRecommendationStatus.ACCOUNT_SERVER_ENABLED -> Color(0xFF94DFB4)
+        status == ReelRecommendationStatus.ACCOUNT_SERVER_DISABLED -> Color(0xFFFFB7AA)
         status.accountRequest -> Color(0xFFFFD89A)
         else -> Color(0xFFD5D5D5)
     }
