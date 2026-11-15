@@ -8,6 +8,7 @@ import com.hongguotv.core.TimedComments
 import org.json.JSONObject
 import com.hongguotv.core.ContentRepository
 import com.hongguotv.core.RecommendationFeed
+import com.hongguotv.core.PlaybackDeviceSession
 import com.hongguotv.core.FeedResponseKind
 import com.hongguotv.core.FeedResponseSummary
 import com.hongguotv.core.PersonalizationEvidence
@@ -83,6 +84,12 @@ class NativeHongguoSource(
         category: DramaCategory? = null,
     ): RecommendationFeed = RecommendationFeed(repository.http,
         account = account, cursor = cursor, category = category,
+        // Use the same registered device and dedicated recommendation signer
+        // as the upstream 7.4.3.32 official-feed integration. Never attach
+        // this anonymous registration identity to category selectors.
+        // Code 110 falls back to the account Cookie without losing login.
+        playbackSession = if (account != null && category == null)
+            PlaybackDeviceSession.shared else null,
         onSummary = ::recordReelResponse)
 
     /** Called only for a new catalog session; QR cookies never enter logs. */
