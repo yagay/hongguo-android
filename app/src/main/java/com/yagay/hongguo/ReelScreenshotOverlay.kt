@@ -62,6 +62,7 @@ import androidx.compose.ui.graphics.StrokeCap
 import androidx.compose.ui.input.pointer.pointerInput
 import androidx.compose.ui.graphics.vector.ImageVector
 import androidx.compose.ui.platform.testTag
+import androidx.compose.ui.platform.LocalDensity
 import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.text.style.TextOverflow
 import androidx.compose.ui.unit.dp
@@ -406,6 +407,9 @@ internal fun ReelBottomDock(
     onEpisodes: () -> Unit,
 ) {
     var seeking by remember(episode?.vid) { mutableStateOf<Float?>(null) }
+    val seekInsetPx = with(LocalDensity.current) {
+        HongguoUi.playbackSeekHorizontalInset.toPx()
+    }
     val duration = playback.durationMs
     val fraction = if (duration > 0L)
         (playback.positionMs.toFloat() / duration.toFloat()).coerceIn(0f, 1f)
@@ -437,19 +441,19 @@ internal fun ReelBottomDock(
             // vertical swipe keeps its existing navigation behavior.
             modifier = Modifier.fillMaxWidth()
                 .height(HongguoUi.playbackDockRowHeight)
-                .pointerInput(duration, episode?.vid) {
+                .pointerInput(duration, episode?.vid, seekInsetPx) {
                     if (duration <= 0L) return@pointerInput
                     var draggedFraction: Float? = null
                     detectHorizontalDragGestures(
                         onDragStart = { start ->
                             val value = PlaybackSeekGeometry.fractionAt(
-                                start.x, size.width.toFloat())
+                                start.x, size.width.toFloat(), seekInsetPx)
                             draggedFraction = value
                             seeking = value
                         },
                         onHorizontalDrag = { change, _ ->
                             val value = PlaybackSeekGeometry.fractionAt(
-                                change.position.x, size.width.toFloat())
+                                change.position.x, size.width.toFloat(), seekInsetPx)
                             draggedFraction = value
                             seeking = value
                             change.consume()
