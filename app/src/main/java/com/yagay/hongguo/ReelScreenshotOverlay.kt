@@ -263,7 +263,8 @@ internal fun ReelScreenshotOverlay(
             // the title when the viewer chooses clear-screen mode.
             if (state.feedMode && showTitle) {
                 ReelRecommendationHint(
-                    status = state.feedRecommendationStatus,
+                    status = ReelRecommendationAttributionPolicy.statusFor(
+                        detail.drama.id, state.feedItemAttributions, state.feedRecommendationStatus),
                     comparison = state.comparison,
                     comparing = state.comparisonLoading,
                     compareError = state.comparisonError,
