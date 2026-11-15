@@ -4,7 +4,17 @@ package com.hongguotv.core
 import java.io.IOException
 import org.json.JSONObject
 
-data class RelatedWork(val series: Series, val season: String, val upcoming: Boolean, val seasonIndex: Int = 0) {
+data class RelatedWork(
+    val series: Series,
+    val season: String,
+    val upcoming: Boolean,
+    val seasonIndex: Int = 0,
+    /**
+     * Provider-supplied subscribe_item.item_id; not interchangeable with
+     * series_id. Null disables reservation writes for unknown response shapes.
+     */
+    val reservationItemId: String? = null,
+) {
     val label
         get() =
             listOf(season, if (upcoming) "待上线 · 预约" else "已上线")
@@ -99,6 +109,13 @@ object RelatedWorks {
                     season,
                     upcoming,
                     row.optInt("season_index").coerceAtLeast(0),
+                    if (upcoming) sequenceOf(
+                        row.optJSONObject("subscribe_item")?.str("item_id"),
+                        row.optJSONObject("subscribe_data")?.str("item_id"),
+                        row.str("item_id"),
+                    ).filterNotNull().firstOrNull {
+                        it.matches(Regex("[1-9][0-9]{0,18}"))
+                    } else null,
                 )
             }
             .distinctBy { it.series.id }
