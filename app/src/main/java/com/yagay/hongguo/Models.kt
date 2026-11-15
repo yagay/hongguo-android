@@ -37,7 +37,13 @@ data class RecommendationComparison(
 
 data class Episode(val index: Int, val vid: String, val title: String = "")
 data class DramaDetail(val drama: Drama, val episodes: List<Episode>)
-data class RelatedDrama(val drama: Drama, val season: String, val upcoming: Boolean)
+data class RelatedDrama(
+    val drama: Drama,
+    val season: String,
+    val upcoming: Boolean,
+    /** Exact provider reservation item, never guessed from drama.id. */
+    val reservationItemId: String? = null,
+)
 data class CatalogPage(
     val items: List<Drama>,
     val hasMore: Boolean,
