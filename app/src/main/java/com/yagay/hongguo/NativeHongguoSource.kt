@@ -8,6 +8,8 @@ import com.hongguotv.core.TimedComments
 import org.json.JSONObject
 import com.hongguotv.core.ContentRepository
 import com.hongguotv.core.RecommendationFeed
+import com.hongguotv.core.FeedResponseKind
+import com.hongguotv.core.FeedResponseSummary
 import com.hongguotv.core.PersonalizationEvidence
 import com.hongguotv.core.RecommendationCursor
 import com.hongguotv.core.NoNewRecommendationsException
@@ -47,6 +49,35 @@ class NativeHongguoSource(
     private var recommendationFeed = RecommendationFeed(repository.http)
     private var accountFeed: FeedAccount? = null
 
+    /** Safe request diagnostics contain route, code and counts only, never IDs or credentials. */
+    private fun recordReelResponse(summary: FeedResponseSummary) {
+        val route = when (summary.kind) {
+            FeedResponseKind.DYNAMIC_TAB -> "TAB"
+            FeedResponseKind.DYNAMIC_CELL -> "CELL"
+            FeedResponseKind.CATEGORY -> "CATEGORY"
+        }
+        val identity = if (summary.hadAccountCookie) "COOKIE" else "GUEST"
+        val signing = if (summary.signedDeviceIdentity) "SIGNED" else "UNSIGNED"
+        val outcome = if (summary.businessCode == 0) "OK"
+            else "BUSINESS_" + summary.businessCode.coerceIn(-1, 9999)
+        diagnostics?.record("REELS_WIRE", "${route}_${identity}_${signing}_${outcome}")
+        val flag = when (summary.personalizationFlag) {
+            PersonalizationEvidence.SERVER_ENABLED -> "CANDIDATE_TRUE"
+            PersonalizationEvidence.SERVER_DISABLED -> "CANDIDATE_FALSE"
+            PersonalizationEvidence.UNDECLARED -> "NO_CANDIDATE"
+        }
+        diagnostics?.record("REELS_WIRE",
+            "${route}_ITEMS_${summary.itemCount.coerceIn(0,999)}_${flag}" +
+                if (summary.serverSessionPresent) "_SESSION" else "_NOSESSION")
+    }
+
+    private fun reelFeed(
+        account: FeedAccount?, cursor: RecommendationCursor,
+        category: DramaCategory? = null,
+    ): RecommendationFeed = RecommendationFeed(repository.http,
+        account = account, cursor = cursor, category = category,
+        onSummary = ::recordReelResponse)
+
     /** Called only for a new catalog session; QR cookies never enter logs. */
     fun setAccountRecommendations(session: FeedAccount?) {
         synchronized(recommendationLock) {
@@ -62,7 +93,7 @@ class NativeHongguoSource(
     /** Independent official one-drama-per-swipe cursor; never falls back to sorted web catalog. */
     private val reelsLock = kotlinx.coroutines.sync.Mutex()
     private var reelsCursor = RecommendationCursor()
-    private var reelsFeed = RecommendationFeed(repository.http, cursor = reelsCursor)
+    private var reelsFeed = reelFeed(null, reelsCursor)
     private var reelsPageNumber = 1
     // A saturated official tab should not spend another 30-50 seconds
     // rediscovering the same duplicate pages on every restart.
@@ -71,13 +102,11 @@ class NativeHongguoSource(
     /** A saturated guest feed must not suppress the first new account request. */
     private var reelsAccountSession: FeedAccount? = null
     private var realReelsCursor = RecommendationCursor()
-    private var realReelsFeed = RecommendationFeed(repository.http, cursor = realReelsCursor,
-        category = DramaCategory.REAL)
+    private var realReelsFeed = reelFeed(null, realReelsCursor, DramaCategory.REAL)
     private var realReelsPageNumber = 1
     private var realReelsEnd = false
     private var comicReelsCursor = RecommendationCursor()
-    private var comicReelsFeed = RecommendationFeed(repository.http,
-        cursor = comicReelsCursor, category = DramaCategory.COMIC)
+    private var comicReelsFeed = reelFeed(null, comicReelsCursor, DramaCategory.COMIC)
     private var comicReelsPageNumber = 1
     private var comicReelsEnd = false
 
@@ -124,9 +153,7 @@ class NativeHongguoSource(
                 diagnostics?.record("REELS", if (accountForSession == null)
                     "ANONYMOUS_DYNAMIC_CONTEXT" else "ACCOUNT_COOKIE_ONLY_UNVERIFIED")
                 reelsCursor = RecommendationCursor()
-                reelsFeed = RecommendationFeed(repository.http,
-                    account = accountForSession,
-                    cursor = reelsCursor)
+                reelsFeed = reelFeed(accountForSession, reelsCursor)
                 reelsPageNumber = 1
                 val nowMs = System.nanoTime() / 1_000_000L
                 // A failed model means the last recommendation queue may
@@ -140,9 +167,7 @@ class NativeHongguoSource(
                 if (mainReelsExhausted)
                     diagnostics?.record("REELS", "MAIN_RECENT_NO_NEW_CATEGORY_FIRST")
                 realReelsCursor = RecommendationCursor()
-                realReelsFeed = RecommendationFeed(repository.http,
-                    account = accountForSession,
-                    cursor = realReelsCursor, category = DramaCategory.REAL)
+                realReelsFeed = reelFeed(accountForSession, realReelsCursor, DramaCategory.REAL)
                 // This confirms only the request's authenticated/anonymous
                 // identity. It does not prove the server personalized its rank.
                 diagnostics?.record("REELS", if (accountForSession != null)
@@ -150,9 +175,7 @@ class NativeHongguoSource(
                 realReelsPageNumber = 1
                 realReelsEnd = false
                 comicReelsCursor = RecommendationCursor()
-                comicReelsFeed = RecommendationFeed(repository.http,
-                    account = accountForSession, cursor = comicReelsCursor,
-                    category = DramaCategory.COMIC)
+                comicReelsFeed = reelFeed(accountForSession, comicReelsCursor, DramaCategory.COMIC)
                 comicReelsPageNumber = 1
                 comicReelsEnd = false
             }
@@ -163,9 +186,7 @@ class NativeHongguoSource(
             excluded.toList().takeLast(300).forEach(reelsCursor::markSeen)
             if (reelsPageNumber > 100) {
                 reelsCursor = RecommendationCursor()
-                reelsFeed = RecommendationFeed(repository.http,
-                    account = synchronized(recommendationLock) { accountFeed },
-                    cursor = reelsCursor)
+                reelsFeed = reelFeed(reelsAccountSession, reelsCursor)
                 reelsPageNumber = 1
                 excluded.toList().takeLast(300).forEach(reelsCursor::markSeen)
             }
