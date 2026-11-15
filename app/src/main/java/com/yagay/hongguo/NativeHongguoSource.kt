@@ -738,6 +738,19 @@ class NativeHongguoSource(
 
     suspend fun appSocial(id: String): SocialStats = appEnrichment(id).first
 
+    /**
+     * Only the official signed "系列剧" cell may drive automatic cross-season
+     * playback. RelatedWorks.nextSeason requires a unique, consecutive,
+     * matching, playable season; no arbitrary related recommendation qualifies.
+     */
+    suspend fun nextConfirmedSeason(id: String, currentTitle: String): Drama? =
+        withContext(Dispatchers.IO) {
+            val current = Series(id, currentTitle)
+            com.hongguotv.core.RelatedWorks.nextSeason(
+                current, repository.related(id),
+            )?.series?.toDrama()
+        }
+
     /** Signed first-party related-work cells; upcoming seasons never playable. */
     suspend fun related(id: String): List<RelatedDrama> = withContext(Dispatchers.IO) {
         repository.related(id).map {
