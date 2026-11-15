@@ -94,6 +94,31 @@ class OfficialReelsPolicyTest {
             feed, 4, emptySet(), hasMore = true, loading = true))
     }
 
+    @Test fun restoredFirstVideoWithoutNextDramaPrioritizesFirstResponse() {
+        val onlyRestoredVideo = listOf(title("100"))
+        assertEquals(true, OfficialReelsPolicy.needsImmediateNext(
+            onlyRestoredVideo, 0, emptySet()))
+        // A first dynamic TAB with several candidates should immediately
+        // release the swipe instead of waiting for a CELL continuation.
+        val readyQueue = OfficialReelsPolicy.append(
+            onlyRestoredVideo, listOf(title("101"), title("102"), title("103")),
+            emptySet())
+        assertEquals(false, OfficialReelsPolicy.needsImmediateNext(
+            readyQueue, 0, emptySet()))
+        assertEquals(1, OfficialReelsPolicy.nextIndex(
+            readyQueue, 0, 1, emptySet()))
+    }
+
+    @Test fun hiddenOnlyForwardQueueStillRequiresImmediateNewRecommendation() {
+        val queue = listOf(title("100"), title("101"), title("102"))
+        assertEquals(true, OfficialReelsPolicy.needsImmediateNext(
+            queue, 0, setOf("101", "102")))
+        assertEquals(false, OfficialReelsPolicy.needsImmediateNext(
+            queue, 0, setOf("101")))
+        assertEquals(true, OfficialReelsPolicy.needsImmediateNext(
+            emptyList(), 0, emptySet()))
+    }
+
     @Test fun autoplayAdvancesEpisodesBeforeSwitchingDrama() {
         assertEquals(ReelAutoplayPolicy.Action.NEXT_EPISODE,
             ReelAutoplayPolicy.onEnded(0, 5, true, true))
