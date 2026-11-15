@@ -400,27 +400,71 @@ class NativeHongguoSource(
                 .readTimeout(10, java.util.concurrent.TimeUnit.SECONDS)
                 .callTimeout(13, java.util.concurrent.TimeUnit.SECONDS)
                 .build()
-            // Guest-vs-guest variation is the baseline. A difference between
-            // one account and one guest is not sufficient to prove personalization.
-            val withAccount = RecommendationFeed(probeHttp, account = session).page(1)
+            // Compare TWO isolated account sessions with TWO independent guest
+            // sessions. Account samples use the SAME registered-device signing
+            // integration as the live reels; guests never inherit any cookies.
+            // These probes are read-only and never advance the playing cursor.
+            var successfulSignedSamples = 0
+            fun accountSample(): List<String> {
+                var signedSuccess = false
+                val page = RecommendationFeed(
+                    probeHttp, account = session, cursor = RecommendationCursor(),
+                    playbackSession = recommendationDeviceSession,
+                    onSummary = { summary ->
+                        if (summary.kind == FeedResponseKind.DYNAMIC_TAB &&
+                            summary.businessCode == 0 && summary.itemCount > 0)
+                            signedSuccess = summary.signedDeviceIdentity
+                    },
+                ).page(1)
+                if (signedSuccess) successfulSignedSamples++
+                return page.items.map { it.id }.distinct().take(20)
+            }
+            fun guestSample(): List<String> =
+                RecommendationFeed(probeHttp, cursor = RecommendationCursor())
+                    .page(1).items.map { it.id }.distinct().take(20)
+
+            val a = accountSample()
             kotlinx.coroutines.currentCoroutineContext().ensureActive()
-            val anonymous = RecommendationFeed(probeHttp).page(1)
+            val b = guestSample()
             kotlinx.coroutines.currentCoroutineContext().ensureActive()
-            val secondAnonymous = RecommendationFeed(probeHttp).page(1)
-            val a = withAccount.items.map { it.id }.distinct().take(20)
-            val b = anonymous.items.map { it.id }.distinct().take(20)
-            val c = secondAnonymous.items.map { it.id }.distinct().take(20)
-            if (a.isEmpty() || b.isEmpty() || c.isEmpty())
+            val a2 = accountSample()
+            kotlinx.coroutines.currentCoroutineContext().ensureActive()
+            val c = guestSample()
+            kotlinx.coroutines.currentCoroutineContext().ensureActive()
+            if (a.isEmpty() || b.isEmpty() || a2.isEmpty() || c.isEmpty())
                 throw IOException("推荐接口未提供足够的对照数据")
+            val overlap = a.toSet().intersect(b.toSet()).size
+            val secondOverlap = a2.toSet().intersect(c.toSet()).size
+            val guestRepeat = b.toSet().intersect(c.toSet()).size
+            val accountRepeat = a.toSet().intersect(a2.toSet()).size
+            fun percent(shared: Int, n1: Int, n2: Int): Int =
+                (shared * 100 / minOf(n1, n2).coerceAtLeast(1)).coerceIn(0, 100)
+            // Aggregate counts only; never persist titles, IDs or credentials.
+            diagnostics?.record("REELS",
+                "COMPARISON_SIGNED_ACCOUNT_${successfulSignedSamples}_OF_2")
+            diagnostics?.record("REELS",
+                "COMPARISON_PAIR1_OVERLAP_${percent(overlap, a.size, b.size)}PCT")
+            diagnostics?.record("REELS",
+                "COMPARISON_PAIR2_OVERLAP_${percent(secondOverlap, a2.size, c.size)}PCT")
+            diagnostics?.record("REELS",
+                "COMPARISON_ACCOUNT_BASELINE_${percent(accountRepeat, a.size, a2.size)}PCT")
+            diagnostics?.record("REELS",
+                "COMPARISON_GUEST_BASELINE_${percent(guestRepeat, b.size, c.size)}PCT")
             diagnostics?.record("REELS", "ACCOUNT_GUEST_GUEST_BASELINE_DONE")
             RecommendationComparison(
                 accountCount = a.size,
                 anonymousCount = b.size,
-                overlapCount = a.toSet().intersect(b.toSet()).size,
+                overlapCount = overlap,
                 identicalOrder = a == b,
                 secondAnonymousCount = c.size,
-                anonymousBaselineOverlap = b.toSet().intersect(c.toSet()).size,
+                anonymousBaselineOverlap = guestRepeat,
                 anonymousBaselineIdenticalOrder = b == c,
+                secondAccountCount = a2.size,
+                secondAccountGuestOverlap = secondOverlap,
+                secondAccountGuestIdenticalOrder = a2 == c,
+                accountBaselineOverlap = accountRepeat,
+                accountBaselineIdenticalOrder = a == a2,
+                signedAccountSamples = successfulSignedSamples,
             )
         }
 
