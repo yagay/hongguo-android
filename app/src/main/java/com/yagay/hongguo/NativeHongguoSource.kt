@@ -163,7 +163,7 @@ class NativeHongguoSource(
                 diagnostics?.record("REELS", "MAIN_DYNAMIC_FRESH_SESSION")
                 reelsAccountSession = accountForSession
                 diagnostics?.record("REELS", if (accountForSession == null)
-                    "ANONYMOUS_DYNAMIC_CONTEXT" else "ACCOUNT_COOKIE_ONLY_UNVERIFIED")
+                    "ANONYMOUS_DYNAMIC_CONTEXT" else "ACCOUNT_DYNAMIC_SIGNATURE_ATTEMPT")
                 reelsCursor = RecommendationCursor()
                 reelsFeed = reelFeed(accountForSession, reelsCursor)
                 reelsPageNumber = 1
