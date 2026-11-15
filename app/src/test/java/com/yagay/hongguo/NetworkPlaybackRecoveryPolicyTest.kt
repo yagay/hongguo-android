@@ -6,6 +6,15 @@ import org.junit.Assert.assertEquals
 import org.junit.Test
 
 class NetworkPlaybackRecoveryPolicyTest {
+    @Test fun onlyServer5xxRetryAndNotAuthorizationOrRateLimit() {
+        listOf(500, 502, 503, 504).forEach {
+            assertTrue(NetworkPlaybackRecoveryPolicy.isTransientHttpStatus(it))
+        }
+        listOf(200, 206, 400, 401, 403, 404, 429, 501).forEach {
+            assertFalse(NetworkPlaybackRecoveryPolicy.isTransientHttpStatus(it))
+        }
+    }
+
     @Test fun onlyTransientIoErrorsQualify() {
         listOf(2000, 2001, 2002).forEach {
             assertTrue(NetworkPlaybackRecoveryPolicy.isTransientMediaIo(it))
