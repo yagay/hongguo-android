@@ -28,6 +28,7 @@ import kotlinx.coroutines.flow.filterNotNull
 import kotlinx.coroutines.flow.first
 import kotlinx.coroutines.flow.collect
 import kotlinx.coroutines.withTimeout
+import kotlinx.coroutines.withTimeoutOrNull
 import kotlinx.coroutines.TimeoutCancellationException
 import kotlinx.coroutines.flow.asStateFlow
 import kotlinx.coroutines.flow.update
@@ -2546,9 +2547,9 @@ class DramaViewModel(application: Application) : AndroidViewModel(application) {
     ) {
         val serviceWaitStarted = System.nanoTime()
         if (BackgroundPlaybackService.active == null) {
-            withTimeout(8_000) {
+            withTimeoutOrNull(8_000L) {
                 BackgroundPlaybackService.playerFlow.filterNotNull().first()
-            }
+            } ?: throw IOException("播放服务尚未启动")
         }
         diagnostics.record("PLAYBACK", "SERVICE_WAIT",
             elapsed(serviceWaitStarted))
@@ -2782,10 +2783,10 @@ class DramaViewModel(application: Application) : AndroidViewModel(application) {
                         for (attempt in 1..2) {
                             try {
                                 val resolveStarted = System.nanoTime()
-                                prepared = withTimeout(40_000L) {
+                                prepared = withTimeoutOrNull(40_000L) {
                                     com.yagay.hongguo.kxg.KxgPlaybackStreams.resolve(
                                         getApplication(), openHongguo, vid, quality)
-                                }
+                                } ?: throw java.net.SocketTimeoutException("视频模型请求超时")
                                 diagnostics.record("PLAYBACK", "KXG_STREAM_ACQUIRED",
                                     elapsed(resolveStarted))
                                 break
@@ -2839,9 +2840,9 @@ class DramaViewModel(application: Application) : AndroidViewModel(application) {
                         // No account cookie, player swap or persistent video
                         // cache. The native path has its own deadline, routes,
                         // rendition validation and CENC reader.
-                        val remote = withTimeout(35_000L) {
+                        val remote = withTimeoutOrNull(35_000L) {
                             nativeSource.openVideo(vid, qualityLimit = quality)
-                        }
+                        } ?: throw java.net.SocketTimeoutException("备用播放线路请求超时")
                         val uri = "native-stream://$vid"
                         if (version != detailId ||
                             state.value.detail?.episodes
