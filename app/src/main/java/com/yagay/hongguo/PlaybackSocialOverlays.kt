@@ -8,6 +8,11 @@ import android.content.Intent
 import android.content.Context
 import android.view.SurfaceView
 import android.view.TextureView
+import android.graphics.Paint
+import android.graphics.Typeface
+import androidx.compose.foundation.Canvas
+import androidx.compose.ui.graphics.drawscope.drawIntoCanvas
+import androidx.compose.ui.graphics.nativeCanvas
 import androidx.compose.foundation.background
 import androidx.compose.foundation.clickable
 import androidx.compose.foundation.rememberScrollState
@@ -241,21 +246,8 @@ internal fun TimedDanmakuOverlay(
 ) {
     val flightMs = DanmakuLayout.flightForSpeed(speedPreset)
     val lanes = tracks.coerceIn(1, 5)
-    val placed = remember(items, lanes, flightMs) {
-        DanmakuLayout.arrange(items, lanes, flightMs)
-    }
-
-    // The ordinary player controls update every 250 ms for progress labels.
-    // That sampling rate must NOT drive scrolling text. The old 205-ms tween
-    // left 45 ms of idle time between updates ("move, stop, move").
-    //
-    // Read the actual ExoPlayer playback clock on each display frame instead.
-    // This follows pause, buffering, playback speed and seeking naturally.
-    // Keep this frame state local to the overlay: the rest of the player UI
-    // must not be recomposed at 60 fps.
-    // Never animate the preceding episode's comments against the new one's
-    // clock. The service intentionally reuses the same ExoPlayer instance, so
-    // item identity and the controls object must participate in effect keys.
+    // The background Media3 player is shared by episodes; never run the
+    // outgoing video's comments using the new video's playback clock.
     val player = playback.player?.takeIf {
         it.currentMediaItem?.mediaId == expectedVid
     }
@@ -264,84 +256,79 @@ internal fun TimedDanmakuOverlay(
     }
     LaunchedEffect(player, playback, expectedVid) {
         while (isActive) {
-            if (player?.isPlaying == true) {
-                withFrameNanos { }
-            } else {
-                delay(50)
-            }
+            if (player?.isPlaying == true) withFrameNanos { }
+            else delay(50)
             val time = player?.takeIf {
                 it.currentMediaItem?.mediaId == expectedVid
             }?.currentPosition?.coerceAtLeast(0L) ?: playback.positionMs
             if (framePositionMs != time) framePositionMs = time
         }
     }
+    if (items.isEmpty()) return
 
-    // The active set changes only when a comment enters or exits. Each frame
-    // uses a binary-searched time window, avoiding scans/allocations over up to
-    // 600 historical comments while preserving seek and pause behavior.
-    val visible by remember(placed, flightMs, lanes) {
-        derivedStateOf {
-            DanmakuLayout.visibleAt(placed, framePositionMs, flightMs, lanes)
-        }
-    }
-    if (visible.isEmpty()) return
-
-    val textMeasurer = rememberTextMeasurer()
     val density = LocalDensity.current
     val fontSize = fontSizeSp.coerceIn(12, 18)
-    // Match track spacing to the actual text size / accessibility fontScale,
-    // rather than fixed 34dp gaps that make a 14sp overlay look sparse.
-    val laneHeightPx = with(density) {
-        fontSize.sp.toPx() * 1.18f + 4.dp.toPx()
-    }
+    val textSizePx = with(density) { fontSize.sp.toPx() }
+    // Match the track height to the font rather than a fixed 34dp; do not
+    // add a blurred shadow or a translucent plate behind each comment.
+    val laneHeightPx = textSizePx * 1.16f + with(density) { 2.dp.toPx() }
+    val safeGapPx = with(density) { 12.dp.toPx() }
     val overlayHeightDp = with(density) {
-        (lanes * laneHeightPx + 2.dp.toPx()).toDp()
+        (laneHeightPx * lanes + 2.dp.toPx()).toDp()
     }
-    val style = TextStyle(
-        color = Color.White,
-        fontSize = fontSize.sp,
-        lineHeight = (fontSize + 2).sp,
-        fontWeight = FontWeight.Medium,
-        // No blurred black shadow: keep the real video bright and the
-        // subtitle-shaped characters sharp while moving.
-    )
+    val paint = remember(textSizePx) {
+        Paint(Paint.ANTI_ALIAS_FLAG).apply {
+            color = android.graphics.Color.WHITE
+            textSize = textSizePx
+            typeface = Typeface.create("sans-serif-medium", Typeface.NORMAL)
+            isSubpixelText = true
+        }
+    }
+    val fontMetrics = paint.fontMetrics
+    val baselineFromTopPx = -fontMetrics.ascent +
+        (laneHeightPx - (fontMetrics.descent - fontMetrics.ascent)) * 0.5f
+
     BoxWithConstraints(
         modifier.height(overlayHeightDp).clipToBounds()
-            .testTag("timed_danmaku_overlay")
     ) {
-        val widthPx = with(density) { maxWidth.toPx() }
-
-        visible.forEach { line ->
-            key(line.id) {
-                val content = line.text.take(44)
-                val measuredWidth = remember(
-                    content, style, textMeasurer, density.density, density.fontScale
-                ) {
-                    textMeasurer.measure(
-                        text = AnnotatedString(content), style = style,
-                        maxLines = 1, softWrap = false,
-                    ).size.width.toFloat()
+        val viewportWidthPx = with(density) { maxWidth.toPx() }
+        // Width and font are part of the layout identity. This scheduling
+        // work only runs when source data, playback speed, screen width or
+        // text settings change -- never on individual display frames.
+        val placed = remember(items, lanes, flightMs, viewportWidthPx,
+            safeGapPx, paint) {
+            DanmakuLayout.arrangeCollisionAware(
+                entries = items,
+                lanes = lanes,
+                durationMs = flightMs,
+                viewportWidthPx = viewportWidthPx,
+                safeGapPx = safeGapPx,
+                measureTextPx = { text -> paint.measureText(text) },
+            )
+        }
+        // One Canvas replaces multiple independently measured Compose Text
+        // layers. Video clock changes invalidate only its draw pass, with
+        // fractional-pixel x coordinates and no recomposition/layout per tick.
+        Canvas(Modifier.fillMaxSize().testTag("timed_danmaku_overlay")) {
+            val now = framePositionMs
+            // Multiple comments are allowed on a lane when their measured
+            // geometry cannot collide; do not truncate visibility to lanes.
+            val visible = DanmakuLayout.visibleAt(
+                placed, now, flightMs, maxVisible = lanes * 10,
+            )
+            if (visible.isNotEmpty()) {
+                drawIntoCanvas { canvas ->
+                    val native = canvas.nativeCanvas
+                    for (line in visible) {
+                        val progress = DanmakuLayout.progress(now, line.startMs, flightMs)
+                        val x = DanmakuLayout.xPosition(
+                            viewportWidthPx, line.widthPx, progress,
+                        )
+                        val y = line.lane * laneHeightPx + baselineFromTopPx
+                        native.drawText(line.text, x, y, paint)
+                    }
                 }
-
-                Text(
-                    text = content,
-                    style = style,
-                    maxLines = 1,
-                    softWrap = false,
-                    // A render-layer translation accepts fractional pixels and
-                    // does not remeasure/re-layout Text every video frame.
-                    modifier = Modifier.graphicsLayer {
-                        val progress = DanmakuLayout.progress(
-                            framePositionMs, line.startMs, flightMs
-                        )
-                        translationX = DanmakuLayout.xPosition(
-                            widthPx, measuredWidth, progress
-                        )
-                        translationY = line.lane * laneHeightPx
-                    },
-                )
             }
         }
     }
 }
-
