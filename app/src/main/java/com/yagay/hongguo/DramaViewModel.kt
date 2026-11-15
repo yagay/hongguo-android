@@ -1191,7 +1191,8 @@ class DramaViewModel(application: Application) : AndroidViewModel(application) {
             danmakuEnabled = prefs.getBoolean("danmaku_enabled", false),
             danmakuSpeed = prefs.getInt("danmaku_speed", 1).coerceIn(0, 2),
             danmakuDensity = prefs.getInt("danmaku_density", 4).coerceIn(1, 5),
-            danmakuFontSize = prefs.getInt("danmaku_font_size", 14).coerceIn(12, 18))
+            danmakuFontSize = prefs.getInt("danmaku_font_size", 14).coerceIn(12, 18),
+            danmakuOpacity = prefs.getInt("danmaku_opacity", 100).coerceIn(40, 100))
     )
     val state = mutable.asStateFlow()
     private var appliedRecommendationSession: FeedAccount? = null
@@ -1812,6 +1813,12 @@ class DramaViewModel(application: Application) : AndroidViewModel(application) {
         if (value !in setOf(12, 14, 16, 18)) return
         prefs.edit().putInt("danmaku_font_size", value).apply()
         mutable.update { it.copy(danmakuFontSize = value) }
+    }
+
+    fun setDanmakuOpacity(value: Int) {
+        if (value !in setOf(40, 60, 80, 100)) return
+        prefs.edit().putInt("danmaku_opacity", value).apply()
+        mutable.update { it.copy(danmakuOpacity = value) }
     }
 
     /** Open episode-specific anonymous comments. Never reuses stale pages. */
