@@ -812,6 +812,15 @@ internal fun NativePlayer(
                     }
                     Column(horizontalAlignment = Alignment.CenterHorizontally,
                         verticalArrangement = Arrangement.spacedBy(9.dp)) {
+                        // A pending upward swipe stays on this virtual next
+                        // page instead of bouncing back to the old video.
+                        if (state.feedMode && preview == null && state.feedLoading) {
+                            CircularProgressIndicator(
+                                color = Color.White,
+                                modifier = Modifier.size(28.dp)
+                                    .testTag("reel_next_recommendation_waiting"),
+                            )
+                        }
                         Text(preview?.title ?: if (state.feedMode) "正在获取官方推荐"
                              else detail.drama.title,
                             color = Color.White, fontSize = 19.sp)
