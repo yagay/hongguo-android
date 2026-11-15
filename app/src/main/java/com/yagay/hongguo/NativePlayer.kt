@@ -354,11 +354,16 @@ internal fun NativePlayer(
                     if (settled != latestActivePage) {
                         val originalIndex = model.state.value.feedIndex
                         model.navigateFeed(if (settled > latestActivePage) 1 else -1)
-                        // No next item yet: leave the current video on screen
-                        // instead of getting stuck on the virtual next page.
-                        // The pending request may advance as soon as it yields
-                        // a fresh recommendation; video playback is unaffected.
-                        if (model.state.value.feedIndex == originalIndex) {
+                        // When no next title has arrived, HOLD the forward
+                        // placeholder while the request runs. Immediately
+                        // recentering would show the very same first video on
+                        // every up-swipe and give no indication of progress.
+                        // Once data arrives navigateFeed moves feedIndex and
+                        // the virtual page becomes the next drama's active page.
+                        val updated = model.state.value
+                        val waitingForNext = settled > latestActivePage &&
+                            updated.feedMode && updated.feedLoading
+                        if (updated.feedIndex == originalIndex && !waitingForNext) {
                             recenteringPager = true
                             try {
                                 pagerState.scrollToPage(latestActivePage)
