@@ -242,6 +242,7 @@ internal fun TimedDanmakuOverlay(
     speedPreset: Int,
     tracks: Int,
     fontSizeSp: Int,
+    opacityPercent: Int = 100,
     modifier: Modifier = Modifier,
 ) {
     val flightMs = DanmakuLayout.flightForSpeed(speedPreset)
@@ -276,9 +277,10 @@ internal fun TimedDanmakuOverlay(
     val overlayHeightDp = with(density) {
         (laneHeightPx * lanes + 2.dp.toPx()).toDp()
     }
-    val paint = remember(textSizePx) {
+    val paint = remember(textSizePx, opacityPercent) {
         Paint(Paint.ANTI_ALIAS_FLAG).apply {
             color = android.graphics.Color.WHITE
+            alpha = (255 * opacityPercent.coerceIn(40, 100) / 100)
             textSize = textSizePx
             typeface = Typeface.create("sans-serif-light", Typeface.NORMAL)
             isSubpixelText = true
