@@ -53,6 +53,7 @@ internal fun ReelEpisodeSelectionSheet(
     onDownloadFive: () -> Unit,
     onSelectEpisode: (Int) -> Unit,
     onRelatedDrama: (RelatedDrama) -> Unit,
+    onReserveUpcoming: (RelatedDrama) -> Unit,
 ) {
     val screenHeight = LocalConfiguration.current.screenHeightDp
     val maxGridHeight = (screenHeight * 0.64f).dp
@@ -171,6 +172,7 @@ internal fun ReelEpisodeSelectionSheet(
                                             cover = model.cover(work.drama.cover),
                                             modifier = Modifier.weight(1f),
                                             onClick = { onRelatedDrama(work) },
+                                            onReserve = { onReserveUpcoming(work) },
                                         )
                                     }
                                     if (row.size == 1) Spacer(Modifier.weight(1f))
@@ -202,12 +204,16 @@ private fun ReelRelatedDramaCard(
     cover: Any?,
     modifier: Modifier,
     onClick: () -> Unit,
+    onReserve: () -> Unit,
 ) {
+    val canReserve = work.upcoming && work.reservationItemId != null
     Row(
         modifier = modifier
             .clip(RoundedCornerShape(HongguoUi.controlRadius))
             .background(HongguoColors.background)
-            .clickable(enabled = !work.upcoming, onClick = onClick)
+            .clickable(enabled = !work.upcoming || canReserve) {
+                if (work.upcoming) onReserve() else onClick()
+            }
             .padding(7.dp)
             .testTag("related_work_" + work.drama.id),
         horizontalArrangement = Arrangement.spacedBy(8.dp),
@@ -239,10 +245,14 @@ private fun ReelRelatedDramaCard(
                 color = HongguoColors.muted,
             )
             Text(
-                if (work.upcoming) "待上线" else "观看",
+                when {
+                    canReserve -> "待上线 · 预约"
+                    work.upcoming -> "待上线"
+                    else -> "观看"
+                },
                 fontSize = 11.sp,
-                color = if (work.upcoming) HongguoColors.muted
-                    else HongguoColors.accent,
+                color = if (canReserve || !work.upcoming) HongguoColors.accent
+                    else HongguoColors.muted,
             )
         }
     }
