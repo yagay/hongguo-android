@@ -45,7 +45,8 @@ internal fun ReelRecommendationHint(
     var explanationOpen by remember { mutableStateOf(false) }
     val tint = when {
         status.failed -> Color(0xFFFFB7AA)
-        status == ReelRecommendationStatus.ACCOUNT_SERVER_ENABLED -> Color(0xFF94DFB4)
+        // Candidate field semantics have not been verified against the official APK.
+        status == ReelRecommendationStatus.ACCOUNT_SERVER_ENABLED -> Color(0xFFFFD89A)
         status == ReelRecommendationStatus.ACCOUNT_SERVER_DISABLED -> Color(0xFFFFB7AA)
         status.accountRequest -> Color(0xFFFFD89A)
         else -> Color(0xFFD5D5D5)
@@ -77,11 +78,14 @@ internal fun ReelRecommendationHint(
                 Column(verticalArrangement = Arrangement.spacedBy(10.dp)) {
                     Text(status.explanation)
                     if (status.accountRequest) {
-                        Text("校验方式：先检查推荐响应有无明确的服务端个性化标志；再可主动对照同一官方推荐接口的账号与匿名样本。对照结果不同也不能单独证明服务端使用了个人偏好。")
-                        if (comparing) Text("正在读取账号与匿名两组推荐样本…")
+                        Text("目前检查仅能确认 Cookie 请求及候选响应字段，尚缺官方 APK 的协议核验。可做账号／匿名／匿名三组对照，排除部分随机波动。")
+                        if (comparing) Text("正在读取账号、匿名一、匿名二三组独立样本…")
                         if (compareError != null) Text(compareError)
                         if (comparison != null) {
-                            Text("对照样本：账号 ${comparison.accountCount} 部；匿名 ${comparison.anonymousCount} 部；重复 ${comparison.overlapCount} 部。")
+                            Text("对照样本：账号 ${comparison.accountCount} 部；匿名一 ${comparison.anonymousCount} 部；匿名二 ${comparison.secondAnonymousCount} 部。")
+                            Text("账号／匿名一重复 ${comparison.overlapCount} 部；匿名一／匿名二重复 ${comparison.anonymousBaselineOverlap} 部。")
+                            if (!comparison.anonymousBaselineIdenticalOrder)
+                                Text("匿名样本本身存在变化，单次账号差异不能证明个性化。")
                             Text(if (comparison.identicalOrder)
                                 "两组作品与顺序一致：未发现差异，但不能证明未个性化。"
                             else
