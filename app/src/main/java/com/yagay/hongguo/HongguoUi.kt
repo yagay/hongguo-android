@@ -97,6 +97,18 @@ internal object HongguoUi {
     val playbackDockTitleSize = 12.sp
 }
 
+/** Shared coordinate mapping for the progress bar and its wider gesture row. */
+internal object PlaybackSeekGeometry {
+    fun fractionAt(xPx: Float, widthPx: Float): Float =
+        if (!xPx.isFinite() || !widthPx.isFinite() || widthPx <= 0f) 0f
+        else (xPx / widthPx).coerceIn(0f, 1f)
+
+    fun positionAt(durationMs: Long, fraction: Float): Long =
+        if (durationMs <= 0L || !fraction.isFinite()) 0L
+        else (durationMs.toDouble() * fraction.coerceIn(0f, 1f).toDouble())
+            .toLong().coerceIn(0L, durationMs)
+}
+
 @Composable
 internal fun HongguoCard(
     modifier: Modifier = Modifier,
@@ -724,6 +736,7 @@ internal fun HongguoPlayerSeekTrack(
     playedFraction: Float,
     onSeek: (Long) -> Unit,
     onPreview: (Float?) -> Unit,
+    externalPreviewFraction: Float? = null,
     modifier: Modifier = Modifier,
 ) {
     var dragging by remember(durationMs) { mutableStateOf<Float?>(null) }
@@ -735,8 +748,9 @@ internal fun HongguoPlayerSeekTrack(
             .pointerInput(durationMs) {
                 detectTapGestures { point ->
                     if (durationMs > 0L && size.width > 0) {
-                        val fraction = (point.x / size.width).coerceIn(0f, 1f)
-                        currentSeek((durationMs * fraction).toLong())
+                        val fraction = PlaybackSeekGeometry.fractionAt(
+                            point.x, size.width.toFloat())
+                        currentSeek(PlaybackSeekGeometry.positionAt(durationMs, fraction))
                     }
                 }
             }
@@ -744,13 +758,16 @@ internal fun HongguoPlayerSeekTrack(
                 detectDragGestures(
                     onDragStart = { start ->
                         if (durationMs > 0L && size.width > 0) {
-                            val value = (start.x / size.width).coerceIn(0f, 1f)
+                            val value = PlaybackSeekGeometry.fractionAt(
+                                start.x, size.width.toFloat())
                             dragging = value
                             currentPreview(value)
                         }
                     },
                     onDragEnd = {
-                        dragging?.let { currentSeek((durationMs * it).toLong()) }
+                        dragging?.let {
+                            currentSeek(PlaybackSeekGeometry.positionAt(durationMs, it))
+                        }
                         dragging = null
                         currentPreview(null)
                     },
@@ -760,7 +777,8 @@ internal fun HongguoPlayerSeekTrack(
                     },
                     onDrag = { change, _ ->
                         if (durationMs > 0L && size.width > 0) {
-                            val value = (change.position.x / size.width).coerceIn(0f, 1f)
+                            val value = PlaybackSeekGeometry.fractionAt(
+                                change.position.x, size.width.toFloat())
                             dragging = value
                             currentPreview(value)
                         }
@@ -780,7 +798,10 @@ internal fun HongguoPlayerSeekTrack(
         drawLine(
             color = HongguoColors.accent,
             start = Offset(0f, y),
-            end = Offset(size.width * (dragging ?: playedFraction).coerceIn(0f, 1f), y),
+            end = Offset(
+                size.width * (dragging ?: externalPreviewFraction ?: playedFraction)
+                    .coerceIn(0f, 1f), y,
+            ),
             strokeWidth = 2.dp.toPx(),
             cap = StrokeCap.Round,
         )
