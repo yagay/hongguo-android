@@ -771,6 +771,12 @@ class DramaViewModel(application: Application) : AndroidViewModel(application) {
                 (warmingFinaleId == null || !activeFinaleRecommendation(warmingFinaleId))) ||
             snapshot.feedLoading) return
         val needsFirstDrama = snapshot.feedItems.isEmpty()
+        // A cold-start restored video counts as one queue item, but there may
+        // be NO next drama ready. Return the FIRST server page promptly, then
+        // prefetch later pages in the background instead of waiting for 5 cards
+        // while repeated swipes replay the same on-screen video.
+        val needsImmediateNext = OfficialReelsPolicy.needsImmediateNext(
+            snapshot.feedItems, snapshot.feedIndex, snapshot.hiddenRecommendationIds)
         if (warmingFinaleId != null) finaleRecommendationRequestFor = warmingFinaleId
         val generation = if (restart) ++officialFeedGeneration else officialFeedGeneration
         // Non-restart continuation may be queued by the just-completed batch
@@ -806,13 +812,13 @@ class DramaViewModel(application: Application) : AndroidViewModel(application) {
                         nativeSource.officialReelsPage(restart, excluded,
                             realOnly = snapshot.reelsMode == "real",
                             comicOnly = snapshot.reelsMode == "comic",
-                            firstItemOnly = needsFirstDrama,
+                            firstItemOnly = needsFirstDrama || needsImmediateNext,
                             forceFresh = restart && staleFeedExcludedIds.isNotEmpty())
                     } else {
                         kxgSource.reelsPage(restart, excluded,
                             realOnly = snapshot.reelsMode == "real",
                             comicOnly = snapshot.reelsMode == "comic",
-                            firstItemOnly = needsFirstDrama)
+                            firstItemOnly = needsFirstDrama || needsImmediateNext)
                     }
                 }
                 if (generation != officialFeedGeneration ||
@@ -889,6 +895,11 @@ class DramaViewModel(application: Application) : AndroidViewModel(application) {
                         retryFinaleAdvance("EMPTY")
                     } else {
                         pendingFeedAdvance = false
+                        mutable.update { it.copy(
+                            nextDramaTransition = NextDramaTransition.UNAVAILABLE,
+                            feedError = it.feedError ?: "暂时没有下一部推荐，请再上滑重试",
+                        ) }
+                        diagnostics.record("REELS", "SWIPE_NEXT_UNAVAILABLE")
                     }
                 }
                 val latest = state.value
@@ -913,7 +924,11 @@ class DramaViewModel(application: Application) : AndroidViewModel(application) {
                     failedFeedRefreshUnavailable(
                         "获取官方推荐超时，请点击刷新推荐列表")
                     if (finaleAdvanceFor != null) retryFinaleAdvance("TIMEOUT")
-                    else pendingFeedAdvance = false
+                    else if (pendingFeedAdvance) {
+                        pendingFeedAdvance = false
+                        mutable.update { it.copy(
+                            nextDramaTransition = NextDramaTransition.UNAVAILABLE) }
+                    }
                 }
             } catch (cancel: CancellationException) {
                 throw cancel
@@ -932,7 +947,11 @@ class DramaViewModel(application: Application) : AndroidViewModel(application) {
                     failedFeedRefreshUnavailable(
                         "推荐列表刷新失败，请点击刷新推荐列表")
                     if (finaleAdvanceFor != null) retryFinaleAdvance("ERROR")
-                    else pendingFeedAdvance = false
+                    else if (pendingFeedAdvance) {
+                        pendingFeedAdvance = false
+                        mutable.update { it.copy(
+                            nextDramaTransition = NextDramaTransition.UNAVAILABLE) }
+                    }
                 }
             } finally {
                 if (generation == officialFeedGeneration &&
@@ -2186,16 +2205,18 @@ class DramaViewModel(application: Application) : AndroidViewModel(application) {
         if (selected != null && selected.id != current.detail?.drama?.id) {
             val automaticallyAdvancing = direction > 0 && finaleAdvanceFor != null &&
                 current.nextDramaTransition == NextDramaTransition.FINDING_RECOMMENDATION
+            val preparingQueuedSwipe = direction > 0 && pendingFeedAdvance
             pendingFeedAdvance = false
             clearFinaleAdvance()
-            autoNextTargetDramaId = if (automaticallyAdvancing) selected.id else null
+            autoNextTargetDramaId = if (automaticallyAdvancing || preparingQueuedSwipe)
+                selected.id else null
             mutable.update {
                 it.copy(feedIndex = index,
-                    nextDramaTransition = if (automaticallyAdvancing)
+                    nextDramaTransition = if (automaticallyAdvancing || preparingQueuedSwipe)
                         NextDramaTransition.PREPARING_VIDEO
                     else NextDramaTransition.NONE)
             }
-            if (automaticallyAdvancing)
+            if (automaticallyAdvancing || preparingQueuedSwipe)
                 diagnostics.record("REELS", "NEXT_DRAMA_VIDEO_PREPARING")
             updateNotificationNavigation()
             localContent.rememberSwiped(selected.id)
@@ -2207,10 +2228,18 @@ class DramaViewModel(application: Application) : AndroidViewModel(application) {
                     current.feedItems, index, current.hiddenRecommendationIds,
                     current.feedHasMore, current.feedLoading)) loadOfficialReels()
         } else if (direction > 0) {
-            // No ready video: accept the gesture immediately, then keep
-            // playing the current media while obtaining a real next drama.
-            // This also works after a temporary timeout or exhausted cursor.
+            // No ready video yet. Keep its Media3 playback alive but make the
+            // pending next-drama request VISIBLE instead of silently re-showing
+            // the first video's frame for several consecutive gestures.
+            // Multiple swipes still request only ONE next drama.
+            if (pendingFeedAdvance) {
+                diagnostics.record("REELS", "SWIPE_NEXT_ALREADY_PENDING")
+                return
+            }
             pendingFeedAdvance = true
+            mutable.update {
+                it.copy(nextDramaTransition = NextDramaTransition.FINDING_RECOMMENDATION)
+            }
             diagnostics.record("REELS",
                 if (current.feedLoading) "SWIPE_WAITING_FOR_NEXT_BATCH"
                 else "SWIPE_FETCH_NEXT_BATCH")
@@ -2816,7 +2845,15 @@ class DramaViewModel(application: Application) : AndroidViewModel(application) {
         // Allow the initial video to render before fetching more recommendations.
         // Further feed pages and stream-model requests otherwise compete for
         // startup bandwidth and the upstream registration/session lock.
-        if (s.feedMode && !deferRestoredFeedRecommendations &&
+        if (s.feedMode && deferRestoredFeedRecommendations) {
+            // The restored Media3 video should get its first frame before
+            // network prefetch starts, but must NOT require a manual first
+            // swipe to create a new queue. Authentication has had a chance
+            // to bind during startup, and the source rechecks it on request.
+            deferRestoredFeedRecommendations = false
+            diagnostics.record("REELS", "RESTORED_POST_FIRST_FRAME_PREFETCH")
+            loadOfficialReels(restart = true)
+        } else if (s.feedMode &&
             OfficialReelsPolicy.needsMore(s.feedItems,
                 s.feedIndex, s.hiddenRecommendationIds, s.feedHasMore, s.feedLoading)) {
             diagnostics.record("REELS", "POST_FIRST_FRAME_TOP_UP")
