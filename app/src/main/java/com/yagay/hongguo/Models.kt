@@ -15,6 +15,14 @@ data class Drama(
     /** A separately labelled source metric: follows / heat / plays, never recommendations. */
     val activityLabel: String? = null,
 )
+/** A read-only comparison. No episode IDs, credentials, or titles are retained. */
+data class RecommendationComparison(
+    val accountCount: Int,
+    val anonymousCount: Int,
+    val overlapCount: Int,
+    val identicalOrder: Boolean,
+)
+
 data class Episode(val index: Int, val vid: String, val title: String = "")
 data class DramaDetail(val drama: Drama, val episodes: List<Episode>)
 data class RelatedDrama(val drama: Drama, val season: String, val upcoming: Boolean)
@@ -115,6 +123,9 @@ data class AppState(
     val feedLoading: Boolean = false,
     /** Last actual recommendation request outcome; login alone is not proof. */
     val feedRecommendationStatus: ReelRecommendationStatus = ReelRecommendationStatus.NOT_REQUESTED,
+    val comparisonLoading: Boolean = false,
+    val comparison: RecommendationComparison? = null,
+    val comparisonError: String? = null,
     val feedHasMore: Boolean = false,
     val feedError: String? = null,
     /** User-visible handoff after the final episode; reset on next first frame. */
