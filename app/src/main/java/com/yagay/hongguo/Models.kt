@@ -206,6 +206,8 @@ data class AppState(
     val danmakuSpeed: Int = 1,
     val danmakuDensity: Int = 4,
     val danmakuFontSize: Int = 14,
+    /** 40–100%; applies to the cached Canvas text only, never the video. */
+    val danmakuOpacity: Int = 100,
     /** Optional anonymous App detail enrichment, never required for playback. */
     val publicDetail: DramaPublicDetail? = null,
     val openHongguoMetadata: OpenHongguoMetadata? = null,
