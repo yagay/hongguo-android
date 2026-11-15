@@ -78,18 +78,21 @@ internal fun ReelRecommendationHint(
                 Column(verticalArrangement = Arrangement.spacedBy(10.dp)) {
                     Text(status.explanation)
                     if (status.accountRequest) {
-                        Text("目前检查仅能确认 Cookie 请求及候选响应字段，尚缺官方 APK 的协议核验。可做账号／匿名／匿名三组对照，排除部分随机波动。")
-                        if (comparing) Text("正在读取账号、匿名一、匿名二三组独立样本…")
+                        Text("账号请求成功不等于个性化排序已获证实。可使用与刷剧相同的签名链路，读取两组独立账号／游客样本，核对作品重合、排序以及两种来源本身的变化。")
+                        if (comparing) Text("正在依次读取账号一、游客一、账号二、游客二，共四组独立样本…")
                         if (compareError != null) Text(compareError)
                         if (comparison != null) {
-                            Text("对照样本：账号 ${comparison.accountCount} 部；匿名一 ${comparison.anonymousCount} 部；匿名二 ${comparison.secondAnonymousCount} 部。")
-                            Text("账号／匿名一重复 ${comparison.overlapCount} 部；匿名一／匿名二重复 ${comparison.anonymousBaselineOverlap} 部。")
-                            if (!comparison.anonymousBaselineIdenticalOrder)
-                                Text("匿名样本本身存在变化，单次账号差异不能证明个性化。")
-                            Text(if (comparison.identicalOrder)
-                                "两组作品与顺序一致：未发现差异，但不能证明未个性化。"
-                            else
-                                "两组作品或顺序存在差异：可能受账号影响，也可能来自随机推荐、时间变化或实验分组；尚不能独立确认个性化。")
+                            val overlapPercent = { common: Int, left: Int, right: Int ->
+                                (100 * common / minOf(left, right).coerceAtLeast(1)).coerceIn(0, 100)
+                            }
+                            Text("设备签名成功的账号样本：${comparison.signedAccountSamples}/2" +
+                                if (comparison.signedAccountSamples < 2)
+                                    "（其余可能使用账号 Cookie 回退）" else "（两次均成功）")
+                            Text("第 1 组：账号 ${comparison.accountCount} 部、游客 ${comparison.anonymousCount} 部，重合 ${comparison.overlapCount} 部（${overlapPercent(comparison.overlapCount, comparison.accountCount, comparison.anonymousCount)}%）；顺序${if (comparison.identicalOrder) "一致" else "不同"}。")
+                            Text("第 2 组：账号 ${comparison.secondAccountCount} 部、游客 ${comparison.secondAnonymousCount} 部，重合 ${comparison.secondAccountGuestOverlap} 部（${overlapPercent(comparison.secondAccountGuestOverlap, comparison.secondAccountCount, comparison.secondAnonymousCount)}%）；顺序${if (comparison.secondAccountGuestIdenticalOrder) "一致" else "不同"}。")
+                            Text("账号自身两次重合 ${comparison.accountBaselineOverlap} 部（${overlapPercent(comparison.accountBaselineOverlap, comparison.accountCount, comparison.secondAccountCount)}%）；顺序${if (comparison.accountBaselineIdenticalOrder) "一致" else "不同"}。")
+                            Text("游客自身两次重合 ${comparison.anonymousBaselineOverlap} 部（${overlapPercent(comparison.anonymousBaselineOverlap, comparison.anonymousCount, comparison.secondAnonymousCount)}%）；顺序${if (comparison.anonymousBaselineIdenticalOrder) "一致" else "不同"}。")
+                            Text("以上结果仅反映样本差异。即使账号与游客差异较大，也可能来自随机推荐、时间变化或实验分组；不能单凭对照断言官方已按个人喜好排序。")
                         }
                     }
                 }
@@ -105,7 +108,7 @@ internal fun ReelRecommendationHint(
                         onClick = onCompare,
                         enabled = !comparing,
                         modifier = Modifier.testTag("reel_personalization_compare"),
-                    ) { Text(if (comparing) "检查中…" else "账号／匿名对照") }
+                    ) { Text(if (comparing) "检查中…" else "双轮账号／匿名对照") }
                 }
             },
         )
