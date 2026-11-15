@@ -2103,6 +2103,14 @@ class DramaViewModel(application: Application) : AndroidViewModel(application) {
         }
     }
 
+    /** A reservation is only offered for a provider-confirmed subscribe item. */
+    fun reserveUpcoming(work: RelatedDrama) {
+        if (!work.upcoming || work.reservationItemId.isNullOrBlank()) return
+        if (account.state.value.profile == null) {
+            show(Modal.ACCOUNT)
+        } else account.reserveUpcoming(work)
+    }
+
     /**
      * The "刷短剧" button starts with the official feed's first item.
      * An explicitly selected card can still be used as a one-time seed.
