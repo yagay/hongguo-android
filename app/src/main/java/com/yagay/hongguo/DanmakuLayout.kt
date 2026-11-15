@@ -47,6 +47,36 @@ internal object DanmakuLayout {
         return output
     }
 
+    /**
+     * The placed entries are chronological. Binary-search the short active
+     * window instead of allocating/filtering up to 600 entries every display
+     * frame. Preserve the original chronological 'take(lanes)' behavior.
+     */
+    fun visibleAt(
+        placed: List<Placed>,
+        currentMs: Long,
+        durationMs: Long,
+        maxVisible: Int,
+    ): List<Placed> {
+        if (placed.isEmpty() || durationMs <= 0L || maxVisible <= 0) return emptyList()
+        val expiredAtOrBefore = currentMs - durationMs
+        var low = 0
+        var high = placed.size
+        while (low < high) {
+            val middle = (low + high) ushr 1
+            if (placed[middle].startMs <= expiredAtOrBefore) low = middle + 1
+            else high = middle
+        }
+        val result = ArrayList<Placed>(minOf(maxVisible, 12))
+        var index = low
+        while (index < placed.size && result.size < maxVisible) {
+            val entry = placed[index++]
+            if (entry.startMs > currentMs) break
+            result.add(entry)
+        }
+        return result
+    }
+
     fun progress(currentMs: Long, startMs: Long, durationMs: Long = FLIGHT_MS): Float =
         if (durationMs <= 0) 1f else
             ((currentMs - startMs).toFloat() / durationMs).coerceIn(0f, 1f)
