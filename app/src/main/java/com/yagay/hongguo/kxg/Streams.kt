@@ -91,8 +91,7 @@ class StreamRegistry(
             // Keep the last few models even if their disk prefix was evicted.
             // Current playback still has its own live registered source.
             while (streams.size > 16) {
-                val oldest = streams.keys.first()
-                if (oldest == activeUri) break
+                val oldest = streams.keys.firstOrNull { it != activeUri } ?: break
                 streams.remove(oldest)?.dispose()
             }
             trimCache()
@@ -123,7 +122,7 @@ class StreamSource(
     private val key: ByteArray?,
     private val http: DataSource.Factory,
     private val diagnostic: (String, Long?, Int?, Int?) -> Unit,
-    cacheFile: File? = null,
+    cacheFile: java.io.File? = null,
     private val prefixLimitBytes: () -> Int = { KxgWarmupPolicy.DEFAULT_PREFIX_MB * KxgWarmupPolicy.MIB },
     private val cacheModified: () -> Unit = {},
 ) {
@@ -138,7 +137,8 @@ class StreamSource(
     var good = 0
 
     private var file: File? = null
-    private val encryptedCache = cacheFile?.let(::EncryptedPrefixFile)
+    private val encryptedCache: EncryptedPrefixFile? =
+        cacheFile?.let { EncryptedPrefixFile(it) }
     private var lastWrittenMiB = 0
 
     /** Number of encrypted bytes currently committed to the local file. */
