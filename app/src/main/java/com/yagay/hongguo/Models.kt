@@ -208,6 +208,14 @@ data class AppState(
     val danmakuSpeed: Int = 1,
     val danmakuDensity: Int = 4,
     val danmakuFontSize: Int = 14,
+    /** Weight 300 preserves the previous sans-serif-light default. */
+    val danmakuFontWeight: Int = 300,
+    /** Additional vertical gap between moving danmaku lanes, in dp. */
+    val danmakuLineSpacingDp: Int = 2,
+    /** Optional dark stroke around letters, in dp; disabled by default. */
+    val danmakuOutlineDp: Int = 0,
+    /** 0 white, 1 soft white, 2 yellow, 3 cyan. */
+    val danmakuTextColor: Int = 0,
     /** 40–100%; applies to the cached Canvas text only, never the video. */
     val danmakuOpacity: Int = 100,
     /** Optional anonymous App detail enrichment, never required for playback. */

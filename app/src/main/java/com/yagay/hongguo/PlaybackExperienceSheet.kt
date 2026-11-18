@@ -253,11 +253,44 @@ internal fun PlaybackExperienceSheet(
                                 state.danmakuFontSize, model::setDanmakuFontSize,
                                 "danmaku_font",
                             )
+                            PlaybackHeading("字体粗细")
+                            PlaybackChoices(
+                                listOf(
+                                    200 to "极细", 300 to "细", 400 to "常规",
+                                    500 to "中等", 600 to "粗",
+                                ),
+                                state.danmakuFontWeight, model::setDanmakuFontWeight,
+                                "danmaku_font_weight",
+                            )
+                            PlaybackHeading("行距（轨道间隔）")
+                            PlaybackChoices(
+                                listOf(0 to "紧密", 2 to "标准", 4 to "宽", 8 to "更宽"),
+                                state.danmakuLineSpacingDp, model::setDanmakuLineSpacing,
+                                "danmaku_line_spacing",
+                            )
+                            PlaybackHeading("字体颜色")
+                            PlaybackChoices(
+                                listOf(0 to "纯白", 1 to "柔白", 2 to "淡黄", 3 to "浅蓝"),
+                                state.danmakuTextColor, model::setDanmakuTextColor,
+                                "danmaku_text_color",
+                            )
+                            PlaybackHeading("文字描边")
+                            PlaybackChoices(
+                                listOf(0 to "无", 1 to "细描边", 2 to "明显"),
+                                state.danmakuOutlineDp, model::setDanmakuOutline,
+                                "danmaku_outline",
+                            )
                             PlaybackHeading("弹幕透明度")
                             PlaybackChoices(
                                 listOf(40, 60, 80, 100).map { it to "$it%" },
                                 state.danmakuOpacity, model::setDanmakuOpacity,
                                 "danmaku_opacity",
+                            )
+                            HorizontalDivider(color = HongguoColors.divider)
+                            HongguoPlayerSheetAction(
+                                label = "恢复默认弹幕样式",
+                                onClick = model::resetDanmakuAppearance,
+                                modifier = Modifier.testTag("danmaku_reset_appearance"),
                             )
                         }
                         PlaybackQuickSetting.PREFERENCES -> {

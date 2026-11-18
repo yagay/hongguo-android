@@ -1194,6 +1194,14 @@ class DramaViewModel(application: Application) : AndroidViewModel(application) {
             danmakuSpeed = prefs.getInt("danmaku_speed", 1).coerceIn(0, 2),
             danmakuDensity = prefs.getInt("danmaku_density", 4).coerceIn(1, 5),
             danmakuFontSize = prefs.getInt("danmaku_font_size", 14).coerceIn(12, 18),
+            danmakuFontWeight = prefs.getInt("danmaku_font_weight", 300)
+                .takeIf(DanmakuStylePolicy::validFontWeight) ?: 300,
+            danmakuLineSpacingDp = prefs.getInt("danmaku_line_spacing_dp", 2)
+                .takeIf(DanmakuStylePolicy::validLineSpacing) ?: 2,
+            danmakuOutlineDp = prefs.getInt("danmaku_outline_dp", 0)
+                .takeIf(DanmakuStylePolicy::validOutline) ?: 0,
+            danmakuTextColor = prefs.getInt("danmaku_text_color", 0)
+                .takeIf(DanmakuStylePolicy::validTextColor) ?: 0,
             danmakuOpacity = prefs.getInt("danmaku_opacity", 100).coerceIn(40, 100))
     )
     val state = mutable.asStateFlow()
@@ -1821,6 +1829,50 @@ class DramaViewModel(application: Application) : AndroidViewModel(application) {
         if (value !in setOf(40, 60, 80, 100)) return
         prefs.edit().putInt("danmaku_opacity", value).apply()
         mutable.update { it.copy(danmakuOpacity = value) }
+    }
+
+    fun setDanmakuFontWeight(value: Int) {
+        if (!DanmakuStylePolicy.validFontWeight(value)) return
+        prefs.edit().putInt("danmaku_font_weight", value).apply()
+        mutable.update { it.copy(danmakuFontWeight = value) }
+    }
+
+    fun setDanmakuLineSpacing(value: Int) {
+        if (!DanmakuStylePolicy.validLineSpacing(value)) return
+        prefs.edit().putInt("danmaku_line_spacing_dp", value).apply()
+        mutable.update { it.copy(danmakuLineSpacingDp = value) }
+    }
+
+    fun setDanmakuOutline(value: Int) {
+        if (!DanmakuStylePolicy.validOutline(value)) return
+        prefs.edit().putInt("danmaku_outline_dp", value).apply()
+        mutable.update { it.copy(danmakuOutlineDp = value) }
+    }
+
+    fun setDanmakuTextColor(value: Int) {
+        if (!DanmakuStylePolicy.validTextColor(value)) return
+        prefs.edit().putInt("danmaku_text_color", value).apply()
+        mutable.update { it.copy(danmakuTextColor = value) }
+    }
+
+    /** Restore visual styling without touching the user's danmaku enable toggle. */
+    fun resetDanmakuAppearance() {
+        prefs.edit()
+            .putInt("danmaku_speed", 1)
+            .putInt("danmaku_density", 4)
+            .putInt("danmaku_font_size", 14)
+            .putInt("danmaku_font_weight", 300)
+            .putInt("danmaku_line_spacing_dp", 2)
+            .putInt("danmaku_outline_dp", 0)
+            .putInt("danmaku_text_color", 0)
+            .putInt("danmaku_opacity", 100)
+            .apply()
+        mutable.update { it.copy(
+            danmakuSpeed = 1, danmakuDensity = 4, danmakuFontSize = 14,
+            danmakuFontWeight = 300, danmakuLineSpacingDp = 2,
+            danmakuOutlineDp = 0, danmakuTextColor = 0,
+            danmakuOpacity = 100,
+        ) }
     }
 
     /** Open episode-specific anonymous comments. Never reuses stale pages. */

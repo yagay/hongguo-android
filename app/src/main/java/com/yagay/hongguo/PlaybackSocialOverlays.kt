@@ -243,6 +243,10 @@ internal fun TimedDanmakuOverlay(
     tracks: Int,
     fontSizeSp: Int,
     opacityPercent: Int = 100,
+    fontWeight: Int = 300,
+    lineSpacingDp: Int = 2,
+    outlineDp: Int = 0,
+    textColorPreset: Int = 0,
     modifier: Modifier = Modifier,
 ) {
     val flightMs = DanmakuLayout.flightForSpeed(speedPreset)
@@ -270,25 +274,47 @@ internal fun TimedDanmakuOverlay(
     val density = LocalDensity.current
     val fontSize = fontSizeSp.coerceIn(12, 18)
     val textSizePx = with(density) { fontSize.sp.toPx() }
-    // Match the track height to the font rather than a fixed 34dp; do not
-    // add a blurred shadow or a translucent plate behind each comment.
-    val laneHeightPx = textSizePx * 1.16f + with(density) { 2.dp.toPx() }
+    // Keep one native Canvas for the entire overlay. Visual settings only
+    // rebuild this cached Paint/layout; they never restart Media3 or refetch.
+    val gapPx = with(density) { lineSpacingDp.coerceIn(0, 8).dp.toPx() }
+    val outlineWidthPx = with(density) { outlineDp.coerceIn(0, 2).dp.toPx() }
     val safeGapPx = with(density) { 12.dp.toPx() }
-    val overlayHeightDp = with(density) {
-        (laneHeightPx * lanes + 2.dp.toPx()).toDp()
-    }
-    val paint = remember(textSizePx, opacityPercent) {
+    val paint = remember(textSizePx, opacityPercent, fontWeight, textColorPreset) {
         Paint(Paint.ANTI_ALIAS_FLAG).apply {
-            color = android.graphics.Color.WHITE
-            alpha = (255 * opacityPercent.coerceIn(40, 100) / 100)
+            color = when (textColorPreset) {
+                1 -> android.graphics.Color.rgb(235, 235, 235)
+                2 -> android.graphics.Color.rgb(255, 232, 128)
+                3 -> android.graphics.Color.rgb(173, 228, 255)
+                else -> android.graphics.Color.WHITE
+            }
+            alpha = 255 * opacityPercent.coerceIn(40, 100) / 100
             textSize = textSizePx
-            typeface = Typeface.create("sans-serif-light", Typeface.NORMAL)
+            typeface = Typeface.create(
+                Typeface.create("sans-serif", Typeface.NORMAL),
+                fontWeight.coerceIn(100, 900), false,
+            )
             isSubpixelText = true
         }
     }
+    val outlinePaint = remember(paint, outlineWidthPx, opacityPercent) {
+        if (outlineWidthPx <= 0f) null else Paint(paint).apply {
+            color = android.graphics.Color.BLACK
+            alpha = 255 * opacityPercent.coerceIn(40, 100) / 100
+            style = Paint.Style.STROKE
+            strokeWidth = outlineWidthPx * 2f
+            strokeJoin = Paint.Join.ROUND
+        }
+    }
     val fontMetrics = paint.fontMetrics
+    val glyphHeightPx = fontMetrics.descent - fontMetrics.ascent
+    val laneHeightPx = DanmakuStylePolicy.laneHeightPx(
+        textSizePx, glyphHeightPx, gapPx, outlineWidthPx,
+    )
+    val overlayHeightDp = with(density) {
+        (laneHeightPx * lanes + 2.dp.toPx()).toDp()
+    }
     val baselineFromTopPx = -fontMetrics.ascent +
-        (laneHeightPx - (fontMetrics.descent - fontMetrics.ascent)) * 0.5f
+        (laneHeightPx - glyphHeightPx) * 0.5f
 
     BoxWithConstraints(
         modifier.height(overlayHeightDp).clipToBounds()
@@ -327,6 +353,7 @@ internal fun TimedDanmakuOverlay(
                             viewportWidthPx, line.widthPx, progress,
                         )
                         val y = line.lane * laneHeightPx + baselineFromTopPx
+                        outlinePaint?.let { native.drawText(line.text, x, y, it) }
                         native.drawText(line.text, x, y, paint)
                     }
                 }
