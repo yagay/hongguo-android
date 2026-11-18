@@ -4,6 +4,7 @@ import android.content.Context
 import androidx.media3.datasource.DataSource
 import androidx.media3.datasource.DefaultHttpDataSource
 import com.yagay.hongguo.OpenHongguoSource
+import com.yagay.hongguo.DiagnosticLog
 import dev.openhongguo.Stream
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.withContext
@@ -21,17 +22,25 @@ internal object KxgPlaybackStreams {
 
     @Volatile private var streamRegistry: StreamRegistry? = null
     @Volatile private var networkFactory: DataSource.Factory? = null
+    @Volatile private var diagnostics: DiagnosticLog? = null
+
+    /** Called by the service. Logs only safe transport timings and byte counts. */
+    fun attachDiagnostics(log: DiagnosticLog) {
+        diagnostics = log
+    }
 
     private fun registry(context: Context): StreamRegistry {
         streamRegistry?.let { return it }
         return synchronized(this) {
             streamRegistry ?: run {
                 val network = DefaultHttpDataSource.Factory()
-                    .setConnectTimeoutMs(20_000)
-                    .setReadTimeoutMs(20_000)
+                    .setConnectTimeoutMs(CdnStreamingPolicy.CONNECT_TIMEOUT_MS)
+                    .setReadTimeoutMs(CdnStreamingPolicy.READ_TIMEOUT_MS)
                     .setAllowCrossProtocolRedirects(true)
                 networkFactory = network
-                StreamRegistry(network).also { streamRegistry = it }
+                StreamRegistry(network) { event, duration, status, bytes ->
+                    diagnostics?.record("CDN", event, duration, status, bytes)
+                }.also { streamRegistry = it }
             }
         }
     }
@@ -85,6 +94,7 @@ internal object KxgPlaybackStreams {
         // resolves the header and decrypts on Media3's loader thread.
         val streams = registry(context.applicationContext)
         val uri = streams.register(urls, key)
+        streams.record("SOURCE_REGISTERED_${urls.size}_HOSTS")
         Prepared(uri, episodeId, qualityLimit)
     }
 

@@ -24,6 +24,7 @@ import androidx.media3.datasource.DataSource
 import androidx.media3.datasource.HttpDataSource
 import androidx.media3.exoplayer.ExoPlayer
 import androidx.media3.exoplayer.DefaultRenderersFactory
+import androidx.media3.exoplayer.DefaultLoadControl
 import androidx.media3.exoplayer.analytics.AnalyticsListener
 import androidx.media3.exoplayer.DecoderReuseEvaluation
 import androidx.media3.exoplayer.source.ProgressiveMediaSource
@@ -36,6 +37,7 @@ import com.google.common.util.concurrent.Futures
 import com.google.common.util.concurrent.ListenableFuture
 import com.hongguotv.core.RemoteVideo
 import com.yagay.hongguo.kxg.KxgPlaybackStreams
+import com.yagay.hongguo.kxg.CdnStreamingPolicy
 import kotlinx.coroutines.flow.MutableStateFlow
 
 /**
@@ -344,9 +346,15 @@ class BackgroundPlaybackService : MediaSessionService() {
             "web_rewrite_settings", MODE_PRIVATE
         ).getInt("playback_audio_boost_db", 0)
             .takeIf(AudioBoostPolicy::valid) ?: 0
-        // Follow Kaixinguo's direct ExoPlayer -> CencDataSource pipeline.
-        // Keep the ONE service-owned player for notifications and PiP.
+        // Keep ONE service-owned Media3 player. Buffer a little further ahead
+        // on progressive MP4 streams so brief CDN pauses do not become visible.
+        // The 1 s initial startup target remains responsive for swiping.
+        KxgPlaybackStreams.attachDiagnostics(diagnostics)
         engine = ExoPlayer.Builder(this)
+            .setLoadControl(DefaultLoadControl.Builder()
+                .setBufferDurationsMs(40_000, 80_000, 1_000, 3_500)
+                .setPrioritizeTimeOverSizeThresholds(true)
+                .build())
             .setRenderersFactory(
                 DefaultRenderersFactory(this).setEnableDecoderFallback(true))
             .build().apply {
@@ -558,6 +566,12 @@ class BackgroundPlaybackService : MediaSessionService() {
                     if (bufferingSinceMs == 0L)
                         bufferingSinceMs = android.os.SystemClock.elapsedRealtime()
                 } else {
+                    if (state == Player.STATE_READY && bufferingSinceMs > 0L) {
+                        val bufferMs =
+                            android.os.SystemClock.elapsedRealtime() - bufferingSinceMs
+                        if (bufferMs >= 400L)
+                            diagnostics.record("CDN", "BUFFER_RECOVERED", bufferMs)
+                    }
                     bufferingSinceMs = 0L
                 }
                 if (state == Player.STATE_READY) {
@@ -682,9 +696,10 @@ class BackgroundPlaybackService : MediaSessionService() {
                     networkValidated && engine.playWhenReady &&
                     engine.playbackState == Player.STATE_BUFFERING &&
                     bufferingSinceMs > 0L && !bufferingRecoveryIssued &&
-                    android.os.SystemClock.elapsedRealtime() - bufferingSinceMs >= 22_000L) {
+                    android.os.SystemClock.elapsedRealtime() - bufferingSinceMs >=
+                        CdnStreamingPolicy.BUFFER_STALL_MS) {
                     bufferingRecoveryIssued = true
-                    diagnostics.record("NETWORK_RESUME", "MEDIA3_BUFFERING_STALL_22S")
+                    diagnostics.record("NETWORK_RESUME", "MEDIA3_BUFFERING_STALL_12S")
                     armNetworkResumeIfNeeded()
                     if (awaitingNetworkResume) {
                         onRecovering?.invoke("缓冲时间较长，正在重新获取播放地址")

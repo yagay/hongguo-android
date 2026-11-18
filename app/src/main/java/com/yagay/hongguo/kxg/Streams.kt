@@ -5,9 +5,9 @@ import androidx.media3.common.C
 import androidx.media3.datasource.BaseDataSource
 import androidx.media3.datasource.DataSource
 import androidx.media3.datasource.DataSpec
+import androidx.media3.datasource.HttpDataSource
 import java.io.ByteArrayOutputStream
 import java.io.IOException
-import java.io.InterruptedIOException
 import java.util.UUID
 
 /**
@@ -15,13 +15,20 @@ import java.util.UUID
  * it plays each at. It keeps the last few: the one playing, and one the
  * player may still read.
  */
-class StreamRegistry(private val http: DataSource.Factory) {
+class StreamRegistry(
+    private val http: DataSource.Factory,
+    private val diagnostics: (String, Long?, Int?, Int?) -> Unit = { _, _, _, _ -> },
+) {
     private val streams = LinkedHashMap<String, StreamSource>()
+
+    fun record(event: String, ms: Long? = null, httpStatus: Int? = null, bytes: Int? = null) {
+        diagnostics(event, ms, httpStatus, bytes)
+    }
 
     fun register(sources: List<String>, key: ByteArray?): String {
         val uri = "$SCHEME://episode/${UUID.randomUUID()}.mp4"
         synchronized(this) {
-            streams[uri] = StreamSource(sources, key, http)
+            streams[uri] = StreamSource(sources, key, http, ::record)
             while (streams.size > 3) streams.remove(streams.keys.first())
         }
         return uri
@@ -41,7 +48,12 @@ class StreamRegistry(private val http: DataSource.Factory) {
  * the file's size and, for an encrypted one, its layout; every read after
  * shares them.
  */
-class StreamSource(val sources: List<String>, private val key: ByteArray?, private val http: DataSource.Factory) {
+class StreamSource(
+    val sources: List<String>,
+    private val key: ByteArray?,
+    private val http: DataSource.Factory,
+    private val record: (String, Long?, Int?, Int?) -> Unit,
+) {
     class File(val size: Long, val layout: Layout?)
 
     /** The source that answered last, which reads try first. */
@@ -49,15 +61,15 @@ class StreamSource(val sources: List<String>, private val key: ByteArray?, priva
     var good = 0
 
     private var file: File? = null
-    private var failure: IOException? = null
-
     /** The file's size and layout, learning them the first time; it blocks, on the player's loading thread. */
     @Synchronized
     fun prepare(): File {
         file?.let { return it }
-        failure?.let { throw it }
+        // Do not permanently cache a temporary CDN transport failure. A subsequent
+        // player retry may use this same source after connectivity is restored.
         var last = IOException("没有视频地址")
         for ((i, source) in sources.withIndex()) {
+            val started = android.os.SystemClock.elapsedRealtime()
             try {
                 val (head, total) = read(source, 0, 64L shl 10)
                 val layout = key?.let { k ->
@@ -66,33 +78,50 @@ class StreamSource(val sources: List<String>, private val key: ByteArray?, priva
                     }
                 }
                 good = i
+                record("HEADER_PREPARED",
+                    android.os.SystemClock.elapsedRealtime() - started, null, head.size)
                 return File(total, layout).also { file = it }
-            } catch (e: InterruptedIOException) {
-                throw e // the player gave up on this read: another may try again
             } catch (e: IOException) {
-                // CDN errors are handled by the caller; never log signed URLs or keys.
+                if (CdnStreamingPolicy.isCancellation(e, Thread.currentThread().isInterrupted))
+                    throw e
+                record("HEADER_FAILED", android.os.SystemClock.elapsedRealtime() - started,
+                    httpErrorCode(e), null)
                 last = e
             } catch (e: RuntimeException) {
-                // CDN errors are handled by the caller; never log signed URLs or keys.
+                record("HEADER_INVALID", android.os.SystemClock.elapsedRealtime() - started,
+                    null, null)
                 last = IOException(e)
             }
         }
-        failure = last
         throw last
     }
 
     /** Reads `count` bytes of `source` at `offset`, and the file's size. */
     private fun read(source: String, offset: Long, count: Long): Pair<ByteArray, Long> {
         val ds = http.createDataSource()
+        val started = android.os.SystemClock.elapsedRealtime()
         try {
             ds.open(DataSpec.Builder().setUri(source).setPosition(offset).setLength(count).build())
+            val openedAt = android.os.SystemClock.elapsedRealtime()
             val total = totalSize(ds.responseHeaders) ?: throw IOException("CDN 没有告知文件大小")
             val out = ByteArrayOutputStream(count.toInt().coerceAtMost(1 shl 20))
             val buf = ByteArray(32 shl 10)
+            var firstByte = true
             while (out.size() < count) {
                 val n = ds.read(buf, 0, minOf(buf.size.toLong(), count - out.size()).toInt())
                 if (n == C.RESULT_END_OF_INPUT) break
+                if (firstByte && n > 0) {
+                    firstByte = false
+                    record("HEADER_FIRST_BYTE",
+                        android.os.SystemClock.elapsedRealtime() - started,
+                        httpCode(ds), null)
+                }
                 out.write(buf, 0, n)
+            }
+            val elapsed = android.os.SystemClock.elapsedRealtime() - started
+            if (elapsed >= CdnStreamingPolicy.SLOW_READ_MS ||
+                openedAt - started >= CdnStreamingPolicy.SLOW_READ_MS) {
+                record("HEADER_SLOW", elapsed, httpCode(ds), out.size())
             }
             return out.toByteArray() to total
         } finally {
@@ -100,6 +129,15 @@ class StreamSource(val sources: List<String>, private val key: ByteArray?, priva
         }
     }
 }
+
+/** Sanitize all telemetry: only HTTP codes, elapsed time and byte counts; never CDN URLs. */
+private fun httpCode(ds: DataSource): Int? =
+    (ds as? HttpDataSource)?.responseCode?.takeIf { it in 100..599 }
+
+private fun httpErrorCode(error: Throwable): Int? =
+    generateSequence(error) { it.cause }.take(6)
+        .filterIsInstance<HttpDataSource.InvalidResponseCodeException>()
+        .firstOrNull()?.responseCode
 
 /** The file's size, from the response to a range request, or to a request for the whole file. */
 private fun totalSize(headers: Map<String, List<String>>): Long? {
@@ -132,6 +170,9 @@ class CencDataSource(private val registry: StreamRegistry, private val http: Dat
     private var source = 0
     private var tries = 0 // downloads of this range that broke off
     private var opened = false
+    private var connectionStartedAtMs = 0L
+    private var connectionBytes = 0L
+    private var firstByteSeen = false
 
     override fun open(dataSpec: DataSpec): Long {
         spec = dataSpec
@@ -156,21 +197,39 @@ class CencDataSource(private val registry: StreamRegistry, private val http: Dat
         if (position >= end) return C.RESULT_END_OF_INPUT
         val want = minOf(length.toLong(), end - position).toInt()
         while (true) {
+            val started = android.os.SystemClock.elapsedRealtime()
             val n = try {
                 upstream!!.read(buffer, offset, want)
             } catch (e: IOException) {
-                if (e is InterruptedIOException || !again()) throw e
+                stream?.record("RANGE_READ_FAILED",
+                    android.os.SystemClock.elapsedRealtime() - started,
+                    httpErrorCode(e), null)
+                // A socket read timeout is an InterruptedIOException subclass, but it
+                // is NOT a cancelled Media3 load. Switch to the backup CDN.
+                if (CdnStreamingPolicy.isCancellation(e, Thread.currentThread().isInterrupted) ||
+                    !again()) throw e
                 connect()
                 continue
             }
             if (n == C.RESULT_END_OF_INPUT) {
-                // The CDN stopped short of the range.
+                // The CDN stopped short of the range; resume at exactly this byte.
+                stream?.record("RANGE_EARLY_EOF")
                 if (!again()) throw IOException("视频下载中断")
                 connect()
                 continue
             }
+            val elapsed = android.os.SystemClock.elapsedRealtime() - started
+            if (n > 0 && !firstByteSeen) {
+                firstByteSeen = true
+                stream?.record("RANGE_FIRST_BYTE",
+                    android.os.SystemClock.elapsedRealtime() - connectionStartedAtMs,
+                    httpCode(upstream!!), null)
+            }
+            if (n > 0 && elapsed >= CdnStreamingPolicy.SLOW_READ_MS)
+                stream?.record("RANGE_READ_SLOW", elapsed, httpCode(upstream!!), n)
             layout?.decrypt(buffer, offset, n, position)
             position += n
+            connectionBytes += n
             stream?.good = source
             bytesTransferred(n)
             return n
@@ -183,13 +242,24 @@ class CencDataSource(private val registry: StreamRegistry, private val http: Dat
         while (true) {
             closeUpstream()
             val ds = http.createDataSource()
+            val started = android.os.SystemClock.elapsedRealtime()
             try {
                 ds.open(DataSpec.Builder().setUri(s.sources[source]).setPosition(position).setLength(end - position).build())
+                connectionStartedAtMs = started
+                connectionBytes = 0L
+                firstByteSeen = false
                 upstream = ds
+                s.record("RANGE_OPEN",
+                    android.os.SystemClock.elapsedRealtime() - started,
+                    httpCode(ds), null)
                 return
             } catch (e: IOException) {
+                s.record("RANGE_OPEN_FAILED",
+                    android.os.SystemClock.elapsedRealtime() - started,
+                    httpErrorCode(e), null)
                 runCatching { ds.close() }
-                if (e is InterruptedIOException || !again()) throw e
+                if (CdnStreamingPolicy.isCancellation(e, Thread.currentThread().isInterrupted) ||
+                    !again()) throw e
             }
         }
     }
@@ -197,15 +267,26 @@ class CencDataSource(private val registry: StreamRegistry, private val http: Dat
     /** Whether to try the range once more, switching sources if there is another. */
     private fun again(): Boolean {
         val s = stream ?: return false
-        if (tries >= 2 || Thread.currentThread().isInterrupted) return false
+        // One bounded fallback per range: do not revisit a CDN already
+        // known to have stalled, or loop against a single unreachable URL.
+        if (tries >= CdnStreamingPolicy.MAX_RANGE_RETRIES ||
+            Thread.currentThread().isInterrupted) return false
         tries++
         source = (source + 1) % s.sources.size
+        s.record(if (s.sources.size > 1) "RANGE_SWITCH_BACKUP" else "RANGE_RETRY_SAME")
         return true
     }
 
     private fun closeUpstream() {
         val ds = upstream ?: return
         upstream = null
+        if (connectionStartedAtMs > 0L && connectionBytes > 0L)
+            stream?.record("RANGE_TRANSFER",
+                android.os.SystemClock.elapsedRealtime() - connectionStartedAtMs,
+                httpCode(ds), connectionBytes.coerceAtMost(Int.MAX_VALUE.toLong()).toInt())
+        connectionStartedAtMs = 0L
+        connectionBytes = 0L
+        firstByteSeen = false
         runCatching { ds.close() }
     }
 
