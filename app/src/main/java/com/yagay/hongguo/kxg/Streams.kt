@@ -8,6 +8,7 @@ import androidx.media3.datasource.DataSpec
 import androidx.media3.datasource.HttpDataSource
 import java.io.ByteArrayOutputStream
 import java.io.IOException
+import java.io.File
 import java.util.UUID
 
 /**
@@ -18,26 +19,93 @@ import java.util.UUID
 class StreamRegistry(
     private val http: DataSource.Factory,
     private val diagnostics: (String, Long?, Int?, Int?) -> Unit = { _, _, _, _ -> },
+    private val cacheRoot: File? = null,
 ) {
     private val streams = LinkedHashMap<String, StreamSource>()
+    @Volatile private var activeUri: String? = null
+    @Volatile private var perVideoMb = KxgWarmupPolicy.DEFAULT_PREFIX_MB
+    @Volatile private var totalCacheMb = KxgWarmupPolicy.DEFAULT_TOTAL_MB
+
+    init {
+        // Session-scoped encrypted bytes: model keys and signed URLs are never
+        // persisted. Unclaimed files from a killed process must not accumulate.
+        if (cacheRoot != null) {
+            cacheRoot.deleteRecursively()
+            cacheRoot.mkdirs()
+        }
+    }
+
+    @Synchronized
+    fun configureCache(perVideo: Int, total: Int) {
+        require(KxgWarmupPolicy.validPrefixMb(perVideo))
+        require(KxgWarmupPolicy.validTotalMb(total))
+        perVideoMb = perVideo
+        totalCacheMb = total
+        trimCache()
+    }
+
+    @Synchronized
+    fun markActive(uri: String) {
+        if (streams.containsKey(uri)) activeUri = uri
+    }
+
+    private fun itemLimitBytes(): Int =
+        KxgWarmupPolicy.effectivePrefixBytes(perVideoMb, totalCacheMb)
+
+    /** Evict least-recent old prefixes; keep the active source if possible. */
+    @Synchronized
+    fun trimCache() {
+        val limit = totalCacheMb.toLong() * KxgWarmupPolicy.MIB
+        var total = streams.values.sumOf { it.warmBytes().toLong() }
+        if (total <= limit) return
+        for ((uri, src) in streams) {
+            if (uri == activeUri || total <= limit) continue
+            val reclaimed = src.warmBytes()
+            if (reclaimed == 0) continue
+            src.evictCachedBytes()
+            total -= reclaimed
+            record("CACHE_LRU_EVICT", bytes = reclaimed)
+        }
+        if (total > limit) {
+            activeUri?.let(streams::get)?.let { active ->
+                val reclaimed = active.warmBytes()
+                active.evictCachedBytes()
+                record("CACHE_ACTIVE_LIMIT_EVICT", bytes = reclaimed)
+            }
+        }
+    }
 
     fun record(event: String, ms: Long? = null, httpStatus: Int? = null, bytes: Int? = null) {
         diagnostics(event, ms, httpStatus, bytes)
     }
 
     fun register(sources: List<String>, key: ByteArray?): String {
-        val uri = "$SCHEME://episode/${UUID.randomUUID()}.mp4"
+        val id = UUID.randomUUID().toString()
+        val uri = "$SCHEME://episode/$id.mp4"
         synchronized(this) {
-            streams[uri] = StreamSource(sources, key, http, ::record)
-            // One active plus prefetched items; avoid evicting the active URI
-            // while one new model is still preparing.
-            while (streams.size > 5) streams.remove(streams.keys.first())
+            streams[uri] = StreamSource(
+                sources, key, http, ::record,
+                cacheRoot?.let { File(it, "$id.enc") },
+                ::itemLimitBytes, ::trimCache,
+            )
+            // Keep the last few models even if their disk prefix was evicted.
+            // Current playback still has its own live registered source.
+            while (streams.size > 16) {
+                val oldest = streams.keys.first()
+                if (oldest == activeUri) break
+                streams.remove(oldest)?.dispose()
+            }
+            trimCache()
         }
         return uri
     }
 
     operator fun get(uri: String): StreamSource? = synchronized(this) { streams[uri] }
-    fun forget(uri: String) = synchronized(this) { streams.remove(uri); Unit }
+    fun forget(uri: String) = synchronized(this) {
+        streams.remove(uri)?.dispose()
+        if (activeUri == uri) activeUri = null
+        Unit
+    }
 
     companion object {
         const val SCHEME = "kaixinguo-stream"
@@ -55,6 +123,9 @@ class StreamSource(
     private val key: ByteArray?,
     private val http: DataSource.Factory,
     private val diagnostic: (String, Long?, Int?, Int?) -> Unit,
+    cacheFile: File? = null,
+    private val prefixLimitBytes: () -> Int = { KxgWarmupPolicy.DEFAULT_PREFIX_MB * KxgWarmupPolicy.MIB },
+    private val cacheModified: () -> Unit = {},
 ) {
     fun record(event: String, ms: Long? = null, httpStatus: Int? = null, bytes: Int? = null) {
         diagnostic(event, ms, httpStatus, bytes)
@@ -67,38 +138,70 @@ class StreamSource(
     var good = 0
 
     private var file: File? = null
-    private val warmPrefix = EncryptedPrefixMemory()
+    private val encryptedCache = cacheFile?.let(::EncryptedPrefixFile)
+    private var lastWrittenMiB = 0
 
-    /** Number of encrypted prefix bytes ready for Media3 reuse. */
-    fun warmBytes(): Int = warmPrefix.size
+    /** Number of encrypted bytes currently committed to the local file. */
+    fun warmBytes(): Int = encryptedCache?.size ?: 0
 
     fun copyWarmBytes(position: Long, target: ByteArray, offset: Int, length: Int): Int =
-        warmPrefix.copy(position, target, offset, length)
+        encryptedCache?.copy(position, target, offset, length) ?: 0
+
+    /** Only contiguous ciphertext is appended; seek gaps are never faked. */
+    fun cacheNetworkBytes(position: Long, bytes: ByteArray, offset: Int, count: Int): Int {
+        val cache = encryptedCache ?: return 0
+        val added = try {
+            cache.append(position, bytes, offset, count, prefixLimitBytes())
+        } catch (_: IOException) {
+            record("CACHE_WRITE_FAILED")
+            0
+        }
+        if (added > 0) {
+            val previousCacheMiB = (cache.size - added) / KxgWarmupPolicy.MIB
+            val currentMiB = cache.size / KxgWarmupPolicy.MIB
+            if (currentMiB > lastWrittenMiB && currentMiB % 4 == 0) {
+                lastWrittenMiB = currentMiB
+                record("CACHE_BYTES_STORED", bytes = cache.size)
+            }
+            // A trim scan for every tiny read is costly. Check the global
+            // disk budget only at whole-MiB boundaries.
+            if (currentMiB > 0 && currentMiB != previousCacheMiB)
+                cacheModified()
+        }
+        return added
+    }
+
+    fun evictCachedBytes() {
+        encryptedCache?.evict()
+        lastWrittenMiB = 0
+    }
+
+    fun dispose() = encryptedCache?.dispose() ?: Unit
 
     /**
-     * Prepare CENC metadata then fetch bounded encrypted prefix chunks.
-     * No second player, no decrypted disk files and no effect on playback clock.
-     * A partial warmup can still be reused if the job is interrupted.
+     * No full-file download is required. Publish every 256 KiB encrypted
+     * chunk to disk immediately, then let Media3 use any finished prefix.
      */
-    fun warmEncryptedPrefix(bytes: Int = KxgWarmupPolicy.PREFIX_BYTES): Int {
+    fun warmEncryptedPrefix(
+        bytes: Int = prefixLimitBytes(),
+        shouldContinue: () -> Boolean = { !Thread.currentThread().isInterrupted },
+    ): Int {
+        val cache = encryptedCache ?: return 0
         val f = prepare()
-        val target = minOf(bytes.toLong(), f.size, KxgWarmupPolicy.PREFIX_BYTES.toLong()).toInt()
-        if (target <= warmPrefix.size) return warmPrefix.size
-        val output = ByteArrayOutputStream(target)
+        val target = minOf(bytes.toLong(), f.size, prefixLimitBytes().toLong()).toInt()
         val start = System.nanoTime()
-        while (output.size() < target) {
-            if (Thread.currentThread().isInterrupted)
-                throw java.io.InterruptedIOException("预加载已取消")
-            val count = minOf(KxgWarmupPolicy.CHUNK_BYTES, target - output.size())
-            val (chunk, size) = read(sources[good], output.size().toLong(), count.toLong())
+        while (cache.size < target) {
+            if (!shouldContinue() || Thread.currentThread().isInterrupted) break
+            val position = cache.size
+            val count = minOf(KxgWarmupPolicy.CHUNK_BYTES, target - position)
+            val (chunk, size) = read(sources[good], position.toLong(), count.toLong())
             if (size != f.size || chunk.size != count)
                 throw IOException("预加载视频分段长度不一致")
-            output.write(chunk)
-            warmPrefix.publish(output.toByteArray())
+            if (cacheNetworkBytes(position.toLong(), chunk, 0, chunk.size) <= 0) break
         }
-        record("PRELOAD_PREFIX_READY",
-            (System.nanoTime() - start) / 1_000_000, null, warmPrefix.size)
-        return warmPrefix.size
+        record(if (cache.size >= target) "PRELOAD_PREFIX_READY" else "PRELOAD_PARTIAL_READY",
+            (System.nanoTime() - start) / 1_000_000, null, cache.size)
+        return cache.size
     }
 
     /** The file's size and layout, learning them the first time; it blocks, on the player's loading thread. */
@@ -233,6 +336,8 @@ class CencDataSource(private val registry: StreamRegistry, private val http: Dat
     private var slowReadBytes = 0L
     private var reconnectOnNextRead = false
     private var preloadHitReported = false
+    private var cachedReadBytes = 0L
+    private var lastReportedCacheMiB = 0L
 
     override fun open(dataSpec: DataSpec): Long {
         spec = dataSpec
@@ -247,6 +352,8 @@ class CencDataSource(private val registry: StreamRegistry, private val http: Dat
         source = s.good
         tries = 0
         preloadHitReported = false
+        cachedReadBytes = 0L
+        lastReportedCacheMiB = 0L
         connectionEnd = position
         // Defer network open until no prefetched encrypted bytes are available.
         // This also avoids seeking the original connection from offset zero.
@@ -266,9 +373,13 @@ class CencDataSource(private val registry: StreamRegistry, private val http: Dat
             if (hit > 0) {
                 layout?.decrypt(buffer, offset, hit, position)
                 position += hit
-                if (!preloadHitReported) {
+                cachedReadBytes += hit
+                if (!preloadHitReported ||
+                    cachedReadBytes / KxgWarmupPolicy.MIB > lastReportedCacheMiB + 3L) {
                     preloadHitReported = true
-                    stream?.record("PRELOAD_MEMORY_HIT", bytes = hit)
+                    lastReportedCacheMiB = cachedReadBytes / KxgWarmupPolicy.MIB
+                    stream?.record("CACHE_HIT_TOTAL",
+                        bytes = cachedReadBytes.coerceAtMost(Int.MAX_VALUE.toLong()).toInt())
                 }
                 bytesTransferred(hit)
                 return hit
@@ -321,6 +432,9 @@ class CencDataSource(private val registry: StreamRegistry, private val http: Dat
             }
             if (n > 0 && elapsed >= CdnStreamingPolicy.SLOW_READ_MS)
                 stream?.record("RANGE_READ_SLOW", elapsed, httpCode(upstream!!), n)
+            // Cache the ORIGINAL encrypted bytes before in-place CENC decrypt.
+            // Rewind can then read locally without depending on the CDN.
+            if (n > 0) stream?.cacheNetworkBytes(position, buffer, offset, n)
             layout?.decrypt(buffer, offset, n, position)
             position += n
             connectionBytes += n

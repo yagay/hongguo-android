@@ -38,6 +38,7 @@ import kotlinx.coroutines.flow.update
 import kotlinx.coroutines.launch
 import kotlinx.coroutines.withContext
 import kotlinx.coroutines.coroutineScope
+import java.util.concurrent.atomic.AtomicBoolean
 import com.yagay.hongguo.kxg.KxgPlaybackStreams
 import com.yagay.hongguo.kxg.KxgWarmupPolicy
 import androidx.media3.common.Player
@@ -199,6 +200,50 @@ class DramaViewModel(application: Application) : AndroidViewModel(application) {
         KxgPlaybackStreams.clearPrefetched()
         if (state.value.nextVideoPreloadEnabled)
             firstFrameFor?.let(::scheduleNextVideoWarmup)
+    }
+
+    private fun applyVideoCacheSettings() {
+        val s = state.value
+        KxgPlaybackStreams.configureCache(
+            getApplication(), s.videoCachePerEpisodeMb, s.videoCacheTotalMb)
+        stopVideoWarmup()
+        if (s.nextVideoPreloadEnabled)
+            firstFrameFor?.let(::scheduleNextVideoWarmup)
+    }
+
+    fun setVideoCachePerEpisodeMb(value: Int) {
+        if (!KxgWarmupPolicy.validPrefixMb(value)) return
+        prefs.edit().putInt("video_cache_per_episode_mb", value).apply()
+        mutable.update { it.copy(videoCachePerEpisodeMb = value) }
+        applyVideoCacheSettings()
+    }
+
+    fun setVideoCacheTotalMb(value: Int) {
+        if (!KxgWarmupPolicy.validTotalMb(value)) return
+        prefs.edit().putInt("video_cache_total_mb", value).apply()
+        mutable.update { it.copy(videoCacheTotalMb = value) }
+        applyVideoCacheSettings()
+    }
+
+    fun setVideoPreloadCount(value: Int) {
+        if (!KxgWarmupPolicy.validPreloadCount(value)) return
+        prefs.edit().putInt("video_preload_count", value).apply()
+        mutable.update { it.copy(videoPreloadCount = value) }
+        applyVideoCacheSettings()
+    }
+
+    fun setVideoPreloadBufferSeconds(value: Int) {
+        if (!KxgWarmupPolicy.validBufferSeconds(value)) return
+        prefs.edit().putInt("video_preload_buffer_seconds", value).apply()
+        mutable.update { it.copy(videoPreloadBufferSeconds = value) }
+        applyVideoCacheSettings()
+    }
+
+    fun setVideoPreloadDeadlineSeconds(value: Int) {
+        if (!KxgWarmupPolicy.validDeadlineSeconds(value)) return
+        prefs.edit().putInt("video_preload_deadline_seconds", value).apply()
+        mutable.update { it.copy(videoPreloadDeadlineSeconds = value) }
+        applyVideoCacheSettings()
     }
 
     fun setAutoPlayNext(enabled: Boolean) {
@@ -1190,96 +1235,127 @@ class DramaViewModel(application: Application) : AndroidViewModel(application) {
     }
 
     /**
-     * One low-priority warmup only: the next episode or first episode of the
-     * next official reel. Never compete with startup or a buffering current
-     * video, never construct another player and never store decrypted bytes.
+     * One sequential low-priority job prepares up to N future items. The
+     * active decoder/player is NEVER duplicated. Extra I/O stops as soon as
+     * current playback buffers run low, preserving completed cache chunks.
      */
     private fun scheduleNextVideoWarmup(expectedVid: String) {
-        val s = state.value
-        val detail = s.detail ?: return
-        if (!s.nextVideoPreloadEnabled || s.offlinePlaybackUri != null ||
-            s.backend.isNotBlank() || s.playbackError != null ||
-            detail.episodes.getOrNull(s.episodeIndex)?.vid != expectedVid)
-            return
-        val nextDrama = if (s.feedMode ||
-            s.episodeIndex == detail.episodes.lastIndex) {
-            s.feedItems.drop(s.feedIndex + 1).firstOrNull {
-                it.id != detail.drama.id && it.id !in s.hiddenRecommendationIds
-            }
-        } else null
-        val nextEpisode = if (nextDrama == null &&
-            s.episodeIndex < detail.episodes.lastIndex)
-            detail.episodes.getOrNull(s.episodeIndex + 1) else null
-        if (nextDrama == null && nextEpisode == null) return
-        if (s.nextVideoPreloadWifiOnly) {
+        val snapshot = state.value
+        val detail = snapshot.detail ?: return
+        if (!snapshot.nextVideoPreloadEnabled || snapshot.offlinePlaybackUri != null ||
+            snapshot.backend.isNotBlank() || snapshot.playbackError != null ||
+            detail.episodes.getOrNull(snapshot.episodeIndex)?.vid != expectedVid) return
+
+        if (snapshot.nextVideoPreloadWifiOnly) {
             val connectivity = getApplication<Application>()
                 .getSystemService(Context.CONNECTIVITY_SERVICE) as? ConnectivityManager
-            val active = connectivity?.activeNetwork
-            val capabilities = if (connectivity != null && active != null)
-                connectivity.getNetworkCapabilities(active) else null
-            if (capabilities?.hasCapability(
-                    NetworkCapabilities.NET_CAPABILITY_NOT_METERED) != true) {
-                diagnostics.record("PRELOAD", "METERED_NETWORK_SKIPPED")
+            val current = connectivity?.activeNetwork
+            val caps = if (connectivity != null && current != null)
+                connectivity.getNetworkCapabilities(current) else null
+            // Some Wi-Fi networks advertise metered. A real Wi-Fi transport
+            // still counts as Wi-Fi even when NOT_METERED is absent.
+            val allowed = caps?.hasTransport(NetworkCapabilities.TRANSPORT_WIFI) == true ||
+                caps?.hasTransport(NetworkCapabilities.TRANSPORT_ETHERNET) == true ||
+                caps?.hasCapability(NetworkCapabilities.NET_CAPABILITY_NOT_METERED) == true
+            if (!allowed) {
+                diagnostics.record("PRELOAD", "NETWORK_POLICY_SKIPPED")
                 return
             }
         }
-        val target = if (nextDrama != null) "drama:" + nextDrama.id
-            else "episode:" + nextEpisode!!.vid
-        val key = expectedVid + ":" + target + ":" + s.qualityLimit
+
+        val nextDramas = snapshot.feedItems.drop(snapshot.feedIndex + 1)
+            .filter { it.id != detail.drama.id && it.id !in snapshot.hiddenRecommendationIds }
+            .distinctBy { it.id }
+            .take(snapshot.videoPreloadCount)
+        val isFeedAdvance = nextDramas.isNotEmpty() &&
+            (snapshot.feedMode || snapshot.episodeIndex == detail.episodes.lastIndex) &&
+            snapshot.returnSeries?.drama?.id != detail.drama.id
+        // Pairs are (episodeId, recommendedDrama). For a cross-series item
+        // the ID is resolved from the official next drama's episode list.
+        val targets: List<Pair<String, Drama?>> = if (isFeedAdvance)
+            nextDramas.map { "" to it }
+        else detail.episodes.drop(snapshot.episodeIndex + 1)
+            .take(snapshot.videoPreloadCount).map { it.vid to null }
+        if (targets.isEmpty()) return
+        val key = expectedVid + ":" + targets.joinToString(",") {
+            it.first + "/" + (it.second?.id ?: "")
+        } + ":" + snapshot.qualityLimit + ":" + snapshot.videoCachePerEpisodeMb +
+            ":" + snapshot.videoPreloadCount + ":" + snapshot.videoPreloadBufferSeconds +
+            ":" + snapshot.videoPreloadDeadlineSeconds
         if (videoWarmupKey == key && videoWarmupJob?.isActive == true) return
         stopVideoWarmup()
         videoWarmupKey = key
         videoWarmupJob = viewModelScope.launch {
-            // A rendered frame alone is insufficient. Wait for the current
-            // Media3 stream to have safe headroom before starting extra I/O.
-            var safeToPrefetch = false
-            for (attempt in 0 until 6) {
-                delay(2_000L)
-                val latest = state.value
-                if (latest.detail?.episodes?.getOrNull(latest.episodeIndex)?.vid != expectedVid ||
-                    latest.playbackError != null || latest.qualityLimit != s.qualityLimit ||
-                    !latest.nextVideoPreloadEnabled ||
-                    latest.backend.isNotBlank() || latest.offlinePlaybackUri != null)
-                    return@launch
+            fun sameMedia(): Boolean {
+                val now = state.value
+                return now.nextVideoPreloadEnabled &&
+                    now.detail?.episodes?.getOrNull(now.episodeIndex)?.vid == expectedVid &&
+                    now.playbackError == null && now.offlinePlaybackUri == null &&
+                    now.backend.isBlank() && now.qualityLimit == snapshot.qualityLimit
+            }
+            fun playerBuffered(): Boolean {
                 val player = BackgroundPlaybackService.playerFlow.value
                 val ahead = (player?.bufferedPosition ?: 0L) -
                     (player?.currentPosition ?: 0L)
-                if (KxgWarmupPolicy.bufferedEnough(
-                        player?.playbackState == Player.STATE_READY,
-                        player?.isPlaying == true && player.currentMediaItem?.mediaId == expectedVid,
-                        ahead)) {
-                    safeToPrefetch = true
+                return KxgWarmupPolicy.bufferedEnough(
+                    player?.playbackState == Player.STATE_READY,
+                    player?.isPlaying == true && player.currentMediaItem?.mediaId == expectedVid,
+                    ahead, snapshot.videoPreloadBufferSeconds)
+            }
+            // Allow slow networks up to one minute to build headroom before
+            // speculative downloads. Do not keep poking an unready decoder.
+            var ready = false
+            for (attempt in 0 until 30) {
+                delay(2_000L)
+                if (!sameMedia()) return@launch
+                if (playerBuffered()) {
+                    ready = true
                     break
                 }
             }
-            if (!safeToPrefetch) {
+            if (!ready) {
                 diagnostics.record("PRELOAD", "LOW_BUFFER_SKIPPED")
                 return@launch
             }
-            try {
-                val vid = if (nextEpisode != null) nextEpisode.vid else {
-                    val candidate = nextDrama ?: return@launch
-                    // Only the immediately adjacent recommended drama.
-                    val details = visitedFeedDetails[candidate.id]
-                        ?: withTimeout(8_000L) { kxgSource.detail(candidate.id) }
-                    if (details.episodes.isEmpty()) return@launch
-                    if (state.value.detail?.episodes
-                            ?.getOrNull(state.value.episodeIndex)?.vid != expectedVid)
-                        return@launch
-                    rememberFeedDetail(details)
-                    diagnostics.record("PRELOAD", "NEXT_DRAMA_DETAIL_READY")
-                    details.episodes.first().vid
+            val permitted = AtomicBoolean(true)
+            val monitor = launch {
+                while (true) {
+                    delay(1_000L)
+                    if (!sameMedia() || !playerBuffered()) {
+                        permitted.set(false)
+                        diagnostics.record("PRELOAD", "CURRENT_VIDEO_PRIORITY")
+                        break
+                    }
                 }
-                if (state.value.detail?.episodes
-                        ?.getOrNull(state.value.episodeIndex)?.vid != expectedVid)
-                    return@launch
-                diagnostics.record("PRELOAD", "NEXT_MODEL_BEGIN")
-                KxgPlaybackStreams.prefetch(getApplication(), openHongguo, vid, s.qualityLimit)
-                diagnostics.record("PRELOAD", "NEXT_MODEL_DONE")
+            }
+            try {
+                for ((vid, drama) in targets) {
+                    if (!sameMedia() || !permitted.get()) break
+                    val targetVid = if (drama != null) {
+                        val details = visitedFeedDetails[drama.id]
+                            ?: withTimeout(8_000L) { kxgSource.detail(drama.id) }
+                        if (details.episodes.isEmpty()) continue
+                        if (!sameMedia()) break
+                        rememberFeedDetail(details)
+                        diagnostics.record("PRELOAD", "NEXT_DRAMA_DETAIL_READY")
+                        details.episodes.first().vid
+                    } else vid
+                    diagnostics.record("PRELOAD", "NEXT_MODEL_BEGIN")
+                    KxgPlaybackStreams.prefetch(
+                        getApplication(), openHongguo, targetVid, snapshot.qualityLimit,
+                        targetMegabytes = snapshot.videoCachePerEpisodeMb,
+                        deadlineSeconds = snapshot.videoPreloadDeadlineSeconds,
+                        shouldContinue = { permitted.get() },
+                    )
+                    diagnostics.record("PRELOAD", "NEXT_MODEL_DONE")
+                }
             } catch (cancelled: CancellationException) {
                 throw cancelled
             } catch (_: Exception) {
                 diagnostics.record("PRELOAD", "NEXT_UNAVAILABLE")
+            } finally {
+                permitted.set(false)
+                monitor.cancel()
             }
         }
     }
@@ -1316,6 +1392,21 @@ class DramaViewModel(application: Application) : AndroidViewModel(application) {
             retryPlaybackAutomatically = prefs.getBoolean("playback_auto_retry", true),
             nextVideoPreloadEnabled = prefs.getBoolean("next_video_preload_enabled", true),
             nextVideoPreloadWifiOnly = prefs.getBoolean("next_video_preload_wifi_only", true),
+            videoCachePerEpisodeMb = prefs.getInt("video_cache_per_episode_mb",
+                KxgWarmupPolicy.DEFAULT_PREFIX_MB)
+                .takeIf(KxgWarmupPolicy::validPrefixMb) ?: KxgWarmupPolicy.DEFAULT_PREFIX_MB,
+            videoCacheTotalMb = prefs.getInt("video_cache_total_mb",
+                KxgWarmupPolicy.DEFAULT_TOTAL_MB)
+                .takeIf(KxgWarmupPolicy::validTotalMb) ?: KxgWarmupPolicy.DEFAULT_TOTAL_MB,
+            videoPreloadCount = prefs.getInt("video_preload_count",
+                KxgWarmupPolicy.DEFAULT_COUNT)
+                .takeIf(KxgWarmupPolicy::validPreloadCount) ?: KxgWarmupPolicy.DEFAULT_COUNT,
+            videoPreloadBufferSeconds = prefs.getInt("video_preload_buffer_seconds",
+                KxgWarmupPolicy.DEFAULT_BUFFER_SECONDS)
+                .takeIf(KxgWarmupPolicy::validBufferSeconds) ?: KxgWarmupPolicy.DEFAULT_BUFFER_SECONDS,
+            videoPreloadDeadlineSeconds = prefs.getInt("video_preload_deadline_seconds",
+                KxgWarmupPolicy.DEFAULT_DEADLINE_SECONDS)
+                .takeIf(KxgWarmupPolicy::validDeadlineSeconds) ?: KxgWarmupPolicy.DEFAULT_DEADLINE_SECONDS,
             recentSearches = localContent.recentQueries(),
             defaultPlaybackSpeed = prefs.getFloat("default_playback_speed", 1f).coerceIn(0.75f, 3f),
             videoBrightnessPercent = prefs.getInt("video_brightness_percent", -1)
@@ -1348,7 +1439,10 @@ class DramaViewModel(application: Application) : AndroidViewModel(application) {
                 .onFailure { diagnostics.record("TRACKING", "STARTUP_SCHEDULER_UNAVAILABLE") }
         }
         diagnostics.record("APP", "START")
-        // Upstream Kaixinguo does not persist decrypted video bytes.
+        KxgPlaybackStreams.configureCache(
+            application, state.value.videoCachePerEpisodeMb, state.value.videoCacheTotalMb)
+        // Clear legacy video cache directories; encrypted session files use
+        // a separate bounded directory and require no permanent key store.
         // Reclaim both old cache folders once at startup; never touch
         // downloads, cover images, account data or offline episode files.
         viewModelScope.launch(Dispatchers.IO) {

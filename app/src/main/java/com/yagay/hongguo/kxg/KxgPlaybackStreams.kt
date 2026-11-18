@@ -13,6 +13,7 @@ import kotlinx.coroutines.runInterruptible
 import kotlinx.coroutines.withTimeout
 import kotlinx.coroutines.withContext
 import java.io.IOException
+import java.io.File
 
 /**
  * The rewrite app keeps its ONE service-owned ExoPlayer. This is the original
@@ -73,9 +74,13 @@ internal object KxgPlaybackStreams {
                     .setReadTimeoutMs(CdnStreamingPolicy.READ_TIMEOUT_MS)
                     .setAllowCrossProtocolRedirects(true)
                 networkFactory = network
-                StreamRegistry(network) { event, duration, status, bytes ->
-                    diagnostics?.record("CDN", event, duration, status, bytes)
-                }.also { streamRegistry = it }
+                StreamRegistry(
+                    network,
+                    { event, duration, status, bytes ->
+                        diagnostics?.record("CDN", event, duration, status, bytes)
+                    },
+                    File(context.applicationContext.cacheDir, "kxg_encrypted_stream_cache_v2"),
+                ).also { streamRegistry = it }
             }
         }
     }
@@ -90,14 +95,30 @@ internal object KxgPlaybackStreams {
         streamRegistry?.forget(uri)
     }
 
+    /** Runtime resizing applies to active and upcoming encrypted disk prefixes. */
+    fun configureCache(context: Context, perVideoMb: Int, totalMb: Int) {
+        registry(context.applicationContext).configureCache(perVideoMb, totalMb)
+        diagnostics?.record("CACHE", "DISK_LIMIT_MB", bytes = totalMb)
+        diagnostics?.record("CACHE", "PER_VIDEO_MB", bytes = perVideoMb)
+    }
+
+    private fun active(uri: String) {
+        streamRegistry?.markActive(uri)
+    }
+
     suspend fun resolve(
         context: Context,
         sdk: OpenHongguoSource,
         episodeId: String,
         qualityLimit: Int,
     ): Prepared {
-        takePrefetched(episodeId, qualityLimit)?.let { return it }
-        return resolveFresh(context, sdk, episodeId, qualityLimit)
+        takePrefetched(episodeId, qualityLimit)?.let {
+            active(it.uri)
+            return it
+        }
+        return resolveFresh(context, sdk, episodeId, qualityLimit).also {
+            active(it.uri)
+        }
     }
 
     /**
@@ -110,54 +131,73 @@ internal object KxgPlaybackStreams {
         sdk: OpenHongguoSource,
         episodeId: String,
         qualityLimit: Int,
+        targetMegabytes: Int = KxgWarmupPolicy.DEFAULT_PREFIX_MB,
+        deadlineSeconds: Int = KxgWarmupPolicy.DEFAULT_DEADLINE_SECONDS,
+        shouldContinue: () -> Boolean = { true },
     ): Boolean {
+        require(KxgWarmupPolicy.validPrefixMb(targetMegabytes))
+        require(KxgWarmupPolicy.validDeadlineSeconds(deadlineSeconds))
         val key = cacheKey(episodeId, qualityLimit)
         val now = System.currentTimeMillis()
-        val generation = synchronized(preloadLock) {
-            if (prefetched[key]?.let { KxgWarmupPolicy.reusable(it.validUntilMs, now) } == true)
-                return true
-            preloadGeneration
+        val generation = synchronized(preloadLock) { preloadGeneration }
+        val existing = synchronized(preloadLock) {
+            prefetched[key]?.takeIf {
+                KxgWarmupPolicy.reusable(it.validUntilMs, now) &&
+                    streamRegistry?.get(it.uri) != null
+            }
         }
-        val prepared = resolveFresh(context, sdk, episodeId, qualityLimit)
+        val prepared = existing ?: resolveFresh(context, sdk, episodeId, qualityLimit)
         if (!KxgWarmupPolicy.reusable(prepared.validUntilMs, System.currentTimeMillis())) {
-            forget(prepared.uri)
+            if (existing == null) forget(prepared.uri)
             diagnostics?.record("PRELOAD", "MODEL_TOO_CLOSE_TO_EXPIRY")
             return false
         }
-        val evicted = synchronized(preloadLock) {
-            if (generation != preloadGeneration) null else {
-                val previous = prefetched.put(key, prepared)
-                buildList<Prepared> {
-                    if (previous != null) add(previous)
-                    while (prefetched.size > KxgWarmupPolicy.MAX_CACHED_MODELS) {
-                        val oldestKey = prefetched.keys.first()
-                        add(checkNotNull(prefetched.remove(oldestKey)))
+        if (existing == null) {
+            val evicted = synchronized(preloadLock) {
+                if (generation != preloadGeneration) null else {
+                    val previous = prefetched.put(key, prepared)
+                    buildList<Prepared> {
+                        if (previous != null) add(previous)
+                        while (prefetched.size > KxgWarmupPolicy.MAX_CACHED_MODELS) {
+                            val oldestKey = prefetched.keys.first()
+                            add(checkNotNull(prefetched.remove(oldestKey)))
+                        }
                     }
                 }
             }
+            if (evicted == null) {
+                forget(prepared.uri)
+                diagnostics?.record("PRELOAD", "STALE_SESSION_DISCARDED")
+                return false
+            }
+            evicted.forEach { forget(it.uri) }
+            diagnostics?.record("PRELOAD", "MODEL_READY")
+        } else {
+            diagnostics?.record("PRELOAD", "MODEL_REUSED_FOR_MORE_BYTES")
         }
-        if (evicted == null) {
-            forget(prepared.uri)
-            diagnostics?.record("PRELOAD", "STALE_SESSION_DISCARDED")
-            return false
-        }
-        evicted.forEach { forget(it.uri) }
-        diagnostics?.record("PRELOAD", "MODEL_READY")
-        // Connection timeout or cancellation must never block a foreground swap.
+        // Keep a bounded single-file download worker. The same source can be
+        // claimed by foreground at any time; completed ciphertext remains.
         try {
-            withTimeout(KxgWarmupPolicy.WARMUP_DEADLINE_MS) {
+            withTimeout(deadlineSeconds * 1000L) {
                 runInterruptible(Dispatchers.IO) {
                     registry(context.applicationContext)[prepared.uri]
-                        ?.warmEncryptedPrefix()
+                        ?.warmEncryptedPrefix(
+                            bytes = targetMegabytes * KxgWarmupPolicy.MIB,
+                            shouldContinue = {
+                                shouldContinue() &&
+                                    KxgWarmupPolicy.reusable(
+                                        prepared.validUntilMs, System.currentTimeMillis())
+                            },
+                        )
                 }
             }
-        } catch (e: TimeoutCancellationException) {
+        } catch (_: TimeoutCancellationException) {
             diagnostics?.record("PRELOAD", "PREFIX_DEADLINE")
-        } catch (e: CancellationException) {
+        } catch (cancel: CancellationException) {
             diagnostics?.record("PRELOAD", "CANCELLED")
-            throw e
-        } catch (e: Exception) {
-            diagnostics?.record("PRELOAD", "PREFIX_UNAVAILABLE")
+            throw cancel
+        } catch (_: Exception) {
+            diagnostics?.record("PRELOAD", "PREFIX_PARTIAL_UNAVAILABLE")
         }
         return true
     }

@@ -199,6 +199,14 @@ data class AppState(
     val nextVideoPreloadEnabled: Boolean = true,
     /** Prevent speculative mobile data usage by default. */
     val nextVideoPreloadWifiOnly: Boolean = true,
+    /** Per episode, in MiB, stored as encrypted disk bytes. */
+    val videoCachePerEpisodeMb: Int = 32,
+    /** LRU budget for all encrypted session video prefixes, MiB. */
+    val videoCacheTotalMb: Int = 1024,
+    /** How many nearby episode / reel sources to warm ahead. */
+    val videoPreloadCount: Int = 2,
+    val videoPreloadBufferSeconds: Int = 6,
+    val videoPreloadDeadlineSeconds: Int = 120,
     val downloadTasks: List<DownloadTask> = emptyList(),
     val offlineEpisodes: List<OfflineEpisode> = emptyList(),
     val offlinePlaybackUri: String? = null,

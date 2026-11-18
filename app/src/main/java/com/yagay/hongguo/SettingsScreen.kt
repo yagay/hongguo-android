@@ -226,7 +226,7 @@ internal fun SettingsScreen(state: AppState, model: DramaViewModel) {
                 CompactSettingsSection("视频读取") {
                     SettingToggle(
                         "预加载下一集／下一部",
-                        "当前视频缓冲充足时提前取址并预热最多 1 MiB 加密视频",
+                        "提前缓存相邻视频，已完成的分块不必等整集下载完即可播放",
                         state.nextVideoPreloadEnabled,
                         model::setNextVideoPreloadEnabled,
                         "settings_next_video_preload",
@@ -234,18 +234,58 @@ internal fun SettingsScreen(state: AppState, model: DramaViewModel) {
                     CompactSettingsDivider()
                     SettingToggle(
                         "仅在 Wi-Fi／非计费网络预加载",
-                        "关闭后允许移动数据预加载；不限制正常视频播放",
+                        "关闭后也可使用移动数据，较大缓存可能产生明显流量",
                         state.nextVideoPreloadWifiOnly,
                         model::setNextVideoPreloadWifiOnly,
                         "settings_preload_wifi_only",
                     )
                     CompactSettingsDivider()
+                    CompactSettingsRow(
+                        title = "每集缓存上限",
+                        value = "${state.videoCachePerEpisodeMb} MiB",
+                        subtitle = "可选 4–512 MiB，使用磁盘，不会整集占用内存",
+                        tag = "settings_video_cache_per_episode",
+                        onClick = { choiceSheet = "video_cache_per_episode" },
+                    )
+                    CompactSettingsDivider()
+                    CompactSettingsRow(
+                        title = "缓存总空间",
+                        value = "${state.videoCacheTotalMb} MiB",
+                        subtitle = "所有视频共享的 LRU 空间，可选最大 4 GiB",
+                        tag = "settings_video_cache_total",
+                        onClick = { choiceSheet = "video_cache_total" },
+                    )
+                    CompactSettingsDivider()
+                    CompactSettingsRow(
+                        title = "提前预加载数量",
+                        value = "${state.videoPreloadCount} 部／集",
+                        subtitle = "按播放顺序准备接下来的视频，不同时下载",
+                        tag = "settings_video_preload_count",
+                        onClick = { choiceSheet = "video_preload_count" },
+                    )
+                    CompactSettingsDivider()
+                    CompactSettingsRow(
+                        title = "预加载启动缓冲",
+                        value = "${state.videoPreloadBufferSeconds} 秒",
+                        subtitle = "当前视频已缓冲多少秒后，才允许后台预加载",
+                        tag = "settings_video_preload_buffer",
+                        onClick = { choiceSheet = "video_preload_buffer" },
+                    )
+                    CompactSettingsDivider()
+                    CompactSettingsRow(
+                        title = "每部预加载最长时间",
+                        value = "${state.videoPreloadDeadlineSeconds} 秒",
+                        subtitle = "可选最长 10 分钟；网络较慢时保留已下载部分",
+                        tag = "settings_video_preload_deadline",
+                        onClick = { choiceSheet = "video_preload_deadline" },
+                    )
+                    CompactSettingsDivider()
                     Text(
-                        "Media3 继续使用单播放器；只缓存少量下一集播放模型、索引及加密视频开头，不保存解密后的视频。",
+                        "当前视频和预加载视频会共享加密磁盘缓存；缓冲变慢时让前台播放优先，缓存不必完整即可读取。",
                         color = HongguoColors.muted, fontSize = 12.sp,
                     )
                     Text(
-                        "不使用磁盘视频缓存。旧视频缓存自动清理，收藏、历史及手动下载的离线文件不受影响。",
+                        "缓存位于应用临时目录，重启应用后重新建立；不保存签名 URL、密钥或解密视频。系统清理缓存也可能释放文件。",
                         color = HongguoColors.muted, fontSize = 11.sp,
                     )
                 }
@@ -395,6 +435,18 @@ internal fun SettingsScreen(state: AppState, model: DramaViewModel) {
                 "warm" to "暖白精修", "immersive" to "沉浸暗场",
                 "cards" to "内容卡片",
             )
+            "video_cache_per_episode" -> listOf(4, 8, 16, 32, 64, 128, 256, 512)
+                .map { it.toString() to "$it MiB" }
+            "video_cache_total" -> listOf(256, 512, 1024, 2048, 4096)
+                .map { it.toString() to if (it >= 1024)
+                    "${it / 1024} GiB" else "$it MiB" }
+            "video_preload_count" -> listOf(1, 2, 3, 5)
+                .map { it.toString() to "$it 部／集" }
+            "video_preload_buffer" -> listOf(0, 3, 6, 12, 20, 30)
+                .map { it.toString() to "$it 秒" }
+            "video_preload_deadline" -> listOf(30, 60, 120, 300, 600)
+                .map { it.toString() to if (it >= 60)
+                    "${it / 60} 分钟" else "$it 秒" }
             else -> listOf(
                 "light" to "白天模式", "dark" to "夜间模式",
                 "system" to "跟随系统",
@@ -402,11 +454,21 @@ internal fun SettingsScreen(state: AppState, model: DramaViewModel) {
         }
         val selected = when (choice) {
             "theme_style" -> state.themeStyle
+            "video_cache_per_episode" -> state.videoCachePerEpisodeMb.toString()
+            "video_cache_total" -> state.videoCacheTotalMb.toString()
+            "video_preload_count" -> state.videoPreloadCount.toString()
+            "video_preload_buffer" -> state.videoPreloadBufferSeconds.toString()
+            "video_preload_deadline" -> state.videoPreloadDeadlineSeconds.toString()
             else -> state.themeMode
         }
         SettingsChoiceSheet(
             title = when (choice) {
                 "theme_style" -> "主题样式"
+                "video_cache_per_episode" -> "每集缓存上限"
+                "video_cache_total" -> "缓存总空间"
+                "video_preload_count" -> "预加载数量"
+                "video_preload_buffer" -> "预加载启动缓冲"
+                "video_preload_deadline" -> "每部最长预加载时间"
                 else -> "显示模式"
             },
             options = options,
@@ -415,6 +477,11 @@ internal fun SettingsScreen(state: AppState, model: DramaViewModel) {
             onSelect = {
                 when (choice) {
                     "theme_style" -> model.setThemeStyle(it)
+                    "video_cache_per_episode" -> it.toIntOrNull()?.let(model::setVideoCachePerEpisodeMb)
+                    "video_cache_total" -> it.toIntOrNull()?.let(model::setVideoCacheTotalMb)
+                    "video_preload_count" -> it.toIntOrNull()?.let(model::setVideoPreloadCount)
+                    "video_preload_buffer" -> it.toIntOrNull()?.let(model::setVideoPreloadBufferSeconds)
+                    "video_preload_deadline" -> it.toIntOrNull()?.let(model::setVideoPreloadDeadlineSeconds)
                     else -> model.setThemeMode(it)
                 }
                 choiceSheet = null
