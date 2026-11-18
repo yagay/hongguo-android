@@ -2,6 +2,9 @@ package com.yagay.hongguo
 
 import android.app.Application
 import android.net.Uri
+import android.net.ConnectivityManager
+import android.net.NetworkCapabilities
+import android.content.Context
 import android.content.Intent
 import android.os.Build
 import android.Manifest
@@ -176,6 +179,26 @@ class DramaViewModel(application: Application) : AndroidViewModel(application) {
     fun restoreHiddenRecommendations() {
         prefs.edit().remove("hidden_recommendations_v1").apply()
         mutable.update { it.copy(hiddenRecommendationIds = emptySet()) }
+    }
+
+    fun setNextVideoPreloadEnabled(enabled: Boolean) {
+        prefs.edit().putBoolean("next_video_preload_enabled", enabled).apply()
+        mutable.update { it.copy(nextVideoPreloadEnabled = enabled) }
+        if (!enabled) {
+            stopVideoWarmup()
+            KxgPlaybackStreams.clearPrefetched()
+        } else {
+            firstFrameFor?.let(::scheduleNextVideoWarmup)
+        }
+    }
+
+    fun setNextVideoPreloadWifiOnly(enabled: Boolean) {
+        prefs.edit().putBoolean("next_video_preload_wifi_only", enabled).apply()
+        mutable.update { it.copy(nextVideoPreloadWifiOnly = enabled) }
+        stopVideoWarmup()
+        KxgPlaybackStreams.clearPrefetched()
+        if (state.value.nextVideoPreloadEnabled)
+            firstFrameFor?.let(::scheduleNextVideoWarmup)
     }
 
     fun setAutoPlayNext(enabled: Boolean) {
@@ -1174,8 +1197,9 @@ class DramaViewModel(application: Application) : AndroidViewModel(application) {
     private fun scheduleNextVideoWarmup(expectedVid: String) {
         val s = state.value
         val detail = s.detail ?: return
-        if (s.offlinePlaybackUri != null || s.backend.isNotBlank() ||
-            s.playbackError != null || detail.episodes.getOrNull(s.episodeIndex)?.vid != expectedVid)
+        if (!s.nextVideoPreloadEnabled || s.offlinePlaybackUri != null ||
+            s.backend.isNotBlank() || s.playbackError != null ||
+            detail.episodes.getOrNull(s.episodeIndex)?.vid != expectedVid)
             return
         val nextDrama = if (s.feedMode ||
             s.episodeIndex == detail.episodes.lastIndex) {
@@ -1187,6 +1211,18 @@ class DramaViewModel(application: Application) : AndroidViewModel(application) {
             s.episodeIndex < detail.episodes.lastIndex)
             detail.episodes.getOrNull(s.episodeIndex + 1) else null
         if (nextDrama == null && nextEpisode == null) return
+        if (s.nextVideoPreloadWifiOnly) {
+            val connectivity = getApplication<Application>()
+                .getSystemService(Context.CONNECTIVITY_SERVICE) as? ConnectivityManager
+            val active = connectivity?.activeNetwork
+            val capabilities = if (connectivity != null && active != null)
+                connectivity.getNetworkCapabilities(active) else null
+            if (capabilities?.hasCapability(
+                    NetworkCapabilities.NET_CAPABILITY_NOT_METERED) != true) {
+                diagnostics.record("PRELOAD", "METERED_NETWORK_SKIPPED")
+                return
+            }
+        }
         val target = if (nextDrama != null) "drama:" + nextDrama.id
             else "episode:" + nextEpisode!!.vid
         val key = expectedVid + ":" + target + ":" + s.qualityLimit
@@ -1202,6 +1238,7 @@ class DramaViewModel(application: Application) : AndroidViewModel(application) {
                 val latest = state.value
                 if (latest.detail?.episodes?.getOrNull(latest.episodeIndex)?.vid != expectedVid ||
                     latest.playbackError != null || latest.qualityLimit != s.qualityLimit ||
+                    !latest.nextVideoPreloadEnabled ||
                     latest.backend.isNotBlank() || latest.offlinePlaybackUri != null)
                     return@launch
                 val player = BackgroundPlaybackService.playerFlow.value
@@ -1277,6 +1314,8 @@ class DramaViewModel(application: Application) : AndroidViewModel(application) {
             skipIntroSeconds = prefs.getInt("skip_intro_seconds", 0).coerceIn(0, 120),
             skipOutroSeconds = prefs.getInt("skip_outro_seconds", 0).coerceIn(0, 120),
             retryPlaybackAutomatically = prefs.getBoolean("playback_auto_retry", true),
+            nextVideoPreloadEnabled = prefs.getBoolean("next_video_preload_enabled", true),
+            nextVideoPreloadWifiOnly = prefs.getBoolean("next_video_preload_wifi_only", true),
             recentSearches = localContent.recentQueries(),
             defaultPlaybackSpeed = prefs.getFloat("default_playback_speed", 1f).coerceIn(0.75f, 3f),
             videoBrightnessPercent = prefs.getInt("video_brightness_percent", -1)

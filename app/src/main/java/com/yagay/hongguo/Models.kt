@@ -195,6 +195,10 @@ data class AppState(
     val skipIntroSeconds: Int = 0,
     val skipOutroSeconds: Int = 0,
     val retryPlaybackAutomatically: Boolean = true,
+    /** Only one low-priority prefetch job, for the next episode or reel. */
+    val nextVideoPreloadEnabled: Boolean = true,
+    /** Prevent speculative mobile data usage by default. */
+    val nextVideoPreloadWifiOnly: Boolean = true,
     val downloadTasks: List<DownloadTask> = emptyList(),
     val offlineEpisodes: List<OfflineEpisode> = emptyList(),
     val offlinePlaybackUri: String? = null,

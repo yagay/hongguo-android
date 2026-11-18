@@ -224,12 +224,28 @@ internal fun SettingsScreen(state: AppState, model: DramaViewModel) {
             }
             item {
                 CompactSettingsSection("视频读取") {
+                    SettingToggle(
+                        "预加载下一集／下一部",
+                        "当前视频缓冲充足时提前取址并预热最多 1 MiB 加密视频",
+                        state.nextVideoPreloadEnabled,
+                        model::setNextVideoPreloadEnabled,
+                        "settings_next_video_preload",
+                    )
+                    CompactSettingsDivider()
+                    SettingToggle(
+                        "仅在 Wi-Fi／非计费网络预加载",
+                        "关闭后允许移动数据预加载；不限制正常视频播放",
+                        state.nextVideoPreloadWifiOnly,
+                        model::setNextVideoPreloadWifiOnly,
+                        "settings_preload_wifi_only",
+                    )
+                    CompactSettingsDivider()
                     Text(
-                        "开心果原生模式：直接分段读取 MP4 并在 Media3 内解密播放；不再缓存视频文件到磁盘，也不使用旧版预加载队列。",
+                        "Media3 继续使用单播放器；只缓存少量下一集播放模型、索引及加密视频开头，不保存解密后的视频。",
                         color = HongguoColors.muted, fontSize = 12.sp,
                     )
                     Text(
-                        "升级后自动清理旧视频缓存；收藏、观看历史和手动下载的离线文件不受影响。",
+                        "不使用磁盘视频缓存。旧视频缓存自动清理，收藏、历史及手动下载的离线文件不受影响。",
                         color = HongguoColors.muted, fontSize = 11.sp,
                     )
                 }
