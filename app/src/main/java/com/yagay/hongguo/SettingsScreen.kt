@@ -280,12 +280,29 @@ internal fun SettingsScreen(state: AppState, model: DramaViewModel) {
                         onClick = { choiceSheet = "video_preload_deadline" },
                     )
                     CompactSettingsDivider()
+                    CompactSettingsRow(
+                        title = "查看当前缓存用量",
+                        subtitle = "刷新本次会话实际存储的媒体字节数",
+                        tag = "settings_video_cache_usage",
+                        onClick = model::inspectVideoCache,
+                    )
+                    CompactSettingsDivider()
+                    CompactSettingsRow(
+                        title = "清理其它视频缓存",
+                        subtitle = "保留正在播放的缓存，删除其它已下载数据",
+                        tag = "settings_video_cache_clear_others",
+                        onClick = model::clearOtherVideoCache,
+                    )
+                    state.settingsMessage?.takeIf { it.startsWith("缓存") }?.let {
+                        Text(it, color = HongguoColors.accent, fontSize = 11.sp)
+                    }
+                    CompactSettingsDivider()
                     Text(
-                        "当前视频和预加载视频会共享加密磁盘缓存；缓冲变慢时让前台播放优先，缓存不必完整即可读取。",
+                        "视频按块缓存原始网络字节；加密视频在解密前保存，缓冲变慢时让正在播放的视频优先，缓存不必完整即可读取。",
                         color = HongguoColors.muted, fontSize = 12.sp,
                     )
                     Text(
-                        "缓存位于应用临时目录，重启应用后重新建立；不保存签名 URL、密钥或解密视频。系统清理缓存也可能释放文件。",
+                        "缓存位于应用临时目录，重启应用后重新建立；不会将播放密钥或签名 URL 存盘。系统清理缓存也可能释放文件。",
                         color = HongguoColors.muted, fontSize = 11.sp,
                     )
                 }

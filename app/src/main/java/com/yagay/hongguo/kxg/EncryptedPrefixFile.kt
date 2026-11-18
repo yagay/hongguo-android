@@ -41,6 +41,10 @@ internal class EncryptedPrefixFile(private val file: File) {
         val add = minOf(count - overlap, limit - publishedBytes)
         if (add <= 0) return 0
         val writer = writer()
+        // Even a user-selected 4 GiB budget must not exhaust the phone's
+        // storage. Leave at least 256 MiB free and fail open to CDN streaming.
+        if (publishedBytes % (4 * KxgWarmupPolicy.MIB) == 0 &&
+            file.usableSpace < 256L * KxgWarmupPolicy.MIB) return 0
         writer.seek(publishedBytes.toLong())
         writer.write(data, offset + overlap, add)
         publishedBytes += add

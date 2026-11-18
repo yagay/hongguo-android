@@ -225,6 +225,20 @@ class DramaViewModel(application: Application) : AndroidViewModel(application) {
         applyVideoCacheSettings()
     }
 
+    fun inspectVideoCache() {
+        val bytes = KxgPlaybackStreams.currentCacheBytes()
+        val mib = bytes / KxgWarmupPolicy.MIB
+        mutable.update { it.copy(settingsMessage = "缓存占用：${mib} MiB（本次应用会话）") }
+        diagnostics.record("CACHE", "USER_INSPECT_MIB",
+            bytes = mib.coerceAtMost(Int.MAX_VALUE.toLong()).toInt())
+    }
+
+    fun clearOtherVideoCache() {
+        stopVideoWarmup()
+        KxgPlaybackStreams.clearOtherVideoCache()
+        mutable.update { it.copy(settingsMessage = "缓存已清理：保留当前播放视频的数据") }
+    }
+
     fun setVideoPreloadCount(value: Int) {
         if (!KxgWarmupPolicy.validPreloadCount(value)) return
         prefs.edit().putInt("video_preload_count", value).apply()
@@ -3071,7 +3085,8 @@ class DramaViewModel(application: Application) : AndroidViewModel(application) {
                                 val resolveStarted = System.nanoTime()
                                 prepared = withTimeoutOrNull(40_000L) {
                                     com.yagay.hongguo.kxg.KxgPlaybackStreams.resolve(
-                                        getApplication(), openHongguo, vid, quality)
+                                        getApplication(), openHongguo, vid, quality,
+                                        forceRefresh = networkResumeMs != null)
                                 } ?: throw java.net.SocketTimeoutException("视频模型请求超时")
                                 diagnostics.record("PLAYBACK", "KXG_STREAM_ACQUIRED",
                                     elapsed(resolveStarted))

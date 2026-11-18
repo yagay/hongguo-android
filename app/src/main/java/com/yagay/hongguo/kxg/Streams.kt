@@ -52,6 +52,18 @@ class StreamRegistry(
     private fun itemLimitBytes(): Int =
         KxgWarmupPolicy.effectivePrefixBytes(perVideoMb, totalCacheMb)
 
+    @Synchronized
+    fun cachedBytes(): Long = streams.values.sumOf { it.warmBytes().toLong() }
+
+    /** Explicit cleanup retains the actively playing video's local prefix. */
+    @Synchronized
+    fun clearOtherCachedBytes() {
+        for ((uri, source) in streams) {
+            if (uri != activeUri) source.evictCachedBytes()
+        }
+        record("CACHE_MANUAL_CLEANUP")
+    }
+
     /** Evict least-recent old prefixes; keep the active source if possible. */
     @Synchronized
     fun trimCache() {

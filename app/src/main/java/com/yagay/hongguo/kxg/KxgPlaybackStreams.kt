@@ -29,7 +29,36 @@ internal object KxgPlaybackStreams {
     )
     private val preloadLock = Any()
     private val prefetched = LinkedHashMap<String, Prepared>()
+    /** Recent source handoff keeps partially/fully downloaded bytes useful
+     * when the user swipes backward. Signed expiry still applies. */
+    private val recentPlayed = LinkedHashMap<String, Prepared>()
     private var preloadGeneration = 0L
+
+    private fun rememberPlayed(prepared: Prepared) = synchronized(preloadLock) {
+        val key = cacheKey(prepared.episodeId, prepared.quality)
+        recentPlayed.remove(key)
+        recentPlayed[key] = prepared
+        while (recentPlayed.size > 8)
+            recentPlayed.remove(recentPlayed.keys.first())
+    }
+
+    private fun recentSource(episodeId: String, quality: Int): Prepared? {
+        val key = cacheKey(episodeId, quality)
+        val found = synchronized(preloadLock) { recentPlayed[key] } ?: return null
+        val current = KxgWarmupPolicy.reusable(
+            found.validUntilMs, System.currentTimeMillis()) &&
+            streamRegistry?.get(found.uri) != null
+        if (!current) {
+            synchronized(preloadLock) { recentPlayed.remove(key) }
+            return null
+        }
+        synchronized(preloadLock) {
+            recentPlayed.remove(key)
+            recentPlayed[key] = found
+        }
+        diagnostics?.record("CACHE", "RECENT_VIDEO_MODEL_HIT")
+        return found
+    }
     private fun cacheKey(episodeId: String, quality: Int) = "$episodeId:$quality"
 
     private fun takePrefetched(episodeId: String, quality: Int): Prepared? {
@@ -106,17 +135,36 @@ internal object KxgPlaybackStreams {
         streamRegistry?.markActive(uri)
     }
 
+    fun currentCacheBytes(): Long = streamRegistry?.cachedBytes() ?: 0L
+
+    /** User action: reclaim the other videos, keep foreground cache usable. */
+    fun clearOtherVideoCache() {
+        clearPrefetched()
+        streamRegistry?.clearOtherCachedBytes()
+        diagnostics?.record("CACHE", "USER_CLEARED_OTHERS")
+    }
+
     suspend fun resolve(
         context: Context,
         sdk: OpenHongguoSource,
         episodeId: String,
         qualityLimit: Int,
+        forceRefresh: Boolean = false,
     ): Prepared {
-        takePrefetched(episodeId, qualityLimit)?.let {
-            active(it.uri)
-            return it
-        }
+        if (!forceRefresh) {
+            takePrefetched(episodeId, qualityLimit)?.let {
+                rememberPlayed(it)
+                active(it.uri)
+                return it
+            }
+            recentSource(episodeId, qualityLimit)?.let {
+                rememberPlayed(it)
+                active(it.uri)
+                return it
+            }
+        } else diagnostics?.record("CACHE", "NETWORK_FORCE_FRESH_MODEL")
         return resolveFresh(context, sdk, episodeId, qualityLimit).also {
+            rememberPlayed(it)
             active(it.uri)
         }
     }
@@ -141,7 +189,7 @@ internal object KxgPlaybackStreams {
         val now = System.currentTimeMillis()
         val generation = synchronized(preloadLock) { preloadGeneration }
         val existing = synchronized(preloadLock) {
-            prefetched[key]?.takeIf {
+            (prefetched[key] ?: recentPlayed[key])?.takeIf {
                 KxgWarmupPolicy.reusable(it.validUntilMs, now) &&
                     streamRegistry?.get(it.uri) != null
             }
