@@ -29,7 +29,9 @@ class StreamRegistry(
         val uri = "$SCHEME://episode/${UUID.randomUUID()}.mp4"
         synchronized(this) {
             streams[uri] = StreamSource(sources, key, http, ::record)
-            while (streams.size > 3) streams.remove(streams.keys.first())
+            // One active plus prefetched items; avoid evicting the active URI
+            // while one new model is still preparing.
+            while (streams.size > 5) streams.remove(streams.keys.first())
         }
         return uri
     }
@@ -65,6 +67,40 @@ class StreamSource(
     var good = 0
 
     private var file: File? = null
+    private val warmPrefix = EncryptedPrefixMemory()
+
+    /** Number of encrypted prefix bytes ready for Media3 reuse. */
+    fun warmBytes(): Int = warmPrefix.size
+
+    fun copyWarmBytes(position: Long, target: ByteArray, offset: Int, length: Int): Int =
+        warmPrefix.copy(position, target, offset, length)
+
+    /**
+     * Prepare CENC metadata then fetch bounded encrypted prefix chunks.
+     * No second player, no decrypted disk files and no effect on playback clock.
+     * A partial warmup can still be reused if the job is interrupted.
+     */
+    fun warmEncryptedPrefix(bytes: Int = KxgWarmupPolicy.PREFIX_BYTES): Int {
+        val f = prepare()
+        val target = minOf(bytes.toLong(), f.size, KxgWarmupPolicy.PREFIX_BYTES.toLong()).toInt()
+        if (target <= warmPrefix.size) return warmPrefix.size
+        val output = ByteArrayOutputStream(target)
+        val start = System.nanoTime()
+        while (output.size() < target) {
+            if (Thread.currentThread().isInterrupted)
+                throw java.io.InterruptedIOException("预加载已取消")
+            val count = minOf(KxgWarmupPolicy.CHUNK_BYTES, target - output.size())
+            val (chunk, size) = read(sources[good], output.size().toLong(), count.toLong())
+            if (size != f.size || chunk.size != count)
+                throw IOException("预加载视频分段长度不一致")
+            output.write(chunk)
+            warmPrefix.publish(output.toByteArray())
+        }
+        record("PRELOAD_PREFIX_READY",
+            (System.nanoTime() - start) / 1_000_000, null, warmPrefix.size)
+        return warmPrefix.size
+    }
+
     /** The file's size and layout, learning them the first time; it blocks, on the player's loading thread. */
     @Synchronized
     fun prepare(): File {
@@ -196,6 +232,7 @@ class CencDataSource(private val registry: StreamRegistry, private val http: Dat
     private var slowReadMs = 0L
     private var slowReadBytes = 0L
     private var reconnectOnNextRead = false
+    private var preloadHitReported = false
 
     override fun open(dataSpec: DataSpec): Long {
         spec = dataSpec
@@ -209,7 +246,10 @@ class CencDataSource(private val registry: StreamRegistry, private val http: Dat
         end = if (dataSpec.length == C.LENGTH_UNSET.toLong()) f.size else minOf(f.size, position + dataSpec.length)
         source = s.good
         tries = 0
-        if (position < end) connect()
+        preloadHitReported = false
+        connectionEnd = position
+        // Defer network open until no prefetched encrypted bytes are available.
+        // This also avoids seeking the original connection from offset zero.
         opened = true
         transferStarted(dataSpec)
         return end - position
@@ -219,6 +259,21 @@ class CencDataSource(private val registry: StreamRegistry, private val http: Dat
         if (length == 0) return 0
         if (position >= end) return C.RESULT_END_OF_INPUT
         val want = minOf(length.toLong(), end - position).toInt()
+        // Prefetched bytes are raw CENC bytes; decrypt exactly once here,
+        // using the same absolute MP4 offsets as the network range path.
+        if (upstream == null) {
+            val hit = stream?.copyWarmBytes(position, buffer, offset, want) ?: 0
+            if (hit > 0) {
+                layout?.decrypt(buffer, offset, hit, position)
+                position += hit
+                if (!preloadHitReported) {
+                    preloadHitReported = true
+                    stream?.record("PRELOAD_MEMORY_HIT", bytes = hit)
+                }
+                bytesTransferred(hit)
+                return hit
+            }
+        }
         while (true) {
             if (reconnectOnNextRead) {
                 reconnectOnNextRead = false

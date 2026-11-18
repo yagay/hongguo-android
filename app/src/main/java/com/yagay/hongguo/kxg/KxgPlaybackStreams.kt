@@ -7,6 +7,10 @@ import com.yagay.hongguo.OpenHongguoSource
 import com.yagay.hongguo.DiagnosticLog
 import dev.openhongguo.Stream
 import kotlinx.coroutines.Dispatchers
+import kotlinx.coroutines.CancellationException
+import kotlinx.coroutines.TimeoutCancellationException
+import kotlinx.coroutines.runInterruptible
+import kotlinx.coroutines.withTimeout
 import kotlinx.coroutines.withContext
 import java.io.IOException
 
@@ -18,7 +22,38 @@ import java.io.IOException
  * Based on kadaliao/kaixinguo-android (MIT); see THIRD_PARTY.md.
  */
 internal object KxgPlaybackStreams {
-    data class Prepared(val uri: String, val episodeId: String, val quality: Int)
+    data class Prepared(
+        val uri: String, val episodeId: String, val quality: Int,
+        val validUntilMs: Long = 0L,
+    )
+    private val preloadLock = Any()
+    private val prefetched = LinkedHashMap<String, Prepared>()
+    private var preloadGeneration = 0L
+    private fun cacheKey(episodeId: String, quality: Int) = "$episodeId:$quality"
+
+    private fun takePrefetched(episodeId: String, quality: Int): Prepared? {
+        val key = cacheKey(episodeId, quality)
+        val cached = synchronized(preloadLock) { prefetched.remove(key) } ?: return null
+        val now = System.currentTimeMillis()
+        return if (KxgWarmupPolicy.reusable(cached.validUntilMs, now) &&
+            streamRegistry?.get(cached.uri) != null) {
+            diagnostics?.record("PRELOAD", "MODEL_HIT")
+            cached
+        } else {
+            forget(cached.uri)
+            diagnostics?.record("PRELOAD", "MODEL_EXPIRED")
+            null
+        }
+    }
+
+    /** Discard only unclaimed future models, never the current player's source. */
+    fun clearPrefetched() {
+        val stale = synchronized(preloadLock) {
+            preloadGeneration++
+            prefetched.values.toList().also { prefetched.clear() }
+        }
+        stale.forEach { forget(it.uri) }
+    }
 
     @Volatile private var streamRegistry: StreamRegistry? = null
     @Volatile private var networkFactory: DataSource.Factory? = null
@@ -60,6 +95,78 @@ internal object KxgPlaybackStreams {
         sdk: OpenHongguoSource,
         episodeId: String,
         qualityLimit: Int,
+    ): Prepared {
+        takePrefetched(episodeId, qualityLimit)?.let { return it }
+        return resolveFresh(context, sdk, episodeId, qualityLimit)
+    }
+
+    /**
+     * Foreground never waits for an in-flight speculative fetch; only completed
+     * models are reusable. Publish the model before warming video bytes so an
+     * early swipe can already reuse it.
+     */
+    suspend fun prefetch(
+        context: Context,
+        sdk: OpenHongguoSource,
+        episodeId: String,
+        qualityLimit: Int,
+    ): Boolean {
+        val key = cacheKey(episodeId, qualityLimit)
+        val now = System.currentTimeMillis()
+        val generation = synchronized(preloadLock) {
+            if (prefetched[key]?.let { KxgWarmupPolicy.reusable(it.validUntilMs, now) } == true)
+                return true
+            preloadGeneration
+        }
+        val prepared = resolveFresh(context, sdk, episodeId, qualityLimit)
+        if (!KxgWarmupPolicy.reusable(prepared.validUntilMs, System.currentTimeMillis())) {
+            forget(prepared.uri)
+            diagnostics?.record("PRELOAD", "MODEL_TOO_CLOSE_TO_EXPIRY")
+            return false
+        }
+        val evicted = synchronized(preloadLock) {
+            if (generation != preloadGeneration) null else {
+                val previous = prefetched.put(key, prepared)
+                buildList {
+                    if (previous != null) add(previous)
+                    while (prefetched.size > KxgWarmupPolicy.MAX_CACHED_MODELS) {
+                        val oldestKey = prefetched.keys.first()
+                        add(checkNotNull(prefetched.remove(oldestKey)))
+                    }
+                }
+            }
+        }
+        if (evicted == null) {
+            forget(prepared.uri)
+            diagnostics?.record("PRELOAD", "STALE_SESSION_DISCARDED")
+            return false
+        }
+        evicted.forEach { forget(it.uri) }
+        diagnostics?.record("PRELOAD", "MODEL_READY")
+        // Connection timeout or cancellation must never block a foreground swap.
+        try {
+            withTimeout(KxgWarmupPolicy.WARMUP_DEADLINE_MS) {
+                runInterruptible(Dispatchers.IO) {
+                    registry(context.applicationContext)[prepared.uri]
+                        ?.warmEncryptedPrefix()
+                }
+            }
+        } catch (e: TimeoutCancellationException) {
+            diagnostics?.record("PRELOAD", "PREFIX_DEADLINE")
+        } catch (e: CancellationException) {
+            diagnostics?.record("PRELOAD", "CANCELLED")
+            throw e
+        } catch (e: Exception) {
+            diagnostics?.record("PRELOAD", "PREFIX_UNAVAILABLE")
+        }
+        return true
+    }
+
+    private suspend fun resolveFresh(
+        context: Context,
+        sdk: OpenHongguoSource,
+        episodeId: String,
+        qualityLimit: Int,
     ): Prepared = withContext(Dispatchers.IO) {
         val resolved = sdk.playbackModel(episodeId)
         val playback = resolved.playback
@@ -95,7 +202,9 @@ internal object KxgPlaybackStreams {
         val streams = registry(context.applicationContext)
         val uri = streams.register(urls, key)
         streams.record("SOURCE_REGISTERED_${urls.size}_HOSTS")
-        Prepared(uri, episodeId, qualityLimit)
+        val validUntil = KxgWarmupPolicy.cacheValidUntilMs(
+            playback.expiresAt, System.currentTimeMillis())
+        Prepared(uri, episodeId, qualityLimit, validUntil)
     }
 
     private fun lines(stream: Stream): Int {

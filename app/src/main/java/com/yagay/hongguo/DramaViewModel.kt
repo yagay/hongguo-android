@@ -35,6 +35,9 @@ import kotlinx.coroutines.flow.update
 import kotlinx.coroutines.launch
 import kotlinx.coroutines.withContext
 import kotlinx.coroutines.coroutineScope
+import com.yagay.hongguo.kxg.KxgPlaybackStreams
+import com.yagay.hongguo.kxg.KxgWarmupPolicy
+import androidx.media3.common.Player
 
 class DramaViewModel(application: Application) : AndroidViewModel(application) {
     private val library = LibraryStore(application)
@@ -865,6 +868,9 @@ class DramaViewModel(application: Application) : AndroidViewModel(application) {
                             "官方暂未推荐新作品，可上滑重试" else null)
                 }
                 updateNotificationNavigation()
+                val warmState = state.value
+                warmState.detail?.episodes?.getOrNull(warmState.episodeIndex)?.vid
+                    ?.takeIf { it == firstFrameFor }?.let(::scheduleNextVideoWarmup)
                 // Do not reopen the stale batch if the provider returned
                 // only duplicates that could not enter the replacement queue.
                 if (state.value.feedItems.isNotEmpty() &&
@@ -1151,6 +1157,96 @@ class DramaViewModel(application: Application) : AndroidViewModel(application) {
 
     /** Reuse the last few series details on reverse swipes, without refetching. */
     private val visitedFeedDetails = linkedMapOf<String, DramaDetail>()
+    private var videoWarmupJob: Job? = null
+    private var videoWarmupKey: String? = null
+
+    private fun stopVideoWarmup() {
+        videoWarmupJob?.cancel()
+        videoWarmupJob = null
+        videoWarmupKey = null
+    }
+
+    /**
+     * One low-priority warmup only: the next episode or first episode of the
+     * next official reel. Never compete with startup or a buffering current
+     * video, never construct another player and never store decrypted bytes.
+     */
+    private fun scheduleNextVideoWarmup(expectedVid: String) {
+        val s = state.value
+        val detail = s.detail ?: return
+        if (s.offlinePlaybackUri != null || s.backend.isNotBlank() ||
+            s.playbackError != null || detail.episodes.getOrNull(s.episodeIndex)?.vid != expectedVid)
+            return
+        val nextDrama = if (s.feedMode ||
+            s.episodeIndex == detail.episodes.lastIndex) {
+            s.feedItems.drop(s.feedIndex + 1).firstOrNull {
+                it.id != detail.drama.id && it.id !in s.hiddenRecommendationIds
+            }
+        } else null
+        val nextEpisode = if (nextDrama == null &&
+            s.episodeIndex < detail.episodes.lastIndex)
+            detail.episodes.getOrNull(s.episodeIndex + 1) else null
+        if (nextDrama == null && nextEpisode == null) return
+        val target = if (nextDrama != null) "drama:" + nextDrama.id
+            else "episode:" + nextEpisode!!.vid
+        val key = expectedVid + ":" + target + ":" + s.qualityLimit
+        if (videoWarmupKey == key && videoWarmupJob?.isActive == true) return
+        stopVideoWarmup()
+        videoWarmupKey = key
+        videoWarmupJob = viewModelScope.launch {
+            // A rendered frame alone is insufficient. Wait for the current
+            // Media3 stream to have safe headroom before starting extra I/O.
+            var safeToPrefetch = false
+            for (attempt in 0 until 6) {
+                delay(2_000L)
+                val latest = state.value
+                if (latest.detail?.episodes?.getOrNull(latest.episodeIndex)?.vid != expectedVid ||
+                    latest.playbackError != null || latest.qualityLimit != s.qualityLimit ||
+                    latest.backend.isNotBlank() || latest.offlinePlaybackUri != null)
+                    return@launch
+                val player = BackgroundPlaybackService.playerFlow.value
+                val ahead = (player?.bufferedPosition ?: 0L) -
+                    (player?.currentPosition ?: 0L)
+                if (KxgWarmupPolicy.bufferedEnough(
+                        player?.playbackState == Player.STATE_READY,
+                        player?.isPlaying == true && player.currentMediaItem?.mediaId == expectedVid,
+                        ahead)) {
+                    safeToPrefetch = true
+                    break
+                }
+            }
+            if (!safeToPrefetch) {
+                diagnostics.record("PRELOAD", "LOW_BUFFER_SKIPPED")
+                return@launch
+            }
+            try {
+                val vid = if (nextEpisode != null) nextEpisode.vid else {
+                    val candidate = nextDrama ?: return@launch
+                    // Only the immediately adjacent recommended drama.
+                    val details = visitedFeedDetails[candidate.id]
+                        ?: withTimeout(8_000L) { kxgSource.detail(candidate.id) }
+                    if (details.episodes.isEmpty()) return@launch
+                    if (state.value.detail?.episodes
+                            ?.getOrNull(state.value.episodeIndex)?.vid != expectedVid)
+                        return@launch
+                    rememberFeedDetail(details)
+                    diagnostics.record("PRELOAD", "NEXT_DRAMA_DETAIL_READY")
+                    details.episodes.first().vid
+                }
+                if (state.value.detail?.episodes
+                        ?.getOrNull(state.value.episodeIndex)?.vid != expectedVid)
+                    return@launch
+                diagnostics.record("PRELOAD", "NEXT_MODEL_BEGIN")
+                KxgPlaybackStreams.prefetch(getApplication(), openHongguo, vid, s.qualityLimit)
+                diagnostics.record("PRELOAD", "NEXT_MODEL_DONE")
+            } catch (cancelled: CancellationException) {
+                throw cancelled
+            } catch (_: Exception) {
+                diagnostics.record("PRELOAD", "NEXT_UNAVAILABLE")
+            }
+        }
+    }
+
     private fun rememberFeedDetail(detail: DramaDetail) {
         visitedFeedDetails.remove(detail.drama.id)
         visitedFeedDetails[detail.drama.id] = detail
@@ -2192,6 +2288,8 @@ class DramaViewModel(application: Application) : AndroidViewModel(application) {
         pendingFeedAdvance = false
         clearFinaleAdvance()
         autoNextTargetDramaId = null
+        stopVideoWarmup()
+        KxgPlaybackStreams.clearPrefetched()
         visitedFeedDetails.clear()
         val feedAccount = account.recommendationAccount()
         appliedRecommendationSession = feedAccount
@@ -2747,6 +2845,9 @@ class DramaViewModel(application: Application) : AndroidViewModel(application) {
         if (finaleRecommendationRequestFor != null &&
             index != detail.episodes.lastIndex)
             cancelFinaleRecommendationWarmup()
+        // User selection takes priority over speculative CDN I/O. Completed
+        // future sources remain claimable on this swap.
+        stopVideoWarmup()
         // Notification commands run while the Activity is STOPPED. Reuse the
         // running foreground service rather than making a forbidden background
         // service start request on Android 12+.
@@ -2982,6 +3083,10 @@ class DramaViewModel(application: Application) : AndroidViewModel(application) {
 
     fun setQualityLimit(value: Int, positionMs: Long, durationMs: Long) {
         if (value !in setOf(0, 360, 480, 720, 1080)) return
+        if (state.value.qualityLimit != value) {
+            stopVideoWarmup()
+            KxgPlaybackStreams.clearPrefetched()
+        }
         prefs.edit().putInt("quality_limit", value).apply()
         val s = state.value
         val ep = s.detail?.episodes?.getOrNull(s.episodeIndex)
@@ -3027,6 +3132,7 @@ class DramaViewModel(application: Application) : AndroidViewModel(application) {
         // Allow the initial video to render before fetching more recommendations.
         // Further feed pages and stream-model requests otherwise compete for
         // startup bandwidth and the upstream registration/session lock.
+        scheduleNextVideoWarmup(expectedVid)
         if (s.feedMode && deferRestoredFeedRecommendations) {
             // The restored Media3 video should get its first frame before
             // network prefetch starts, but must NOT require a manual first
@@ -3059,6 +3165,7 @@ class DramaViewModel(application: Application) : AndroidViewModel(application) {
             diagnostics.record("REELS", "NEXT_DRAMA_BACKGROUND_CONFIRMED")
         }
         diagnostics.record("MEDIA", "BACKGROUND_PROGRESS_CONFIRMED")
+        scheduleNextVideoWarmup(expectedVid)
         library.record(s.detail.drama, ep.index)
         rememberLastPlaybackMode(s.feedMode)
         updateLibrary()
@@ -3503,6 +3610,8 @@ class DramaViewModel(application: Application) : AndroidViewModel(application) {
 
     fun closePlayer() {
         cancelNextSeasonLookup()
+        stopVideoWarmup()
+        KxgPlaybackStreams.clearPrefetched()
         BackgroundPlaybackService.stopActive("CLOSE_PLAYER")
         sdkDetailGeneration++
         sdkDetailJob?.cancel()
