@@ -1466,6 +1466,7 @@ class DramaViewModel(application: Application) : AndroidViewModel(application) {
                 .count { it.deleteRecursively() }
             diagnostics.record("PLAYBACK", "UPSTREAM_KXG_DIRECT_SOURCE")
             if (removed > 0) diagnostics.record("DISK_CACHE", "LEGACY_VIDEO_CACHE_REMOVED")
+            KxgPlaybackStreams.purgeOldSessionCache(application)
         }
         // The saved login is verified asynchronously after homepage init.
         // If account recommendations were previously opted in, a late

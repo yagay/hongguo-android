@@ -14,6 +14,7 @@ import kotlinx.coroutines.withTimeout
 import kotlinx.coroutines.withContext
 import java.io.IOException
 import java.io.File
+import java.util.UUID
 
 /**
  * The rewrite app keeps its ONE service-owned ExoPlayer. This is the original
@@ -86,6 +87,7 @@ internal object KxgPlaybackStreams {
     }
 
     @Volatile private var streamRegistry: StreamRegistry? = null
+    @Volatile private var cacheSessionRoot: File? = null
     @Volatile private var networkFactory: DataSource.Factory? = null
     @Volatile private var diagnostics: DiagnosticLog? = null
 
@@ -103,12 +105,16 @@ internal object KxgPlaybackStreams {
                     .setReadTimeoutMs(CdnStreamingPolicy.READ_TIMEOUT_MS)
                     .setAllowCrossProtocolRedirects(true)
                 networkFactory = network
+                val base = File(context.applicationContext.cacheDir,
+                    "kxg_encrypted_stream_cache_v2")
+                val session = File(base, UUID.randomUUID().toString())
+                cacheSessionRoot = session
                 StreamRegistry(
                     network,
                     { event, duration, status, bytes ->
                         diagnostics?.record("CDN", event, duration, status, bytes)
                     },
-                    File(context.applicationContext.cacheDir, "kxg_encrypted_stream_cache_v2"),
+                    session,
                 ).also { streamRegistry = it }
             }
         }
@@ -122,6 +128,22 @@ internal object KxgPlaybackStreams {
 
     fun forget(uri: String) {
         streamRegistry?.forget(uri)
+    }
+
+    /**
+     * Call from Dispatchers.IO after registry creation. A crashed or killed
+     * process leaves no key, so its old encrypted session files are unusable.
+     * Only stale siblings are removed, never the current active session.
+     */
+    fun purgeOldSessionCache(context: Context) {
+        val parent = File(context.applicationContext.cacheDir,
+            "kxg_encrypted_stream_cache_v2")
+        val current = cacheSessionRoot?.absolutePath
+        val removed = parent.listFiles()?.count { entry ->
+            entry.absolutePath != current && entry.deleteRecursively()
+        } ?: 0
+        if (removed > 0) diagnostics?.record("CACHE", "STALE_SESSIONS_REMOVED",
+            bytes = removed)
     }
 
     /** Runtime resizing applies to active and upcoming encrypted disk prefixes. */

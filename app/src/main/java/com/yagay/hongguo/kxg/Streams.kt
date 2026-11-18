@@ -27,12 +27,10 @@ class StreamRegistry(
     @Volatile private var totalCacheMb = KxgWarmupPolicy.DEFAULT_TOTAL_MB
 
     init {
-        // Session-scoped encrypted bytes: model keys and signed URLs are never
-        // persisted. Unclaimed files from a killed process must not accumulate.
-        if (cacheRoot != null) {
-            cacheRoot.deleteRecursively()
-            cacheRoot.mkdirs()
-        }
+        // Never synchronously delete potentially gigabytes of old video
+        // caches on the UI thread. Every process has its own session folder;
+        // unused folders are reclaimed asynchronously by the ViewModel.
+        cacheRoot?.mkdirs()
     }
 
     @Synchronized
