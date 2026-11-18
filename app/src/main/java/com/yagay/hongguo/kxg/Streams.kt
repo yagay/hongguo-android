@@ -143,6 +143,21 @@ private fun httpErrorCode(error: Throwable): Int? =
         .filterIsInstance<HttpDataSource.InvalidResponseCodeException>()
         .firstOrNull()?.responseCode
 
+/**
+ * Follow upstream iOS StreamLoader: a successful partial response must start at
+ * the exact byte requested, especially after a connection has been replaced.
+ * The Media3 HTTP source itself handles 200 responses that ignore Range.
+ */
+private fun matchingRange(ds: DataSource, position: Long): Boolean {
+    if (httpCode(ds) != 206) return true
+    val contentRange = ds.responseHeaders.entries
+        .firstOrNull { it.key.equals("Content-Range", ignoreCase = true) }
+        ?.value?.firstOrNull() ?: return true
+    val first = contentRange.trim().substringAfter(' ', "")
+        .substringBefore('-', "").toLongOrNull()
+    return first == position
+}
+
 /** The file's size, from the response to a range request, or to a request for the whole file. */
 private fun totalSize(headers: Map<String, List<String>>): Long? {
     fun header(name: String) = headers.entries.firstOrNull { it.key.equals(name, ignoreCase = true) }?.value?.firstOrNull()
@@ -176,7 +191,11 @@ class CencDataSource(private val registry: StreamRegistry, private val http: Dat
     private var opened = false
     private var connectionStartedAtMs = 0L
     private var connectionBytes = 0L
+    private var connectionEnd = 0L
     private var firstByteSeen = false
+    private var slowReadMs = 0L
+    private var slowReadBytes = 0L
+    private var reconnectOnNextRead = false
 
     override fun open(dataSpec: DataSpec): Long {
         spec = dataSpec
@@ -201,6 +220,17 @@ class CencDataSource(private val registry: StreamRegistry, private val http: Dat
         if (position >= end) return C.RESULT_END_OF_INPUT
         val want = minOf(length.toLong(), end - position).toInt()
         while (true) {
+            if (reconnectOnNextRead) {
+                reconnectOnNextRead = false
+                if (again()) {
+                    stream?.record("RANGE_SLOW_RECONNECT")
+                    connect() // exact byte offset; no player reset, seek or lost bytes
+                }
+            }
+            if (position >= connectionEnd && position < end) {
+                tries = 0 // next bounded chunk gets its own retry budget
+                connect()
+            }
             val started = android.os.SystemClock.elapsedRealtime()
             val n = try {
                 upstream!!.read(buffer, offset, want)
@@ -216,7 +246,12 @@ class CencDataSource(private val registry: StreamRegistry, private val http: Dat
                 continue
             }
             if (n == C.RESULT_END_OF_INPUT) {
-                // The CDN stopped short of the range; resume at exactly this byte.
+                // End of a planned chunk is not a failed download.
+                if (position >= connectionEnd && position < end) {
+                    tries = 0
+                    connect()
+                    continue
+                }
                 stream?.record("RANGE_EARLY_EOF")
                 if (!again()) throw IOException("视频下载中断")
                 connect()
@@ -234,6 +269,23 @@ class CencDataSource(private val registry: StreamRegistry, private val http: Dat
             layout?.decrypt(buffer, offset, n, position)
             position += n
             connectionBytes += n
+            if (CdnStreamingPolicy.isSlowRead(elapsed, n)) {
+                slowReadMs += elapsed
+                slowReadBytes += n
+                if (CdnStreamingPolicy.shouldReconnectSlowRange(
+                        slowReadMs, slowReadBytes, connectionEnd - position,
+                        tries, Thread.currentThread().isInterrupted)) {
+                    reconnectOnNextRead = true
+                    stream?.record("RANGE_TRICKLE_DETECTED", slowReadMs,
+                        httpCode(upstream!!),
+                        slowReadBytes.coerceAtMost(Int.MAX_VALUE.toLong()).toInt())
+                    slowReadMs = 0L
+                    slowReadBytes = 0L
+                }
+            } else if (n > 0) {
+                slowReadMs = 0L
+                slowReadBytes = 0L
+            }
             stream?.good = source
             bytesTransferred(n)
             return n
@@ -248,10 +300,21 @@ class CencDataSource(private val registry: StreamRegistry, private val http: Dat
             val ds = http.createDataSource()
             val started = android.os.SystemClock.elapsedRealtime()
             try {
-                ds.open(DataSpec.Builder().setUri(s.sources[source]).setPosition(position).setLength(end - position).build())
+                // For progressive MP4, Media3 often requests everything until EOF.
+                // Bound CDN Range requests so one throttled long response cannot
+                // hold the entire episode hostage. CENC uses absolute offsets.
+                val requestBytes = minOf(end - position, CdnStreamingPolicy.RANGE_CHUNK_BYTES)
+                ds.open(DataSpec.Builder().setUri(s.sources[source])
+                    .setPosition(position).setLength(requestBytes).build())
+                if (!matchingRange(ds, position))
+                    throw IOException("CDN 返回的分段起点不匹配")
+                connectionEnd = position + requestBytes
                 connectionStartedAtMs = started
                 connectionBytes = 0L
                 firstByteSeen = false
+                slowReadMs = 0L
+                slowReadBytes = 0L
+                reconnectOnNextRead = false
                 upstream = ds
                 s.record("RANGE_OPEN",
                     android.os.SystemClock.elapsedRealtime() - started,
@@ -291,6 +354,9 @@ class CencDataSource(private val registry: StreamRegistry, private val http: Dat
         connectionStartedAtMs = 0L
         connectionBytes = 0L
         firstByteSeen = false
+        slowReadMs = 0L
+        slowReadBytes = 0L
+        reconnectOnNextRead = false
         runCatching { ds.close() }
     }
 
