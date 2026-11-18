@@ -52,8 +52,12 @@ class StreamSource(
     val sources: List<String>,
     private val key: ByteArray?,
     private val http: DataSource.Factory,
-    private val record: (String, Long?, Int?, Int?) -> Unit,
+    private val diagnostic: (String, Long?, Int?, Int?) -> Unit,
 ) {
+    fun record(event: String, ms: Long? = null, httpStatus: Int? = null, bytes: Int? = null) {
+        diagnostic(event, ms, httpStatus, bytes)
+    }
+
     class File(val size: Long, val layout: Layout?)
 
     /** The source that answered last, which reads try first. */
