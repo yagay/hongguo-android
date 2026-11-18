@@ -127,7 +127,7 @@ internal object KxgPlaybackStreams {
         val evicted = synchronized(preloadLock) {
             if (generation != preloadGeneration) null else {
                 val previous = prefetched.put(key, prepared)
-                buildList {
+                buildList<Prepared> {
                     if (previous != null) add(previous)
                     while (prefetched.size > KxgWarmupPolicy.MAX_CACHED_MODELS) {
                         val oldestKey = prefetched.keys.first()
