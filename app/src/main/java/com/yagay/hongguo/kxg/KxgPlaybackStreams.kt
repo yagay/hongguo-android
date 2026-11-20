@@ -6,6 +6,9 @@ import androidx.media3.datasource.DefaultHttpDataSource
 import com.yagay.hongguo.OpenHongguoSource
 import com.yagay.hongguo.DiagnosticLog
 import dev.openhongguo.Stream
+import dev.openhongguo.OpenhongguoException
+import dev.openhongguo.ErrorCode
+import com.yagay.hongguo.PlaybackProblem
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.CancellationException
 import kotlinx.coroutines.TimeoutCancellationException
@@ -90,6 +93,11 @@ internal object KxgPlaybackStreams {
     @Volatile private var cacheSessionRoot: File? = null
     @Volatile private var networkFactory: DataSource.Factory? = null
     @Volatile private var diagnostics: DiagnosticLog? = null
+    // The upstream may reject anonymous video models independently of its
+    // catalog. Do not keep spending identities on speculative video models.
+    // Foreground playback always remains eligible to probe again.
+    @Volatile private var speculativeLimitedUntilMs = 0L
+    private const val SPECULATIVE_LIMIT_COOLDOWN_MS = 5 * 60_000L
 
     /** Called by the service. Logs only safe transport timings and byte counts. */
     fun attachDiagnostics(log: DiagnosticLog) {
@@ -216,6 +224,10 @@ internal object KxgPlaybackStreams {
                     streamRegistry?.get(it.uri) != null
             }
         }
+        if (existing == null && now < speculativeLimitedUntilMs) {
+            diagnostics?.record("PRELOAD", "MODEL_LIMIT_COOLDOWN")
+            return false
+        }
         val prepared = existing ?: resolveFresh(context, sdk, episodeId, qualityLimit)
         if (!KxgWarmupPolicy.reusable(prepared.validUntilMs, System.currentTimeMillis())) {
             if (existing == null) forget(prepared.uri)
@@ -278,7 +290,22 @@ internal object KxgPlaybackStreams {
         episodeId: String,
         qualityLimit: Int,
     ): Prepared = withContext(Dispatchers.IO) {
-        val resolved = sdk.playbackModel(episodeId)
+        val resolved = try {
+            sdk.playbackModel(episodeId)
+        } catch (error: OpenhongguoException) {
+            val code = PlaybackProblem.describe("获取播放模型", error)
+                .substringBefore(" · ")
+            diagnostics?.record("PLAYBACK", "SDK_MODEL_" + code)
+            if (error.code == ErrorCode.ANONYMOUS_LIMITED ||
+                error.code == ErrorCode.DEVICE_REJECTED ||
+                error.code == ErrorCode.RATE_LIMITED) {
+                speculativeLimitedUntilMs =
+                    System.currentTimeMillis() + SPECULATIVE_LIMIT_COOLDOWN_MS
+                diagnostics?.record("PRELOAD", "ANONYMOUS_MODEL_LIMIT_PAUSED")
+            }
+            throw error
+        }
+        speculativeLimitedUntilMs = 0L
         val playback = resolved.playback
         val usable = playback.streams.filter {
             it.url.startsWith("https://") && !it.hls && !it.dash
