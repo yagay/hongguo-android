@@ -32,10 +32,11 @@ internal object PlaybackSourceRecoveryPolicy {
     /** Permission/denial/rate-limit errors must not be bypassed by another source. */
     fun nativeFallback(error: Throwable): Boolean {
         val sdk = causes(error).filterIsInstance<OpenhongguoException>().firstOrNull()
-        if (sdk != null) return sdk.code in setOf(
-            ErrorCode.ANONYMOUS_LIMITED, ErrorCode.DEVICE_REJECTED,
-            ErrorCode.TRANSPORT,
-        )
+        // The SDK already exhausted its bounded device-reset budget on
+        // ANONYMOUS_LIMITED / DEVICE_REJECTED. The legacy native endpoint
+        // cannot fix an upstream V5 rejection and has returned empty models in
+        // recent real diagnostics, so do not spend extra signed requests.
+        if (sdk != null) return sdk.code == ErrorCode.TRANSPORT
         val status = httpStatus(error)
         if (status != null && status !in setOf(500, 502, 503, 504)) return false
         if (PlaybackProblem.isEmptyPlaybackModel(error) ||
