@@ -2959,7 +2959,7 @@ class DramaViewModel(application: Application) : AndroidViewModel(application) {
                     // The next media load performs the existing authenticated
                     // stream request rather than reopening a stale data source.
                     diagnostics.record("BACKGROUND", "FOREGROUND_RECONNECT")
-                    play(current.episodeIndex)
+                    playAt(current.episodeIndex, null, forceFreshModel = true)
                 }
             } finally {
                 serviceRecoveryRequested = false
@@ -2986,7 +2986,7 @@ class DramaViewModel(application: Application) : AndroidViewModel(application) {
         playAt(snapshot.episodeIndex, positionMs.coerceAtLeast(0L))
     }
 
-    private fun playAt(index: Int, networkResumeMs: Long?) {
+    private fun playAt(index: Int, networkResumeMs: Long?, forceFreshModel: Boolean = false) {
         val detail = state.value.detail ?: return
         if (index !in detail.episodes.indices) return
         if (networkResumeMs == null) cancelNextSeasonLookup()
@@ -3087,7 +3087,7 @@ class DramaViewModel(application: Application) : AndroidViewModel(application) {
                                 prepared = withTimeoutOrNull(40_000L) {
                                     com.yagay.hongguo.kxg.KxgPlaybackStreams.resolve(
                                         getApplication(), openHongguo, vid, quality,
-                                        forceRefresh = networkResumeMs != null)
+                                        forceRefresh = networkResumeMs != null || forceFreshModel)
                                 } ?: throw java.net.SocketTimeoutException("视频模型请求超时")
                                 diagnostics.record("PLAYBACK", "KXG_STREAM_ACQUIRED",
                                     elapsed(resolveStarted))
@@ -3247,7 +3247,9 @@ class DramaViewModel(application: Application) : AndroidViewModel(application) {
         diagnostics.record("PLAYBACK", "QUALITY_PREFERENCE_SET")
     }
 
-    fun retryPlayback() = play(state.value.episodeIndex)
+    // Manual retry must invalidate a failed CDN model rather than reopen a
+    // recent/preloaded signed URL, even while its nominal expiry is in the future.
+    fun retryPlayback() = playAt(state.value.episodeIndex, null, forceFreshModel = true)
 
     fun mediaError(expectedVid: String, message: String) {
         if (state.value.detail?.episodes?.getOrNull(state.value.episodeIndex)?.vid != expectedVid) return
