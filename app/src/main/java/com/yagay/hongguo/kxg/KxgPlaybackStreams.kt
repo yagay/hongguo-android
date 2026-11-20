@@ -20,11 +20,13 @@ import java.io.File
 import java.util.UUID
 
 /**
- * The rewrite app keeps its ONE service-owned ExoPlayer. This is the original
- * Kaixinguo transport/decrypting DataSource behind that player, not another
- * player instance. Only anonymous SDK playback models enter this registry.
+ * The rewrite app keeps its ONE service-owned ExoPlayer. The ONLY playback
+ * model API is official beilunyang/openhongguo 0.4.0 resolvePlayback().
+ * This file merely adapts the official CDN URLs and CENC key to Media3
+ * encrypted-range cache/decryption, not a Kaixinguo playback API or player.
  *
- * Based on kadaliao/kaixinguo-android (MIT); see THIRD_PARTY.md.
+ * Transport implementation adapted from kadaliao/kaixinguo-android (MIT);
+ * see THIRD_PARTY.md. The signed upstream model comes directly from openhongguo.
  */
 internal object KxgPlaybackStreams {
     data class Prepared(
@@ -291,7 +293,8 @@ internal object KxgPlaybackStreams {
         qualityLimit: Int,
     ): Prepared = withContext(Dispatchers.IO) {
         val resolved = try {
-            sdk.playbackModel(episodeId)
+            diagnostics?.record("PLAYBACK", "OFFICIAL_OPENHONGGUO_V5_REQUEST")
+            sdk.resolvePlayback(episodeId)
         } catch (error: OpenhongguoException) {
             val code = PlaybackProblem.describe("获取播放模型", error)
                 .substringBefore(" · ")
@@ -306,6 +309,7 @@ internal object KxgPlaybackStreams {
             throw error
         }
         speculativeLimitedUntilMs = 0L
+        diagnostics?.record("PLAYBACK", "OFFICIAL_OPENHONGGUO_MODEL_RECEIVED")
         val playback = resolved.playback
         val usable = playback.streams.filter {
             it.url.startsWith("https://") && !it.hls && !it.dash
@@ -313,7 +317,7 @@ internal object KxgPlaybackStreams {
         if (usable.isEmpty() || playback.audioUrl.isNotEmpty()) {
             throw IOException("该集没有开心果支持的单文件 MP4 视频")
         }
-        // Same resolution preference as Kaixinguo: the best stream not
+        // Keep the highest supported stream within the selected quality cap,
         // above the selected cap, or the lowest available if none fits.
         val capped = if (qualityLimit > 0)
             usable.filter { lines(it) <= qualityLimit } else usable
@@ -334,7 +338,7 @@ internal object KxgPlaybackStreams {
         } else null
         val urls = listOf(chosen.url.trim(), chosen.backupUrl.trim())
             .filter { it.startsWith("https://") }.distinct()
-        // Like Kaixinguo upstream: register directly. CencDataSource.open()
+        // Register official SDK URLs directly. CencDataSource.open()
         // resolves the header and decrypts on Media3's loader thread.
         val streams = registry(context.applicationContext)
         val uri = streams.register(urls, key)
