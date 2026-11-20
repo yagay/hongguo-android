@@ -49,10 +49,28 @@ jobs:
           packages: 'platform-tools'
       - name: Install SDK 36
         run: sdkmanager --install "platforms;android-36" "build-tools;36.0.0"
+      - uses: actions/setup-go@v6
+        with:
+          go-version: '1.26.0'
+          cache: false
+      - name: Install NDK r28c for 16 KiB native libraries
+        run: sdkmanager --install "ndk;28.2.13676358"
+      - uses: actions/cache@v4
+        with:
+          path: app/libs/openhongguo-16kb.aar
+          key: ${{ runner.os }}-official-openhongguo-v0.4.0-ndk28c-go126-arm64-16k-v1
+      - name: Build or restore official 16 KiB OpenHongguo SDK
+        run: |
+          export ANDROID_NDK_HOME="$ANDROID_HOME/ndk/28.2.13676358"
+          bash scripts/build-openhongguo-16kb.sh
       - name: Build Debug APK
         run: |
           set -o pipefail
           bash ./gradlew :app:assembleDebug --build-cache --no-daemon 2>&1 | tee debug-build.log
+      - name: Verify ALL packaged ARM64 ELF are 16 KiB aligned
+        run: |
+          python3 scripts/verify-16kb-elf.py app/build/outputs/apk/debug/app-debug.apk
+          "$ANDROID_HOME/build-tools/36.0.0/zipalign" -c -P 16 -v 4 app/build/outputs/apk/debug/app-debug.apk
       - uses: actions/upload-artifact@v4
         with:
           name: hongguo-native-rewrite-debug
@@ -126,6 +144,21 @@ jobs:
       - name: Install SDK 36
         run: sdkmanager --install "platforms;android-36" "build-tools;36.0.0"
 
+      - uses: actions/setup-go@v6
+        with:
+          go-version: '1.26.0'
+          cache: false
+      - name: Install NDK r28c for 16 KiB native libraries
+        run: sdkmanager --install "ndk;28.2.13676358"
+      - uses: actions/cache@v4
+        with:
+          path: app/libs/openhongguo-16kb.aar
+          key: ${{ runner.os }}-official-openhongguo-v0.4.0-ndk28c-go126-arm64-16k-v1
+      - name: Build or restore official 16 KiB OpenHongguo SDK
+        run: |
+          export ANDROID_NDK_HOME="$ANDROID_HOME/ndk/28.2.13676358"
+          bash scripts/build-openhongguo-16kb.sh
+
       - name: Decode private signing key
         shell: bash
         env:
@@ -150,6 +183,10 @@ jobs:
           set -euo pipefail
           bash ./gradlew :app:testDebugUnitTest :app:assembleRelease --build-cache --no-daemon
 
+      - name: Verify signed Release 16 KiB ELF and APK ZIP alignment
+        run: |
+          python3 scripts/verify-16kb-elf.py app/build/outputs/apk/release/app-release.apk
+          "$ANDROID_HOME/build-tools/36.0.0/zipalign" -c -P 16 -v 4 app/build/outputs/apk/release/app-release.apk
       - name: Verify signature, signing identity and package name
         shell: bash
         run: |
