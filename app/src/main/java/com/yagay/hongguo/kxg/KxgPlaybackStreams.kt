@@ -195,7 +195,10 @@ internal object KxgPlaybackStreams {
                 return it
             }
         } else diagnostics?.record("CACHE", "NETWORK_FORCE_FRESH_MODEL")
-        return resolveFresh(context, sdk, episodeId, qualityLimit).also {
+        return checkNotNull(resolveFresh(context, sdk, episodeId, qualityLimit,
+            speculative = false)) {
+            "Foreground playback-model lookup unexpectedly skipped"
+        }.also {
             rememberPlayed(it)
             active(it.uri)
         }
@@ -230,7 +233,11 @@ internal object KxgPlaybackStreams {
             diagnostics?.record("PRELOAD", "MODEL_LIMIT_COOLDOWN")
             return false
         }
-        val prepared = existing ?: resolveFresh(context, sdk, episodeId, qualityLimit)
+        val prepared = existing ?: resolveFresh(context, sdk, episodeId, qualityLimit,
+            speculative = true) ?: run {
+                diagnostics?.record("PRELOAD", "MODEL_GATE_SKIPPED")
+                return false
+            }
         if (!KxgWarmupPolicy.reusable(prepared.validUntilMs, System.currentTimeMillis())) {
             if (existing == null) forget(prepared.uri)
             diagnostics?.record("PRELOAD", "MODEL_TOO_CLOSE_TO_EXPIRY")
@@ -291,10 +298,22 @@ internal object KxgPlaybackStreams {
         sdk: OpenHongguoSource,
         episodeId: String,
         qualityLimit: Int,
-    ): Prepared = withContext(Dispatchers.IO) {
+        speculative: Boolean,
+    ): Prepared? = withContext(Dispatchers.IO) {
         val resolved = try {
-            diagnostics?.record("PLAYBACK", "OFFICIAL_OPENHONGGUO_V5_REQUEST")
-            sdk.resolvePlayback(episodeId)
+            if (speculative) {
+                val result = PlaybackModelRequestGate.speculative {
+                    diagnostics?.record("PRELOAD", "OFFICIAL_OPENHONGGUO_MODEL_REQUEST")
+                    sdk.resolvePlayback(episodeId)
+                }
+                if (result == null) return@withContext null
+                result
+            } else {
+                PlaybackModelRequestGate.foreground {
+                    diagnostics?.record("PLAYBACK", "OFFICIAL_OPENHONGGUO_V5_REQUEST")
+                    sdk.resolvePlayback(episodeId)
+                }
+            }
         } catch (error: OpenhongguoException) {
             val code = PlaybackProblem.describe("获取播放模型", error)
                 .substringBefore(" · ")
