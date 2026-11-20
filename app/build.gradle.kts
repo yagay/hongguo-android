@@ -70,11 +70,9 @@ dependencies {
     implementation("androidx.media3:media3-session:1.8.0")
     implementation("io.coil-kt:coil-compose:2.7.0")
     implementation("com.squareup.okhttp3:okhttp:4.12.0")
-    // Kaixinguo's fork includes the V5 playback endpoint and request signing fix.
-    // The release publishes an AAR without Maven POM metadata.
-    implementation("io.github.kadaliao:openhongguo:0.3.1-kx.1") {
-        artifact { type = "aar" }
-    }
+    // Official openhongguo 0.4.0 includes the upstream V5 playback fix.
+    // Prefer its published Maven artifact to the temporary Kaixinguo fork.
+    implementation("io.github.beilunyang:openhongguo:0.4.0")
     implementation("org.bouncycastle:bcprov-jdk18on:1.79")
     implementation("org.jsoup:jsoup:1.23.2")
     testImplementation("junit:junit:4.13.2")
