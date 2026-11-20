@@ -14,6 +14,18 @@ dependencyResolutionManagement {
         google()
         maven("https://maven-central.storage-download.googleapis.com/maven2/")
         mavenCentral()
+        // Fork release AAR that includes the verified V5 video playback fix.
+        // Keep this only until the official Android artifact is published.
+        exclusiveContent {
+            forRepository {
+                ivy("https://github.com/kadaliao/openhongguo/releases/download") {
+                    name = "openhongguo-kaixinguo"
+                    patternLayout { artifact("v[revision]/[module]-[revision].[ext]") }
+                    metadataSources { artifact() }
+                }
+            }
+            filter { includeModule("io.github.kadaliao", "openhongguo") }
+        }
     }
 }
 rootProject.name = "HongguoNativeRewrite"
