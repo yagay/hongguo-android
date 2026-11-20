@@ -70,10 +70,13 @@ dependencies {
     implementation("androidx.media3:media3-session:1.8.0")
     implementation("io.coil-kt:coil-compose:2.7.0")
     implementation("com.squareup.okhttp3:okhttp:4.12.0")
-    // Official openhongguo SDK (beilunyang). Published to Maven Central
-    // with the V5 playback model protocol and Android CENC key derivation.
-    // Do not use the Kaixinguo-maintained fork for playback or discovery.
-    implementation("io.github.beilunyang:openhongguo:0.4.0")
+    // Same official beilunyang/openhongguo 0.4.0 sources, rebuilt from its
+    // pinned release with NDK r28+ for 16 KiB-page ARM64 devices.
+    // Run scripts/build-openhongguo-16kb.sh before Gradle (CI does this).
+    // Do not silently fall back to the non-aligned prebuilt Maven AAR.
+    implementation(files("libs/openhongguo-16kb.aar"))
+    // Override the Compose-transitive AndroidX graphics-path native library.
+    implementation("androidx.graphics:graphics-path:1.1.0")
     implementation("org.bouncycastle:bcprov-jdk18on:1.79")
     implementation("org.jsoup:jsoup:1.23.2")
     testImplementation("junit:junit:4.13.2")
