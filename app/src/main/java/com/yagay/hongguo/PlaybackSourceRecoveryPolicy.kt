@@ -49,6 +49,15 @@ internal object PlaybackSourceRecoveryPolicy {
         }
     }
 
+    /**
+     * The legacy native model endpoint can return HTTP 200 with an empty body
+     * after the primary V5 SDK has already given a precise typed failure.
+     * Do not overwrite that evidence with an unhelpful legacy empty-response
+     * error. Keep all other fallback failures authoritative.
+     */
+    fun preservePrimaryOnLegacyEmpty(primary: Exception?, fallback: Exception): Exception =
+        if (primary != null && PlaybackProblem.isEmptyPlaybackModel(fallback)) primary else fallback
+
     private fun causes(t: Throwable): List<Throwable> =
         generateSequence(t) { it.cause }.take(8).toList()
 
