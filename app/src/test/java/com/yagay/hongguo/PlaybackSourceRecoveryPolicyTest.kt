@@ -12,10 +12,10 @@ import org.junit.Assert.assertSame
 import org.junit.Test
 
 class PlaybackSourceRecoveryPolicyTest {
-    @Test fun SDKAnonymousLimitUsesIndependentNativeSourceNotRepeatedSdkCalls() {
+    @Test fun SDKAnonymousLimitDoesNotHammerRejectedLegacyModelRoutes() {
         val error = OpenhongguoException(ErrorCode.ANONYMOUS_LIMITED,
             "anonymous empty model")
-        assertTrue(PlaybackSourceRecoveryPolicy.nativeFallback(error))
+        assertFalse(PlaybackSourceRecoveryPolicy.nativeFallback(error))
         assertFalse(PlaybackSourceRecoveryPolicy.retrySdk(error, 1))
         assertTrue(PlaybackProblem.describe("准备播放", error)
             .startsWith("PLAYBACK_ANONYMOUS_LIMITED"))
