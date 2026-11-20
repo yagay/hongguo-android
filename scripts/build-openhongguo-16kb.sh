@@ -5,7 +5,7 @@
 set -euo pipefail
 
 ROOT="$(cd "$(dirname "${BASH_SOURCE[0]}")/.." && pwd)"
-AAR="$ROOT/app/libs/openhongguo-16kb.aar"
+AAR="$ROOT/app/libs/openhongguo-16kb-recovery.aar"
 SOURCE_REPO="https://github.com/beilunyang/openhongguo.git"
 SOURCE_TAG="v0.4.0"
 SOURCE_SHA="cd27b9ef42a4aa06859d12e5a24ba7653fa64a2c"
@@ -37,6 +37,16 @@ if [[ "$ACTUAL_SHA" != "$SOURCE_SHA" ]]; then
   exit 1
 fi
 
+# Playback recovery is scoped to the pinned official Go source tree.
+# Unit tests check same-identity signed GET, episode matching and limit handling.
+python3 "$ROOT/scripts/apply-openhongguo-recovery.py" "$TMP/openhongguo"
+cp "$ROOT/scripts/openhongguo-recovery.test.go" \
+  "$TMP/openhongguo/sdk/playback_video_tab_recovery_test.go"
+(
+  cd "$TMP/openhongguo"
+  go test ./sdk ./internal/protocol
+)
+
 echo "Building ARM64 Go JNI with NDK r28+ and 16 KiB linker alignment"
 go install "golang.org/x/mobile/cmd/gomobile@${GOMOBILE_VERSION}"
 GOMOBILE="$(go env GOPATH)/bin/gomobile"
@@ -63,4 +73,4 @@ cp "$TMP/expanded/jni/arm64-v8a/libgojni.so" "$ANDROID_LIB/src/main/jniLibs/arm6
 mkdir -p "$(dirname "$AAR")"
 cp "$ANDROID_LIB/build/outputs/aar/openhongguo-release.aar" "$AAR"
 python3 "$ROOT/scripts/verify-16kb-elf.py" "$AAR"
-echo "Created $AAR from official openhongguo $SOURCE_TAG with 16 KiB ARM64 ELF alignment."
+echo "Created $AAR from pinned official openhongguo $SOURCE_TAG with tested V5 video_tab recovery and 16 KiB ARM64 ELF alignment."
