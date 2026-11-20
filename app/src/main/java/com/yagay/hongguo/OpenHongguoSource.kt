@@ -26,11 +26,12 @@ import dev.openhongguo.Page
 import dev.openhongguo.SeriesSummary
 
 /**
- * The Kaixinguo SDK now provides the catalog and anonymous playback model.
- * Authenticated feed, comments and account sessions remain separate.
+ * Official beilunyang/openhongguo 0.4.0 directly provides the catalog
+ * and V5 anonymous playback model. No Kaixinguo fork or application API is
+ * used for media URL lookup. Account-specific features remain separate.
  *
- * Apache-2.0 SDK 0.2.0 is lazy-created only on explicit read-only discovery or
- * metadata operations. Do not reset a user's anonymous session on media errors.
+ * The published Apache-2.0 client persists its own anonymous profile and
+ * handles bounded SDK retries. Avoid resetting this profile on media errors.
  */
 internal class OpenHongguoSource(context: Context) {
     private val applicationContext = context.applicationContext
@@ -134,8 +135,8 @@ internal class OpenHongguoSource(context: Context) {
         options: dev.openhongguo.EpisodeOptions = dev.openhongguo.EpisodeOptions(),
     ): dev.openhongguo.Page<dev.openhongguo.Episode> =
         client.listEpisodes(checkedId(id), options)
-    /** Playback model is only exposed to compatibility diagnostics; no DRM bypass. */
-    suspend fun playbackModel(episodeId: String): dev.openhongguo.PlaybackResult =
+    /** Official upstream V5 playback address and content-key resolution. */
+    suspend fun resolvePlayback(episodeId: String): dev.openhongguo.PlaybackResult =
         client.resolvePlayback(checkedId(episodeId))
     /** Explicit maintenance action; never called from autoplay or retry loops. */
     suspend fun resetAnonymousDeviceExplicitly() = client.resetDevice()
