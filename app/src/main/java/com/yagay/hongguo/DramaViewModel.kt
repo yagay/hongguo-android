@@ -3056,6 +3056,7 @@ class DramaViewModel(application: Application) : AndroidViewModel(application) {
         playbackStartAtMs = android.os.SystemClock.elapsedRealtime()
         detailJob = viewModelScope.launch {
             val started = System.nanoTime()
+            var primaryModelFailure: Exception? = null
             try {
                 if (api != null) {
                     val url = api.playableUrl(vid)
@@ -3096,6 +3097,11 @@ class DramaViewModel(application: Application) : AndroidViewModel(application) {
                                 throw cancelled
                             } catch (error: Exception) {
                                 failure = error
+                                primaryModelFailure = error
+                                diagnostics.record("PLAYBACK",
+                                    "KXG_MODEL_FAIL_" +
+                                        PlaybackProblem.describe("获取播放模型", error)
+                                            .substringBefore(" · "))
                                 val retry = state.value.retryPlaybackAutomatically &&
                                     networkResumeMs == null &&
                                     PlaybackSourceRecoveryPolicy.retrySdk(error, attempt)
@@ -3181,10 +3187,16 @@ class DramaViewModel(application: Application) : AndroidViewModel(application) {
                 throw e
             } catch (e: Exception) {
                 if (version == detailId) {
-                    val description = errorText("准备播放", e)
+                    val actualError = PlaybackSourceRecoveryPolicy
+                        .preservePrimaryOnLegacyEmpty(primaryModelFailure, e)
+                    diagnostics.record("PLAYBACK",
+                        "FINAL_SOURCE_FAIL_" +
+                            PlaybackProblem.describe("准备播放", actualError)
+                                .substringBefore(" · "))
+                    val description = errorText("准备播放", actualError)
                     val pending = if (networkResumeMs != null) {
-                        val retryable = PlaybackSourceRecoveryPolicy.nativeFallback(e) ||
-                            PlaybackProblem.isTransientTransport(e)
+                        val retryable = PlaybackSourceRecoveryPolicy.nativeFallback(actualError) ||
+                            PlaybackProblem.isTransientTransport(actualError)
                         diagnostics.record("NETWORK_RESUME",
                             if (retryable) "MODEL_REFRESH_TRANSIENT_FAILURE"
                             else "MODEL_REFRESH_PERMANENT_FAILURE")
