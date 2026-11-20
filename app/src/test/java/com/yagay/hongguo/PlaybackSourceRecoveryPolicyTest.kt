@@ -1,5 +1,6 @@
 package com.yagay.hongguo
 
+import com.hongguotv.core.EmptyPlaybackResponseException
 import dev.openhongguo.ErrorCode
 import dev.openhongguo.OpenhongguoException
 import java.io.IOException
@@ -7,6 +8,7 @@ import java.net.SocketTimeoutException
 import org.junit.Assert.assertEquals
 import org.junit.Assert.assertFalse
 import org.junit.Assert.assertTrue
+import org.junit.Assert.assertSame
 import org.junit.Test
 
 class PlaybackSourceRecoveryPolicyTest {
@@ -43,6 +45,19 @@ class PlaybackSourceRecoveryPolicyTest {
         }
         assertFalse(PlaybackSourceRecoveryPolicy.nativeFallback(IOException("HTTP 403")))
         assertFalse(PlaybackSourceRecoveryPolicy.nativeFallback(IOException("HTTP 429")))
+    }
+
+    @Test fun preserveThePreciseSdkFailureWhenLegacyPlaybackReturnsEmpty() {
+        val primary = OpenhongguoException(ErrorCode.ANONYMOUS_LIMITED,
+            "anonymous video model returned empty")
+        val legacy = EmptyPlaybackResponseException("route=old-player-api")
+        assertSame(primary, PlaybackSourceRecoveryPolicy
+            .preservePrimaryOnLegacyEmpty(primary, legacy))
+        assertSame(legacy, PlaybackSourceRecoveryPolicy
+            .preservePrimaryOnLegacyEmpty(null, legacy))
+        val transport = IOException("backup CDN unavailable")
+        assertSame(transport, PlaybackSourceRecoveryPolicy
+            .preservePrimaryOnLegacyEmpty(primary, transport))
     }
 
     @Test fun incompatiblePrimaryMp4ContainerCanTryNativeWithoutLooping() {
