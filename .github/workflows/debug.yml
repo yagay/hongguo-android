@@ -57,8 +57,8 @@ jobs:
         run: sdkmanager --install "ndk;28.2.13676358"
       - uses: actions/cache@v4
         with:
-          path: app/libs/openhongguo-16kb.aar
-          key: ${{ runner.os }}-official-openhongguo-v0.4.0-ndk28c-go126-arm64-16k-v1
+          path: app/libs/openhongguo-16kb-recovery.aar
+          key: ${{ runner.os }}-official-openhongguo-v0.4.0-ndk28c-go126-arm64-16k-v2-video-tab
       - name: Build or restore official 16 KiB OpenHongguo SDK
         run: |
           export ANDROID_NDK_HOME="$ANDROID_HOME/ndk/28.2.13676358"
@@ -152,8 +152,8 @@ jobs:
         run: sdkmanager --install "ndk;28.2.13676358"
       - uses: actions/cache@v4
         with:
-          path: app/libs/openhongguo-16kb.aar
-          key: ${{ runner.os }}-official-openhongguo-v0.4.0-ndk28c-go126-arm64-16k-v1
+          path: app/libs/openhongguo-16kb-recovery.aar
+          key: ${{ runner.os }}-official-openhongguo-v0.4.0-ndk28c-go126-arm64-16k-v2-video-tab
       - name: Build or restore official 16 KiB OpenHongguo SDK
         run: |
           export ANDROID_NDK_HOME="$ANDROID_HOME/ndk/28.2.13676358"
