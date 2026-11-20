@@ -138,3 +138,31 @@ func TestV5RecoveryHonoursExplicitRateLimit(t *testing.T) {
             pb, err, tabRequests, legacyRequests)
     }
 }
+
+func TestV5EmptyWithRetryAfterDoesNotProbeOrRotate(t *testing.T) {
+    var tabRequests, registerRequests, legacyRequests int
+    handler := http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+        switch r.URL.Path {
+        case protocol.PathRegister:
+            registerRequests++
+            w.Header().Set("Set-Cookie", "ttreq=fixture-ticket; Path=/")
+            _, _ = w.Write(fixture(t, "register-response.json"))
+        case protocol.PathPlaybackV5:
+            w.Header().Set("Retry-After", "120")
+            // HTTP 200 with empty body but an explicit backoff hint.
+        case protocol.PathPlaybackVideoTab:
+            tabRequests++
+        case protocol.PathPlayback:
+            legacyRequests++
+        default:
+            http.NotFound(w, r)
+        }
+    })
+    client, _ := resetClient(t, handler, nil)
+    playback, err := client.ResolvePlayback(context.Background(), recoveryEpisode, sdk.PlaybackOptions{})
+    if playback != nil || !errors.Is(err, sdk.ErrRateLimited) ||
+        tabRequests != 0 || legacyRequests != 0 || registerRequests != 1 {
+        t.Fatalf("Retry-After must stop all recovery: model=%#v err=%v tab=%d legacy=%d regs=%d",
+            playback, err, tabRequests, legacyRequests, registerRequests)
+    }
+}
