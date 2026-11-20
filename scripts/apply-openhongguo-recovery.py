@@ -72,11 +72,25 @@ def main(root: Path) -> None:
            """\tif len(bytes.TrimSpace(body)) == 0 {
 \t\tfor name, value := range resp.Headers {
 \t\t\tif strings.EqualFold(name, "Retry-After") && strings.TrimSpace(value) != "" {
-\t\t\t\treturn nil, ErrRateLimited
+\t\t\t\treturn nil, &explicitRetryAfterLimit{}
 \t\t\t}
 \t\t}
 \t\treturn nil, ErrAnonymousLimited
 \t}""")
+    # Retry-After is an explicit server instruction, not a recoverable
+    # transient network error. It must stop the SDK's internal retry loop too.
+    change(client,
+           "func retryableInLoop(err error) bool { return Retryable(err) }",
+           """func retryableInLoop(err error) bool {
+\tvar limit *explicitRetryAfterLimit
+\treturn !errors.As(err, &limit) && Retryable(err)
+}
+
+// explicitRetryAfterLimit still satisfies errors.Is(ErrRateLimited) for
+// the Android SDK while preventing immediate replays of a denied request.
+type explicitRetryAfterLimit struct{}
+func (*explicitRetryAfterLimit) Error() string { return ErrRateLimited.Error() }
+func (*explicitRetryAfterLimit) Unwrap() error { return ErrRateLimited }""")
     helper = root / "sdk/playback_video_tab_recovery.go"
     if helper.exists():
         raise SystemExit(f"Unexpected upstream file {helper}")
