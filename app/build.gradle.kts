@@ -70,11 +70,10 @@ dependencies {
     implementation("androidx.media3:media3-session:1.8.0")
     implementation("io.coil-kt:coil-compose:2.7.0")
     implementation("com.squareup.okhttp3:okhttp:4.12.0")
-    // Verified Android AAR with V5 playback source support. The upstream
-    // 0.4.0 tag alone does not guarantee a matching Maven Central Android AAR.
-    implementation("io.github.kadaliao:openhongguo:0.3.1-kx.1") {
-        artifact { type = "aar" }
-    }
+    // Official openhongguo SDK (beilunyang). Published to Maven Central
+    // with the V5 playback model protocol and Android CENC key derivation.
+    // Do not use the Kaixinguo-maintained fork for playback or discovery.
+    implementation("io.github.beilunyang:openhongguo:0.4.0")
     implementation("org.bouncycastle:bcprov-jdk18on:1.79")
     implementation("org.jsoup:jsoup:1.23.2")
     testImplementation("junit:junit:4.13.2")
