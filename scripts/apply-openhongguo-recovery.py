@@ -61,6 +61,22 @@ def main(root: Path) -> None:
 \t\t\tv5Err := err
 """
     change(media, old, new)
+
+    # HTTP 200 with an empty body and Retry-After is an explicit request to
+    # back off. Do not launch a GET probe or rotate devices in that situation.
+    client = root / "sdk/client.go"
+    change(client,
+           """\tif len(bytes.TrimSpace(body)) == 0 {
+\t\treturn nil, ErrAnonymousLimited
+\t}""",
+           """\tif len(bytes.TrimSpace(body)) == 0 {
+\t\tfor name, value := range resp.Headers {
+\t\t\tif strings.EqualFold(name, "Retry-After") && strings.TrimSpace(value) != "" {
+\t\t\t\treturn nil, ErrRateLimited
+\t\t\t}
+\t\t}
+\t\treturn nil, ErrAnonymousLimited
+\t}""")
     helper = root / "sdk/playback_video_tab_recovery.go"
     if helper.exists():
         raise SystemExit(f"Unexpected upstream file {helper}")
