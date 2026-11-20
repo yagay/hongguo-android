@@ -74,7 +74,7 @@ dependencies {
     // pinned release with NDK r28+ for 16 KiB-page ARM64 devices.
     // Run scripts/build-openhongguo-16kb.sh before Gradle (CI does this).
     // Do not silently fall back to the non-aligned prebuilt Maven AAR.
-    implementation(files("libs/openhongguo-16kb.aar"))
+    implementation(files("libs/openhongguo-16kb-recovery.aar"))
     // Override the Compose-transitive AndroidX graphics-path native library.
     implementation("androidx.graphics:graphics-path:1.1.0")
     implementation("org.bouncycastle:bcprov-jdk18on:1.79")
