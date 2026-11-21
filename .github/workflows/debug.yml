@@ -1,4 +1,5 @@
 name: Native rewrite Android build
+# Release builds also run on rewrite commits explicitly marked [release].
 on:
   push:
     branches: [rewrite]
