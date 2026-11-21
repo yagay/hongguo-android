@@ -1,9 +1,9 @@
 name: Native rewrite Android build
 on:
   push:
-    branches: [rewrite-web-native]
+    branches: [rewrite]
   pull_request:
-    branches: [rewrite-web-native]
+    branches: [rewrite]
   workflow_call:
     inputs:
       signed_release:
@@ -29,10 +29,10 @@ on:
         type: boolean
 concurrency:
   group: native-rewrite-${{ github.ref }}-${{ (github.event_name == 'workflow_dispatch' && inputs.signed_release) && 'release' || 'debug' }}
-  cancel-in-progress: true
+  cancel-in-progress: false
 jobs:
   debug:
-    if: ${{ !inputs.signed_release }}
+    if: ${{ !inputs.signed_release && !(github.event_name == 'push' && contains(github.event.head_commit.message, '[release]')) }}
     runs-on: ubuntu-latest
     permissions:
       contents: read
@@ -124,14 +124,14 @@ jobs:
   # Only runs when explicitly selected via "Run workflow". Ordinary pushes
   # remain Debug-only. The signing key must live in repository Actions Secrets.
   release:
-    if: ${{ inputs.signed_release }}
+    if: ${{ inputs.signed_release || (github.event_name == 'push' && contains(github.event.head_commit.message, '[release]')) }}
     runs-on: ubuntu-latest
     permissions:
       contents: read
     steps:
       - uses: actions/checkout@v4
         with:
-          ref: rewrite-web-native
+          ref: rewrite
       - uses: actions/setup-java@v4
         with:
           distribution: temurin
