@@ -4,6 +4,11 @@ plugins {
     id("org.jetbrains.kotlin.plugin.compose")
 }
 
+// Release signing is sourced exclusively from local environment or GitHub Actions secrets.
+val signingEnv = listOf("HG_RELEASE_STORE_FILE", "HG_RELEASE_STORE_PASSWORD", "HG_RELEASE_KEY_ALIAS", "HG_RELEASE_KEY_PASSWORD")
+    .associateWith { System.getenv(it) }
+val hasReleaseSigning = signingEnv.values.all { !it.isNullOrBlank() }
+
 android {
     namespace = "com.hongguo.android"
     compileSdk = 36
@@ -17,9 +22,21 @@ android {
         buildConfigField("String", "UPDATE_MANIFEST_URL", "\"https://github.com/OOIUa/hongguo-android/releases/latest/download/update.json\"")
         testInstrumentationRunner = "com.hongguo.android.HongguoTestRunner"
     }
+    signingConfigs {
+        create("release") {
+            if (hasReleaseSigning) {
+                storeFile = file(signingEnv.getValue("HG_RELEASE_STORE_FILE")!!)
+                storePassword = signingEnv.getValue("HG_RELEASE_STORE_PASSWORD")
+                keyAlias = signingEnv.getValue("HG_RELEASE_KEY_ALIAS")
+                keyPassword = signingEnv.getValue("HG_RELEASE_KEY_PASSWORD")
+            }
+        }
+    }
     buildTypes {
         release {
             isMinifyEnabled = false
+            isDebuggable = false
+            if (hasReleaseSigning) signingConfig = signingConfigs.getByName("release")
         }
     }
     compileOptions {
