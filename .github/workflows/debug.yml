@@ -197,7 +197,7 @@ jobs:
           "$ANDROID_HOME/build-tools/36.0.0/apksigner" verify --verbose --print-certs "$apk"
           actual="$("$ANDROID_HOME/build-tools/36.0.0/apksigner" verify --print-certs "$apk" |
             awk -F': ' '/Signer #1 certificate SHA-256 digest/{print tolower($2); exit}')"
-          expected="6bda27910d85360fd9304d32eecbaca624da8b4f617fefb308595eca1bbc68cf"
+          expected="3586fd60c0243bb205f127b347e8eed7311f32d3ba146de97130229c8c220975"
           if [[ "$actual" != "$expected" ]]; then
             echo "Release certificate fingerprint differs from the protected signing key" >&2
             exit 1
