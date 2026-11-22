@@ -4,6 +4,25 @@ All ordinary Android pages share one design system. The implementation lives in
 `app/src/main/java/com/yagay/hongguo/HongguoUi.kt`; dynamic theme tokens
 live in `AppDesign.kt`. Do not create parallel screen-local theme palettes.
 
+## Shared content components (rewrite)
+
+- `HongguoContentUi.kt` is now the single home for ordinary poster artwork,
+  compact/standard poster-info rows, search fields, clickable search entry,
+  five-column filter cells, metadata badges, inline loading/error states and
+  editable form-dialog chrome.
+- Theater, My, account, related dramas and account drawer now reuse artwork;
+  the SDK discovery list and related-drama sheet share the poster-info row.
+  Callers still own aspect ratio, data, touch gestures, menus and click callbacks.
+- Search landing, My history search and SDK discovery use `HongguoSearchField`.
+  Theater keeps the `HongguoSearchEntry` entry into the dedicated search page.
+- My and SDK discovery share `HongguoPageHeader` for the outer page toolbar.
+  Transparent on-video headers are intentionally separate.
+- Theater filters keep their dense five-column layout via
+  `HongguoFilterOptionCell`, with Material 3 adaptation only inside the cell.
+- `HongguoFormDialog` handles editable favorite-group names. Destructive
+  confirmations and the app-exit confirmation use `HongguoConfirmDialog`.
+  Retain each original test tag and keep processing outside the UI components.
+
 ## Consolidated shared components
 
 - `HongguoPreferenceUi.kt` owns all settings groups, navigation/value rows,
@@ -60,7 +79,12 @@ live in `AppDesign.kt`. Do not create parallel screen-local theme palettes.
 | Normal icon action | `HongguoIconAction` |
 | Video top circular action | `HongguoPlayerTopAction` |
 | History, collections, likes and reservations tabs | `HongguoTabs` |
-| Reusable drama cover | `HongguoPosterCover` |
+| Reusable drama cover | `HongguoPosterCover`, `HongguoPosterArtwork` |
+| Compact/standard poster + title rows | `HongguoPosterInfoRow` |
+| Search input and clickable entry | `HongguoSearchField`, `HongguoSearchEntry` |
+| Dense theater filters and metadata tags | `HongguoFilterOptionCell`, `HongguoMetadataBadge` |
+| Loading and error feedback | `HongguoInlineLoading`, `HongguoInlineError` |
+| Editable form dialogs | `HongguoFormDialog` |
 | Empty list and search results | `HongguoEmptyState` |
 | Library, filter and video modal title | `HongguoSheetHeader` |
 | All bottom sheets | `HongguoModalSheet` (player alias `HongguoPlayerSheet`) |
@@ -74,9 +98,9 @@ live in `AppDesign.kt`. Do not create parallel screen-local theme palettes.
 
 - Ordinary page backgrounds, cards and text use the active `HongguoColors` values.
 - A standard app header is 56dp high; horizontal content gutters are 16dp.
-- Cards use 16dp radius; controls use 10dp radius; icon targets use 40dp.
-- Selected tabs use the same 2dp indicator and text hierarchy on My and Account.
-- All three bottom navigation tabs use the same 40dp layout and the active `HongguoColors.surface`/`ink`/`muted` palette; never a separate fixed-dark tab style.
+- Classic cards use 16dp radius and controls 10dp; Material 3 surfaces/controls may use larger shapes; icon targets remain at least 40dp.
+- Selected tabs share one component in My and Account: classic uses a 2dp indicator, Material 3 uses selected pill containers.
+- All three bottom navigation tabs share `HongguoPrimaryNavigation`: immersive video keeps compact classic geometry, while ordinary Material 3 navigation uses labeled destinations.
 - The bottom navigation has ONE appearance; do not expose unimplemented style options.
 - When UI elements look alike and behave alike, move layout into a shared component.
   Keep state, API calls, loading, media playback and navigation callbacks in screens.
