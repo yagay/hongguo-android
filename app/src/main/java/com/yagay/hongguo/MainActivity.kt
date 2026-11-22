@@ -53,6 +53,8 @@ import androidx.compose.material3.Text
 import androidx.compose.material3.TextButton
 import androidx.compose.material3.lightColorScheme
 import androidx.compose.material3.darkColorScheme
+import androidx.compose.material3.dynamicLightColorScheme
+import androidx.compose.material3.dynamicDarkColorScheme
 import androidx.compose.foundation.isSystemInDarkTheme
 import androidx.compose.material3.Surface
 import androidx.compose.foundation.shape.RoundedCornerShape
@@ -561,6 +563,28 @@ private fun HongguoApp(model: DramaViewModel = viewModel()) {
         "system" -> systemDark
         else -> false
     }
+    // A complete alternative design layer. Classic remains the default.
+    // Only the color/shape components change, never the player or data model.
+    val materialScheme = if (state.uiStyle == "material3") {
+        if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.S) {
+            if (darkTheme) dynamicDarkColorScheme(appContext)
+            else dynamicLightColorScheme(appContext)
+        } else if (darkTheme) darkColorScheme(
+            primary = Color(0xFFFFB4A0),
+            onPrimary = Color(0xFF67200C),
+            primaryContainer = Color(0xFF8F2D16),
+            onPrimaryContainer = Color(0xFFFFDAD0),
+            background = Color(0xFF17120F),
+            surface = Color(0xFF17120F),
+        ) else lightColorScheme(
+            primary = Color(0xFFAA341D),
+            onPrimary = Color.White,
+            primaryContainer = Color(0xFFFFDAD0),
+            onPrimaryContainer = Color(0xFF3B0901),
+            background = Color(0xFFFFF8F6),
+            surface = Color(0xFFFFF8F6),
+        )
+    } else null
     val activity = LocalContext.current as? Activity
     PlaybackScreenBrightness(
         activity = activity,
@@ -603,7 +627,7 @@ private fun HongguoApp(model: DramaViewModel = viewModel()) {
         mainActivity?.updateVideoPictureInPictureEligibility(
             darkPlayer || showMini
         )
-        HongguoColors.applyTheme(state.themeStyle, state.themeMode, systemDark)
+        HongguoColors.applyTheme(state.themeStyle, state.themeMode, systemDark, materialScheme)
         activity?.let {
             val bars = WindowCompat.getInsetsController(it.window, it.window.decorView)
             // Full-screen search and details use light/dark palettes, not
@@ -612,7 +636,7 @@ private fun HongguoApp(model: DramaViewModel = viewModel()) {
             bars.isAppearanceLightNavigationBars = !darkSystemChrome && !darkTheme
         }
     }
-    val palette = (if (darkTheme) darkColorScheme(
+    val palette = materialScheme ?: (if (darkTheme) darkColorScheme(
         primary = HongguoColors.accent,
         onPrimary = Color.White,
         background = HongguoColors.background,

@@ -24,6 +24,7 @@ import androidx.compose.foundation.layout.Row
 import androidx.compose.foundation.layout.RowScope
 import androidx.compose.foundation.layout.ColumnScope
 import androidx.compose.foundation.layout.fillMaxWidth
+import androidx.compose.foundation.layout.WindowInsets
 import androidx.compose.foundation.layout.heightIn
 import androidx.compose.foundation.layout.height
 import androidx.compose.foundation.layout.padding
@@ -44,6 +45,11 @@ import androidx.compose.material3.Button
 import androidx.compose.material3.ButtonDefaults
 import androidx.compose.material3.BottomSheetDefaults
 import androidx.compose.material3.OutlinedButton
+import androidx.compose.material3.MaterialTheme
+import androidx.compose.material3.NavigationBar
+import androidx.compose.material3.NavigationBarItem
+import androidx.compose.material3.TopAppBar
+import androidx.compose.material3.TopAppBarDefaults
 import androidx.compose.material3.IconButton
 import androidx.compose.material3.TextButton
 import androidx.compose.material3.Icon
@@ -129,8 +135,9 @@ internal fun HongguoCard(
 ) {
     Surface(
         modifier = modifier,
-        shape = RoundedCornerShape(HongguoUi.cardRadius),
+        shape = RoundedCornerShape(if (HongguoColors.isMaterial3) 24.dp else HongguoUi.cardRadius),
         color = HongguoColors.surface,
+        tonalElevation = if (HongguoColors.isMaterial3) 1.dp else 0.dp,
         content = content,
     )
 }
@@ -234,10 +241,11 @@ internal fun HongguoToggleRow(
             checked = checked,
             onCheckedChange = onCheckedChange,
             modifier = Modifier.testTag(tag),
-            colors = SwitchDefaults.colors(
-                checkedTrackColor = HongguoColors.accent,
-                checkedThumbColor = Color.White,
-            ),
+            colors = if (HongguoColors.isMaterial3) SwitchDefaults.colors()
+                else SwitchDefaults.colors(
+                    checkedTrackColor = HongguoColors.accent,
+                    checkedThumbColor = Color.White,
+                ),
         )
     }
 }
@@ -263,7 +271,8 @@ internal fun HongguoChoiceChip(
 
 @Composable
 private fun HongguoChoiceColors(dark: Boolean) =
-    if (dark) FilterChipDefaults.filterChipColors(
+    if (HongguoColors.isMaterial3 && !dark) FilterChipDefaults.filterChipColors()
+    else if (dark) FilterChipDefaults.filterChipColors(
         containerColor = Color(0xFF38373E),
         labelColor = Color.White,
         selectedContainerColor = HongguoColors.accent,
@@ -287,13 +296,32 @@ internal fun HongguoAction(
     style: HongguoActionStyle = HongguoActionStyle.OUTLINE,
     icon: ImageVector? = null,
 ) {
-    val shape = RoundedCornerShape(HongguoUi.controlRadius)
+    val shape = RoundedCornerShape(
+        if (HongguoColors.isMaterial3) 50.dp else HongguoUi.controlRadius
+    )
     val buttonContent: @Composable RowScope.() -> Unit = {
         if (icon != null) {
             Icon(icon, contentDescription = null,
                 modifier = Modifier.size(HongguoUi.leadingIconSize))
         }
         Text(label)
+    }
+    if (HongguoColors.isMaterial3) {
+        when (style) {
+            HongguoActionStyle.PRIMARY -> Button(
+                onClick = onClick, modifier = modifier, enabled = enabled,
+                shape = shape, content = buttonContent,
+            )
+            HongguoActionStyle.OUTLINE -> OutlinedButton(
+                onClick = onClick, modifier = modifier, enabled = enabled,
+                shape = shape, content = buttonContent,
+            )
+            HongguoActionStyle.QUIET -> TextButton(
+                onClick = onClick, modifier = modifier, enabled = enabled,
+                shape = shape, content = buttonContent,
+            )
+        }
+        return
     }
     when (style) {
         HongguoActionStyle.PRIMARY -> Button(
@@ -344,8 +372,30 @@ internal fun HongguoPrimaryNavigation(
     /** Distinguish the player episode/time strip from the primary tabs. */
     separateFromPlayer: Boolean = false,
 ) {
-    // Preserve the exact 40dp total height in every mode: changing the app
-    // nav height would shift the uncropped portrait player viewport.
+    if (HongguoColors.isMaterial3 && !separateFromPlayer) {
+        NavigationBar(
+            modifier = Modifier.fillMaxWidth().height(80.dp),
+            containerColor = MaterialTheme.colorScheme.surfaceContainer,
+            windowInsets = WindowInsets(0, 0, 0, 0),
+        ) {
+            listOf(
+                Triple("home", "首页", Icons.Outlined.Home),
+                Triple("theater", "剧场", Icons.Outlined.Theaters),
+                Triple("mine", "我的", Icons.Outlined.PersonOutline),
+            ).forEach { (tab, label, icon) ->
+                NavigationBarItem(
+                    selected = selectedTab == tab,
+                    onClick = { onSelect(tab) },
+                    icon = { Icon(icon, contentDescription = label) },
+                    label = { Text(label) },
+                    alwaysShowLabel = true,
+                    modifier = Modifier.testTag("primary_tab_" + tab),
+                )
+            }
+        }
+        return
+    }
+    // Keep the 40dp immersive-player dock; enlarging it crops portrait video.
     val height = HongguoUi.primaryNavHeight
     val topDivider = if (separateFromPlayer) 1.dp else 0.dp
     val topInset = if (separateFromPlayer) 3.dp else 0.dp
@@ -383,7 +433,9 @@ internal fun HongguoPrimaryNavigation(
                             imageVector = icon,
                             contentDescription = label,
                             modifier = Modifier.size(HongguoUi.primaryNavIconSize),
-                            tint = if (selectedTab == tab) activeColor else inactiveColor,
+                            tint = if (HongguoColors.isMaterial3 && selectedTab == tab)
+                                MaterialTheme.colorScheme.primary
+                            else if (selectedTab == tab) activeColor else inactiveColor,
                         )
                     }
                 }
@@ -397,6 +449,7 @@ internal fun HongguoPrimaryNavigation(
  * slot, but ordinary pages must not each implement independent title sizes
  * and header heights.
  */
+@OptIn(ExperimentalMaterial3Api::class)
 @Composable
 internal fun HongguoPageHeader(
     title: String,
@@ -404,6 +457,26 @@ internal fun HongguoPageHeader(
     modifier: Modifier = Modifier,
     actions: @Composable RowScope.() -> Unit = {},
 ) {
+    if (HongguoColors.isMaterial3) {
+        TopAppBar(
+            title = { Text(title) },
+            navigationIcon = {
+                if (onBack != null) {
+                    HongguoIconAction(onClick = onBack) {
+                        Icon(Icons.AutoMirrored.Outlined.ArrowBack, contentDescription = "返回")
+                    }
+                }
+            },
+            actions = actions,
+            modifier = modifier,
+            windowInsets = WindowInsets(0, 0, 0, 0),
+            colors = TopAppBarDefaults.topAppBarColors(
+                containerColor = MaterialTheme.colorScheme.surfaceContainer,
+                titleContentColor = MaterialTheme.colorScheme.onSurface,
+            ),
+        )
+        return
+    }
     Row(
         modifier = modifier.fillMaxWidth()
             .height(HongguoUi.pageTopBarHeight)
@@ -449,6 +522,30 @@ internal fun HongguoTabs(
     modifier: Modifier = Modifier,
     tagPrefix: String = "gallery_tab",
 ) {
+    if (HongguoColors.isMaterial3) {
+        Row(modifier = modifier.fillMaxWidth().padding(horizontal = 8.dp),
+            horizontalArrangement = Arrangement.spacedBy(6.dp)) {
+            labels.forEachIndexed { index, label ->
+                val selected = index == selectedIndex
+                Box(
+                    modifier = Modifier.weight(1f)
+                        .clip(RoundedCornerShape(24.dp))
+                        .background(if (selected) MaterialTheme.colorScheme.secondaryContainer
+                            else MaterialTheme.colorScheme.surfaceContainer)
+                        .clickable { if (!selected) onSelect(index) }
+                        .testTag(tagPrefix + "_" + index)
+                        .height(44.dp),
+                    contentAlignment = Alignment.Center,
+                ) {
+                    Text(label,
+                        color = if (selected) MaterialTheme.colorScheme.onSecondaryContainer
+                            else MaterialTheme.colorScheme.onSurfaceVariant,
+                        fontWeight = if (selected) FontWeight.SemiBold else FontWeight.Normal)
+                }
+            }
+        }
+        return
+    }
     Row(
         modifier = modifier.fillMaxWidth(),
         verticalAlignment = Alignment.CenterVertically,
@@ -643,11 +740,12 @@ internal fun HongguoModalSheet(
 ) {
     ModalBottomSheet(
         onDismissRequest = onDismissRequest,
-        containerColor = HongguoColors.surface,
+        containerColor = if (HongguoColors.isMaterial3)
+            MaterialTheme.colorScheme.surfaceContainerLow else HongguoColors.surface,
         contentColor = HongguoColors.ink,
         shape = RoundedCornerShape(
-            topStart = HongguoUi.cardRadius,
-            topEnd = HongguoUi.cardRadius,
+            topStart = if (HongguoColors.isMaterial3) 28.dp else HongguoUi.cardRadius,
+            topEnd = if (HongguoColors.isMaterial3) 28.dp else HongguoUi.cardRadius,
         ),
         dragHandle = {
             BottomSheetDefaults.DragHandle(color = HongguoColors.muted)

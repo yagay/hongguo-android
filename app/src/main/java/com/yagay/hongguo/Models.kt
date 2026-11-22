@@ -191,6 +191,8 @@ data class AppState(
     val hiddenRecommendationIds: Set<String> = emptySet(),
     val themeStyle: String = "warm",
     val themeMode: String = "light",
+    /** User-selectable visual layer; playback and navigation state are shared. */
+    val uiStyle: String = "classic",
     val autoPlayNext: Boolean = true,
     val skipIntroSeconds: Int = 0,
     val skipOutroSeconds: Int = 0,

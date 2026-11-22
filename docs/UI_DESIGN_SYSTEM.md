@@ -1,8 +1,26 @@
 # Hongguo UI design system
 
 All ordinary Android pages share one design system. The implementation lives in
-`app/src/main/java/com/hongguo/rewrite/HongguoUi.kt`; dynamic theme tokens
+`app/src/main/java/com/yagay/hongguo/HongguoUi.kt`; dynamic theme tokens
 live in `AppDesign.kt`. Do not create parallel screen-local theme palettes.
+
+## UI style switch (rewrite)
+
+- Settings → Appearance → UI style: `classic` (default, original presentation)
+  or `material3` (new alternative layer). The preference key is `ui_style`.
+- Both styles use the exact same screen routes, view model, Media3 player, repository,
+  user account, data storage, downloaded content, comment flows and history.
+- Android 12+ Material 3 follows dynamic system colors; earlier devices use
+  a warm Material 3 fallback palette. Display mode still handles light/dark/system.
+- Regular Material 3 chrome uses navigation items with labels, tonal surfaces,
+  24dp cards, Material-shaped controls, standard switches and a 28dp modal sheet.
+- The existing compact navigation within an immersive video uses the classic 40dp
+  geometry to prevent cropping/gesture regressions. Video surface, PiP, overlays,
+  subtitles and gesture regions never become separate player implementations.
+- Switch back to Classic at any time; stored theme presets remain unchanged.
+- Do not key player state or ViewModel identity to `uiStyle`; preserve active media
+  and test tags across switching.
+
 
 ## Shared components
 

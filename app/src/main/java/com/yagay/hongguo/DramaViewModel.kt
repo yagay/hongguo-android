@@ -277,6 +277,12 @@ class DramaViewModel(application: Application) : AndroidViewModel(application) {
         }
     }
 
+    fun setUiStyle(value: String) {
+        if (value !in setOf("classic", "material3")) return
+        prefs.edit().putString("ui_style", value).apply()
+        mutable.update { it.copy(uiStyle = value) }
+    }
+
     fun setThemeStyle(value: String) {
         if (value !in setOf("warm", "immersive", "cards")) return
         prefs.edit().putString("theme_style", value).apply()
@@ -1396,6 +1402,7 @@ class DramaViewModel(application: Application) : AndroidViewModel(application) {
             hiddenRecommendationIds = prefs.getStringSet("hidden_recommendations_v1", emptySet())?.toSet().orEmpty(),
             themeStyle = prefs.getString("theme_style", "warm")?.takeIf { it in setOf("warm", "immersive", "cards") } ?: "warm",
             themeMode = prefs.getString("theme_mode", "light")?.takeIf { it in setOf("system", "light", "dark") } ?: "light",
+            uiStyle = prefs.getString("ui_style", "classic")?.takeIf { it in setOf("classic", "material3") } ?: "classic",
             reelsMode = prefs.getString("reels_mode", "all")
                 ?.takeIf { it == "all" || it == "real" } ?: "all",
             autoPlayNext = prefs.getBoolean("auto_play_next", true),

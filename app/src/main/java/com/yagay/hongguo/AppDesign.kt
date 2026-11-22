@@ -4,6 +4,7 @@ import androidx.compose.runtime.getValue
 import androidx.compose.runtime.mutableStateOf
 import androidx.compose.runtime.setValue
 import androidx.compose.ui.graphics.Color
+import androidx.compose.material3.ColorScheme
 
 /** Observable, shared design tokens. All existing screens automatically follow theme changes. */
 internal object HongguoColors {
@@ -15,6 +16,7 @@ internal object HongguoColors {
     var muted by mutableStateOf(Color(0xFF85858B)); private set
     var divider by mutableStateOf(Color(0xFFF0F0F1)); private set
     var isDark by mutableStateOf(false); private set
+    var isMaterial3 by mutableStateOf(false); private set
     val playerBackground = Color(0xFF101012)
     // Player controls use the same palette as Library/Settings. Only the
     // video viewport is deliberately immersive and permanently dark.
@@ -27,12 +29,28 @@ internal object HongguoColors {
     /** References the shared color design of main's warm / immersive / cards variants.
      * Apply only after composition through SideEffect to keep snapshot writes safe.
      */
-    fun applyTheme(style: String, mode: String, systemDark: Boolean) {
+    fun applyTheme(style: String, mode: String, systemDark: Boolean, materialScheme: ColorScheme? = null) {
         val dark = when (mode) {
             "dark" -> true
             "system" -> systemDark
             else -> false
         }
+        if (materialScheme != null) {
+            // Bridge existing screen tokens to Material 3 without duplicating
+            // data, playback, gestures, or screen navigation implementations.
+            if (accent != materialScheme.primary) accent = materialScheme.primary
+            if (accentSoft != materialScheme.primaryContainer) accentSoft = materialScheme.primaryContainer
+            if (background != materialScheme.background) background = materialScheme.background
+            if (surface != materialScheme.surfaceContainerLow) surface = materialScheme.surfaceContainerLow
+            if (ink != materialScheme.onSurface) ink = materialScheme.onSurface
+            if (muted != materialScheme.onSurfaceVariant) muted = materialScheme.onSurfaceVariant
+            if (divider != materialScheme.outlineVariant) divider = materialScheme.outlineVariant
+            if (isDark != dark) isDark = dark
+            if (!isMaterial3) isMaterial3 = true
+            return
+        }
+        // The original visual settings remain untouched and can be restored immediately.
+        if (isMaterial3) isMaterial3 = false
         val colors = when (style) {
             "immersive" -> if (dark) listOf(
                 0xFFD63A24L, 0xFF3A1E19L, 0xFF0E0E11L, 0xFF1A1A1FL, 0xFFF5F5F7L,

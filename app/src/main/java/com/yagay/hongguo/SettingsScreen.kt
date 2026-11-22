@@ -146,6 +146,14 @@ internal fun SettingsScreen(state: AppState, model: DramaViewModel) {
             item {
                 CompactSettingsSection("外观") {
                     CompactSettingsRow(
+                        title = "界面风格",
+                        value = if (state.uiStyle == "material3") "Material 3" else "经典红果",
+                        subtitle = "经典界面完整保留，随时切换；Material 3 使用系统动态配色",
+                        tag = "ui_style_row",
+                        onClick = { choiceSheet = "ui_style" },
+                    )
+                    CompactSettingsDivider()
+                    CompactSettingsRow(
                         title = "主题样式",
                         value = when (state.themeStyle) {
                             "immersive" -> "沉浸暗场"
@@ -448,6 +456,9 @@ internal fun SettingsScreen(state: AppState, model: DramaViewModel) {
 
     choiceSheet?.let { choice ->
         val options = when (choice) {
+            "ui_style" -> listOf(
+                "classic" to "经典红果", "material3" to "Material 3",
+            )
             "theme_style" -> listOf(
                 "warm" to "暖白精修", "immersive" to "沉浸暗场",
                 "cards" to "内容卡片",
@@ -470,6 +481,7 @@ internal fun SettingsScreen(state: AppState, model: DramaViewModel) {
             )
         }
         val selected = when (choice) {
+            "ui_style" -> state.uiStyle
             "theme_style" -> state.themeStyle
             "video_cache_per_episode" -> state.videoCachePerEpisodeMb.toString()
             "video_cache_total" -> state.videoCacheTotalMb.toString()
@@ -480,6 +492,7 @@ internal fun SettingsScreen(state: AppState, model: DramaViewModel) {
         }
         SettingsChoiceSheet(
             title = when (choice) {
+                "ui_style" -> "界面风格"
                 "theme_style" -> "主题样式"
                 "video_cache_per_episode" -> "每集缓存上限"
                 "video_cache_total" -> "缓存总空间"
@@ -493,6 +506,7 @@ internal fun SettingsScreen(state: AppState, model: DramaViewModel) {
             tagPrefix = choice,
             onSelect = {
                 when (choice) {
+                    "ui_style" -> model.setUiStyle(it)
                     "theme_style" -> model.setThemeStyle(it)
                     "video_cache_per_episode" -> it.toIntOrNull()?.let(model::setVideoCachePerEpisodeMb)
                     "video_cache_total" -> it.toIntOrNull()?.let(model::setVideoCacheTotalMb)
@@ -554,8 +568,9 @@ private fun CompactSettingsSection(
             modifier = Modifier.padding(start = 12.dp, top = 7.dp, bottom = 2.dp),
         )
         Surface(
-            shape = RoundedCornerShape(12.dp),
+            shape = RoundedCornerShape(if (HongguoColors.isMaterial3) 24.dp else 12.dp),
             color = HongguoColors.surface,
+            tonalElevation = if (HongguoColors.isMaterial3) 1.dp else 0.dp,
             modifier = Modifier.fillMaxWidth(),
         ) {
             Column(
