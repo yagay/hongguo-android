@@ -455,6 +455,7 @@ internal fun HongguoPageHeader(
     title: String,
     onBack: (() -> Unit)? = null,
     modifier: Modifier = Modifier,
+    horizontalPadding: androidx.compose.ui.unit.Dp = HongguoUi.pagePadding,
     actions: @Composable RowScope.() -> Unit = {},
 ) {
     if (HongguoColors.isMaterial3) {
@@ -480,7 +481,7 @@ internal fun HongguoPageHeader(
     Row(
         modifier = modifier.fillMaxWidth()
             .height(HongguoUi.pageTopBarHeight)
-            .padding(horizontal = HongguoUi.pagePadding),
+            .padding(horizontal = horizontalPadding),
         verticalAlignment = Alignment.CenterVertically,
         horizontalArrangement = Arrangement.spacedBy(8.dp),
     ) {
@@ -709,14 +710,10 @@ internal fun HongguoPosterCover(
     cover: Any?,
     title: String,
     modifier: Modifier = Modifier,
+    classicRadius: androidx.compose.ui.unit.Dp = HongguoUi.controlRadius,
 ) {
-    AsyncImage(
-        model = cover,
-        contentDescription = title,
-        contentScale = ContentScale.Crop,
-        modifier = modifier
-            .clip(RoundedCornerShape(HongguoUi.controlRadius))
-            .background(HongguoColors.accentSoft),
+    HongguoPosterArtwork(
+        cover = cover, title = title, modifier = modifier, classicRadius = classicRadius,
     )
 }
 
@@ -1123,6 +1120,7 @@ internal fun HongguoConfirmDialog(
     onConfirm: () -> Unit,
     onDismiss: () -> Unit,
     destructive: Boolean = false,
+    cancelLabel: String = "取消",
 ) {
     AlertDialog(
         onDismissRequest = onDismiss,
@@ -1140,7 +1138,7 @@ internal fun HongguoConfirmDialog(
             }
         },
         dismissButton = {
-            HongguoAction(label = "取消", onClick = onDismiss,
+            HongguoAction(label = cancelLabel, onClick = onDismiss,
                 style = HongguoActionStyle.QUIET)
         },
         shape = RoundedCornerShape(if (HongguoColors.isMaterial3) 28.dp
