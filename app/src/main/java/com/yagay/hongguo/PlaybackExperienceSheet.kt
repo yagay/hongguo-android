@@ -128,15 +128,15 @@ internal fun PlaybackExperienceSheet(
                     when (focused) {
                         PlaybackQuickSetting.VIDEO -> {
                             if (qualityAvailable) {
-                                PlaybackHeading("清晰度上限")
-                                PlaybackChoices(
+                                HongguoPlayerSectionTitle("清晰度上限")
+                                HongguoChoiceGroup(
                                     listOf(0 to "自动", 360 to "360P", 480 to "480P",
                                         720 to "720P", 1080 to "1080P"),
                                     state.qualityLimit, onQuality, "video_quality",
                                 )
                             }
-                            PlaybackHeading("画面比例")
-                            PlaybackChoices(
+                            HongguoPlayerSectionTitle("画面比例")
+                            HongguoChoiceGroup(
                                 listOf(false to "适应画面", true to "铺满画面"),
                                 fillVideo, onFillVideo, "video_frame_mode",
                             )
@@ -204,8 +204,8 @@ internal fun PlaybackExperienceSheet(
                                     modifier = Modifier.testTag("pip_test_now"),
                                 )
                             }
-                            PlaybackHeading("屏幕亮度")
-                            PlaybackChoices(
+                            HongguoPlayerSectionTitle("屏幕亮度")
+                            HongguoChoiceGroup(
                                 listOf(-1 to "系统", 65 to "65%", 80 to "80%",
                                     90 to "90%", 100 to "100%"),
                                 state.videoBrightnessPercent,
@@ -213,16 +213,16 @@ internal fun PlaybackExperienceSheet(
                             )
                         }
                         PlaybackQuickSetting.SPEED -> {
-                            PlaybackHeading("播放倍速")
-                            PlaybackChoices(
+                            HongguoPlayerSectionTitle("播放倍速")
+                            HongguoChoiceGroup(
                                 listOf(0.75f to "0.75×", 1f to "1×", 1.25f to "1.25×",
                                     1.5f to "1.5×", 2f to "2×", 3f to "3×"),
                                 speed, onSpeed, "video_speed",
                             )
                         }
                         PlaybackQuickSetting.AUDIO -> {
-                            PlaybackHeading("声音增强")
-                            PlaybackChoices(
+                            HongguoPlayerSectionTitle("声音增强")
+                            HongguoChoiceGroup(
                                 listOf(0 to "原音", 3 to "+3dB", 6 to "+6dB"),
                                 state.playbackAudioBoostDb,
                                 model::setPlaybackAudioBoostDb, "audio_boost",
@@ -235,26 +235,26 @@ internal fun PlaybackExperienceSheet(
                                 onCheckedChange = model::setDanmaku,
                                 tag = "player_danmaku_enabled",
                             )
-                            PlaybackHeading("移动速度")
-                            PlaybackChoices(
+                            HongguoPlayerSectionTitle("移动速度")
+                            HongguoChoiceGroup(
                                 listOf(0 to "慢", 1 to "标准", 2 to "快"),
                                 state.danmakuSpeed, model::setDanmakuSpeed,
                                 "danmaku_speed",
                             )
-                            PlaybackHeading("轨道数量")
-                            PlaybackChoices(
+                            HongguoPlayerSectionTitle("轨道数量")
+                            HongguoChoiceGroup(
                                 (1..5).map { it to "${it}轨" },
                                 state.danmakuDensity, model::setDanmakuDensity,
                                 "danmaku_lanes",
                             )
-                            PlaybackHeading("字体大小")
-                            PlaybackChoices(
+                            HongguoPlayerSectionTitle("字体大小")
+                            HongguoChoiceGroup(
                                 listOf(12, 14, 16, 18).map { it to "$it sp" },
                                 state.danmakuFontSize, model::setDanmakuFontSize,
                                 "danmaku_font",
                             )
-                            PlaybackHeading("字体粗细")
-                            PlaybackChoices(
+                            HongguoPlayerSectionTitle("字体粗细")
+                            HongguoChoiceGroup(
                                 listOf(
                                     200 to "极细", 300 to "细", 400 to "常规",
                                     500 to "中等", 600 to "粗",
@@ -262,26 +262,26 @@ internal fun PlaybackExperienceSheet(
                                 state.danmakuFontWeight, model::setDanmakuFontWeight,
                                 "danmaku_font_weight",
                             )
-                            PlaybackHeading("行距（轨道间隔）")
-                            PlaybackChoices(
+                            HongguoPlayerSectionTitle("行距（轨道间隔）")
+                            HongguoChoiceGroup(
                                 listOf(0 to "紧密", 2 to "标准", 4 to "宽", 8 to "更宽"),
                                 state.danmakuLineSpacingDp, model::setDanmakuLineSpacing,
                                 "danmaku_line_spacing",
                             )
-                            PlaybackHeading("字体颜色")
-                            PlaybackChoices(
+                            HongguoPlayerSectionTitle("字体颜色")
+                            HongguoChoiceGroup(
                                 listOf(0 to "纯白", 1 to "柔白", 2 to "淡黄", 3 to "浅蓝"),
                                 state.danmakuTextColor, model::setDanmakuTextColor,
                                 "danmaku_text_color",
                             )
-                            PlaybackHeading("文字描边")
-                            PlaybackChoices(
+                            HongguoPlayerSectionTitle("文字描边")
+                            HongguoChoiceGroup(
                                 listOf(0 to "无", 1 to "细描边", 2 to "明显"),
                                 state.danmakuOutlineDp, model::setDanmakuOutline,
                                 "danmaku_outline",
                             )
-                            PlaybackHeading("弹幕透明度")
-                            PlaybackChoices(
+                            HongguoPlayerSectionTitle("弹幕透明度")
+                            HongguoChoiceGroup(
                                 listOf(40, 60, 80, 100).map { it to "$it%" },
                                 state.danmakuOpacity, model::setDanmakuOpacity,
                                 "danmaku_opacity",
@@ -295,27 +295,27 @@ internal fun PlaybackExperienceSheet(
                         }
                         PlaybackQuickSetting.PREFERENCES -> {
                     if (state.feedMode) {
-                        PlaybackHeading("刷剧内容")
-                        PlaybackChoices(
+                        HongguoPlayerSectionTitle("刷剧内容")
+                        HongguoChoiceGroup(
                             listOf("all" to "全部推荐", "real" to "只看真人"),
                             state.reelsMode, model::setReelsMode, "official_reels_mode",
                         )
                     }
                     HorizontalDivider(color = HongguoColors.divider)
-                    PlaybackToggle("自动连播下一集／下一部推荐", state.autoPlayNext,
+                    HongguoToggleRow("自动连播下一集／下一部推荐", state.autoPlayNext,
                         model::setAutoPlayNext, "player_auto_next")
-                    PlaybackToggle("播放失败自动重试", state.retryPlaybackAutomatically,
+                    HongguoToggleRow("播放失败自动重试", state.retryPlaybackAutomatically,
                         model::setAutomaticPlaybackRetry, "player_auto_retry")
 
-                    PlaybackHeading("跳过片头")
-                    PlaybackChoices(
+                    HongguoPlayerSectionTitle("跳过片头")
+                    HongguoChoiceGroup(
                         listOf(0 to "关闭", 10 to "10秒", 20 to "20秒",
                             30 to "30秒", 60 to "60秒"),
                         state.skipIntroSeconds, model::setSkipIntroSeconds,
                         "player_skip_intro",
                     )
-                    PlaybackHeading("跳过片尾")
-                    PlaybackChoices(
+                    HongguoPlayerSectionTitle("跳过片尾")
+                    HongguoChoiceGroup(
                         listOf(0 to "关闭", 5 to "5秒", 10 to "10秒",
                             15 to "15秒", 30 to "30秒"),
                         state.skipOutroSeconds, model::setSkipOutroSeconds,
@@ -345,12 +345,12 @@ internal fun PlaybackExperienceSheet(
                         PlaybackQuickSetting.TIMER -> {
                             Row(Modifier.fillMaxWidth(),
                                 verticalAlignment = Alignment.CenterVertically) {
-                                PlaybackHeading("定时停止")
+                                HongguoPlayerSectionTitle("定时停止")
                                 Spacer(Modifier.weight(1f))
                                 Text("当前：${state.sleepTimerLabel}", fontSize = 11.sp,
                                     color = secondary)
                             }
-                            PlaybackChoices(
+                            HongguoChoiceGroup(
                                 listOf(0 to "关闭", 15 to "15分", 30 to "30分",
                                     60 to "60分"),
                                 if (state.sleepTimerLabel == "关闭") 0 else -1,
@@ -369,30 +369,3 @@ internal fun PlaybackExperienceSheet(
         }
     }
 }
-
-@Composable
-private fun PlaybackToggle(
-    title: String,
-    checked: Boolean,
-    onCheckedChange: (Boolean) -> Unit,
-    tag: String,
-) = HongguoToggleRow(title, checked, onCheckedChange, tag)
-
-@Composable
-private fun PlaybackHeading(title: String) {
-    Text(title, fontSize = 13.sp, fontWeight = FontWeight.SemiBold,
-        color = HongguoColors.ink)
-}
-
-@Composable
-private fun <T> PlaybackChoices(
-    options: List<Pair<T, String>>,
-    selected: T,
-    onSelect: (T) -> Unit,
-    tag: String,
-) = HongguoChoiceGroup(
-    options = options,
-    selected = selected,
-    onSelect = onSelect,
-    tag = tag,
- )

@@ -120,8 +120,8 @@ internal fun SettingsScreen(state: AppState, model: DramaViewModel) {
             verticalArrangement = Arrangement.spacedBy(7.dp),
         ) {
             item {
-                CompactSettingsSection("账号与隐私") {
-                    SettingsNavRow(
+                HongguoSettingsSection("账号与隐私") {
+                    HongguoSettingsRow(
                         icon = Icons.Outlined.PersonOutline,
                         title = "红果账号",
                         subtitle = account.profile?.nickname?.let { "已登录 · $it" }
@@ -130,30 +130,30 @@ internal fun SettingsScreen(state: AppState, model: DramaViewModel) {
                         onClick = { model.show(Modal.ACCOUNT) },
                     )
                     if (account.profile != null) {
-                        CompactSettingsDivider()
-                        SettingToggle(
+                        HongguoSettingsDivider()
+                        HongguoSettingsToggle(
                             "刷短剧使用登录账号",
                             "向官方接口发送登录会话；推荐结果由服务端决定",
                             account.accountRecommendations,
                             model::setAccountRecommendations, "settings_account_recommendations")
-                        CompactSettingsDivider()
-                        SettingToggle("同步观看进度", "仅同步开启后产生的进度",
+                        HongguoSettingsDivider()
+                        HongguoSettingsToggle("同步观看进度", "仅同步开启后产生的进度",
                             account.syncEnabled,
                             model.account::setProgressSync, "settings_account_sync")
                     }
                 }
             }
             item {
-                CompactSettingsSection("外观") {
-                    CompactSettingsRow(
+                HongguoSettingsSection("外观") {
+                    HongguoSettingsRow(
                         title = "界面风格",
                         value = if (state.uiStyle == "material3") "Material 3" else "经典红果",
                         subtitle = "经典界面完整保留，随时切换；Material 3 使用系统动态配色",
                         tag = "ui_style_row",
                         onClick = { choiceSheet = "ui_style" },
                     )
-                    CompactSettingsDivider()
-                    CompactSettingsRow(
+                    HongguoSettingsDivider()
+                    HongguoSettingsRow(
                         title = "主题样式",
                         value = when (state.themeStyle) {
                             "immersive" -> "沉浸暗场"
@@ -163,8 +163,8 @@ internal fun SettingsScreen(state: AppState, model: DramaViewModel) {
                         tag = "theme_style_row",
                         onClick = { choiceSheet = "theme_style" },
                     )
-                    CompactSettingsDivider()
-                    CompactSettingsRow(
+                    HongguoSettingsDivider()
+                    HongguoSettingsRow(
                         title = "显示模式",
                         value = when (state.themeMode) {
                             "dark" -> "夜间模式"
@@ -179,8 +179,8 @@ internal fun SettingsScreen(state: AppState, model: DramaViewModel) {
             // Playback brightness, audio enhancement and other video controls
             // live exclusively in the player's own PlaybackExperienceSheet.
             item {
-                CompactSettingsSection("内容来源") {
-                    CompactSettingsRow(
+                HongguoSettingsSection("内容来源") {
+                    HongguoSettingsRow(
                         title = "内容接口",
                         value = if (state.backend.isBlank()) "原生模式" else "自定义 API",
                         tag = "backend_settings_entry",
@@ -231,71 +231,71 @@ internal fun SettingsScreen(state: AppState, model: DramaViewModel) {
                 }
             }
             item {
-                CompactSettingsSection("视频读取") {
-                    SettingToggle(
+                HongguoSettingsSection("视频读取") {
+                    HongguoSettingsToggle(
                         "预加载下一集／下一部",
                         "提前缓存相邻视频，已完成的分块不必等整集下载完即可播放",
                         state.nextVideoPreloadEnabled,
                         model::setNextVideoPreloadEnabled,
                         "settings_next_video_preload",
                     )
-                    CompactSettingsDivider()
-                    SettingToggle(
+                    HongguoSettingsDivider()
+                    HongguoSettingsToggle(
                         "仅在 Wi-Fi／非计费网络预加载",
                         "关闭后也可使用移动数据，较大缓存可能产生明显流量",
                         state.nextVideoPreloadWifiOnly,
                         model::setNextVideoPreloadWifiOnly,
                         "settings_preload_wifi_only",
                     )
-                    CompactSettingsDivider()
-                    CompactSettingsRow(
+                    HongguoSettingsDivider()
+                    HongguoSettingsRow(
                         title = "每集缓存上限",
                         value = "${state.videoCachePerEpisodeMb} MiB",
                         subtitle = "可选 4–512 MiB，使用磁盘，不会整集占用内存",
                         tag = "settings_video_cache_per_episode",
                         onClick = { choiceSheet = "video_cache_per_episode" },
                     )
-                    CompactSettingsDivider()
-                    CompactSettingsRow(
+                    HongguoSettingsDivider()
+                    HongguoSettingsRow(
                         title = "缓存总空间",
                         value = "${state.videoCacheTotalMb} MiB",
                         subtitle = "所有视频共享的 LRU 空间，可选最大 4 GiB",
                         tag = "settings_video_cache_total",
                         onClick = { choiceSheet = "video_cache_total" },
                     )
-                    CompactSettingsDivider()
-                    CompactSettingsRow(
+                    HongguoSettingsDivider()
+                    HongguoSettingsRow(
                         title = "提前预加载数量",
                         value = "${state.videoPreloadCount} 部／集",
                         subtitle = "按播放顺序准备接下来的视频，不同时下载",
                         tag = "settings_video_preload_count",
                         onClick = { choiceSheet = "video_preload_count" },
                     )
-                    CompactSettingsDivider()
-                    CompactSettingsRow(
+                    HongguoSettingsDivider()
+                    HongguoSettingsRow(
                         title = "预加载启动缓冲",
                         value = "${state.videoPreloadBufferSeconds} 秒",
                         subtitle = "当前视频已缓冲多少秒后，才允许后台预加载",
                         tag = "settings_video_preload_buffer",
                         onClick = { choiceSheet = "video_preload_buffer" },
                     )
-                    CompactSettingsDivider()
-                    CompactSettingsRow(
+                    HongguoSettingsDivider()
+                    HongguoSettingsRow(
                         title = "每部预加载最长时间",
                         value = "${state.videoPreloadDeadlineSeconds} 秒",
                         subtitle = "可选最长 10 分钟；网络较慢时保留已下载部分",
                         tag = "settings_video_preload_deadline",
                         onClick = { choiceSheet = "video_preload_deadline" },
                     )
-                    CompactSettingsDivider()
-                    CompactSettingsRow(
+                    HongguoSettingsDivider()
+                    HongguoSettingsRow(
                         title = "查看当前缓存用量",
                         subtitle = "刷新本次会话实际存储的媒体字节数",
                         tag = "settings_video_cache_usage",
                         onClick = model::inspectVideoCache,
                     )
-                    CompactSettingsDivider()
-                    CompactSettingsRow(
+                    HongguoSettingsDivider()
+                    HongguoSettingsRow(
                         title = "清理其它视频缓存",
                         subtitle = "保留正在播放的缓存，删除其它已下载数据",
                         tag = "settings_video_cache_clear_others",
@@ -304,7 +304,7 @@ internal fun SettingsScreen(state: AppState, model: DramaViewModel) {
                     state.settingsMessage?.takeIf { it.startsWith("缓存") }?.let {
                         Text(it, color = HongguoColors.accent, fontSize = 11.sp)
                     }
-                    CompactSettingsDivider()
+                    HongguoSettingsDivider()
                     Text(
                         "视频按块缓存原始网络字节；加密视频在解密前保存，缓冲变慢时让正在播放的视频优先，缓存不必完整即可读取。",
                         color = HongguoColors.muted, fontSize = 12.sp,
@@ -316,8 +316,8 @@ internal fun SettingsScreen(state: AppState, model: DramaViewModel) {
                 }
             }
             item {
-                CompactSettingsSection("推荐管理") {
-                    CompactSettingsRow(
+                HongguoSettingsSection("推荐管理") {
+                    HongguoSettingsRow(
                         title = "恢复隐藏的推荐",
                         value = "已隐藏 ${state.hiddenRecommendationIds.size} 部",
                         tag = "settings_restore_recommendations",
@@ -327,8 +327,8 @@ internal fun SettingsScreen(state: AppState, model: DramaViewModel) {
                 }
             }
             item {
-                CompactSettingsSection("追剧更新提醒") {
-                    SettingToggle(
+                HongguoSettingsSection("追剧更新提醒") {
+                    HongguoSettingsToggle(
                         "定期检查收藏更新",
                         "联网时约每 12 小时检查，实际时间由系统决定",
                         state.episodeUpdateNotificationsEnabled,
@@ -339,8 +339,8 @@ internal fun SettingsScreen(state: AppState, model: DramaViewModel) {
                         },
                         "settings_tracking_notification",
                     )
-                    CompactSettingsDivider()
-                    CompactSettingsRow(
+                    HongguoSettingsDivider()
+                    HongguoSettingsRow(
                         title = if (state.trackingUpdates) "正在检查…" else "立即检查追剧更新",
                         value = "手动检查",
                         tag = "settings_check_updates",
@@ -353,15 +353,15 @@ internal fun SettingsScreen(state: AppState, model: DramaViewModel) {
                 }
             }
             item {
-                CompactSettingsSection("本机数据备份") {
-                    CompactSettingsRow(
+                HongguoSettingsSection("本机数据备份") {
+                    HongguoSettingsRow(
                         title = "导出本机备份",
                         subtitle = "收藏、历史、稍后看和点赞（不含登录凭据）",
                         tag = "export_local_backup",
                         onClick = { localExporter.launch("Hongguo-local-backup.json") },
                     )
-                    CompactSettingsDivider()
-                    CompactSettingsRow(
+                    HongguoSettingsDivider()
+                    HongguoSettingsRow(
                         title = "导入并恢复",
                         tag = "import_local_backup",
                         onClick = {
@@ -375,8 +375,8 @@ internal fun SettingsScreen(state: AppState, model: DramaViewModel) {
                 }
             }
             item {
-                CompactSettingsSection("诊断与日志") {
-                    SettingToggle(
+                HongguoSettingsSection("诊断与日志") {
+                    HongguoSettingsToggle(
                         title = "记录诊断事件",
                         explanation = if (state.logEnabled) "已开启 · 本机最多保留 256 KB"
                                       else "已关闭 · 保留已有日志",
@@ -384,8 +384,8 @@ internal fun SettingsScreen(state: AppState, model: DramaViewModel) {
                         onChange = model::setLoggingEnabled,
                         testTag = "log_switch",
                     )
-                    CompactSettingsDivider()
-                    CompactSettingsRow(
+                    HongguoSettingsDivider()
+                    HongguoSettingsRow(
                         title = "导出诊断日志",
                         value = "TXT",
                         tag = "export_diagnostic",
@@ -395,20 +395,20 @@ internal fun SettingsScreen(state: AppState, model: DramaViewModel) {
                             exporter.launch("Hongguo-diagnostic-$stamp.txt")
                         },
                     )
-                    CompactSettingsDivider()
-                    CompactSettingsRow(
+                    HongguoSettingsDivider()
+                    HongguoSettingsRow(
                         title = "刷新诊断信息",
                         tag = "settings_refresh_diagnostics",
                         onClick = model::refreshDiagnostics,
                     )
-                    CompactSettingsDivider()
-                    CompactSettingsRow(
+                    HongguoSettingsDivider()
+                    HongguoSettingsRow(
                         title = "清空诊断日志",
                         tag = "settings_clear_diagnostics",
                         onClick = { confirmClear = true },
                     )
-                    CompactSettingsDivider()
-                    CompactSettingsRow(
+                    HongguoSettingsDivider()
+                    HongguoSettingsRow(
                         title = "日志预览",
                         value = if (showLogPreview) "收起" else "展开",
                         tag = "diagnostic_preview_toggle",
@@ -437,8 +437,8 @@ internal fun SettingsScreen(state: AppState, model: DramaViewModel) {
                 }
             }
             item {
-                CompactSettingsSection("关于") {
-                    CompactSettingsRow(
+                HongguoSettingsSection("关于") {
+                    HongguoSettingsRow(
                         title = "红果短剧 · Native Rewrite",
                         value = BuildConfig.VERSION_NAME,
                         tag = "settings_about",
@@ -490,7 +490,7 @@ internal fun SettingsScreen(state: AppState, model: DramaViewModel) {
             "video_preload_deadline" -> state.videoPreloadDeadlineSeconds.toString()
             else -> state.themeMode
         }
-        SettingsChoiceSheet(
+        HongguoSingleChoiceSheet(
             title = when (choice) {
                 "ui_style" -> "界面风格"
                 "theme_style" -> "主题样式"
@@ -548,159 +548,3 @@ internal fun SettingsScreen(state: AppState, model: DramaViewModel) {
         )
     }
 }
-
-/**
- * Compact settings groups: a short section label and conventional one-line
- * Android-style preference rows. Large padded choice grids are intentionally
- * kept out of the main settings list.
- */
-@Composable
-private fun CompactSettingsSection(
-    title: String,
-    content: @Composable ColumnScope.() -> Unit,
-) {
-    Column(verticalArrangement = Arrangement.spacedBy(4.dp)) {
-        Text(
-            title,
-            color = HongguoColors.muted,
-            fontSize = 12.sp,
-            fontWeight = FontWeight.Medium,
-            modifier = Modifier.padding(start = 12.dp, top = 7.dp, bottom = 2.dp),
-        )
-        Surface(
-            shape = RoundedCornerShape(if (HongguoColors.isMaterial3) 24.dp else 12.dp),
-            color = HongguoColors.surface,
-            tonalElevation = if (HongguoColors.isMaterial3) 1.dp else 0.dp,
-            modifier = Modifier.fillMaxWidth(),
-        ) {
-            Column(
-                modifier = Modifier.fillMaxWidth().padding(horizontal = 13.dp, vertical = 2.dp),
-                verticalArrangement = Arrangement.spacedBy(3.dp),
-                content = content,
-            )
-        }
-    }
-}
-
-@Composable
-private fun CompactSettingsDivider() {
-    HorizontalDivider(color = HongguoColors.divider)
-}
-
-@Composable
-private fun CompactSettingsRow(
-    title: String,
-    tag: String,
-    onClick: () -> Unit = {},
-    value: String? = null,
-    subtitle: String? = null,
-    icon: ImageVector? = null,
-    enabled: Boolean = true,
-    expanded: Boolean = false,
-    showChevron: Boolean = true,
-) {
-    Row(
-        modifier = Modifier.fillMaxWidth()
-            .heightIn(min = if (subtitle.isNullOrBlank()) 46.dp else 54.dp)
-            .then(if (enabled && showChevron) Modifier.clickable(onClick = onClick) else Modifier)
-            .padding(vertical = 4.dp)
-            .testTag(tag),
-        horizontalArrangement = Arrangement.spacedBy(9.dp),
-        verticalAlignment = Alignment.CenterVertically,
-    ) {
-        if (icon != null) Icon(
-            icon, contentDescription = null,
-            tint = HongguoColors.accent,
-            modifier = Modifier.size(19.dp),
-        )
-        Column(
-            modifier = Modifier.weight(1f),
-            verticalArrangement = Arrangement.spacedBy(1.dp),
-        ) {
-            Text(
-                title, fontSize = 13.sp, fontWeight = FontWeight.Medium,
-                color = if (enabled) HongguoColors.ink else HongguoColors.muted,
-                maxLines = 1, overflow = TextOverflow.Ellipsis,
-            )
-            if (!subtitle.isNullOrBlank()) Text(
-                subtitle, fontSize = 11.sp, color = HongguoColors.muted,
-                maxLines = 1, overflow = TextOverflow.Ellipsis,
-            )
-        }
-        if (!value.isNullOrBlank()) Text(
-            value,
-            fontSize = 11.sp,
-            color = if (enabled) HongguoColors.muted else HongguoColors.divider,
-            maxLines = 1,
-            overflow = TextOverflow.Ellipsis,
-            modifier = Modifier.widthIn(max = 130.dp),
-        )
-        if (showChevron) Icon(
-            if (expanded) Icons.Outlined.ExpandLess else Icons.Outlined.ChevronRight,
-            contentDescription = null,
-            tint = HongguoColors.muted,
-            modifier = Modifier.size(17.dp),
-        )
-    }
-}
-
-@Composable
-private fun SettingsChoiceSheet(
-    title: String,
-    options: List<Pair<String, String>>,
-    selected: String,
-    tagPrefix: String,
-    onSelect: (String) -> Unit,
-    onDismiss: () -> Unit,
-) {
-    HongguoModalSheet(onDismissRequest = onDismiss) {
-        Column(
-            Modifier.fillMaxWidth().padding(horizontal = 16.dp),
-            verticalArrangement = Arrangement.spacedBy(2.dp),
-        ) {
-            HongguoSheetHeader(title = title)
-            options.forEach { (value, label) ->
-                Row(
-                    modifier = Modifier.fillMaxWidth()
-                        .heightIn(min = 46.dp)
-                        .clickable { onSelect(value) }
-                        .testTag("${tagPrefix}_${value}")
-                        .padding(horizontal = 5.dp),
-                    verticalAlignment = Alignment.CenterVertically,
-                ) {
-                    Text(
-                        label, color = HongguoColors.ink,
-                        fontSize = 14.sp,
-                        modifier = Modifier.weight(1f),
-                    )
-                    if (selected == value) Icon(
-                        Icons.Outlined.Check, contentDescription = "已选择",
-                        tint = HongguoColors.accent,
-                        modifier = Modifier.size(19.dp),
-                    )
-                }
-                if (value != options.last().first) CompactSettingsDivider()
-            }
-            Spacer(Modifier.height(12.dp))
-        }
-    }
-}
-
-@Composable
-private fun SettingsNavRow(
-    icon: ImageVector,
-    title: String,
-    subtitle: String,
-    tag: String,
-    onClick: () -> Unit,
-) = CompactSettingsRow(title = title, subtitle = subtitle, icon = icon,
-    tag = tag, onClick = onClick)
-
-@Composable
-private fun SettingToggle(
-    title: String,
-    explanation: String,
-    enabled: Boolean,
-    onChange: (Boolean) -> Unit,
-    testTag: String,
-) = HongguoToggleRow(title, enabled, onChange, testTag, description = explanation)

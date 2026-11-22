@@ -308,37 +308,19 @@ private fun CatalogHeader(state: AppState, model: DramaViewModel,
         }
         // A single category navigation; no duplicated quick-action row.
         // Genre chips and the filter action live with the content section.
-        Row(
-            Modifier.fillMaxWidth().padding(horizontal = 12.dp),
-            horizontalArrangement = Arrangement.spacedBy(25.dp),
-            verticalAlignment = Alignment.CenterVertically,
-        ) {
-            listOf(
-                "找剧" to Section.BROWSE,
-                "排行榜" to Section.RANK,
-                "上新" to Section.LATEST,
-            ).forEachIndexed { index, (title, section) ->
-                val selected = state.section == section
-                Text(
-                    title,
-                    color = if (selected) HongguoColors.ink else HongguoColors.muted,
-                    fontSize = 15.sp,
-                    fontWeight = if (selected) FontWeight.Bold else FontWeight.Normal,
-                    modifier = Modifier.clickable {
-                        if (!selected) model.section(section)
-                    }.padding(vertical = 8.dp).testTag("theater_category_$index"),
-                )
-            }
-            if (hasReservations) {
-                Text(
-                    "预约",
-                    fontSize = 14.sp,
-                    color = HongguoColors.muted,
-                    modifier = Modifier.clickable(onClick = onReservations)
-                        .padding(vertical = 8.dp).testTag("theater_reservations"),
-                )
-            }
-        }
+        HongguoCategoryNavigation(
+            options = listOf(
+                Section.BROWSE to "找剧",
+                Section.RANK to "排行榜",
+                Section.LATEST to "上新",
+            ),
+            selected = state.section,
+            onSelect = model::section,
+            tagPrefix = "theater_category",
+            trailingLabel = if (hasReservations) "预约" else null,
+            onTrailingClick = onReservations,
+            trailingTag = "theater_reservations",
+        )
         HorizontalDivider(thickness = 1.dp, color = HongguoColors.divider)
     }
 }

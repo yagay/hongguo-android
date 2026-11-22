@@ -4,6 +4,18 @@ All ordinary Android pages share one design system. The implementation lives in
 `app/src/main/java/com/yagay/hongguo/HongguoUi.kt`; dynamic theme tokens
 live in `AppDesign.kt`. Do not create parallel screen-local theme palettes.
 
+## Consolidated shared components
+
+- `HongguoPreferenceUi.kt` owns all settings groups, navigation/value rows,
+  toggle forwarding, dividers and selection sheets. Do not recreate compact
+  setting components inside individual screens.
+- Theater category navigation is in `HongguoCategoryNavigation`, and player
+  settings now call the shared headings, chips and toggles directly.
+- These changes unify components first; the Material 3 alternative can use
+  them without duplicating page state or changing classic player geometry.
+- Keep the original Compose testTag strings during migration and never relocate
+  Media3 playback state into appearance components.
+
 ## UI style switch (rewrite)
 
 - Settings → Appearance → UI style: `classic` (default, original presentation)
@@ -34,7 +46,11 @@ live in `AppDesign.kt`. Do not create parallel screen-local theme palettes.
 | Cards and account panels | `HongguoCard` |
 | Settings/drawer menu row | `HongguoNavigationRow` |
 | Chips and option groups | `HongguoChoiceChip`, `HongguoChoiceGroup` |
-| Standard settings switch row | `HongguoToggleRow` |
+| Standard settings switch row | `HongguoToggleRow` / `HongguoSettingsToggle` |
+| Settings groups, rows, dividers | `HongguoSettingsSection`, `HongguoSettingsRow`, `HongguoSettingsDivider` |
+| Reusable single choice bottom sheets | `HongguoSingleChoiceSheet` |
+| Theater category navigation | `HongguoCategoryNavigation` |
+| Video settings headings | `HongguoPlayerSectionTitle` |
 | Primary/outline/quiet actions | `HongguoAction` |
 | Normal icon action | `HongguoIconAction` |
 | Video top circular action | `HongguoPlayerTopAction` |

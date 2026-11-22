@@ -579,6 +579,78 @@ internal fun HongguoTabs(
     }
 }
 
+/** Shared section heading for the player's settings, speed and danmaku sheets. */
+@Composable
+internal fun HongguoPlayerSectionTitle(title: String) {
+    Text(title,
+        fontSize = if (HongguoColors.isMaterial3) 14.sp else 13.sp,
+        fontWeight = FontWeight.SemiBold,
+        color = HongguoColors.ink,
+    )
+}
+
+/**
+ * Shared category navigation for Theater and other compact filter strips.
+ * The host page owns its state and callbacks; test tags stay unchanged.
+ */
+@Composable
+internal fun <T> HongguoCategoryNavigation(
+    options: List<Pair<T, String>>,
+    selected: T,
+    onSelect: (T) -> Unit,
+    tagPrefix: String,
+    modifier: Modifier = Modifier,
+    trailingLabel: String? = null,
+    onTrailingClick: (() -> Unit)? = null,
+    trailingTag: String = "category_trailing",
+) {
+    val material3 = HongguoColors.isMaterial3
+    Row(
+        modifier = modifier.fillMaxWidth().padding(horizontal = 12.dp),
+        horizontalArrangement = Arrangement.spacedBy(if (material3) 8.dp else 25.dp),
+        verticalAlignment = Alignment.CenterVertically,
+    ) {
+        options.forEachIndexed { index, (value, label) ->
+            val active = selected == value
+            if (material3) {
+                HongguoChoiceChip(
+                    label = label,
+                    selected = active,
+                    onClick = { if (!active) onSelect(value) },
+                    modifier = Modifier.testTag("${tagPrefix}_${index}"),
+                )
+            } else {
+                Text(
+                    label,
+                    color = if (active) HongguoColors.ink else HongguoColors.muted,
+                    fontSize = 15.sp,
+                    fontWeight = if (active) FontWeight.Bold else FontWeight.Normal,
+                    modifier = Modifier.clickable { if (!active) onSelect(value) }
+                        .padding(vertical = 8.dp).testTag("${tagPrefix}_${index}"),
+                )
+            }
+        }
+        if (trailingLabel != null && onTrailingClick != null) {
+            if (material3) {
+                HongguoAction(
+                    label = trailingLabel,
+                    onClick = onTrailingClick,
+                    modifier = Modifier.testTag(trailingTag),
+                    style = HongguoActionStyle.QUIET,
+                )
+            } else {
+                Text(
+                    trailingLabel,
+                    fontSize = 14.sp,
+                    color = HongguoColors.muted,
+                    modifier = Modifier.clickable(onClick = onTrailingClick)
+                        .padding(vertical = 8.dp).testTag(trailingTag),
+                )
+            }
+        }
+    }
+}
+
 /** One themed content area for ordinary non-video pages and drawers. */
 @Composable
 internal fun HongguoPageSurface(
@@ -997,31 +1069,6 @@ internal fun HongguoSheetListRow(
         verticalAlignment = Alignment.Top,
         content = content,
     )
-}
-
-/** The only ordinary settings group: one title + theme card + consistent spacing. */
-@Composable
-internal fun HongguoSettingsSection(
-    title: String,
-    modifier: Modifier = Modifier,
-    content: @Composable ColumnScope.() -> Unit,
-) {
-    Column(modifier, verticalArrangement = Arrangement.spacedBy(HongguoUi.pageSectionGap)) {
-        Text(
-            title,
-            modifier = Modifier.padding(start = 2.dp, top = 6.dp),
-            fontSize = 14.sp,
-            fontWeight = FontWeight.Medium,
-            color = HongguoColors.muted,
-        )
-        HongguoCard(modifier = Modifier.fillMaxWidth()) {
-            Column(
-                Modifier.fillMaxWidth().padding(HongguoUi.pagePadding),
-                verticalArrangement = Arrangement.spacedBy(10.dp),
-                content = content,
-            )
-        }
-    }
 }
 
 /** Full-width expand/collapse row, including a single consistent trailing chevron. */
