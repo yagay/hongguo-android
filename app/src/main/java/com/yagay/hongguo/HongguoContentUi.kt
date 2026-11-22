@@ -1,11 +1,13 @@
 package com.yagay.hongguo
 
+import androidx.compose.foundation.BorderStroke
 import androidx.compose.foundation.background
 import androidx.compose.foundation.clickable
 import androidx.compose.foundation.layout.Arrangement
 import androidx.compose.foundation.layout.Box
 import androidx.compose.foundation.layout.BoxScope
 import androidx.compose.foundation.layout.Row
+import androidx.compose.foundation.layout.height
 import androidx.compose.foundation.layout.fillMaxSize
 import androidx.compose.foundation.layout.fillMaxWidth
 import androidx.compose.foundation.layout.padding
@@ -30,6 +32,7 @@ import androidx.compose.ui.Modifier
 import androidx.compose.ui.draw.clip
 import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.layout.ContentScale
+import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.text.style.TextOverflow
 import androidx.compose.ui.text.input.ImeAction
 import androidx.compose.ui.unit.Dp
@@ -172,4 +175,32 @@ internal fun HongguoFormDialog(
             else HongguoUi.cardRadius),
         containerColor = HongguoColors.surface,
     )
+}
+
+/** Dense, equal-width option shared by Theater and future compact filter grids. */
+@Composable
+internal fun HongguoFilterOptionCell(
+    label: String,
+    selected: Boolean,
+    onClick: () -> Unit,
+    modifier: Modifier = Modifier,
+) {
+    val material3 = HongguoColors.isMaterial3
+    Surface(
+        onClick = onClick,
+        modifier = modifier.height(if (material3) 40.dp else 34.dp),
+        color = if (selected) HongguoColors.accentSoft else HongguoColors.background,
+        shape = RoundedCornerShape(if (material3) 16.dp else 8.dp),
+        border = BorderStroke(1.dp,
+            if (selected) HongguoColors.accent else HongguoColors.divider),
+    ) {
+        Box(Modifier.fillMaxSize().padding(horizontal = 2.dp),
+            contentAlignment = Alignment.Center) {
+            Text(label,
+                fontSize = if (material3) 12.sp else 11.sp,
+                fontWeight = if (selected) FontWeight.SemiBold else FontWeight.Normal,
+                color = if (selected) HongguoColors.accent else HongguoColors.ink,
+                maxLines = 1, overflow = TextOverflow.Ellipsis)
+        }
+    }
 }

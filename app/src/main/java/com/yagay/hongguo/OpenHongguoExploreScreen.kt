@@ -423,13 +423,13 @@ internal fun OpenHongguoExploreScreen(
             if (loading || worksLoading) item {
                 Box(Modifier.fillMaxWidth().padding(22.dp),
                     contentAlignment = Alignment.Center) {
-                    CircularProgressIndicator(color = HongguoColors.accent)
+                    HongguoInlineLoading()
                 }
             }
             error?.let { message -> item {
                 Column(Modifier.fillMaxWidth().padding(18.dp),
                     horizontalAlignment = Alignment.CenterHorizontally) {
-                    Text(message, fontSize = 13.sp, color = HongguoColors.muted)
+                    HongguoInlineError(message)
                     HongguoAction(
                         label = "重试",
                         onClick = {

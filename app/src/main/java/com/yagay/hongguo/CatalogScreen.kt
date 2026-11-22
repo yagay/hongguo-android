@@ -649,7 +649,7 @@ private fun CatalogFiltersSheet(
                                 ) {
                                     rowOptions.forEach { option ->
                                         val optionIndex = group.options.indexOf(option)
-                                        CatalogFilterOptionCell(
+                                        HongguoFilterOptionCell(
                                             label = option.label,
                                             selected = selectedValue == option.value,
                                             onClick = {
@@ -687,40 +687,6 @@ private fun CatalogFiltersSheet(
                 Text("查看筛选结果", fontWeight = FontWeight.SemiBold)
             }
             Spacer(Modifier.height(8.dp))
-        }
-    }
-}
-
-/** Dense, equal-width filter choice; no Material FilterChip default padding. */
-@Composable
-private fun CatalogFilterOptionCell(
-    label: String,
-    selected: Boolean,
-    onClick: () -> Unit,
-    modifier: Modifier = Modifier,
-) {
-    Surface(
-        onClick = onClick,
-        modifier = modifier.height(34.dp),
-        color = if (selected) HongguoColors.accentSoft else HongguoColors.background,
-        shape = RoundedCornerShape(8.dp),
-        border = BorderStroke(
-            1.dp,
-            if (selected) HongguoColors.accent else HongguoColors.divider,
-        ),
-    ) {
-        Box(
-            Modifier.fillMaxSize().padding(horizontal = 2.dp),
-            contentAlignment = Alignment.Center,
-        ) {
-            Text(
-                label,
-                fontSize = 11.sp,
-                fontWeight = if (selected) FontWeight.SemiBold else FontWeight.Normal,
-                color = if (selected) HongguoColors.accent else HongguoColors.ink,
-                maxLines = 1,
-                overflow = TextOverflow.Ellipsis,
-            )
         }
     }
 }
