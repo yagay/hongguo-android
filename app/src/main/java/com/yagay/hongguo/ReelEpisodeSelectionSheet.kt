@@ -207,7 +207,17 @@ private fun ReelRelatedDramaCard(
     onReserve: () -> Unit,
 ) {
     val canReserve = work.upcoming && work.reservationItemId != null
-    Row(
+    HongguoPosterInfoRow(
+        cover = cover,
+        title = work.drama.title,
+        subtitle = work.season.ifBlank { "相关作品" },
+        status = when {
+            canReserve -> "待上线 · 预约"
+            work.upcoming -> "待上线"
+            else -> "观看"
+        },
+        statusHighlighted = canReserve || !work.upcoming,
+        size = HongguoPosterRowSize.COMPACT,
         modifier = modifier
             .clip(RoundedCornerShape(HongguoUi.controlRadius))
             .background(HongguoColors.background)
@@ -216,44 +226,5 @@ private fun ReelRelatedDramaCard(
             }
             .padding(7.dp)
             .testTag("related_work_" + work.drama.id),
-        horizontalArrangement = Arrangement.spacedBy(8.dp),
-        verticalAlignment = Alignment.Top,
-    ) {
-        HongguoPosterCover(
-            cover = cover,
-            title = work.drama.title,
-            modifier = Modifier.size(width = 57.dp, height = 83.dp),
-        )
-        Column(
-            Modifier.weight(1f).heightIn(min = 83.dp),
-            verticalArrangement = Arrangement.spacedBy(5.dp),
-        ) {
-            Text(
-                work.drama.title,
-                maxLines = 2,
-                overflow = TextOverflow.Ellipsis,
-                fontSize = 12.sp,
-                lineHeight = 15.sp,
-                color = HongguoColors.ink,
-                fontWeight = FontWeight.SemiBold,
-            )
-            Text(
-                work.season.ifBlank { "相关作品" },
-                maxLines = 1,
-                overflow = TextOverflow.Ellipsis,
-                fontSize = 11.sp,
-                color = HongguoColors.muted,
-            )
-            Text(
-                when {
-                    canReserve -> "待上线 · 预约"
-                    work.upcoming -> "待上线"
-                    else -> "观看"
-                },
-                fontSize = 11.sp,
-                color = if (canReserve || !work.upcoming) HongguoColors.accent
-                    else HongguoColors.muted,
-            )
-        }
-    }
+    )
 }

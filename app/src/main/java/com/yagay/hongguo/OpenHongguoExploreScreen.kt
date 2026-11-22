@@ -467,22 +467,12 @@ private fun BrowseEntry(
     title: String, cover: String, subtitle: String,
     onClick: () -> Unit,
 ) {
-    Row(Modifier.fillMaxWidth().clickable(onClick = onClick)
-        .padding(horizontal = 16.dp, vertical = 6.dp),
-        horizontalArrangement = Arrangement.spacedBy(13.dp),
-        verticalAlignment = Alignment.CenterVertically) {
-        if (cover.isNotBlank()) HongguoPosterCover(
-            cover = cover,
-            title = title,
-            modifier = Modifier.width(72.dp).height(102.dp),
-        )
-        Column(Modifier.weight(1f), verticalArrangement = Arrangement.spacedBy(9.dp)) {
-            Text(title, fontWeight = FontWeight.SemiBold,
-                fontSize = 15.sp, color = HongguoColors.ink,
-                maxLines = 2, overflow = TextOverflow.Ellipsis)
-            if (subtitle.isNotBlank()) Text(subtitle,
-                fontSize = 12.sp, color = HongguoColors.muted,
-                maxLines = 2, overflow = TextOverflow.Ellipsis)
-        }
-    }
+    HongguoPosterInfoRow(
+        cover = cover,
+        title = title,
+        subtitle = subtitle,
+        showCoverWhenBlank = false,
+        modifier = Modifier.fillMaxWidth().clickable(onClick = onClick)
+            .padding(horizontal = 16.dp, vertical = 6.dp),
+    )
 }

@@ -6,6 +6,8 @@ import androidx.compose.foundation.clickable
 import androidx.compose.foundation.layout.Arrangement
 import androidx.compose.foundation.layout.Box
 import androidx.compose.foundation.layout.BoxScope
+import androidx.compose.foundation.layout.Column
+import androidx.compose.foundation.layout.heightIn
 import androidx.compose.foundation.layout.Row
 import androidx.compose.foundation.layout.height
 import androidx.compose.foundation.layout.fillMaxSize
@@ -200,6 +202,58 @@ internal fun HongguoFilterOptionCell(
                 fontSize = if (material3) 12.sp else 11.sp,
                 fontWeight = if (selected) FontWeight.SemiBold else FontWeight.Normal,
                 color = if (selected) HongguoColors.accent else HongguoColors.ink,
+                maxLines = 1, overflow = TextOverflow.Ellipsis)
+        }
+    }
+}
+
+/** One data-independent row for a poster, title, secondary text and status. */
+internal enum class HongguoPosterRowSize { COMPACT, STANDARD }
+
+@Composable
+internal fun HongguoPosterInfoRow(
+    cover: Any?,
+    title: String,
+    subtitle: String? = null,
+    status: String? = null,
+    statusHighlighted: Boolean = false,
+    modifier: Modifier = Modifier,
+    size: HongguoPosterRowSize = HongguoPosterRowSize.STANDARD,
+    showCoverWhenBlank: Boolean = true,
+) {
+    val compact = size == HongguoPosterRowSize.COMPACT
+    Row(
+        modifier = modifier,
+        horizontalArrangement = Arrangement.spacedBy(if (compact) 8.dp else 13.dp),
+        verticalAlignment = if (compact) Alignment.Top else Alignment.CenterVertically,
+    ) {
+        if (showCoverWhenBlank || (cover != null && cover.toString().isNotBlank())) {
+            HongguoPosterCover(
+                cover = cover, title = title,
+                modifier = Modifier.size(width = if (compact) 57.dp else 72.dp,
+                    height = if (compact) 83.dp else 102.dp),
+            )
+        }
+        Column(
+            modifier = if (compact) Modifier.weight(1f).heightIn(min = 83.dp)
+                else Modifier.weight(1f),
+            verticalArrangement = Arrangement.spacedBy(if (compact) 5.dp else 9.dp),
+        ) {
+            Text(title,
+                fontSize = if (compact) 12.sp else 15.sp,
+                lineHeight = if (compact) 15.sp else 19.sp,
+                fontWeight = androidx.compose.ui.text.font.FontWeight.SemiBold,
+                color = HongguoColors.ink, maxLines = 2,
+                overflow = TextOverflow.Ellipsis)
+            if (!subtitle.isNullOrBlank()) Text(subtitle,
+                color = HongguoColors.muted,
+                fontSize = if (compact) 11.sp else 12.sp,
+                maxLines = if (compact) 1 else 2,
+                overflow = TextOverflow.Ellipsis)
+            if (!status.isNullOrBlank()) Text(status,
+                fontSize = 11.sp,
+                color = if (statusHighlighted) HongguoColors.accent
+                    else HongguoColors.muted,
                 maxLines = 1, overflow = TextOverflow.Ellipsis)
         }
     }
