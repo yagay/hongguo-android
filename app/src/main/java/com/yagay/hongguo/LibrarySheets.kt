@@ -244,22 +244,20 @@ private fun LibraryRows(state: AppState, model: DramaViewModel) {
             }
         }
     }
-    if (customGroupFor.isNotBlank()) AlertDialog(
-        onDismissRequest = { customGroupFor = "" },
-        title = { Text("自定义收藏分组") },
-        text = {
-            OutlinedTextField(value = customGroupText,
-                onValueChange = { customGroupText = it.take(24) },
-                label = { Text("分组名称，最多24个字") }, singleLine = true)
+    if (customGroupFor.isNotBlank()) HongguoFormDialog(
+        title = "自定义收藏分组",
+        confirmLabel = "保存",
+        confirmEnabled = customGroupText.isNotBlank(),
+        onConfirm = {
+            model.setFavoriteGroup(customGroupFor, customGroupText.trim())
+            customGroupFor = ""
         },
-        confirmButton = {
-            TextButton(onClick = {
-                model.setFavoriteGroup(customGroupFor, customGroupText.trim())
-                customGroupFor = ""
-            }, enabled = customGroupText.isNotBlank()) { Text("保存") }
-        },
-        dismissButton = { TextButton(onClick = { customGroupFor = "" }) { Text("取消") } },
-    )
+        onDismiss = { customGroupFor = "" },
+    ) {
+        OutlinedTextField(value = customGroupText,
+            onValueChange = { customGroupText = it.take(24) },
+            label = { Text("分组名称，最多24个字") }, singleLine = true)
+    }
     if (confirmClear) HongguoConfirmDialog(
         title = if (isFavorites) "清空全部本机收藏？" else "清空全部本机历史？",
         message = "操作无法撤销，不影响另一类片单和云端账号。",

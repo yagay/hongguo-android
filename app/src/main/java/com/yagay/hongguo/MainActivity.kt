@@ -860,20 +860,18 @@ private fun HongguoApp(model: DramaViewModel = viewModel()) {
             }
         }
         if (confirmExitFeed) {
-            AlertDialog(
-                onDismissRequest = { confirmExitFeed = false },
-                title = { Text("退出刷短剧？") },
-                text = { Text("退出应用后将停止当前播放。") },
-                confirmButton = {
-                    TextButton(onClick = {
-                        confirmExitFeed = false
-                        model.closePlayer()
-                        activity?.finish()
-                    }) { Text("退出") }
+            HongguoConfirmDialog(
+                title = "退出刷短剧？",
+                message = "退出应用后将停止当前播放。",
+                confirmLabel = "退出",
+                cancelLabel = "继续观看",
+                destructive = true,
+                onConfirm = {
+                    confirmExitFeed = false
+                    model.closePlayer()
+                    activity?.finish()
                 },
-                dismissButton = {
-                    TextButton(onClick = { confirmExitFeed = false }) { Text("继续观看") }
-                },
+                onDismiss = { confirmExitFeed = false },
             )
         }
     }

@@ -443,11 +443,12 @@ internal fun DramaDetailScreen(state: AppState, model: DramaViewModel) {
                                     if (work.upcoming) model.reserveUpcoming(work)
                                     else model.openRelatedDrama(work.drama)
                                 }, verticalArrangement = Arrangement.spacedBy(6.dp)) {
-                                AsyncImage(model = model.cover(work.drama.cover),
-                                    contentDescription = work.drama.title,
-                                    contentScale = ContentScale.Crop,
-                                    modifier = Modifier.width(90.dp).height(122.dp)
-                                        .clip(RoundedCornerShape(8.dp)))
+                                HongguoPosterCover(
+                                    cover = model.cover(work.drama.cover),
+                                    title = work.drama.title,
+                                    modifier = Modifier.width(90.dp).height(122.dp),
+                                    classicRadius = 8.dp,
+                                )
                                 if (work.season.isNotBlank() || work.upcoming)
                                     Text(if (work.upcoming)
                                         if (work.reservationItemId != null) "待上线 · 预约" else "待上线"
