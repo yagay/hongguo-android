@@ -409,7 +409,7 @@ internal fun AccountScreen(model: DramaViewModel) {
                                 Icon(Icons.Outlined.MoreVert, "账号操作",
                                     tint = HongguoColors.ink)
                             }
-                            DropdownMenu(expanded = accountMenu,
+                            HongguoPopupMenu(expanded = accountMenu,
                                 onDismissRequest = { accountMenu = false }) {
                                 DropdownMenuItem(text = { Text("刷短剧使用登录账号") },
                                     trailingIcon = { Checkbox(
@@ -572,19 +572,16 @@ internal fun AccountScreen(model: DramaViewModel) {
             }
         }
     }
-    if (confirmLogout) AlertDialog(
-        onDismissRequest = { confirmLogout = false },
-        title = { Text("退出红果账号？") },
-        text = { Text("清除本机保存的登录凭据；不会删除本机观看历史和收藏。") },
-        confirmButton = {
-            TextButton(onClick = {
-                confirmLogout = false
-                model.account.logout()
-            }) { Text("退出") }
+    if (confirmLogout) HongguoConfirmDialog(
+        title = "退出红果账号？",
+        message = "清除本机保存的登录凭据；不会删除本机观看历史和收藏。",
+        confirmLabel = "退出",
+        destructive = true,
+        onConfirm = {
+            confirmLogout = false
+            model.account.logout()
         },
-        dismissButton = {
-            TextButton(onClick = { confirmLogout = false }) { Text("取消") }
-        },
+        onDismiss = { confirmLogout = false },
     )
 }
 
@@ -663,7 +660,7 @@ private fun AccountPoster(
                     tint = HongguoColors.muted,
                     modifier = Modifier.align(Alignment.Center).size(28.dp))
             }
-            DropdownMenu(expanded = menuOpen, onDismissRequest = { menuOpen = false }) {
+            HongguoPopupMenu(expanded = menuOpen, onDismissRequest = { menuOpen = false }) {
                 if (onOpen != null) DropdownMenuItem(
                     text = { Text("继续观看") },
                     onClick = { menuOpen = false; onOpen() })

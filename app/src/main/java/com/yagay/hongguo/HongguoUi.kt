@@ -746,6 +746,22 @@ internal fun HongguoPlayerTopAction(
     }
 }
 
+/** Shared popup surface for all contextual menus (account, posters, library). */
+@Composable
+internal fun HongguoPopupMenu(
+    expanded: Boolean,
+    onDismissRequest: () -> Unit,
+    modifier: Modifier = Modifier,
+    content: @Composable ColumnScope.() -> Unit,
+) {
+    DropdownMenu(
+        expanded = expanded,
+        onDismissRequest = onDismissRequest,
+        modifier = modifier,
+        content = content,
+    )
+}
+
 /** Shared themed dropdown for profile and management actions. */
 @Composable
 internal fun HongguoActionMenu(
@@ -754,11 +770,12 @@ internal fun HongguoActionMenu(
     modifier: Modifier = Modifier,
     content: @Composable androidx.compose.foundation.layout.ColumnScope.() -> Unit,
 ) {
-    DropdownMenu(
+    HongguoPopupMenu(
         expanded = expanded,
         onDismissRequest = onDismissRequest,
         modifier = modifier.width(244.dp)
-            .background(HongguoColors.surface, RoundedCornerShape(HongguoUi.cardRadius)),
+            .background(HongguoColors.surface, RoundedCornerShape(
+                if (HongguoColors.isMaterial3) 24.dp else HongguoUi.cardRadius)),
         content = content,
     )
 }
@@ -1126,7 +1143,8 @@ internal fun HongguoConfirmDialog(
             HongguoAction(label = "取消", onClick = onDismiss,
                 style = HongguoActionStyle.QUIET)
         },
-        shape = RoundedCornerShape(HongguoUi.cardRadius),
+        shape = RoundedCornerShape(if (HongguoColors.isMaterial3) 28.dp
+            else HongguoUi.cardRadius),
         containerColor = HongguoColors.surface,
     )
 }

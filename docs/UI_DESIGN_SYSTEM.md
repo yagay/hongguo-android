@@ -9,6 +9,9 @@ live in `AppDesign.kt`. Do not create parallel screen-local theme palettes.
 - `HongguoPreferenceUi.kt` owns all settings groups, navigation/value rows,
   toggle forwarding, dividers and selection sheets. Do not recreate compact
   setting components inside individual screens.
+- Account and Library destructive confirmations share `HongguoConfirmDialog`;
+  all existing poster/account/library context menu surfaces share `HongguoPopupMenu`.
+  Input dialogs retain their specialized editable text content.
 - Theater category navigation is in `HongguoCategoryNavigation`, and player
   settings now call the shared headings, chips and toggles directly.
 - These changes unify components first; the Material 3 alternative can use
@@ -49,6 +52,8 @@ live in `AppDesign.kt`. Do not create parallel screen-local theme palettes.
 | Standard settings switch row | `HongguoToggleRow` / `HongguoSettingsToggle` |
 | Settings groups, rows, dividers | `HongguoSettingsSection`, `HongguoSettingsRow`, `HongguoSettingsDivider` |
 | Reusable single choice bottom sheets | `HongguoSingleChoiceSheet` |
+| Contextual menus | `HongguoPopupMenu` / `HongguoActionMenu` |
+| Confirmation dialogs | `HongguoConfirmDialog` |
 | Theater category navigation | `HongguoCategoryNavigation` |
 | Video settings headings | `HongguoPlayerSectionTitle` |
 | Primary/outline/quiet actions | `HongguoAction` |

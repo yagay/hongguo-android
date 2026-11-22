@@ -205,7 +205,7 @@ private fun LibraryRows(state: AppState, model: DramaViewModel) {
                         Text(state.favoriteGroups[entry.drama.id] ?: "默认",
                             maxLines = 1, fontSize = 11.sp)
                     }
-                    DropdownMenu(expanded = menuFor == entry.drama.id,
+                    HongguoPopupMenu(expanded = menuFor == entry.drama.id,
                         onDismissRequest = { menuFor = "" }) {
                         (listOf("默认", "追剧中", "待看", "已看完") +
                             state.favoriteGroups.values).distinct().forEach { group ->
@@ -260,32 +260,30 @@ private fun LibraryRows(state: AppState, model: DramaViewModel) {
         },
         dismissButton = { TextButton(onClick = { customGroupFor = "" }) { Text("取消") } },
     )
-    if (confirmClear) AlertDialog(
-        onDismissRequest = { confirmClear = false },
-        title = { Text(if (isFavorites) "清空全部本机收藏？" else "清空全部本机历史？") },
-        text = { Text("操作无法撤销，不影响另一类片单和云端账号。") },
-        confirmButton = {
-            TextButton(onClick = {
-                confirmClear = false
-                selectedIds = emptyList()
-                model.clear(isFavorites)
-            }) { Text("确认清空") }
+    if (confirmClear) HongguoConfirmDialog(
+        title = if (isFavorites) "清空全部本机收藏？" else "清空全部本机历史？",
+        message = "操作无法撤销，不影响另一类片单和云端账号。",
+        confirmLabel = "确认清空",
+        destructive = true,
+        onConfirm = {
+            confirmClear = false
+            selectedIds = emptyList()
+            model.clear(isFavorites)
         },
-        dismissButton = { TextButton(onClick = { confirmClear = false }) { Text("取消") } },
+        onDismiss = { confirmClear = false },
     )
-    if (confirmBatch) AlertDialog(
-        onDismissRequest = { confirmBatch = false },
-        title = { Text("删除选中的 ${selectedIds.size} 部短剧？") },
-        text = { Text("只移除本机片单记录，不删除视频文件或云端收藏。") },
-        confirmButton = {
-            TextButton(onClick = {
-                val chosen = selectedIds.toList()
-                confirmBatch = false
-                selectedIds = emptyList()
-                chosen.forEach { model.remove(it, isFavorites) }
-            }) { Text("确认删除") }
+    if (confirmBatch) HongguoConfirmDialog(
+        title = "删除选中的 ${selectedIds.size} 部短剧？",
+        message = "只移除本机片单记录，不删除视频文件或云端收藏。",
+        confirmLabel = "确认删除",
+        destructive = true,
+        onConfirm = {
+            val chosen = selectedIds.toList()
+            confirmBatch = false
+            selectedIds = emptyList()
+            chosen.forEach { model.remove(it, isFavorites) }
         },
-        dismissButton = { TextButton(onClick = { confirmBatch = false }) { Text("取消") } },
+        onDismiss = { confirmBatch = false },
     )
 }
 

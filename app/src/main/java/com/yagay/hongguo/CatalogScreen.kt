@@ -470,7 +470,7 @@ private fun CatalogPoster(drama: Drama, cover: String,
                     modifier = Modifier.testTag("poster_menu_" + drama.id)) {
                     Icon(Icons.Outlined.MoreVert, contentDescription = "剧集管理", tint = Color.White)
                 }
-                DropdownMenu(expanded = menuOpen, onDismissRequest = { menuOpen = false }) {
+                HongguoPopupMenu(expanded = menuOpen, onDismissRequest = { menuOpen = false }) {
                     DropdownMenuItem(text = { Text(if (savedLater) "移出稍后看" else "加入稍后看") },
                         onClick = { menuOpen = false; onLater() })
                     DropdownMenuItem(text = { Text(if (savedFavorite) "取消本机收藏" else "本机收藏") },

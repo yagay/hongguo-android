@@ -118,7 +118,7 @@ internal fun HongguoSettingsRow(
                 subtitle,
                 fontSize = if (material3) 12.sp else 11.sp,
                 color = HongguoColors.muted,
-                maxLines = 2,
+                maxLines = if (material3) 2 else 1,
                 overflow = TextOverflow.Ellipsis,
             )
         }

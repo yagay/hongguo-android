@@ -135,7 +135,7 @@ internal fun DramaDetailScreen(state: AppState, model: DramaViewModel) {
                             HongguoIconAction(onClick = { showMenu = true }) {
                                 Icon(Icons.Outlined.MoreVert, "更多", tint = DetailText)
                             }
-                            DropdownMenu(expanded = showMenu,
+                            HongguoPopupMenu(expanded = showMenu,
                                 onDismissRequest = { showMenu = false }) {
                                 DropdownMenuItem(
                                     text = { Text("播放当前集") },

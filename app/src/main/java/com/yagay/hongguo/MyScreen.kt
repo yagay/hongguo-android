@@ -555,18 +555,15 @@ internal fun MyScreen(state: AppState, model: DramaViewModel, onBack: () -> Unit
             }
         }
     }
-    if (confirmAccountLogout) AlertDialog(
-        onDismissRequest = { confirmAccountLogout = false },
-        title = { Text("退出红果账号？") },
-        text = { Text("清除本机保存的登录凭据；不会删除本机观看历史和收藏。") },
-        confirmButton = {
-            TextButton(onClick = {
-                confirmAccountLogout = false
-                model.account.logout()
-            }) { Text("退出") }
+    if (confirmAccountLogout) HongguoConfirmDialog(
+        title = "退出红果账号？",
+        message = "清除本机保存的登录凭据；不会删除本机观看历史和收藏。",
+        confirmLabel = "退出",
+        destructive = true,
+        onConfirm = {
+            confirmAccountLogout = false
+            model.account.logout()
         },
-        dismissButton = {
-            TextButton(onClick = { confirmAccountLogout = false }) { Text("取消") }
-        },
+        onDismiss = { confirmAccountLogout = false },
     )
 }
