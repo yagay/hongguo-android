@@ -90,10 +90,10 @@ internal fun MyScreen(state: AppState, model: DramaViewModel, onBack: () -> Unit
         verticalArrangement = Arrangement.spacedBy(12.dp),
     ) {
         item {
-            Row(Modifier.fillMaxWidth().height(HongguoUi.pageTopBarHeight),
-                verticalAlignment = Alignment.CenterVertically) {
-                Text("我的", fontSize = HongguoUi.pageTitleSize, fontWeight = FontWeight.Bold,
-                    color = HongguoColors.ink, modifier = Modifier.weight(1f))
+            HongguoPageHeader(
+                title = "我的",
+                horizontalPadding = 0.dp,
+            ) {
                 Box {
                     HongguoIconAction(
                         onClick = { managementMenuOpen = true },
@@ -306,12 +306,11 @@ internal fun MyScreen(state: AppState, model: DramaViewModel, onBack: () -> Unit
             }
         }
         if (gallerySearchOpen) item {
-            OutlinedTextField(
+            HongguoSearchField(
                 value = galleryQuery,
                 onValueChange = { galleryQuery = it.take(80) },
                 modifier = Modifier.fillMaxWidth().testTag("my_gallery_search_input"),
-                singleLine = true,
-                placeholder = { Text("搜索当前片单的剧名") },
+                placeholder = "搜索当前片单的剧名",
             )
         }
         if (libraryTab == 0) item {
@@ -401,11 +400,12 @@ internal fun MyScreen(state: AppState, model: DramaViewModel, onBack: () -> Unit
                         }.testTag("my_gallery_drama_" + drama.id),
                         verticalArrangement = Arrangement.spacedBy(4.dp),
                     ) {
-                        AsyncImage(model = model.cover(drama.cover),
-                            contentDescription = drama.title, contentScale = ContentScale.Crop,
-                            modifier = Modifier.fillMaxWidth().aspectRatio(2f / 3f)
-                                .clip(RoundedCornerShape(9.dp))
-                                .background(HongguoColors.accentSoft))
+                        HongguoPosterCover(
+                            cover = model.cover(drama.cover),
+                            title = drama.title,
+                            modifier = Modifier.fillMaxWidth().aspectRatio(2f / 3f),
+                            classicRadius = 9.dp,
+                        )
                         Text(drama.title, color = HongguoColors.ink, fontSize = 12.sp,
                             maxLines = 1, overflow = TextOverflow.Ellipsis)
                         if (libraryTab == 3) {

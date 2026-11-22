@@ -291,21 +291,13 @@ private fun CatalogHeader(state: AppState, model: DramaViewModel,
         verticalArrangement = Arrangement.spacedBy(3.dp)) {
         // Search is a single entrypoint. Category selection remains within
         // the theater; it never replaces or restarts the swipe-feed player.
-        Surface(
-            modifier = Modifier.fillMaxWidth().padding(horizontal = 12.dp, vertical = 5.dp)
-                .clickable(onClick = onSearchOpen).testTag("theater_search"),
-            shape = RoundedCornerShape(HongguoUi.controlRadius),
-            color = HongguoColors.background,
-        ) {
-            Row(Modifier.fillMaxWidth().padding(horizontal = 12.dp, vertical = 9.dp),
-                verticalAlignment = Alignment.CenterVertically,
-                horizontalArrangement = Arrangement.spacedBy(9.dp)) {
-                Icon(Icons.Outlined.Search, contentDescription = null,
-                    tint = HongguoColors.muted, modifier = Modifier.size(21.dp))
-                Text("搜索短剧、演员或关键词", color = HongguoColors.muted,
-                    fontSize = 14.sp, modifier = Modifier.weight(1f))
-            }
-        }
+        HongguoSearchEntry(
+            placeholder = "搜索短剧、演员或关键词",
+            onClick = onSearchOpen,
+            modifier = Modifier.fillMaxWidth()
+                .padding(horizontal = 12.dp, vertical = 5.dp)
+                .testTag("theater_search"),
+        )
         // A single category navigation; no duplicated quick-action row.
         // Genre chips and the filter action live with the content section.
         HongguoCategoryNavigation(
@@ -431,21 +423,16 @@ private fun CatalogPoster(drama: Drama, cover: String,
             .testTag("drama_" + drama.id),
         verticalArrangement = Arrangement.spacedBy(5.dp),
     ) {
-        Box(
-            Modifier.fillMaxWidth().aspectRatio(0.72f)
-                .clip(RoundedCornerShape(12.dp))
-                .background(Color(0xFFE8E6E5)),
+        HongguoPosterArtwork(
+            cover = cover,
+            title = drama.title,
+            modifier = Modifier.fillMaxWidth().aspectRatio(0.72f),
+            classicRadius = 12.dp,
+            fallback = {
+                Text("红果短剧", color = HongguoColors.muted, fontSize = 12.sp,
+                    modifier = Modifier.align(Alignment.Center))
+            },
         ) {
-            if (cover.isBlank()) {
-                Box(Modifier.fillMaxSize(), contentAlignment = Alignment.Center) {
-                    Text("红果短剧", color = HongguoColors.muted, fontSize = 12.sp)
-                }
-            } else {
-                AsyncImage(
-                    model = cover, contentDescription = drama.title,
-                    modifier = Modifier.fillMaxSize(), contentScale = ContentScale.Crop,
-                )
-            }
             // The selected native category is a verified source scope.
             // Never infer a type on mixed-ranking or global-search results.
             val sourceType = when (sourceGenre) {
@@ -533,11 +520,7 @@ private fun CatalogPoster(drama: Drama, cover: String,
                         horizontalArrangement = Arrangement.spacedBy(4.dp),
                     ) {
                         cardTags.forEach { category ->
-                            Text(category, color = HongguoColors.muted,
-                                fontSize = 10.sp, maxLines = 1,
-                                modifier = Modifier.background(
-                                    HongguoColors.surface, RoundedCornerShape(4.dp))
-                                    .padding(horizontal = 5.dp, vertical = 3.dp))
+                            HongguoMetadataBadge(category)
                         }
                     }
                 }

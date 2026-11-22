@@ -639,27 +639,22 @@ private fun AccountPoster(
     var menuOpen by remember { mutableStateOf(false) }
     Column(modifier, verticalArrangement = Arrangement.spacedBy(4.dp)) {
         Box {
-            Box(
-                Modifier.fillMaxWidth().aspectRatio(0.75f)
-                    .clip(RoundedCornerShape(11.dp))
-                    .background(HongguoColors.accentSoft)
+            HongguoPosterArtwork(
+                cover = series.cover,
+                title = series.title,
+                modifier = Modifier.fillMaxWidth().aspectRatio(0.75f)
                     .combinedClickable(
                         enabled = onOpen != null || onSave != null,
                         onClick = { onOpen?.invoke() },
                         onLongClick = { menuOpen = true }
                     ).testTag("account_poster_${series.id}"),
-            ) {
-                if (series.cover.isNotBlank()) {
-                    AsyncImage(
-                        model = series.cover,
-                        contentDescription = series.title,
-                        contentScale = ContentScale.Crop,
-                        modifier = Modifier.fillMaxSize(),
-                    )
-                } else Icon(Icons.Outlined.PersonOutline, contentDescription = null,
-                    tint = HongguoColors.muted,
-                    modifier = Modifier.align(Alignment.Center).size(28.dp))
-            }
+                classicRadius = 11.dp,
+                fallback = {
+                    Icon(Icons.Outlined.PersonOutline, contentDescription = null,
+                        tint = HongguoColors.muted,
+                        modifier = Modifier.align(Alignment.Center).size(28.dp))
+                },
+            )
             HongguoPopupMenu(expanded = menuOpen, onDismissRequest = { menuOpen = false }) {
                 if (onOpen != null) DropdownMenuItem(
                     text = { Text("继续观看") },
