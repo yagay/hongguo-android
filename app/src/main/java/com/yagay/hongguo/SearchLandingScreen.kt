@@ -105,33 +105,13 @@ internal fun SearchLandingScreen(
                     Icon(Icons.AutoMirrored.Outlined.ArrowBack, "返回",
                         tint = SearchInk)
                 }
-                OutlinedTextField(
+                HongguoSearchField(
                     value = state.search,
                     onValueChange = model::setSearch,
                     modifier = Modifier.weight(1f).height(55.dp)
                         .testTag("search_landing_input"),
-                    placeholder = {
-                        Text("搜索短剧、演员或关键词",
-                            color = SearchMuted, fontSize = 13.sp,
-                            maxLines = 1)
-                    },
-                    leadingIcon = {
-                        Icon(Icons.Outlined.Search, null, tint = SearchMuted,
-                            modifier = Modifier.size(19.dp))
-                    },
-                    singleLine = true,
-                    shape = RoundedCornerShape(HongguoUi.controlRadius),
-                    colors = OutlinedTextFieldDefaults.colors(
-                        focusedTextColor = SearchInk,
-                        unfocusedTextColor = SearchInk,
-                        cursorColor = SearchInk,
-                        focusedContainerColor = SearchTile,
-                        unfocusedContainerColor = SearchTile,
-                        focusedBorderColor = Color.Transparent,
-                        unfocusedBorderColor = Color.Transparent,
-                    ),
-                    keyboardOptions = KeyboardOptions(imeAction = ImeAction.Search),
-                    keyboardActions = KeyboardActions(onSearch = { submit(state.search) }),
+                    compact = true,
+                    onSearch = { submit(state.search) },
                 )
                 Text("搜索", color = SearchInk, fontSize = 15.sp,
                     modifier = Modifier.clickable { submit(state.search) }
@@ -156,7 +136,7 @@ internal fun SearchLandingScreen(
                     Text("关键词：${browse.query}",
                         color = SearchMuted, fontSize = 12.sp)
                     if (browse.loading && browse.items.isEmpty())
-                        CircularProgressIndicator(Modifier.size(26.dp))
+                        HongguoInlineLoading()
                     browse.error?.let { Text(it, color = SearchMuted, fontSize = 13.sp) }
                     if (!browse.loading && browse.items.isEmpty() && browse.error == null)
                         HongguoEmptyState(

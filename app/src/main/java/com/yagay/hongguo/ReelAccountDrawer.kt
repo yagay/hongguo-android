@@ -136,11 +136,12 @@ internal fun ReelAccountDrawer(
                         HongguoCard() {
                             Row(Modifier.fillMaxWidth().padding(12.dp),
                                 verticalAlignment = Alignment.CenterVertically) {
-                                AsyncImage(model = model.cover(drama.cover),
-                                    contentDescription = null,
-                                    contentScale = ContentScale.Crop,
-                                    modifier = Modifier.size(width = 48.dp, height = 65.dp)
-                                        .clip(RoundedCornerShape(8.dp)))
+                                HongguoPosterCover(
+                                    cover = model.cover(drama.cover),
+                                    title = drama.title,
+                                    modifier = Modifier.size(width = 48.dp, height = 65.dp),
+                                    classicRadius = 8.dp,
+                                )
                                 Spacer(Modifier.width(10.dp))
                                 Column(Modifier.weight(1f).clickable {
                                     onHistoryItem(drama)

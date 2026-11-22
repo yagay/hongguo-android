@@ -210,10 +210,9 @@ internal fun OpenHongguoExploreScreen(
 
     HongguoPageSurface(Modifier.fillMaxSize().testTag("openhongguo_explore")) {
         Column(Modifier.fillMaxSize()) {
-        Row(Modifier.fillMaxWidth().height(HongguoUi.pageTopBarHeight)
-            .padding(end = HongguoUi.pagePadding),
-            verticalAlignment = Alignment.CenterVertically) {
-            HongguoIconAction(onClick = {
+        HongguoPageHeader(
+            title = if (actorId.isBlank()) "更多发现" else "演员作品",
+            onBack = {
                 when {
                     actorId.isNotBlank() -> actorId = ""
                     rankCell.isNotBlank() -> {
@@ -221,18 +220,14 @@ internal fun OpenHongguoExploreScreen(
                     }
                     else -> onClose()
                 }
-            }) {
-                Icon(Icons.AutoMirrored.Outlined.ArrowBack, "返回",
-                    tint = HongguoColors.ink)
-            }
-            Text(if (actorId.isBlank()) "更多发现" else "演员作品",
-                fontSize = HongguoUi.pageTitleSize, fontWeight = FontWeight.Bold,
-                color = HongguoColors.ink)
-            Spacer(Modifier.weight(1f))
-            if (actorId.isBlank()) TextButton(onClick = { refresh++ },
-                enabled = !loading) {
-                Text("刷新", color = HongguoColors.accent)
-            }
+            },
+            modifier = Modifier.padding(end = HongguoUi.pagePadding),
+            horizontalPadding = 0.dp,
+        ) {
+            if (actorId.isBlank()) HongguoAction(
+                label = "刷新", onClick = { refresh++ },
+                enabled = !loading, style = HongguoActionStyle.QUIET,
+            )
         }
         if (actorId.isBlank()) {
             Row(Modifier.fillMaxWidth().horizontalScroll(rememberScrollState())
@@ -295,17 +290,17 @@ internal fun OpenHongguoExploreScreen(
             Row(Modifier.fillMaxWidth().padding(horizontal = 12.dp, vertical = 6.dp),
                 verticalAlignment = Alignment.CenterVertically,
                 horizontalArrangement = Arrangement.spacedBy(8.dp)) {
-                OutlinedTextField(
-                    value = query, onValueChange = { query = it.take(120) },
+                HongguoSearchField(
+                    value = query,
+                    onValueChange = { query = it.take(120) },
                     modifier = Modifier.weight(1f),
-                    singleLine = true,
-                    label = { Text(when (tab) {
+                    label = when (tab) {
                         "search" -> "搜索关键词"
                         "discover" -> "频道（空为推荐）"
                         "calendar" -> "日期 YYYYMMDD"
                         "activity" -> "活动ID:榜单ID（留空使用 SDK 默认值）"
                         else -> "书籍分类 ID"
-                    }) },
+                    },
                 )
                 if (tab == "search") TextButton(onClick = { suggestionRequest++ }) {
                     Text("联想", fontSize = 12.sp, color = HongguoColors.accent)
