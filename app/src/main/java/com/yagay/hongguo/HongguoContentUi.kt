@@ -51,12 +51,14 @@ internal fun HongguoPosterArtwork(
     title: String,
     modifier: Modifier = Modifier,
     classicRadius: Dp = HongguoUi.controlRadius,
+    classicPlaceholderColor: Color = HongguoColors.accentSoft,
     fallback: @Composable BoxScope.() -> Unit = {},
     overlay: @Composable BoxScope.() -> Unit = {},
 ) {
     val radius = if (HongguoColors.isMaterial3) 16.dp else classicRadius
     Box(modifier.clip(RoundedCornerShape(radius))
-        .background(HongguoColors.accentSoft)) {
+        .background(if (HongguoColors.isMaterial3) HongguoColors.accentSoft
+            else classicPlaceholderColor)) {
         if (cover != null && (cover !is String || cover.isNotBlank())) {
             AsyncImage(model = cover, contentDescription = title,
                 contentScale = ContentScale.Crop, modifier = Modifier.fillMaxSize())

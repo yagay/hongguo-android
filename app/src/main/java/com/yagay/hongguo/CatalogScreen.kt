@@ -428,6 +428,7 @@ private fun CatalogPoster(drama: Drama, cover: String,
             title = drama.title,
             modifier = Modifier.fillMaxWidth().aspectRatio(0.72f),
             classicRadius = 12.dp,
+            classicPlaceholderColor = Color(0xFFE8E6E5),
             fallback = {
                 Text("红果短剧", color = HongguoColors.muted, fontSize = 12.sp,
                     modifier = Modifier.align(Alignment.Center))
