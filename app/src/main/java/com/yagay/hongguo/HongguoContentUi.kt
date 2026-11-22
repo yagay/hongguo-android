@@ -87,8 +87,11 @@ internal fun HongguoSearchField(
                 tint = HongguoColors.muted, modifier = Modifier.size(19.dp))
         }) else null,
         singleLine = true,
-        shape = RoundedCornerShape(if (HongguoColors.isMaterial3) 28.dp
-            else HongguoUi.controlRadius),
+        shape = when {
+            HongguoColors.isMaterial3 -> RoundedCornerShape(28.dp)
+            compact -> RoundedCornerShape(HongguoUi.controlRadius)
+            else -> OutlinedTextFieldDefaults.shape
+        },
         colors = if (compact) OutlinedTextFieldDefaults.colors(
             focusedTextColor = HongguoColors.ink,
             unfocusedTextColor = HongguoColors.ink,
