@@ -124,7 +124,10 @@ internal fun AccountScreen(model: DramaViewModel) {
                 fontSize = 13.sp, modifier = Modifier.testTag("account_web_error")) } }
             if (account.profile == null || account.busy || account.checking ||
                 account.message.contains("失败")) item {
-                Surface(color = HongguoColors.surface, shape = RoundedCornerShape(HongguoUi.controlRadius)) {
+                Surface(color = if (HongguoColors.isMaterial3)
+                        MaterialTheme.colorScheme.surfaceContainer else HongguoColors.surface,
+                    shape = RoundedCornerShape(if (HongguoColors.isMaterial3) 20.dp
+                        else HongguoUi.controlRadius)) {
                     Column(Modifier.fillMaxWidth().padding(13.dp),
                         verticalArrangement = Arrangement.spacedBy(5.dp)) {
                         Text(account.message, fontSize = 12.sp,
@@ -356,7 +359,10 @@ internal fun AccountScreen(model: DramaViewModel) {
                     }
                 }
                 if (account.message.contains("滑块") || account.message.contains("人工验证")) item {
-                    Surface(color = HongguoColors.accentSoft, shape = RoundedCornerShape(HongguoUi.controlRadius)) {
+                    Surface(color = if (HongguoColors.isMaterial3)
+                        MaterialTheme.colorScheme.secondaryContainer else HongguoColors.accentSoft,
+                    shape = RoundedCornerShape(if (HongguoColors.isMaterial3) 20.dp
+                        else HongguoUi.controlRadius)) {
                         Row(Modifier.fillMaxWidth().padding(12.dp), verticalAlignment = Alignment.CenterVertically) {
                             Text("需要平台验证，请到官网登录完成", color = HongguoColors.ink,
                                 modifier = Modifier.weight(1f), fontSize = 13.sp)
@@ -439,8 +445,10 @@ internal fun AccountScreen(model: DramaViewModel) {
                 // counts. No placeholder dashes are shown before data exists.
                 FeatureAvailability.socialCounts()?.let { counts ->
                     item {
-                        Surface(shape = RoundedCornerShape(HongguoUi.cardRadius),
+                        Surface(shape = RoundedCornerShape(if (HongguoColors.isMaterial3)
+                                24.dp else HongguoUi.cardRadius),
                             color = HongguoColors.surface,
+                            tonalElevation = if (HongguoColors.isMaterial3) 1.dp else 0.dp,
                             modifier = Modifier.fillMaxWidth().testTag("account_stats")) {
                             Row(Modifier.fillMaxWidth().padding(vertical = 15.dp)) {
                                 listOf(
