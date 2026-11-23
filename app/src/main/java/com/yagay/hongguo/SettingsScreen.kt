@@ -75,7 +75,12 @@ import java.time.format.DateTimeFormatter
 
 /** Sectioned settings: existing backend configuration and diagnostics are kept. */
 @Composable
-internal fun SettingsScreen(state: AppState, model: DramaViewModel) {
+internal fun SettingsScreen(
+    state: AppState,
+    model: DramaViewModel,
+    onCheckAppUpdate: () -> Unit,
+    appUpdateStatus: String,
+) {
     var address by remember(state.backend) { mutableStateOf(state.backend) }
     var confirmClear by remember { mutableStateOf(false) }
     var pendingRestore by remember { mutableStateOf<Uri?>(null) }
@@ -434,6 +439,25 @@ internal fun SettingsScreen(state: AppState, model: DramaViewModel) {
                     state.logNotice?.let {
                         Text(it, color = HongguoColors.accent, fontSize = 11.sp)
                     }
+                }
+            }
+            item {
+                HongguoSettingsSection("应用更新") {
+                    HongguoSettingsRow(
+                        title = "立即检查应用更新",
+                        value = "当前版本 " + BuildConfig.VERSION_NAME,
+                        subtitle = "自动检查已签名且构建验证成功的 GitHub Release",
+                        tag = "settings_app_update_check",
+                        onClick = onCheckAppUpdate,
+                    )
+                    if (appUpdateStatus.isNotBlank()) {
+                        Text(appUpdateStatus, color = HongguoColors.muted,
+                            fontSize = 11.sp)
+                    }
+                    Text(
+                        "打开 App 时自动检查，每 12 小时最多联网一次。安装新版本需手动确认。",
+                        color = HongguoColors.muted, fontSize = 11.sp,
+                    )
                 }
             }
             item {
