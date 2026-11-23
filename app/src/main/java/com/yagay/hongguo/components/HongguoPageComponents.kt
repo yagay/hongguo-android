@@ -167,5 +167,3 @@ internal fun HongguoPlayerTopAction(
     }
 }
 
-/** Shared popup surface for all contextual menus (account, posters, library). */
-@Composable
