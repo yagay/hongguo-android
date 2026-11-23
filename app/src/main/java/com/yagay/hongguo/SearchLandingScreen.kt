@@ -233,13 +233,29 @@ internal fun SearchLandingScreen(
                             tint = SearchInk, modifier = Modifier.size(19.dp))
                     }
                 }
-                FlowRow(Modifier.fillMaxWidth(),
-                    horizontalArrangement = Arrangement.spacedBy(8.dp),
-                    verticalArrangement = Arrangement.spacedBy(4.dp)) {
-                    state.recentSearches.forEach { term ->
-                        FilterChip(selected = false, onClick = { submit(term) },
-                            label = { Text(term, maxLines = 1,
-                                overflow = TextOverflow.Ellipsis) })
+                if (HongguoColors.isMaterial3) {
+                    FlowRow(Modifier.fillMaxWidth(),
+                        horizontalArrangement = Arrangement.spacedBy(8.dp),
+                        verticalArrangement = Arrangement.spacedBy(4.dp)) {
+                        state.recentSearches.forEach { term ->
+                            FilterChip(selected = false, onClick = { submit(term) },
+                                label = { Text(term, maxLines = 1,
+                                    overflow = TextOverflow.Ellipsis) })
+                        }
+                    }
+                } else {
+                    state.recentSearches.chunked(2).forEach { pair ->
+                        Row(Modifier.fillMaxWidth(),
+                            horizontalArrangement = Arrangement.spacedBy(16.dp)) {
+                            pair.forEach { term ->
+                                Text(term, modifier = Modifier.weight(1f)
+                                    .clickable { submit(term) }
+                                    .padding(vertical = 5.dp),
+                                    fontSize = 13.sp, color = SearchInk,
+                                    maxLines = 1, overflow = TextOverflow.Ellipsis)
+                            }
+                            if (pair.size == 1) Spacer(Modifier.weight(1f))
+                        }
                     }
                 }
             }
@@ -255,13 +271,30 @@ internal fun SearchLandingScreen(
                         Icon(Icons.Outlined.Refresh, "刷新热搜", tint = SearchInk)
                     }
                 }
-                FlowRow(Modifier.fillMaxWidth(),
-                    horizontalArrangement = Arrangement.spacedBy(8.dp),
-                    verticalArrangement = Arrangement.spacedBy(4.dp)) {
-                    state.landingTerms.take(8).forEach { term ->
-                        FilterChip(selected = false, onClick = { submit(term) },
-                            label = { Text(term, maxLines = 1,
-                                overflow = TextOverflow.Ellipsis) })
+                if (HongguoColors.isMaterial3) {
+                    FlowRow(Modifier.fillMaxWidth(),
+                        horizontalArrangement = Arrangement.spacedBy(8.dp),
+                        verticalArrangement = Arrangement.spacedBy(4.dp)) {
+                        state.landingTerms.take(8).forEach { term ->
+                            FilterChip(selected = false, onClick = { submit(term) },
+                                label = { Text(term, maxLines = 1,
+                                    overflow = TextOverflow.Ellipsis) })
+                        }
+                    }
+                } else {
+                    state.landingTerms.take(6).chunked(2).forEach { pair ->
+                        Row(Modifier.fillMaxWidth(),
+                            horizontalArrangement = Arrangement.spacedBy(16.dp)) {
+                            pair.forEach { term ->
+                                Text(term, Modifier.weight(1f)
+                                    .clickable { submit(term) }
+                                    .padding(vertical = 5.dp),
+                                    fontSize = 13.sp, maxLines = 1,
+                                    overflow = TextOverflow.Ellipsis,
+                                    color = SearchInk)
+                            }
+                            if (pair.size == 1) Spacer(Modifier.weight(1f))
+                        }
                     }
                 }
             }
