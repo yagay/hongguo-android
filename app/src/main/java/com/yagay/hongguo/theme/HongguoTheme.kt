@@ -211,7 +211,9 @@ internal fun HongguoAppTheme(theme: HongguoResolvedTheme, content: @Composable (
     ) {
         MaterialTheme(
             colorScheme = theme.colors, typography = theme.typography,
-            shapes = theme.shapes, content = content,
-        )
+            shapes = theme.shapes,
+        ) {
+            HongguoPosterMotionHost(enabled = theme.tokens.material3, content = content)
+        }
     }
 }

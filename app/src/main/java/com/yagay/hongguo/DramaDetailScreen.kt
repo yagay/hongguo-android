@@ -164,6 +164,7 @@ internal fun DramaDetailScreen(state: AppState, model: DramaViewModel) {
                     HongguoPosterCover(
                         cover = model.cover(drama.cover),
                         title = drama.title,
+                        sharedDramaId = drama.id, sharedAsDetail = true,
                         modifier = Modifier.fillMaxWidth().aspectRatio(2f / 3f),
                     )
                     Text(drama.title, color = DetailText,
@@ -226,6 +227,7 @@ internal fun DramaDetailScreen(state: AppState, model: DramaViewModel) {
                         HongguoPosterCover(
                             cover = model.cover(drama.cover),
                             title = drama.title,
+                            sharedDramaId = drama.id, sharedAsDetail = true,
                             modifier = Modifier.width(if (material3) 104.dp else 91.dp)
                                 .height(if (material3) 156.dp else 130.dp)
                                 .testTag("detail_poster"),

@@ -2,7 +2,12 @@ package com.yagay.hongguo
 
 import androidx.compose.foundation.background
 import androidx.compose.foundation.layout.fillMaxSize
+import androidx.compose.animation.SharedTransitionLayout
 import androidx.compose.foundation.layout.Column
+import androidx.compose.foundation.layout.Row
+import androidx.compose.material3.Button
+import androidx.compose.ui.graphics.Color
+import androidx.compose.runtime.CompositionLocalProvider
 import androidx.compose.foundation.layout.Box
 import androidx.compose.foundation.layout.size
 import androidx.compose.ui.unit.dp
@@ -16,6 +21,7 @@ import androidx.compose.ui.graphics.asAndroidBitmap
 import android.graphics.Bitmap
 import java.io.File
 import androidx.compose.ui.Modifier
+import androidx.compose.ui.platform.testTag
 import androidx.compose.ui.test.captureToImage
 import androidx.compose.ui.test.onNodeWithTag
 import androidx.compose.ui.test.onNodeWithText
@@ -49,8 +55,48 @@ class HongguoThemeSmokeTest {
         composeRule.waitForIdle()
         val material = composeRule.onRoot().captureToImage().asAndroidBitmap()
         org.junit.Assert.assertNotEquals(classicPixel, material.getPixel(2, 2))
+        // Pixel baselines for the two immutable brand palettes.
+        org.junit.Assert.assertEquals(0xFFFCF8F4.toInt(), classicPixel)
+        org.junit.Assert.assertEquals(0xFFFFF8F6.toInt(), material.getPixel(2, 2))
         saveScreenshot("theme_surface_classic_light", classic)
         saveScreenshot("theme_surface_material3_light", material)
+    }
+
+    @Test fun posterSharedElementUsesOneKeyForBothEndpoints() {
+        var detailVisible by mutableStateOf(false)
+        composeRule.setContent {
+            HongguoAppTheme(previewTheme("material3", "light")) {
+                SharedTransitionLayout {
+                    CompositionLocalProvider(
+                        LocalPosterSharedContext provides PosterSharedContext(
+                            scope = this@SharedTransitionLayout, dramaId = "poster-smoke",
+                            detailsVisible = detailVisible, enabled = true,
+                        ),
+                    ) {
+                        Column {
+                            Row {
+                                Box(Modifier.hongguoSharedPoster("poster-smoke", false)
+                                    .size(80.dp, 120.dp).background(Color.Red)
+                                    .testTag("shared_source"))
+                                Box(Modifier.hongguoSharedPoster("poster-smoke", true)
+                                    .size(120.dp, 180.dp).background(Color.Red)
+                                    .testTag("shared_detail"))
+                            }
+                            Button(onClick = { detailVisible = !detailVisible }) {
+                                Text("切换封面")
+                            }
+                        }
+                    }
+                }
+            }
+        }
+        composeRule.onNodeWithTag("shared_source").assertExists()
+        composeRule.onNodeWithTag("shared_detail").assertExists()
+        composeRule.onNodeWithText("切换封面").performClick()
+        composeRule.waitForIdle()
+        composeRule.onNodeWithTag("shared_detail").assertExists()
+        saveScreenshot("poster_shared_element", composeRule.onRoot()
+            .captureToImage().asAndroidBitmap())
     }
 
     @Test fun posterPlaceholderRendersInMaterialDarkTheme() {

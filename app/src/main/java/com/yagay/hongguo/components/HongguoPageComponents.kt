@@ -137,9 +137,12 @@ internal fun HongguoPosterCover(
     title: String,
     modifier: Modifier = Modifier,
     classicRadius: androidx.compose.ui.unit.Dp = HongguoUi.controlRadius,
+    sharedDramaId: String? = null,
+    sharedAsDetail: Boolean = false,
 ) {
     HongguoPosterArtwork(
         cover = cover, title = title, modifier = modifier, classicRadius = classicRadius,
+        sharedDramaId = sharedDramaId, sharedAsDetail = sharedAsDetail,
     )
 }
 

@@ -1,6 +1,7 @@
 package com.yagay.hongguo
 
 import android.animation.ValueAnimator
+import androidx.compose.animation.SharedTransitionScope
 import androidx.compose.animation.core.RepeatMode
 import androidx.compose.animation.core.animateFloat
 import androidx.compose.animation.core.infiniteRepeatable
@@ -36,6 +37,11 @@ import androidx.compose.material3.Surface
 import androidx.compose.material3.Text
 import androidx.compose.material3.TextButton
 import androidx.compose.runtime.Composable
+import androidx.compose.runtime.CompositionLocalProvider
+import androidx.compose.runtime.DisposableEffect
+import androidx.compose.runtime.compositionLocalOf
+import androidx.compose.runtime.staticCompositionLocalOf
+import androidx.compose.runtime.mutableIntStateOf
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.draw.clip
@@ -61,6 +67,58 @@ import androidx.compose.ui.graphics.painter.ColorPainter
 import coil.request.ImageRequest
 import coil.compose.AsyncImage
 
+/** A single shimmer animation clock for all pending posters on a page. */
+internal class PosterLoadingCounter {
+    var count by mutableIntStateOf(0)
+}
+internal data class PosterMotion(val counter: PosterLoadingCounter, val offset: Float)
+internal val LocalPosterMotion = compositionLocalOf<PosterMotion?> { null }
+
+@Composable
+internal fun HongguoPosterMotionHost(enabled: Boolean, content: @Composable () -> Unit) {
+    if (!enabled) {
+        content()
+        return
+    }
+    val counter = remember { PosterLoadingCounter() }
+    val active = counter.count > 0 && ValueAnimator.areAnimatorsEnabled()
+    val offset = if (active) {
+        val transition = rememberInfiniteTransition(label = "sharedPosterSkeleton")
+        val shift by transition.animateFloat(
+            initialValue = -300f, targetValue = 900f,
+            animationSpec = infiniteRepeatable(
+                animation = tween(1150), repeatMode = RepeatMode.Restart),
+            label = "sharedPosterOffset",
+        )
+        shift
+    } else 0f
+    CompositionLocalProvider(LocalPosterMotion provides PosterMotion(counter, offset)) {
+        content()
+    }
+}
+
+/** Shared only between Catalog/My posters and the matched detail poster. */
+internal data class PosterSharedContext(
+    val scope: SharedTransitionScope,
+    val dramaId: String?,
+    val detailsVisible: Boolean,
+    val enabled: Boolean,
+)
+internal val LocalPosterSharedContext = staticCompositionLocalOf<PosterSharedContext?> { null }
+
+@Composable
+internal fun Modifier.hongguoSharedPoster(dramaId: String?, asDetail: Boolean): Modifier {
+    val context = LocalPosterSharedContext.current
+    if (context == null || !context.enabled || dramaId == null ||
+        context.dramaId != dramaId || !ValueAnimator.areAnimatorsEnabled()) return this
+    return with(context.scope) {
+        this@hongguoSharedPoster.sharedElementWithCallerManagedVisibility(
+            sharedContentState = rememberSharedContentState(key = "drama-poster:$dramaId"),
+            visible = context.detailsVisible == asDetail,
+        )
+    }
+}
+
 /** One poster surface shared by catalog, account, history and related works.
  * Page-specific aspect ratio, click handling and overlays stay with the caller.
  */
@@ -72,6 +130,8 @@ internal fun HongguoPosterArtwork(
     classicRadius: Dp = HongguoUi.controlRadius,
     classicPlaceholderColor: Color = HongguoColors.accentSoft,
     fallback: @Composable BoxScope.() -> Unit = {},
+    sharedDramaId: String? = null,
+    sharedAsDetail: Boolean = false,
     overlay: @Composable BoxScope.() -> Unit = {},
 ) {
     val material3 = HongguoColors.isMaterial3
@@ -88,18 +148,19 @@ internal fun HongguoPosterArtwork(
             showSkeleton = true
         }
     }
-    val canAnimate = material3 && loading && showSkeleton && cover != null &&
-        (cover !is String || cover.isNotBlank()) && ValueAnimator.areAnimatorsEnabled()
-    val shimmer = if (canAnimate) {
-        val transition = rememberInfiniteTransition(label = "posterSkeleton")
-        val shift by transition.animateFloat(
-            initialValue = -300f, targetValue = 900f,
-            animationSpec = infiniteRepeatable(
-                animation = tween(1150), repeatMode = RepeatMode.Restart),
-            label = "posterSkeletonOffset",
-        )
-        shift
-    } else 0f
+    val motion = LocalPosterMotion.current
+    val canAnimate = material3 && loading && showSkeleton && motion != null &&
+        cover != null && (cover !is String || cover.isNotBlank()) &&
+        ValueAnimator.areAnimatorsEnabled()
+    DisposableEffect(motion?.counter, canAnimate) {
+        if (canAnimate) motion?.counter?.let { it.count += 1 }
+        onDispose {
+            if (canAnimate) motion?.counter?.let {
+                it.count = (it.count - 1).coerceAtLeast(0)
+            }
+        }
+    }
+    val shimmer = motion?.offset ?: 0f
     val placeholderBrush = if (canAnimate) Brush.linearGradient(
         listOf(MaterialTheme.colorScheme.surfaceContainerHigh,
             MaterialTheme.colorScheme.surfaceContainerLow,
@@ -122,7 +183,9 @@ internal fun HongguoPosterArtwork(
                 onSuccess = { loading = false },
                 onError = { loading = false },
                 contentScale = ContentScale.Crop,
-                modifier = Modifier.fillMaxSize(),
+                modifier = Modifier
+                    .hongguoSharedPoster(sharedDramaId, sharedAsDetail)
+                    .fillMaxSize(),
             )
         } else fallback()
         overlay()

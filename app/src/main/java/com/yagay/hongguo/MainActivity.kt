@@ -20,6 +20,8 @@ import androidx.activity.ComponentActivity
 import androidx.activity.compose.BackHandler
 import androidx.activity.compose.setContent
 import androidx.activity.enableEdgeToEdge
+import androidx.compose.animation.SharedTransitionLayout
+import androidx.compose.runtime.CompositionLocalProvider
 import androidx.compose.foundation.background
 import androidx.compose.foundation.clickable
 import androidx.compose.foundation.layout.Arrangement
@@ -88,6 +90,7 @@ import androidx.lifecycle.Lifecycle
 import androidx.lifecycle.LifecycleEventObserver
 import androidx.lifecycle.compose.LocalLifecycleOwner
 import androidx.lifecycle.viewmodel.compose.viewModel
+import kotlinx.coroutines.delay
 import kotlinx.coroutines.launch
 
 private const val EXTERNAL_PIP_PREFERENCES = "external_picture_in_picture"
@@ -649,6 +652,16 @@ private fun HongguoApp(model: DramaViewModel = viewModel()) {
             bars.isAppearanceLightNavigationBars = !darkSystemChrome && !darkTheme
         }
     }
+    // Keep the selected poster key alive for the reverse transition after Back.
+    val currentPosterId = state.detail?.drama?.id
+    var previousPosterId by remember { mutableStateOf<String?>(null) }
+    LaunchedEffect(currentPosterId) {
+        if (currentPosterId != null) previousPosterId = currentPosterId
+        else {
+            delay(440)
+            previousPosterId = null
+        }
+    }
     HongguoAppTheme(resolvedTheme) {
         if (systemPictureInPicture) {
             PictureInPictureVideo(state, model)
@@ -707,6 +720,19 @@ private fun HongguoApp(model: DramaViewModel = viewModel()) {
                                 }
                             }
                         }
+                    SharedTransitionLayout(Modifier.fillMaxSize()) {
+                        CompositionLocalProvider(
+                            LocalPosterSharedContext provides PosterSharedContext(
+                                scope = this@SharedTransitionLayout,
+                                dramaId = currentPosterId ?: previousPosterId,
+                                detailsVisible = activeRoute == PlaybackDestination.DETAILS &&
+                                    state.modal == Modal.NONE,
+                                enabled = resolvedTheme.tokens.material3 &&
+                                    state.navigation.isExplicitCatalog &&
+                                    !playerDetailsOverlay && !searchLandingOpen &&
+                                    state.modal == Modal.NONE,
+                            )
+                        ) {
                     Box(Modifier.fillMaxSize()) {
                     when {
                         state.modal == Modal.SETTINGS -> SettingsScreen(state, model,
@@ -814,9 +840,14 @@ private fun HongguoApp(model: DramaViewModel = viewModel()) {
                                 visible = activeRoute == PlaybackDestination.DETAILS &&
                                     state.modal == Modal.NONE,
                                 tag = "drama_detail_slide_page",
+                                sharedPoster = resolvedTheme.tokens.material3 &&
+                                    state.navigation.isExplicitCatalog &&
+                                    !playerDetailsOverlay && !searchLandingOpen,
                             ) {
                                 DramaDetailScreen(state, model)
                             }
+                        }
+                    }
                         }
                     }
                         LibrarySheets(state, model)

@@ -73,14 +73,23 @@ internal fun RightSlidePage(
     visible: Boolean,
     tag: String,
     modifier: Modifier = Modifier,
+    sharedPoster: Boolean = false,
     content: @Composable () -> Unit,
 ) {
     val animate = ValueAnimator.areAnimatorsEnabled()
     AnimatedVisibility(
         visible = visible,
         modifier = modifier.fillMaxSize().testTag(tag),
-        enter = if (animate) PlaybackPageSlide.enter() else EnterTransition.None,
-        exit = if (animate) PlaybackPageSlide.exit() else ExitTransition.None,
+        enter = when {
+            !animate -> EnterTransition.None
+            sharedPoster -> fadeIn(animationSpec = tween(260))
+            else -> PlaybackPageSlide.enter()
+        },
+        exit = when {
+            !animate -> ExitTransition.None
+            sharedPoster -> fadeOut(animationSpec = tween(230))
+            else -> PlaybackPageSlide.exit()
+        },
     ) {
         content()
     }

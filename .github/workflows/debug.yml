@@ -30,7 +30,7 @@ on:
         type: boolean
 concurrency:
   group: native-rewrite-${{ github.ref }}-${{ (github.event_name == 'workflow_dispatch' && inputs.signed_release) && 'release' || 'debug' }}
-  cancel-in-progress: false
+  cancel-in-progress: true
 jobs:
   debug:
     if: ${{ !inputs.signed_release && !(github.event_name == 'push' && contains(github.event.head_commit.message, '[release]')) }}
@@ -91,6 +91,7 @@ jobs:
           if [ -e /dev/kvm ]; then sudo chmod 666 /dev/kvm; fi
 
       - name: Run Compose UI smoke tests on Android emulator
+        timeout-minutes: 25
         id: emulator
         uses: reactivecircus/android-emulator-runner@v2
         with:

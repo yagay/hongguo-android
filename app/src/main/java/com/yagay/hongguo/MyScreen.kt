@@ -418,6 +418,7 @@ internal fun MyScreen(state: AppState, model: DramaViewModel, onBack: () -> Unit
                         HongguoPosterCover(
                             cover = model.cover(drama.cover),
                             title = drama.title,
+                            sharedDramaId = drama.id,
                             modifier = Modifier.fillMaxWidth().aspectRatio(2f / 3f),
                             classicRadius = 9.dp,
                         )

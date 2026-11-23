@@ -444,6 +444,7 @@ private fun CatalogPoster(drama: Drama, cover: String,
         HongguoPosterArtwork(
             cover = cover,
             title = drama.title,
+            sharedDramaId = drama.id,
             modifier = Modifier.fillMaxWidth().aspectRatio(
                 if (HongguoColors.isMaterial3) 2f / 3f else 0.72f),
             classicRadius = 12.dp,
