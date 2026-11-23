@@ -46,13 +46,13 @@ class AppUpdateCheckerTest {
     }
 
     @Test fun ignoresUnexpectedTagsAndDownloadOrigins() {
-        val release = release(1000500).put("tag_name", "debug-1000500")
+        val wrongTag = release(1000500).put("tag_name", "debug-1000500")
         val valid = release(1000501)
         valid.put("assets", JSONArray().put(JSONObject()
             .put("name", "YHongguo-update.apk")
             .put("size", 2048)
             .put("browser_download_url", "https://unknown.example/fake.apk")))
         assertNull(AppUpdateChecker.newestVerifiedRelease(
-            JSONArray().put(release).put(valid).toString(), 1))
+            JSONArray().put(wrongTag).put(valid).toString(), 1))
     }
 }
