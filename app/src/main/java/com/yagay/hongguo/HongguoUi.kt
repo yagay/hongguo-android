@@ -158,7 +158,8 @@ internal fun HongguoNavigationRow(
     ) {
         Surface(
             color = HongguoColors.accentSoft,
-            shape = RoundedCornerShape(HongguoUi.controlRadius),
+            shape = RoundedCornerShape(if (HongguoColors.isMaterial3) 16.dp
+                else HongguoUi.controlRadius),
         ) {
             Box(Modifier.size(HongguoUi.leadingIconBox), contentAlignment = Alignment.Center) {
                 Icon(icon, contentDescription = null,
@@ -828,13 +829,15 @@ internal fun HongguoModalSheet(
         onDismissRequest = onDismissRequest,
         containerColor = if (HongguoColors.isMaterial3)
             MaterialTheme.colorScheme.surfaceContainerLow else HongguoColors.surface,
-        contentColor = HongguoColors.ink,
+        contentColor = if (HongguoColors.isMaterial3)
+            MaterialTheme.colorScheme.onSurface else HongguoColors.ink,
         shape = RoundedCornerShape(
             topStart = if (HongguoColors.isMaterial3) 28.dp else HongguoUi.cardRadius,
             topEnd = if (HongguoColors.isMaterial3) 28.dp else HongguoUi.cardRadius,
         ),
         dragHandle = {
-            BottomSheetDefaults.DragHandle(color = HongguoColors.muted)
+            BottomSheetDefaults.DragHandle(color = if (HongguoColors.isMaterial3)
+                MaterialTheme.colorScheme.onSurfaceVariant else HongguoColors.muted)
         },
         modifier = modifier,
         content = content,
@@ -870,16 +873,27 @@ internal fun HongguoEpisodeCell(
     modifier: Modifier = Modifier,
     cellHeight: androidx.compose.ui.unit.Dp = 44.dp,
 ) {
+    val material3 = HongguoColors.isMaterial3
     Box(
         modifier = modifier.height(cellHeight)
-            .clip(RoundedCornerShape(HongguoUi.controlRadius))
-            .background(if (selected) HongguoColors.accent
-                else HongguoColors.playerControlBackground)
+            .clip(RoundedCornerShape(if (material3) 16.dp
+                else HongguoUi.controlRadius))
+            .background(when {
+                material3 && selected -> MaterialTheme.colorScheme.secondaryContainer
+                material3 -> MaterialTheme.colorScheme.surfaceContainerHigh
+                selected -> HongguoColors.accent
+                else -> HongguoColors.playerControlBackground
+            })
             .clickable(onClick = onClick),
         contentAlignment = Alignment.Center,
     ) {
-        Text(label, color = if (selected) Color.White else HongguoColors.ink,
-            fontSize = 13.sp,
+        Text(label, color = when {
+            material3 && selected -> MaterialTheme.colorScheme.onSecondaryContainer
+            material3 -> MaterialTheme.colorScheme.onSurface
+            selected -> Color.White
+            else -> HongguoColors.ink
+        },
+            fontSize = if (material3) 14.sp else 13.sp,
             fontWeight = if (selected) FontWeight.Bold else FontWeight.Medium,
             maxLines = 1)
     }
