@@ -753,7 +753,10 @@ constructor(
     }
 
     /**
-     * 官方 App 现行的播放模型接口：`GET /reading/bookapi/video_tab/multi_video_model/v1/`。
+     * 一条已知的签名 GET 模型接口：`/reading/bookapi/video_tab/multi_video_model/v1/`。
+     * 2026-11-23 的官方 7.4.2.32 运行时同时观察到
+     * `/novel/player/multi_video_model/player/v1`（含 preload 场景）
+     * 和 `/novel/player/video_model/v1/`。不能称这条 GET 为唯一当前接口。
      *
      * 服务端对播放模型的放行策略按时间窗与「身份 × 路径」波动，注释结论均须带日期快照：
      * - 2026-11-02：旧 `POST /novel/player` 全域名 200+0 字节（无签名形态），GET video_tab 出五档。
