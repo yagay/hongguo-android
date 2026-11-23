@@ -423,10 +423,19 @@ private fun CatalogPoster(drama: Drama, cover: String,
     onLater: () -> Unit, onFavorite: () -> Unit, onLike: () -> Unit,
     onHide: (() -> Unit)?, onClick: () -> Unit) {
     var menuOpen by remember { mutableStateOf(false) }
+    // Classic keeps the original lightweight poster grid. Material 3 adds a
+    // proper surfaceContainerLow card around each poster and its metadata.
+    val cardChrome = if (HongguoColors.isMaterial3)
+        Modifier.clip(RoundedCornerShape(20.dp))
+            .background(MaterialTheme.colorScheme.surfaceContainerLow)
+            .clickable(onClick = onClick)
+            .padding(8.dp)
+    else Modifier.clickable(onClick = onClick)
     Column(
-        Modifier.fillMaxWidth().clickable(onClick = onClick)
+        Modifier.fillMaxWidth().then(cardChrome)
             .testTag("drama_" + drama.id),
-        verticalArrangement = Arrangement.spacedBy(5.dp),
+        verticalArrangement = Arrangement.spacedBy(
+            if (HongguoColors.isMaterial3) 7.dp else 5.dp),
     ) {
         HongguoPosterArtwork(
             cover = cover,
