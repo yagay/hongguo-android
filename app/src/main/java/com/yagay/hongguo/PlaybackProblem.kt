@@ -44,7 +44,7 @@ object PlaybackProblem {
         val messages = chain.mapNotNull { it.message }
         val sdkCode = chain.filterIsInstance<OpenhongguoException>().firstOrNull()?.code
         val code = when {
-            sdkCode == ErrorCode.PLAYBACK_EMPTY -> "PLAYBACK_MODEL_EMPTY"
+            sdkCode == ErrorCode.RESPONSE_EMPTY -> "PLAYBACK_MODEL_EMPTY"
             sdkCode == ErrorCode.ANONYMOUS_LIMITED -> "PLAYBACK_ANONYMOUS_LIMITED"
             sdkCode == ErrorCode.DEVICE_REJECTED -> "PLAYBACK_DEVICE_REJECTED"
             sdkCode == ErrorCode.TRANSPORT -> "NETWORK_IO"
