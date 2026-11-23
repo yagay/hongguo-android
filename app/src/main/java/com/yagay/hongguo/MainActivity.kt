@@ -878,7 +878,8 @@ private fun HongguoApp(model: DramaViewModel = viewModel()) {
                         when {
                             showPrimaryNavigation && darkPlayer ->
                                 HongguoColors.playerControlBackground
-                            showPrimaryNavigation -> HongguoColors.surface
+                            showPrimaryNavigation ->
+                                materialScheme?.surfaceContainer ?: HongguoColors.surface
                             darkPlayer -> HongguoColors.playerBackground
                             else -> HongguoColors.background
                         }
