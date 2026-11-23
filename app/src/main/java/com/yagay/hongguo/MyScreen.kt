@@ -419,7 +419,8 @@ internal fun MyScreen(state: AppState, model: DramaViewModel, onBack: () -> Unit
                             fontSize = if (HongguoColors.isMaterial3) 13.sp else 12.sp,
                             fontWeight = if (HongguoColors.isMaterial3)
                                 FontWeight.Medium else FontWeight.Normal,
-                            maxLines = 2, overflow = TextOverflow.Ellipsis)
+                            maxLines = if (HongguoColors.isMaterial3) 2 else 1,
+                            overflow = TextOverflow.Ellipsis)
                         if (libraryTab == 3) {
                             val upcoming = account.upcoming.firstOrNull {
                                 it.series.id == drama.id
