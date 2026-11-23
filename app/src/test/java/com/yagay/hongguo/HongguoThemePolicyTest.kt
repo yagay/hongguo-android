@@ -31,6 +31,13 @@ class HongguoThemePolicyTest {
         assertTrue(HongguoThemePolicy.catalogColumns(1080, 1f) >= 5)
     }
 
+    @Test fun detailTwoPaneRequiresSufficientWidth() {
+        assertFalse(HongguoThemePolicy.useTwoPaneDetail(390))
+        assertFalse(HongguoThemePolicy.useTwoPaneDetail(600))
+        assertTrue(HongguoThemePolicy.useTwoPaneDetail(840))
+        assertTrue(HongguoThemePolicy.useTwoPaneDetail(1200))
+    }
+
     @Test fun episodeGridPreservesFiveColumnsExceptSmallOrLargeFont() {
         assertEquals(5, HongguoThemePolicy.episodeColumns(390, false))
         assertEquals(4, HongguoThemePolicy.episodeColumns(320, false))

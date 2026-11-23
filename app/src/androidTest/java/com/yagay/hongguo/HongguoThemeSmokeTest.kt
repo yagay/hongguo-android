@@ -1,6 +1,9 @@
 package com.yagay.hongguo
 
 import androidx.compose.foundation.layout.Column
+import androidx.compose.foundation.layout.Box
+import androidx.compose.foundation.layout.size
+import androidx.compose.ui.unit.dp
 import androidx.compose.material3.Text
 import androidx.compose.runtime.getValue
 import androidx.compose.runtime.mutableIntStateOf
@@ -26,6 +29,24 @@ class HongguoThemeSmokeTest {
     @Test fun classicDarkControlsRespond() = render("classic", "dark")
     @Test fun material3LightControlsRespond() = render("material3", "light")
     @Test fun material3DarkControlsRespond() = render("material3", "dark")
+
+    @Test fun posterPlaceholderRendersInMaterialDarkTheme() {
+        composeRule.setContent {
+            HongguoAppTheme(previewTheme("material3", "dark")) {
+                Box(androidx.compose.ui.Modifier.size(120.dp, 180.dp)) {
+                    HongguoPosterArtwork(
+                        cover = null, title = "占位测试",
+                        modifier = androidx.compose.ui.Modifier.size(120.dp, 180.dp),
+                        fallback = { Text("暂无封面") },
+                    )
+                }
+            }
+        }
+        composeRule.onNodeWithText("暂无封面").assertExists()
+        val shot = composeRule.onRoot().captureToImage()
+        org.junit.Assert.assertTrue(shot.width > 0)
+        org.junit.Assert.assertTrue(shot.height > 0)
+    }
 
     private fun render(style: String, mode: String) {
         composeRule.setContent {

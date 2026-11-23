@@ -5,6 +5,7 @@ import androidx.compose.foundation.isSystemInDarkTheme
 import androidx.compose.foundation.background
 import androidx.compose.foundation.clickable
 import androidx.compose.foundation.horizontalScroll
+import androidx.compose.foundation.verticalScroll
 import androidx.compose.foundation.layout.Arrangement
 import androidx.compose.foundation.layout.Box
 import androidx.compose.foundation.layout.Column
@@ -12,6 +13,7 @@ import androidx.compose.foundation.layout.PaddingValues
 import androidx.compose.foundation.layout.Row
 import androidx.compose.foundation.layout.RowScope
 import androidx.compose.foundation.layout.Spacer
+import androidx.compose.foundation.layout.fillMaxHeight
 import androidx.compose.foundation.layout.fillMaxSize
 import androidx.compose.foundation.layout.fillMaxWidth
 import androidx.compose.foundation.layout.height
@@ -53,6 +55,7 @@ import androidx.compose.ui.draw.clip
 import androidx.compose.ui.graphics.Brush
 import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.layout.ContentScale
+import androidx.compose.ui.platform.LocalConfiguration
 import androidx.compose.ui.platform.LocalContext
 import androidx.compose.ui.platform.testTag
 import androidx.compose.ui.text.font.FontWeight
@@ -71,6 +74,8 @@ internal fun DramaDetailScreen(state: AppState, model: DramaViewModel) {
     // The hero still has a subtle gradient, but is no longer an unrelated
     // brown-only design system that clashes with Theater and My.
     val material3 = HongguoColors.isMaterial3
+    val tabletLayout = material3 &&
+        HongguoThemePolicy.useTwoPaneDetail(LocalConfiguration.current.screenWidthDp)
     val scheme = MaterialTheme.colorScheme
     val DetailBackground = if (material3) scheme.background else HongguoColors.background
     val DetailTop = if (material3) scheme.surfaceContainer else HongguoColors.accentSoft
@@ -138,8 +143,39 @@ internal fun DramaDetailScreen(state: AppState, model: DramaViewModel) {
 
     Column(Modifier.fillMaxSize().background(DetailBackground)
         .testTag("drama_detail_screen")) {
+        Row(Modifier.fillMaxWidth().weight(1f)) {
+            if (tabletLayout) {
+                Column(
+                    Modifier.width(300.dp).fillMaxHeight()
+                        .background(scheme.surfaceContainerLow)
+                        .verticalScroll(rememberScrollState())
+                        .padding(20.dp).testTag("detail_tablet_summary"),
+                    verticalArrangement = Arrangement.spacedBy(14.dp),
+                ) {
+                    HongguoPosterCover(
+                        cover = model.cover(drama.cover),
+                        title = drama.title,
+                        modifier = Modifier.fillMaxWidth().height(390.dp),
+                    )
+                    Text(drama.title, color = DetailText,
+                        style = MaterialTheme.typography.headlineSmall)
+                    Text("全${detail.episodes.size}集", color = DetailMuted,
+                        style = MaterialTheme.typography.bodyMedium)
+                    if (drama.synopsis.isNotBlank()) Text(
+                        drama.synopsis, color = DetailMuted,
+                        style = MaterialTheme.typography.bodyMedium,
+                    )
+                    HongguoAction(
+                        label = "开始播放",
+                        onClick = { model.playFromDetails(state.episodeIndex.coerceIn(
+                            0, detail.episodes.lastIndex.coerceAtLeast(0))) },
+                        style = HongguoActionStyle.PRIMARY,
+                        modifier = Modifier.fillMaxWidth().testTag("detail_tablet_play"),
+                    )
+                }
+            }
         LazyColumn(
-            Modifier.fillMaxWidth().weight(1f),
+            Modifier.weight(1f),
             contentPadding = PaddingValues(bottom = 14.dp),
             verticalArrangement = Arrangement.spacedBy(HongguoUi.pageSectionGap),
         ) {
@@ -172,7 +208,7 @@ internal fun DramaDetailScreen(state: AppState, model: DramaViewModel) {
                             detailActions()
                         }
                     }
-                    Row(
+                    if (!tabletLayout) Row(
                         Modifier.fillMaxWidth()
                             .padding(start = 15.dp, end = 15.dp, top = 12.dp, bottom = 4.dp),
                         horizontalArrangement = Arrangement.spacedBy(12.dp),
@@ -569,6 +605,7 @@ internal fun DramaDetailScreen(state: AppState, model: DramaViewModel) {
                 }
             }
         }
+        } // Tablet split ends; bottom actions are shared.
 
         Row(
             Modifier.fillMaxWidth().background(

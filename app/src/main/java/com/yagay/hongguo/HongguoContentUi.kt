@@ -1,5 +1,11 @@
 package com.yagay.hongguo
 
+import android.animation.ValueAnimator
+import androidx.compose.animation.core.RepeatMode
+import androidx.compose.animation.core.animateFloat
+import androidx.compose.animation.core.infiniteRepeatable
+import androidx.compose.animation.core.rememberInfiniteTransition
+import androidx.compose.animation.core.tween
 import androidx.compose.foundation.BorderStroke
 import androidx.compose.foundation.background
 import androidx.compose.foundation.clickable
@@ -34,6 +40,7 @@ import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.draw.clip
 import androidx.compose.ui.graphics.Brush
+import androidx.compose.ui.geometry.Offset
 import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.layout.ContentScale
 import androidx.compose.ui.text.font.FontWeight
@@ -45,6 +52,9 @@ import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
 import androidx.compose.ui.platform.LocalContext
 import androidx.compose.runtime.remember
+import androidx.compose.runtime.getValue
+import androidx.compose.runtime.mutableStateOf
+import androidx.compose.runtime.setValue
 import androidx.compose.ui.graphics.painter.ColorPainter
 import coil.request.ImageRequest
 import coil.compose.AsyncImage
@@ -66,10 +76,24 @@ internal fun HongguoPosterArtwork(
     val radius = if (material3) 16.dp else classicRadius
     val placeholderColor = if (material3)
         MaterialTheme.colorScheme.surfaceContainerHigh else classicPlaceholderColor
-    val placeholderBrush = if (material3) Brush.linearGradient(
+    var loading by remember(cover) { mutableStateOf(true) }
+    val canAnimate = material3 && loading && cover != null &&
+        (cover !is String || cover.isNotBlank()) && ValueAnimator.areAnimatorsEnabled()
+    val shimmer = if (canAnimate) {
+        val transition = rememberInfiniteTransition(label = "posterSkeleton")
+        val shift by transition.animateFloat(
+            initialValue = -300f, targetValue = 900f,
+            animationSpec = infiniteRepeatable(
+                animation = tween(1150), repeatMode = RepeatMode.Restart),
+            label = "posterSkeletonOffset",
+        )
+        shift
+    } else 0f
+    val placeholderBrush = if (canAnimate) Brush.linearGradient(
         listOf(MaterialTheme.colorScheme.surfaceContainerHigh,
             MaterialTheme.colorScheme.surfaceContainerLow,
             MaterialTheme.colorScheme.surfaceContainerHigh),
+        start = Offset(shimmer - 240f, 0f), end = Offset(shimmer + 240f, 240f),
     ) else Brush.linearGradient(listOf(placeholderColor, placeholderColor))
     val context = LocalContext.current
     // Keep Coil's async image path (no Subcompose layout in scrolling poster grids).
@@ -82,8 +106,10 @@ internal fun HongguoPosterArtwork(
         if (cover != null && (cover !is String || cover.isNotBlank())) {
             AsyncImage(
                 model = request, contentDescription = title,
-                placeholder = ColorPainter(placeholderColor),
+                placeholder = if (material3) null else ColorPainter(placeholderColor),
                 error = ColorPainter(placeholderColor),
+                onSuccess = { loading = false },
+                onError = { loading = false },
                 contentScale = ContentScale.Crop,
                 modifier = Modifier.fillMaxSize(),
             )

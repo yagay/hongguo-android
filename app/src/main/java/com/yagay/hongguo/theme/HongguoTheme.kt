@@ -67,6 +67,8 @@ internal object HongguoThemePolicy {
         widthDp < 360 || fontScale >= 1.3f -> 2
         else -> 3
     }
+    fun useTwoPaneDetail(widthDp: Int): Boolean = widthDp >= 840
+
     fun episodeColumns(widthDp: Int, largeFont: Boolean): Int = when {
         largeFont && widthDp < 600 -> 4
         widthDp < 330 -> 4
