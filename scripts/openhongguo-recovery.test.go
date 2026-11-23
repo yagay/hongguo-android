@@ -8,6 +8,7 @@ import (
     "encoding/json"
     "errors"
     "net/http"
+    "strings"
     "testing"
 
     "github.com/beilunyang/openhongguo/internal/protocol"
@@ -16,6 +17,17 @@ import (
 
 const recoveryEpisode = "7100000000000201"
 const otherEpisode = "7100000000000202"
+
+// Guard the exact route from upstream PR #17. A successful 200/empty on the
+// old path must not silently be treated as a working video model.
+func TestV5RecoveryUsesCurrentPlaybackRoute(t *testing.T) {
+    if protocol.PathPlaybackV5 != "/novel/player/multi_video_model/v1/" {
+        t.Fatalf("stale V5 route: %s", protocol.PathPlaybackV5)
+    }
+    if protocol.PathPlaybackVideoTab != "/reading/bookapi/video_tab/multi_video_model/v1/" {
+        t.Fatalf("wrong video_tab route: %s", protocol.PathPlaybackVideoTab)
+    }
+}
 
 func tabFixture(t *testing.T, episode string) []byte {
     t.Helper()
@@ -66,6 +78,15 @@ func TestV5EmptyRecoversWithSignedSameIdentityGet(t *testing.T) {
             }
             if r.Header.Get("x-medusa") == "" || r.Header.Get("x-helios") == "" {
                 t.Error("GET recovery was not V5-signed")
+            }
+            params := r.URL.Query()
+            if params.Get("version_code") != "74332" ||
+                params.Get("version_name") != "7.4.3.32" ||
+                params.Get("update_version_code") != "74332" ||
+                params.Get("need_all_video_definition") != "1" ||
+                params.Has("pv_player") || params.Has("manifest_version_code") ||
+                !strings.Contains(r.Header.Get("User-Agent"), "/74332 ") {
+                t.Error("video_tab template must match 7.4.3.32 bodyless GET, not an old V5 POST")
             }
             if r.Header.Get("x-ss-stub") != "" || r.Header.Get("Content-Type") != "" ||
                 r.Header.Get("Cookie") != "" {
@@ -164,5 +185,36 @@ func TestV5EmptyWithRetryAfterDoesNotProbeOrRotate(t *testing.T) {
         tabRequests != 0 || legacyRequests != 0 || registerRequests != 1 {
         t.Fatalf("Retry-After must stop all recovery: model=%#v err=%v tab=%d legacy=%d regs=%d",
             playback, err, tabRequests, legacyRequests, registerRequests)
+    }
+}
+
+// When the V5 route is healthy, resolve without speculative fallback.
+func TestCurrentV5SuccessSkipsRecovery(t *testing.T) {
+    var v5Requests, tabRequests, legacyRequests int
+    handler := http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+        switch r.URL.Path {
+        case protocol.PathRegister:
+            w.Header().Set("Set-Cookie", "ttreq=fixture-ticket; Path=/")
+            _, _ = w.Write(fixture(t, "register-response.json"))
+        case protocol.PathPlaybackV5:
+            v5Requests++
+            if r.Method != "POST" {
+                t.Errorf("V5 primary must be POST")
+            }
+            _, _ = w.Write(fixture(t, "clear-playback.json"))
+        case protocol.PathPlaybackVideoTab:
+            tabRequests++
+        case protocol.PathPlayback:
+            legacyRequests++
+        default:
+            http.NotFound(w, r)
+        }
+    })
+    client, _ := resetClient(t, handler, sdk.Int(0))
+    playback, err := client.ResolvePlayback(context.Background(), recoveryEpisode, sdk.PlaybackOptions{})
+    if err != nil || playback == nil || len(playback.Streams) != 2 ||
+        v5Requests != 1 || tabRequests != 0 || legacyRequests != 0 {
+        t.Fatalf("healthy V5 must use one request: model=%#v err=%v primary=%d tab=%d legacy=%d",
+            playback, err, v5Requests, tabRequests, legacyRequests)
     }
 }
