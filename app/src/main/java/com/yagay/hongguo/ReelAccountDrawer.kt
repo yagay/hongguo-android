@@ -313,7 +313,13 @@ internal fun ReelAccountDrawer(
         }
         } // Drawer main menu
         } // Scrollable content: settings stays pinned below
-        Surface(color = HongguoColors.background, shadowElevation = 8.dp) {
+        Surface(
+            color = if (HongguoColors.isMaterial3)
+                androidx.compose.material3.MaterialTheme.colorScheme.surfaceContainer
+            else HongguoColors.background,
+            shadowElevation = if (HongguoColors.isMaterial3) 0.dp else 8.dp,
+            tonalElevation = if (HongguoColors.isMaterial3) 2.dp else 0.dp,
+        ) {
             Column(Modifier.fillMaxWidth()) {
                 HorizontalDivider(color = HongguoColors.divider)
                 Row(Modifier.fillMaxWidth().clickable(onClick = onSettings)
