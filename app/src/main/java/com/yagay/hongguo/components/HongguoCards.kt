@@ -180,7 +180,8 @@ internal fun HongguoToggleRow(
         Modifier.fillMaxWidth().heightIn(min = if (HongguoColors.isMaterial3 && !dark)
             56.dp else 40.dp)
             .toggleable(value = checked, role = Role.Switch,
-                onValueChange = onCheckedChange),
+                onValueChange = onCheckedChange)
+            .testTag(tag),
         verticalAlignment = Alignment.CenterVertically,
         horizontalArrangement = Arrangement.spacedBy(10.dp),
     ) {
@@ -200,7 +201,6 @@ internal fun HongguoToggleRow(
             checked = checked,
             // The whole settings row is the single accessible switch target.
             onCheckedChange = null,
-            modifier = Modifier.testTag(tag),
             colors = if (HongguoColors.isMaterial3) SwitchDefaults.colors()
                 else SwitchDefaults.colors(
                     checkedTrackColor = HongguoColors.accent,
