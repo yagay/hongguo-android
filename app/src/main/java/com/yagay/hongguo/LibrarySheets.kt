@@ -119,8 +119,8 @@ private fun LibraryRows(state: AppState, model: DramaViewModel) {
             )
         }
     }
-    OutlinedTextField(value = query, onValueChange = { query = it.take(60) },
-        singleLine = true, label = { Text("搜索本机片单") },
+    HongguoTextField(value = query, onValueChange = { query = it.take(60) },
+        singleLine = true, label = "搜索本机片单",
         modifier = Modifier.fillMaxWidth().testTag("local_library_search"))
     if (isFavorites) {
         HongguoChoiceGroup(
@@ -254,9 +254,9 @@ private fun LibraryRows(state: AppState, model: DramaViewModel) {
         },
         onDismiss = { customGroupFor = "" },
     ) {
-        OutlinedTextField(value = customGroupText,
+        HongguoTextField(value = customGroupText,
             onValueChange = { customGroupText = it.take(24) },
-            label = { Text("分组名称，最多24个字") }, singleLine = true)
+            label = "分组名称，最多24个字", singleLine = true)
     }
     if (confirmClear) HongguoConfirmDialog(
         title = if (isFavorites) "清空全部本机收藏？" else "清空全部本机历史？",
@@ -345,12 +345,11 @@ private fun ShareInput(model: DramaViewModel) {
     HongguoSheetHeader(title = "解析分享链接", icon = Icons.Outlined.Share)
     Text("粘贴红果短剧分享文案或链接，解析后直接进入相应剧集。",
         fontSize = 12.sp, color = HongguoColors.muted)
-    OutlinedTextField(
+    HongguoTextField(
         value = shareText,
         onValueChange = { shareText = it },
         modifier = Modifier.fillMaxWidth().testTag("share_input"),
-        placeholder = { Text("粘贴红果分享文案或链接") },
-        shape = RoundedCornerShape(HongguoUi.cardRadius),
+        placeholder = "粘贴红果分享文案或链接",
         minLines = 3, maxLines = 5,
     )
     HongguoAction(
