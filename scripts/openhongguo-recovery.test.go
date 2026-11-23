@@ -18,10 +18,10 @@ import (
 const recoveryEpisode = "7100000000000201"
 const otherEpisode = "7100000000000202"
 
-// Guard the exact route from upstream PR #17. A successful 200/empty on the
-// old path must not silently be treated as a working video model.
+// Official 7.4.2.32 runtime uses /player/v1; do not replace it by a
+// speculative /v1/ address. Empty HTTP 200 remains a distinct failure.
 func TestV5RecoveryUsesCurrentPlaybackRoute(t *testing.T) {
-    if protocol.PathPlaybackV5 != "/novel/player/multi_video_model/v1/" {
+    if protocol.PathPlaybackV5 != "/novel/player/multi_video_model/player/v1" {
         t.Fatalf("stale V5 route: %s", protocol.PathPlaybackV5)
     }
     if protocol.PathPlaybackVideoTab != "/reading/bookapi/video_tab/multi_video_model/v1/" {
@@ -104,7 +104,7 @@ func TestV5EmptyRecoversWithSignedSameIdentityGet(t *testing.T) {
     if err != nil || playback == nil || len(playback.Streams) != 2 {
         t.Fatalf("recovery model = %#v, err = %v", playback, err)
     }
-    if registerRequests != 1 || v5Requests != 2 || tabRequests != 1 || legacyRequests != 0 {
+    if registerRequests != 1 || v5Requests != 1 || tabRequests != 1 || legacyRequests != 0 {
         t.Fatalf("registration=%d v5=%d tab=%d legacy=%d", registerRequests, v5Requests, tabRequests, legacyRequests)
     }
 }
@@ -129,7 +129,7 @@ func TestV5RecoveryNeverAcceptsAnotherEpisode(t *testing.T) {
     })
     client, _ := resetClient(t, handler, sdk.Int(0))
     pb, err := client.ResolvePlayback(context.Background(), recoveryEpisode, sdk.PlaybackOptions{})
-    if pb != nil || !errors.Is(err, sdk.ErrAnonymousLimited) || tabRequests != 1 || legacyRequests != 0 {
+    if pb != nil || !errors.Is(err, sdk.ErrPlaybackEmpty) || tabRequests != 1 || legacyRequests != 0 {
         t.Fatalf("cross-episode recovery must fail closed: model=%#v err=%v tab=%d legacy=%d",
             pb, err, tabRequests, legacyRequests)
     }
@@ -218,3 +218,5 @@ func TestCurrentV5SuccessSkipsRecovery(t *testing.T) {
             playback, err, v5Requests, tabRequests, legacyRequests)
     }
 }
+
+// Empty-body classification is covered by TestV5RecoveryNeverAcceptsAnotherEpisode.
