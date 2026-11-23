@@ -9,7 +9,7 @@
 - 签名证书 SHA-256 指纹：
 
 ```
-6B:DA:27:91:0D:85:36:0F:D9:30:4D:32:EE:CB:AC:A6:24:DA:8B:4F:61:7F:EF:B3:08:59:5E:CA:1B:BC:68:CF
+35:86:FD:60:C0:24:3B:B2:05:F1:27:B3:47:E8:EE:D7:31:1F:32:D3:BA:14:6D:E9:71:30:22:9C:8C:22:09:75
 ```
 
 **Keystore 私钥及密码不在本仓库。** 应保存在独立安全备份中。此证书用于后续同包名 APK 升级，丢失后无法以相同签名更新已安装的非 Play 商店应用。绝不可把 .p12 文件、base64 文件和口令提交到仓库。
@@ -22,11 +22,11 @@
    - `HG_RELEASE_STORE_PASSWORD`：见私有 `PRIVATE-GitHub-Secrets.txt`。
    - `HG_RELEASE_KEY_ALIAS`：`hongguo-release`。
    - `HG_RELEASE_KEY_PASSWORD`：见私有 `PRIVATE-GitHub-Secrets.txt`。
-3. 打开 **Actions → Hongguo native signed Release → Run workflow**。入口工作流仅在 `main` 分支注册；它会调用 `rewrite-web-native` 的签名构建并检出该分支源码，**不会编译 main 应用代码**。
-4. 运行时先执行 Debug 单元测试，再编译 Release、校验 APK 签名、证书指纹和包名。
-5. 在 workflow 的 **Artifacts** 下载 `hongguo-signed-release-<run_number>`。
+3. `rewrite` 是仓库默认分支。手动签名编译可打开 **Actions → Native rewrite Android build → Run workflow**，选择 `signed_release=true`。
+4. 编译运行 Debug 单元测试并构建 Release，校验 APK 签名、证书指纹、包名与 16KB 对齐。
+5. 在 workflow 的 Artifacts 下载 `hongguo-signed-release-<run_number>`。
 
-日常推送 `rewrite-web-native` 仍只运行 Debug CI。默认分支仅增加手动触发入口，不更改 main 应用源码。缺少 Secrets、密钥文件、证书不匹配或 APK 未签名将使 Release 工作流失败，不会发布未签名安装包。
+此外，**Daily OpenHongguo update and signed APK** 每天检查上游；验证通过后才以同一证书签名并发布 `YHongguo-update.apk` 到 GitHub Releases。日常推送 `rewrite` 仍只运行 Debug CI。缺少 Secrets、密钥文件、证书不匹配或 APK 未签名都会使自动发布失败，不会向本地 App 推送更新。
 
 ## 本地构建
 
