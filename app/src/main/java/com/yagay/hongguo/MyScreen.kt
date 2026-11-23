@@ -40,6 +40,7 @@ import androidx.compose.material3.Checkbox
 import androidx.compose.material3.IconButton
 import androidx.compose.material3.HorizontalDivider
 import androidx.compose.material3.Icon
+import androidx.compose.material3.MaterialTheme
 import androidx.compose.material3.Surface
 import androidx.compose.material3.Text
 import androidx.compose.material3.TextButton
@@ -380,7 +381,12 @@ internal fun MyScreen(state: AppState, model: DramaViewModel, onBack: () -> Unit
                 horizontalArrangement = Arrangement.spacedBy(8.dp)) {
                 row.forEach { drama ->
                     Column(
-                        modifier = Modifier.weight(1f).clickable {
+                        modifier = Modifier.weight(1f)
+                            .then(if (HongguoColors.isMaterial3)
+                                Modifier.clip(RoundedCornerShape(16.dp))
+                                    .background(MaterialTheme.colorScheme.surfaceContainerLow)
+                            else Modifier)
+                            .clickable {
                             when (libraryTab) {
                                 0 -> {
                                     val cloud = account.history.firstOrNull { it.series.id == drama.id }
@@ -397,8 +403,11 @@ internal fun MyScreen(state: AppState, model: DramaViewModel, onBack: () -> Unit
                                 }
                                 else -> model.open(drama)
                             }
-                        }.testTag("my_gallery_drama_" + drama.id),
-                        verticalArrangement = Arrangement.spacedBy(4.dp),
+                        }.then(if (HongguoColors.isMaterial3)
+                            Modifier.padding(6.dp) else Modifier)
+                            .testTag("my_gallery_drama_" + drama.id),
+                        verticalArrangement = Arrangement.spacedBy(
+                            if (HongguoColors.isMaterial3) 6.dp else 4.dp),
                     ) {
                         HongguoPosterCover(
                             cover = model.cover(drama.cover),
@@ -406,8 +415,11 @@ internal fun MyScreen(state: AppState, model: DramaViewModel, onBack: () -> Unit
                             modifier = Modifier.fillMaxWidth().aspectRatio(2f / 3f),
                             classicRadius = 9.dp,
                         )
-                        Text(drama.title, color = HongguoColors.ink, fontSize = 12.sp,
-                            maxLines = 1, overflow = TextOverflow.Ellipsis)
+                        Text(drama.title, color = HongguoColors.ink,
+                            fontSize = if (HongguoColors.isMaterial3) 13.sp else 12.sp,
+                            fontWeight = if (HongguoColors.isMaterial3)
+                                FontWeight.Medium else FontWeight.Normal,
+                            maxLines = 2, overflow = TextOverflow.Ellipsis)
                         if (libraryTab == 3) {
                             val upcoming = account.upcoming.firstOrNull {
                                 it.series.id == drama.id
