@@ -129,7 +129,7 @@ internal fun ReelEpisodeSelectionSheet(
                         selected = index == state.episodeIndex,
                         onClick = { onSelectEpisode(index) },
                         modifier = Modifier.fillMaxWidth().testTag("episode_" + index),
-                        cellHeight = 40.dp,
+                        cellHeight = if (HongguoColors.isMaterial3) 48.dp else 40.dp,
                     )
                 }
 
