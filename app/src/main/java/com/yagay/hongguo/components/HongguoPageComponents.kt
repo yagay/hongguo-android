@@ -92,10 +92,11 @@ internal fun HongguoPageSurface(
 @Composable
 internal fun HongguoEmptyState(message: String, modifier: Modifier = Modifier) {
     Box(
-        modifier = modifier.fillMaxWidth().padding(vertical = 24.dp),
+        modifier = modifier.fillMaxWidth().padding(vertical = if (HongguoColors.isMaterial3) 32.dp else 24.dp),
         contentAlignment = Alignment.Center,
     ) {
-        Text(message, color = HongguoColors.muted, fontSize = 13.sp)
+        Text(message, color = HongguoColors.muted,
+            fontSize = if (HongguoColors.isMaterial3) 14.sp else 13.sp)
     }
 }
 
@@ -110,7 +111,7 @@ internal fun HongguoSheetHeader(
 ) {
     val foreground = if (dark) Color.White else HongguoColors.ink
     Row(
-        modifier = modifier.fillMaxWidth().heightIn(min = 44.dp),
+        modifier = modifier.fillMaxWidth().heightIn(min = if (HongguoColors.isMaterial3) 48.dp else 44.dp),
         verticalAlignment = Alignment.CenterVertically,
         horizontalArrangement = Arrangement.spacedBy(8.dp),
     ) {

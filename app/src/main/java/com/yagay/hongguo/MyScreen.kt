@@ -420,7 +420,7 @@ internal fun MyScreen(state: AppState, model: DramaViewModel, onBack: () -> Unit
                             classicRadius = 9.dp,
                         )
                         Text(drama.title, color = HongguoColors.ink,
-                            fontSize = if (HongguoColors.isMaterial3) 13.sp else 12.sp,
+                            fontSize = if (HongguoColors.isMaterial3) 14.sp else 12.sp,
                             fontWeight = if (HongguoColors.isMaterial3)
                                 FontWeight.Medium else FontWeight.Normal,
                             maxLines = if (HongguoColors.isMaterial3) 2 else 1,
@@ -431,7 +431,8 @@ internal fun MyScreen(state: AppState, model: DramaViewModel, onBack: () -> Unit
                             }
                             Text(upcoming?.publishText?.takeIf { it.isNotBlank() }
                                 ?: if (upcoming != null) "待上线" else "已上线",
-                                color = HongguoColors.muted, fontSize = 11.sp,
+                                color = HongguoColors.muted,
+                                fontSize = if (HongguoColors.isMaterial3) 12.sp else 11.sp,
                                 maxLines = 1, overflow = TextOverflow.Ellipsis)
                         }
                         if (libraryTab == 0) {

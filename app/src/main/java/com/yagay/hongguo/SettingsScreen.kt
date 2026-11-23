@@ -120,9 +120,12 @@ internal fun SettingsScreen(
     ) { padding ->
         LazyColumn(
             modifier = Modifier.fillMaxSize().padding(padding).testTag("settings_page"),
-            contentPadding = PaddingValues(start = 12.dp,
-                top = 6.dp, end = 12.dp, bottom = 24.dp),
-            verticalArrangement = Arrangement.spacedBy(7.dp),
+            contentPadding = PaddingValues(
+                start = if (HongguoColors.isMaterial3) 16.dp else 12.dp,
+                top = if (HongguoColors.isMaterial3) 12.dp else 6.dp,
+                end = if (HongguoColors.isMaterial3) 16.dp else 12.dp,
+                bottom = 24.dp),
+            verticalArrangement = Arrangement.spacedBy(if (HongguoColors.isMaterial3) 12.dp else 7.dp),
         ) {
             item {
                 HongguoSettingsSection("账号与隐私") {
@@ -438,7 +441,7 @@ internal fun SettingsScreen(
                         },
                     )
                     if (showLogPreview) {
-                        HongguoCard(modifier = Modifier.fillMaxWidth().height(220.dp)) {
+                        HongguoCard(modifier = Modifier.fillMaxWidth().height(if (HongguoColors.isMaterial3) 260.dp else 220.dp)) {
                             Text(
                                 state.logText.ifBlank { "暂无诊断记录" }.takeLast(14000),
                                 color = HongguoColors.ink,
@@ -446,7 +449,8 @@ internal fun SettingsScreen(
                                     .verticalScroll(rememberScrollState())
                                     .padding(10.dp).testTag("diagnostic_preview"),
                                 fontFamily = FontFamily.Monospace,
-                                fontSize = 11.sp, lineHeight = 16.sp,
+                                fontSize = if (HongguoColors.isMaterial3) 12.sp else 11.sp,
+                                lineHeight = if (HongguoColors.isMaterial3) 18.sp else 16.sp,
                             )
                         }
                     }

@@ -157,12 +157,15 @@ private val classicShapes = Shapes(
     extraLarge = RoundedCornerShape(18.dp),
 )
 private val materialTypography = Typography(
-    headlineSmall = Typography().headlineSmall.copy(letterSpacing = 0.sp),
-    titleLarge = Typography().titleLarge.copy(letterSpacing = 0.sp),
-    titleMedium = Typography().titleMedium.copy(letterSpacing = 0.sp),
-    bodyLarge = Typography().bodyLarge.copy(letterSpacing = 0.sp),
-    bodyMedium = Typography().bodyMedium.copy(letterSpacing = 0.sp),
-    labelLarge = Typography().labelLarge.copy(letterSpacing = 0.sp),
+    headlineSmall = Typography().headlineSmall.copy(fontSize = 24.sp, lineHeight = 30.sp, letterSpacing = 0.sp),
+    titleLarge = Typography().titleLarge.copy(fontSize = 22.sp, lineHeight = 28.sp, letterSpacing = 0.sp),
+    titleMedium = Typography().titleMedium.copy(fontSize = 18.sp, lineHeight = 24.sp, letterSpacing = 0.sp),
+    titleSmall = Typography().titleSmall.copy(fontSize = 16.sp, lineHeight = 22.sp, letterSpacing = 0.sp),
+    bodyLarge = Typography().bodyLarge.copy(fontSize = 16.sp, lineHeight = 24.sp, letterSpacing = 0.sp),
+    bodyMedium = Typography().bodyMedium.copy(fontSize = 14.sp, lineHeight = 20.sp, letterSpacing = 0.sp),
+    bodySmall = Typography().bodySmall.copy(fontSize = 12.sp, lineHeight = 18.sp, letterSpacing = 0.sp),
+    labelLarge = Typography().labelLarge.copy(fontSize = 14.sp, lineHeight = 20.sp, letterSpacing = 0.sp),
+    labelMedium = Typography().labelMedium.copy(fontSize = 12.sp, lineHeight = 16.sp, letterSpacing = 0.sp),
 )
 
 internal fun resolveHongguoTheme(

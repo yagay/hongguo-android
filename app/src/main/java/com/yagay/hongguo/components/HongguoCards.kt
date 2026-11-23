@@ -102,7 +102,8 @@ internal fun HongguoNavigationRow(
     onClick: () -> Unit,
 ) {
     Row(
-        Modifier.fillMaxWidth().clickable(onClick = onClick).testTag(tag)
+        Modifier.fillMaxWidth().heightIn(min = if (HongguoColors.isMaterial3) 56.dp else 0.dp)
+            .clickable(onClick = onClick).testTag(tag)
             .padding(vertical = 6.dp),
         verticalAlignment = Alignment.CenterVertically,
         horizontalArrangement = Arrangement.spacedBy(12.dp),
@@ -119,8 +120,8 @@ internal fun HongguoNavigationRow(
             }
         }
         Column(Modifier.weight(1f), verticalArrangement = Arrangement.spacedBy(5.dp)) {
-            Text(title, fontSize = HongguoUi.rowTitleSize,
-                fontWeight = FontWeight.Medium, color = HongguoColors.ink)
+            Text(title, fontSize = if (HongguoColors.isMaterial3) 16.sp else HongguoUi.rowTitleSize,
+                fontWeight = FontWeight.Medium, color = HongguoColors.ink) 
             if (subtitle.isNotBlank()) {
                 Text(subtitle, fontSize = HongguoUi.rowDescriptionSize,
                     lineHeight = 19.sp, color = HongguoColors.muted)

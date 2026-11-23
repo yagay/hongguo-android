@@ -182,8 +182,8 @@ internal fun DramaDetailScreen(state: AppState, model: DramaViewModel) {
                             model = model.cover(drama.cover),
                             contentDescription = drama.title,
                             contentScale = ContentScale.Crop,
-                            modifier = Modifier.width(if (material3) 98.dp else 91.dp)
-                                .height(if (material3) 142.dp else 130.dp)
+                            modifier = Modifier.width(if (material3) 104.dp else 91.dp)
+                                .height(if (material3) 156.dp else 130.dp)
                                 .clip(RoundedCornerShape(if (material3) 18.dp else 10.dp))
                                 .background(DetailCard)
                                 .testTag("detail_poster"),
@@ -193,8 +193,9 @@ internal fun DramaDetailScreen(state: AppState, model: DramaViewModel) {
                             verticalArrangement = Arrangement.spacedBy(12.dp),
                         ) {
                             Text(drama.title, color = DetailText,
-                                fontSize = 20.sp, fontWeight = FontWeight.SemiBold,
-                                lineHeight = 26.sp, maxLines = 3,
+                                fontSize = if (material3) 22.sp else 20.sp,
+                                fontWeight = FontWeight.SemiBold,
+                                lineHeight = if (material3) 28.sp else 26.sp, maxLines = 3,
                                 overflow = TextOverflow.Ellipsis)
                             Text("全${detail.episodes.size}集",
                                 color = DetailMuted, fontSize = 13.sp)
@@ -336,14 +337,14 @@ internal fun DramaDetailScreen(state: AppState, model: DramaViewModel) {
                                     String.format(Locale.ROOT, "%.1f", it)
                                 } ?: "—", fontSize = 24.sp, color = DetailText,
                                     fontWeight = FontWeight.Bold)
-                                Text("红果分", fontSize = 11.sp, color = DetailMuted)
+                                Text("红果分", fontSize = if (material3) 12.sp else 11.sp, color = DetailMuted)
                             }
                             Column(Modifier.weight(1f).padding(horizontal = 14.dp),
                                 verticalArrangement = Arrangement.spacedBy(4.dp)) {
                                 Text(verified?.ratingCount?.let { "${it}人评分" }
                                     ?: "评分数据暂不可用",
                                     color = DetailMuted, fontSize = 12.sp)
-                                Text("整剧评分", color = DetailMuted, fontSize = 11.sp)
+                                Text("整剧评分", color = DetailMuted, fontSize = if (material3) 12.sp else 11.sp)
                             }
                             Column(Modifier.padding(end = 13.dp),
                                 horizontalAlignment = Alignment.CenterHorizontally,

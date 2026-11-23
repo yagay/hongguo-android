@@ -218,7 +218,8 @@ internal fun HongguoPageHeader(
 @Composable
 internal fun HongguoSectionTitle(title: String, modifier: Modifier = Modifier) {
     Text(
-        title, modifier = modifier, fontSize = HongguoUi.sectionTitleSize,
+        title, modifier = modifier,
+        fontSize = if (HongguoColors.isMaterial3) 18.sp else HongguoUi.sectionTitleSize,
         fontWeight = FontWeight.SemiBold, color = HongguoColors.ink,
     )
 }

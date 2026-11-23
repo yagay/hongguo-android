@@ -129,8 +129,8 @@ internal fun CatalogScreen(
             modifier = Modifier.fillMaxSize().padding(insets).testTag("web_catalog"),
             contentPadding = PaddingValues(start = HongguoUi.pagePadding, top = 10.dp,
                 end = HongguoUi.pagePadding, bottom = 28.dp),
-            horizontalArrangement = Arrangement.spacedBy(10.dp),
-            verticalArrangement = Arrangement.spacedBy(10.dp),
+            horizontalArrangement = Arrangement.spacedBy(if (HongguoColors.isMaterial3) 12.dp else 10.dp),
+            verticalArrangement = Arrangement.spacedBy(if (HongguoColors.isMaterial3) 12.dp else 10.dp),
         ) {
             if (state.section == Section.RECOMMEND && state.trackedEpisodeUpdates.isNotEmpty()) {
                 item(span = { GridItemSpan(maxLineSpan) }) {
@@ -442,7 +442,8 @@ private fun CatalogPoster(drama: Drama, cover: String,
         HongguoPosterArtwork(
             cover = cover,
             title = drama.title,
-            modifier = Modifier.fillMaxWidth().aspectRatio(0.72f),
+            modifier = Modifier.fillMaxWidth().aspectRatio(
+                if (HongguoColors.isMaterial3) 2f / 3f else 0.72f),
             classicRadius = 12.dp,
             classicPlaceholderColor = Color(0xFFE8E6E5),
             fallback = {
@@ -466,7 +467,8 @@ private fun CatalogPoster(drama: Drama, cover: String,
                             RoundedCornerShape(5.dp))
                         .padding(horizontal = 6.dp, vertical = 3.dp)
                         .testTag("poster_source_type_" + drama.id),
-                    color = Color.White, fontSize = 10.sp,
+                    color = Color.White,
+                    fontSize = if (HongguoColors.isMaterial3) 11.sp else 10.sp,
                     fontWeight = FontWeight.Medium)
             }
             Box(Modifier.align(Alignment.TopEnd)) {
@@ -493,7 +495,8 @@ private fun CatalogPoster(drama: Drama, cover: String,
                         colors = listOf(Color.Transparent, Color.Black.copy(alpha = 0.74f))))
                     .padding(start = 7.dp, top = 18.dp, bottom = 6.dp)) {
                     Text(officialEpisodeStatus, color = Color.White,
-                        fontWeight = FontWeight.Medium, fontSize = 10.sp,
+                        fontWeight = FontWeight.Medium,
+                        fontSize = if (HongguoColors.isMaterial3) 12.sp else 10.sp,
                         maxLines = 1, overflow = TextOverflow.Ellipsis)
                 }
             }
@@ -523,8 +526,8 @@ private fun CatalogPoster(drama: Drama, cover: String,
                         color = if (isRecommendedScore)
                             HongguoColors.accent else HongguoColors.muted,
                         fontWeight = FontWeight.Medium,
-                        fontSize = 10.sp, maxLines = 1,
-                        overflow = TextOverflow.Ellipsis,
+                        fontSize = if (HongguoColors.isMaterial3) 12.sp else 10.sp,
+                        maxLines = 1, overflow = TextOverflow.Ellipsis,
                         modifier = Modifier.testTag(
                             (if (isRecommendedScore) "poster_recommendation_"
                             else "poster_activity_") + drama.id),
