@@ -64,10 +64,18 @@ def main(root: Path) -> None:
 \t\t\tv5Err := err
 """
     change(media, old, new)
+    # Only the verified V5 player route gets the precise, non-denial empty
+    # classification. Search/catalog and old legacy playback retain upstream
+    # guest-reset behavior, so unrelated SDK APIs are not altered.
+    change(media,
+           'raw, _, err = c.doRaw(ctx, "POST", c.apiOrigin+protocol.PathPlaybackV5+"?"+query, headers, body)',
+           'raw, _, err = c.doRaw(ctx, "POST", c.apiOrigin+protocol.PathPlaybackV5+"?"+query, headers, body)\n'
+           '\t\t\tif errors.Is(err, ErrAnonymousLimited) {\n'
+           '\t\t\t\terr = ErrResponseEmpty\n'
+           '\t\t\t}')
 
-    # A missing playback model and an explicit anonymous denial are different
-    # failure classes. A successful HTTP status with no JSON gives no evidence
-    # that the server has classified this account as anonymous-limited.
+    # Distinguish an ambiguous empty response on the V5 player route from
+    # explicit service denial, without changing catalog or other API semantics.
     change(root / "sdk/errors.go",
            '\tErrAnonymousLimited = errors.New("openhongguo: anonymous response was empty")',
            '\tErrAnonymousLimited = errors.New("openhongguo: anonymous response was empty")\n'
@@ -93,7 +101,7 @@ def main(root: Path) -> None:
 \t\t\t\treturn nil, &explicitRetryAfterLimit{}
 \t\t\t}
 \t\t}
-\t\treturn nil, ErrResponseEmpty
+\t\treturn nil, ErrAnonymousLimited
 \t}""")
     # Retry-After is an explicit server instruction, not a recoverable
     # transient network error. It must stop the SDK's internal retry loop too.
