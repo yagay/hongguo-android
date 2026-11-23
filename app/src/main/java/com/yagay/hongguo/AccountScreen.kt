@@ -650,7 +650,15 @@ private fun AccountPoster(
     modifier: Modifier = Modifier,
 ) {
     var menuOpen by remember { mutableStateOf(false) }
-    Column(modifier, verticalArrangement = Arrangement.spacedBy(4.dp)) {
+    Column(
+        modifier.then(if (HongguoColors.isMaterial3)
+            Modifier.clip(RoundedCornerShape(18.dp))
+                .background(MaterialTheme.colorScheme.surfaceContainerLow)
+                .padding(7.dp)
+            else Modifier),
+        verticalArrangement = Arrangement.spacedBy(
+            if (HongguoColors.isMaterial3) 7.dp else 4.dp),
+    ) {
         Box {
             HongguoPosterArtwork(
                 cover = series.cover,

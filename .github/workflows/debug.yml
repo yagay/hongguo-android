@@ -86,6 +86,35 @@ jobs:
           set -o pipefail
           bash ./gradlew :app:testDebugUnitTest :app:compileDebugAndroidTestKotlin --build-cache --no-daemon 2>&1 | tee debug-tests.log
 
+      - name: Allow Android emulator KVM acceleration
+        run: |
+          if [ -e /dev/kvm ]; then sudo chmod 666 /dev/kvm; fi
+
+      - name: Run Compose UI smoke tests on Android emulator
+        id: emulator
+        uses: reactivecircus/android-emulator-runner@v2
+        with:
+          api-level: 35
+          arch: x86_64
+          target: google_apis
+          profile: pixel_6
+          disable-animations: true
+          emulator-options: -no-window -gpu swiftshader_indirect -no-snapshot -noaudio -no-boot-anim
+          script: |
+            set -e
+            bash ./gradlew :app:connectedDebugAndroidTest -PuiSmokeOnly=true --build-cache --no-daemon
+            mkdir -p visual-regression
+            adb pull /sdcard/Android/data/com.yagay.hongguo/files/visual-regression/ visual-regression/ || true
+
+      - name: Upload UI visual regression screenshots
+        if: always()
+        uses: actions/upload-artifact@v4
+        with:
+          name: hongguo-compose-visual-regression
+          path: visual-regression/
+          if-no-files-found: warn
+          retention-days: 14
+
       - name: Lint diagnostic (does not block Debug APK)
         id: lint
         continue-on-error: true
@@ -100,6 +129,7 @@ jobs:
             echo '## Debug validation'
             echo "Build and tests: ${{ job.status }}"
             echo "Tests: ${{ steps.tests.outcome }}"
+            echo "Emulator UI: ${{ steps.emulator.outcome }}"
             echo "Lint: ${{ steps.lint.outcome }}"
             if [ -f debug-build.log ]; then
               echo '### Compiler and test errors'

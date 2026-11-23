@@ -29,6 +29,11 @@ android {
         versionName = providers.gradleProperty("appVersionName").orNull
             ?.takeIf { it.length in 1..80 } ?: "0.1.0-web-rewrite"
         testInstrumentationRunner = "androidx.test.runner.AndroidJUnitRunner"
+        // Smoke-only APK is installable on hosted x86_64 emulators.
+        // Regular ARM64 Debug and Release packaging is unchanged.
+        if (providers.gradleProperty("uiSmokeOnly").orNull == "true") {
+            ndk { abiFilters.add("x86_64") }
+        }
     }
     signingConfigs {
         create("release") {

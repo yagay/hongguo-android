@@ -1,5 +1,7 @@
 package com.yagay.hongguo
 
+import androidx.compose.foundation.background
+import androidx.compose.foundation.layout.fillMaxSize
 import androidx.compose.foundation.layout.Column
 import androidx.compose.foundation.layout.Box
 import androidx.compose.foundation.layout.size
@@ -10,6 +12,10 @@ import androidx.compose.runtime.mutableIntStateOf
 import androidx.compose.runtime.mutableStateOf
 import androidx.compose.runtime.remember
 import androidx.compose.runtime.setValue
+import androidx.compose.ui.graphics.asAndroidBitmap
+import android.graphics.Bitmap
+import java.io.File
+import androidx.compose.ui.Modifier
 import androidx.compose.ui.test.captureToImage
 import androidx.compose.ui.test.onNodeWithTag
 import androidx.compose.ui.test.onNodeWithText
@@ -30,6 +36,23 @@ class HongguoThemeSmokeTest {
     @Test fun material3LightControlsRespond() = render("material3", "light")
     @Test fun material3DarkControlsRespond() = render("material3", "dark")
 
+    @Test fun themeBackgroundChangesBetweenClassicAndMaterial() {
+        var style by mutableStateOf("classic")
+        composeRule.setContent {
+            HongguoAppTheme(previewTheme(style, "light")) {
+                Box(Modifier.fillMaxSize().background(HongguoColors.background))
+            }
+        }
+        val classic = composeRule.onRoot().captureToImage().asAndroidBitmap()
+        val classicPixel = classic.getPixel(2, 2)
+        composeRule.runOnIdle { style = "material3" }
+        composeRule.waitForIdle()
+        val material = composeRule.onRoot().captureToImage().asAndroidBitmap()
+        org.junit.Assert.assertNotEquals(classicPixel, material.getPixel(2, 2))
+        saveScreenshot("theme_surface_classic_light", classic)
+        saveScreenshot("theme_surface_material3_light", material)
+    }
+
     @Test fun posterPlaceholderRendersInMaterialDarkTheme() {
         composeRule.setContent {
             HongguoAppTheme(previewTheme("material3", "dark")) {
@@ -46,6 +69,7 @@ class HongguoThemeSmokeTest {
         val shot = composeRule.onRoot().captureToImage()
         org.junit.Assert.assertTrue(shot.width > 0)
         org.junit.Assert.assertTrue(shot.height > 0)
+        saveScreenshot("poster_material3_dark", shot.asAndroidBitmap())
     }
 
     private fun render(style: String, mode: String) {
@@ -55,7 +79,7 @@ class HongguoThemeSmokeTest {
             var episode by remember { mutableIntStateOf(0) }
             var enabled by remember { mutableStateOf(false) }
             HongguoAppTheme(previewTheme(style, mode)) {
-                Column {
+                Column(Modifier.fillMaxSize().background(HongguoColors.background)) {
                     HongguoCard {
                         HongguoAction(label = "测试操作", onClick = { actions++ })
                     }
@@ -90,6 +114,22 @@ class HongguoThemeSmokeTest {
         val image = composeRule.onRoot().captureToImage()
         org.junit.Assert.assertTrue(image.width > 0)
         org.junit.Assert.assertTrue(image.height > 0)
+        saveScreenshot("theme_${style}_${mode}", image.asAndroidBitmap())
+    }
+
+    private fun saveScreenshot(name: String, bitmap: Bitmap) {
+        val context = androidx.test.platform.app.InstrumentationRegistry
+            .getInstrumentation().targetContext
+        val directory = context.getExternalFilesDir("visual-regression")
+            ?: File(context.filesDir, "visual-regression")
+        require(directory.exists() || directory.mkdirs()) {
+            "Cannot create visual regression directory"
+        }
+        File(directory, "${name}.png").outputStream().use { output ->
+            require(bitmap.compress(Bitmap.CompressFormat.PNG, 100, output)) {
+                "Screenshot PNG encoding failed"
+            }
+        }
     }
 
     private fun previewTheme(style: String, mode: String): HongguoResolvedTheme =

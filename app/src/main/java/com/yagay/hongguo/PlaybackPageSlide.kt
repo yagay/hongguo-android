@@ -1,5 +1,7 @@
 package com.yagay.hongguo
 
+import android.animation.ValueAnimator
+
 import androidx.compose.animation.AnimatedVisibility
 import androidx.compose.animation.ContentTransform
 import androidx.compose.animation.togetherWith
@@ -73,11 +75,12 @@ internal fun RightSlidePage(
     modifier: Modifier = Modifier,
     content: @Composable () -> Unit,
 ) {
+    val animate = ValueAnimator.areAnimatorsEnabled()
     AnimatedVisibility(
         visible = visible,
         modifier = modifier.fillMaxSize().testTag(tag),
-        enter = PlaybackPageSlide.enter(),
-        exit = PlaybackPageSlide.exit(),
+        enter = if (animate) PlaybackPageSlide.enter() else EnterTransition.None,
+        exit = if (animate) PlaybackPageSlide.exit() else ExitTransition.None,
     ) {
         content()
     }

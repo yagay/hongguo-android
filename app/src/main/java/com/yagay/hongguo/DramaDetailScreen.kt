@@ -57,6 +57,7 @@ import androidx.compose.ui.graphics.Brush
 import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.layout.ContentScale
 import androidx.compose.ui.platform.LocalConfiguration
+import androidx.compose.ui.platform.LocalDensity
 import androidx.compose.ui.platform.LocalContext
 import androidx.compose.ui.platform.testTag
 import androidx.compose.ui.text.font.FontWeight
@@ -75,8 +76,15 @@ internal fun DramaDetailScreen(state: AppState, model: DramaViewModel) {
     // The hero still has a subtle gradient, but is no longer an unrelated
     // brown-only design system that clashes with Theater and My.
     val material3 = HongguoColors.isMaterial3
+    val screenWidthDp = LocalConfiguration.current.screenWidthDp
+    val fontScale = LocalDensity.current.fontScale
     val tabletLayout = material3 &&
-        HongguoThemePolicy.useTwoPaneDetail(LocalConfiguration.current.screenWidthDp)
+        HongguoThemePolicy.useTwoPaneDetail(screenWidthDp)
+    val episodeColumns = if (material3)
+        HongguoThemePolicy.episodeColumns(
+            if (tabletLayout) screenWidthDp - 300 else screenWidthDp,
+            fontScale >= 1.3f,
+        ) else 5
     val scheme = MaterialTheme.colorScheme
     val DetailBackground = if (material3) scheme.background else HongguoColors.background
     val DetailTop = if (material3) scheme.surfaceContainer else HongguoColors.accentSoft
@@ -215,15 +223,13 @@ internal fun DramaDetailScreen(state: AppState, model: DramaViewModel) {
                         horizontalArrangement = Arrangement.spacedBy(12.dp),
                         verticalAlignment = Alignment.Top,
                     ) {
-                        AsyncImage(
-                            model = model.cover(drama.cover),
-                            contentDescription = drama.title,
-                            contentScale = ContentScale.Crop,
+                        HongguoPosterCover(
+                            cover = model.cover(drama.cover),
+                            title = drama.title,
                             modifier = Modifier.width(if (material3) 104.dp else 91.dp)
                                 .height(if (material3) 156.dp else 130.dp)
-                                .clip(RoundedCornerShape(if (material3) 18.dp else 10.dp))
-                                .background(DetailCard)
                                 .testTag("detail_poster"),
+                            classicRadius = 10.dp,
                         )
                         Column(
                             Modifier.weight(1f),
@@ -587,11 +593,11 @@ internal fun DramaDetailScreen(state: AppState, model: DramaViewModel) {
                 }
             }
             if (showEpisodes) {
-                items((detail.episodes.size + 4) / 5) { row ->
+                items((detail.episodes.size + episodeColumns - 1) / episodeColumns) { row ->
                     Row(Modifier.fillMaxWidth().padding(horizontal = 16.dp),
                         horizontalArrangement = Arrangement.spacedBy(8.dp)) {
-                        repeat(5) { col ->
-                            val index = row * 5 + col
+                        repeat(episodeColumns) { col ->
+                            val index = row * episodeColumns + col
                             val episode = detail.episodes.getOrNull(index)
                             if (episode == null) Spacer(Modifier.weight(1f))
                             else Surface(
@@ -605,7 +611,7 @@ internal fun DramaDetailScreen(state: AppState, model: DramaViewModel) {
                                 Box(Modifier.height(if (material3) 48.dp else 44.dp),
                                     contentAlignment = Alignment.Center) {
                                     Text("${episode.index}", color = DetailText,
-                                        fontSize = 14.sp)
+                                        fontSize = if (material3 && fontScale >= 1.3f) 13.sp else 14.sp)
                                 }
                             }
                         }

@@ -166,6 +166,11 @@ internal fun SearchLandingScreen(
                         if (HongguoColors.isMaterial3) 12.dp else 9.dp)) {
                     dramas.forEach { drama ->
                         Column(Modifier.weight(1f)
+                            .then(if (HongguoColors.isMaterial3)
+                                Modifier.clip(RoundedCornerShape(18.dp))
+                                    .background(SearchTile)
+                                    .padding(7.dp)
+                            else Modifier)
                             .clickable { onOpenDrama(drama); onClose() }
                             .testTag("search_browse_drama_" + drama.id),
                             verticalArrangement = Arrangement.spacedBy(6.dp)) {

@@ -355,12 +355,12 @@ internal fun ReelScreenshotOverlay(
                 ) {
                     actorAndGenreTags.forEach { tag ->
                         Text(
-                            tag, color = Color.White, fontSize = 10.sp,
-                            lineHeight = 13.sp, maxLines = 1,
+                            tag, color = Color.White, fontSize = 11.sp,
+                            lineHeight = 16.sp, maxLines = 1,
                             modifier = Modifier.background(
                                 Color(0xFF343438).copy(alpha = 0.75f),
-                                RoundedCornerShape(4.dp),
-                            ).padding(horizontal = 5.dp, vertical = 2.dp),
+                                RoundedCornerShape(7.dp),
+                            ).padding(horizontal = 7.dp, vertical = 3.dp),
                         )
                     }
                 }
