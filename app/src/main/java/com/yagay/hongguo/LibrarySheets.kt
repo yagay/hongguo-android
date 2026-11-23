@@ -350,6 +350,7 @@ private fun ShareInput(model: DramaViewModel) {
         onValueChange = { shareText = it },
         modifier = Modifier.fillMaxWidth().testTag("share_input"),
         placeholder = "粘贴红果分享文案或链接",
+        classicShape = RoundedCornerShape(HongguoUi.cardRadius),
         minLines = 3, maxLines = 5,
     )
     HongguoAction(
