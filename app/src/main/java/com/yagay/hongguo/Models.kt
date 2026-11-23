@@ -193,6 +193,7 @@ data class AppState(
     val themeMode: String = "light",
     /** User-selectable visual layer; playback and navigation state are shared. */
     val uiStyle: String = "classic",
+    val materialColorSource: String = "brand",
     val autoPlayNext: Boolean = true,
     val skipIntroSeconds: Int = 0,
     val skipOutroSeconds: Int = 0,

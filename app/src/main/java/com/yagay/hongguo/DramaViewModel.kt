@@ -283,6 +283,12 @@ class DramaViewModel(application: Application) : AndroidViewModel(application) {
         mutable.update { it.copy(uiStyle = value) }
     }
 
+    fun setMaterialColorSource(value: String) {
+        if (value !in setOf("brand", "dynamic")) return
+        prefs.edit().putString("material_color_source", value).apply()
+        mutable.update { it.copy(materialColorSource = value) }
+    }
+
     fun setThemeStyle(value: String) {
         if (value !in setOf("warm", "immersive", "cards")) return
         prefs.edit().putString("theme_style", value).apply()
@@ -1403,6 +1409,8 @@ class DramaViewModel(application: Application) : AndroidViewModel(application) {
             themeStyle = prefs.getString("theme_style", "warm")?.takeIf { it in setOf("warm", "immersive", "cards") } ?: "warm",
             themeMode = prefs.getString("theme_mode", "light")?.takeIf { it in setOf("system", "light", "dark") } ?: "light",
             uiStyle = prefs.getString("ui_style", "classic")?.takeIf { it in setOf("classic", "material3") } ?: "classic",
+            materialColorSource = prefs.getString("material_color_source", "brand")
+                ?.takeIf { it == "brand" || it == "dynamic" } ?: "brand",
             reelsMode = prefs.getString("reels_mode", "all")
                 ?.takeIf { it == "all" || it == "real" } ?: "all",
             autoPlayNext = prefs.getBoolean("auto_play_next", true),

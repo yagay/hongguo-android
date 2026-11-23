@@ -161,11 +161,14 @@ internal fun SettingsScreen(
                     if (state.uiStyle == "material3") {
                         HongguoSettingsRow(
                             title = "Material You 配色",
-                            value = if (Build.VERSION.SDK_INT >= 31)
-                                "系统动态配色" else "红果暖色方案",
-                            subtitle = "圆角、按钮、卡片和弹窗共用 Material 3 色彩与形状",
+                            value = if (state.materialColorSource == "dynamic")
+                                "系统动态配色" else "红果品牌配色",
+                            subtitle = if (Build.VERSION.SDK_INT >= 31)
+                                "可切换系统壁纸配色和红果品牌配色"
+                            else "当前系统不支持动态配色，使用红果品牌色",
                             tag = "material3_colors_row",
-                            showChevron = false,
+                            enabled = Build.VERSION.SDK_INT >= 31,
+                            onClick = { choiceSheet = "material_color_source" },
                         )
                     } else {
                         HongguoSettingsRow(
@@ -494,6 +497,9 @@ internal fun SettingsScreen(
             "ui_style" -> listOf(
                 "classic" to "经典红果", "material3" to "Material 3",
             )
+            "material_color_source" -> listOf(
+                "brand" to "红果品牌配色", "dynamic" to "系统动态配色",
+            )
             "theme_style" -> listOf(
                 "warm" to "暖白精修", "immersive" to "沉浸暗场",
                 "cards" to "内容卡片",
@@ -517,6 +523,7 @@ internal fun SettingsScreen(
         }
         val selected = when (choice) {
             "ui_style" -> state.uiStyle
+            "material_color_source" -> state.materialColorSource
             "theme_style" -> state.themeStyle
             "video_cache_per_episode" -> state.videoCachePerEpisodeMb.toString()
             "video_cache_total" -> state.videoCacheTotalMb.toString()
@@ -528,6 +535,7 @@ internal fun SettingsScreen(
         HongguoSingleChoiceSheet(
             title = when (choice) {
                 "ui_style" -> "界面风格"
+                "material_color_source" -> "Material You 配色"
                 "theme_style" -> "主题样式"
                 "video_cache_per_episode" -> "每集缓存上限"
                 "video_cache_total" -> "缓存总空间"
@@ -542,6 +550,7 @@ internal fun SettingsScreen(
             onSelect = {
                 when (choice) {
                     "ui_style" -> model.setUiStyle(it)
+                    "material_color_source" -> model.setMaterialColorSource(it)
                     "theme_style" -> model.setThemeStyle(it)
                     "video_cache_per_episode" -> it.toIntOrNull()?.let(model::setVideoCachePerEpisodeMb)
                     "video_cache_total" -> it.toIntOrNull()?.let(model::setVideoCacheTotalMb)
