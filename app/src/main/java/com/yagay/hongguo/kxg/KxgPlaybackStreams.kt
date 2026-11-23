@@ -320,10 +320,13 @@ internal object KxgPlaybackStreams {
             diagnostics?.record("PLAYBACK", "SDK_MODEL_" + code)
             if (error.code == ErrorCode.ANONYMOUS_LIMITED ||
                 error.code == ErrorCode.DEVICE_REJECTED ||
-                error.code == ErrorCode.RATE_LIMITED) {
+                error.code == ErrorCode.RATE_LIMITED ||
+                error.code == ErrorCode.PLAYBACK_EMPTY) {
                 speculativeLimitedUntilMs =
                     System.currentTimeMillis() + SPECULATIVE_LIMIT_COOLDOWN_MS
-                diagnostics?.record("PRELOAD", "ANONYMOUS_MODEL_LIMIT_PAUSED")
+                diagnostics?.record("PRELOAD",
+                    if (error.code == ErrorCode.PLAYBACK_EMPTY)
+                        "EMPTY_MODEL_SPECULATIVE_COOLDOWN" else "MODEL_DENIAL_SPECULATIVE_COOLDOWN")
             }
             throw error
         }
