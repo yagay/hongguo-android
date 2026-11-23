@@ -60,6 +60,7 @@ class OfficialLoginActivity : ComponentActivity() {
     private var instanceGeneration = 0L
     private var activityRegistered = false
     private val mainHandler = Handler(Looper.getMainLooper())
+    private lateinit var loginTheme: HongguoDesignTokens
 
     @SuppressLint("SetJavaScriptEnabled")
     override fun onCreate(savedInstanceState: Bundle?) {
@@ -72,10 +73,14 @@ class OfficialLoginActivity : ComponentActivity() {
         val systemDark = (resources.configuration.uiMode and
             android.content.res.Configuration.UI_MODE_NIGHT_MASK) ==
             android.content.res.Configuration.UI_MODE_NIGHT_YES
-        HongguoColors.applyTheme(
-            appearance.getString("theme_style", "warm") ?: "warm",
-            nightMode, systemDark,
-        )
+        loginTheme = resolveHongguoTheme(
+            context = this,
+            uiStyle = appearance.getString("ui_style", "classic") ?: "classic",
+            colorSource = appearance.getString("material_color_source", "brand") ?: "brand",
+            style = appearance.getString("theme_style", "warm") ?: "warm",
+            mode = nightMode,
+            systemDark = systemDark,
+        ).tokens
         instanceGeneration = ++processGeneration
         activeActivities++
         activityRegistered = true
@@ -92,7 +97,7 @@ class OfficialLoginActivity : ComponentActivity() {
         }
         val root = LinearLayout(this).apply {
             orientation = LinearLayout.VERTICAL
-            setBackgroundColor(HongguoColors.background.toArgb())
+            setBackgroundColor(loginTheme.background.toArgb())
             fitsSystemWindows = true
             @Suppress("DEPRECATION")
             setOnApplyWindowInsetsListener { view, insets ->
@@ -115,7 +120,7 @@ class OfficialLoginActivity : ComponentActivity() {
         bar.addView(TextView(this).apply {
             text = "红果官网登录"
             textSize = 17f
-            setTextColor(HongguoColors.ink.toArgb())
+            setTextColor(loginTheme.ink.toArgb())
             typeface = Typeface.create("sans-serif", Typeface.BOLD)
             gravity = android.view.Gravity.CENTER
         }, LinearLayout.LayoutParams(0, ViewGroup.LayoutParams.WRAP_CONTENT, 1f))
@@ -131,7 +136,7 @@ class OfficialLoginActivity : ComponentActivity() {
         status = TextView(this).apply {
             text = "在官网完成登录后，点“完成登录”返回确认。页面可双指放大。"
             textSize = 14f
-            setTextColor(HongguoColors.muted.toArgb())
+            setTextColor(loginTheme.muted.toArgb())
             setPadding(dp(20), dp(8), dp(20), dp(12))
         }
         root.addView(status)
@@ -148,7 +153,7 @@ class OfficialLoginActivity : ComponentActivity() {
         progress = ProgressBar(this, null, android.R.attr.progressBarStyleHorizontal).apply {
             isIndeterminate = false
             max = 100
-            progressTintList = ColorStateList.valueOf(HongguoColors.accent.toArgb())
+            progressTintList = ColorStateList.valueOf(loginTheme.accent.toArgb())
         }
         root.addView(progress, LinearLayout.LayoutParams(ViewGroup.LayoutParams.MATCH_PARENT, dp(3)))
         val view = WebView(this)
@@ -386,9 +391,9 @@ class OfficialLoginActivity : ComponentActivity() {
     private fun dp(value: Int): Int = (value * resources.displayMetrics.density).toInt()
 
     private fun styleLoginButton(button: Button, prominent: Boolean = false) {
-        val accent = HongguoColors.accent.toArgb()
-        val muted = HongguoColors.muted.toArgb()
-        val cream = HongguoColors.accentSoft.toArgb()
+        val accent = loginTheme.accent.toArgb()
+        val muted = loginTheme.muted.toArgb()
+        val cream = loginTheme.accentSoft.toArgb()
         button.isAllCaps = false
         button.textSize = 14f
         button.typeface = Typeface.create("sans-serif", Typeface.NORMAL)

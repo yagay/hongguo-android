@@ -92,6 +92,9 @@ internal fun HongguoPlayerSeekTrack(
     val seekInsetPx = with(LocalDensity.current) {
         HongguoUi.playbackSeekHorizontalInset.toPx()
     }
+    // DrawScope is not composable; read colors before entering Canvas.
+    val trackColor = HongguoColors.playerChromeTrack
+    val playedColor = HongguoColors.accent
     Canvas(
         modifier.fillMaxWidth()
             .height(HongguoUi.playbackSeekTouchHeight)
@@ -141,14 +144,14 @@ internal fun HongguoPlayerSeekTrack(
         val inset = PlaybackSeekGeometry.safeInsetPx(size.width, seekInsetPx)
         val trackEnd = size.width - inset
         drawLine(
-            color = HongguoColors.playerChromeTrack,
+            color = trackColor,
             start = Offset(inset, y),
             end = Offset(trackEnd, y),
             strokeWidth = 2.dp.toPx(),
             cap = StrokeCap.Round,
         )
         drawLine(
-            color = HongguoColors.accent,
+            color = playedColor,
             start = Offset(inset, y),
             end = Offset(
                 inset + (trackEnd - inset) *
