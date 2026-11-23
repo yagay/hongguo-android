@@ -33,14 +33,35 @@ import dev.openhongguo.SeriesSummary
  * The published Apache-2.0 client persists its own anonymous profile and
  * handles bounded SDK retries. Avoid resetting this profile on media errors.
  */
-internal class OpenHongguoSource(context: Context) {
+internal class OpenHongguoSource(
+    context: Context,
+    private val diagnostics: DiagnosticLog? = null,
+) {
     private val applicationContext = context.applicationContext
+
+    /** Process-only safe summary. The SDK's full diagnostic string is never stored. */
+    private fun recordSafeSdkTransport(message: String) {
+        if (!message.startsWith("HTTP ")) return
+        val path = when {
+            "/multi_video_model/player/v1" in message -> "V5_PLAYER"
+            "/reading/bookapi/video_tab/multi_video_model/" in message -> "VIDEO_TAB"
+            "/novel/player/video_model/v1/" in message -> "SINGLE_VIDEO"
+            "/novel/player/multi_video_model/v1/" in message -> "V5_OTHER"
+            else -> return
+        }
+        val status = message.substringAfter("->", "").trim().take(3).toIntOrNull()
+            ?.takeIf { it in 100..599 }
+        diagnostics?.record("PLAYBACK_WIRE", path, httpStatus = status)
+    }
+
     private val client: OpenhongguoClient by lazy(LazyThreadSafetyMode.SYNCHRONIZED) {
+        // A verified website account is not an authenticated playback device.
+        // The SDK uses its own persistently registered guest. A generic empty
+        // HTTP response does not rotate the guest; explicit device rejection
+        // has a single bounded refresh opportunity.
         OpenhongguoClient.create(applicationContext,
-            // Preserve one stable guest. A plain HTTP-200/empty response is now
-        // RESPONSE_EMPTY and does not cause identity rotation. Allow at most
-        // one re-registration on an explicit device-rejected response.
-        ClientOptions(retryAttempts = 2, deviceResets = 1))
+            ClientOptions(retryAttempts = 2, deviceResets = 1,
+                logger = ::recordSafeSdkTransport))
     }
 
     /**
