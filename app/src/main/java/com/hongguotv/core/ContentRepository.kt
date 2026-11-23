@@ -803,10 +803,10 @@ constructor(
             if (code != 0) { trace.rejected(code); continue }
             val data = root.optJSONObject("data") ?: continue
             val rows = data.optJSONObject("video_model_data") ?: data
-            val row =
-                rows.optJSONObject(id)
-                    ?: rows.keys().asSequence().mapNotNull { rows.optJSONObject(it) }.firstOrNull()
-                    ?: continue
+            val row = StrictEpisodeModel.find(rows, id) ?: run {
+                trace.rejected()
+                continue
+            }
             val raw = row.opt("video_model") ?: continue
             val model =
                 (when (raw) {
@@ -1002,9 +1002,8 @@ constructor(
                                 if (code != 0) throw IOException("播放接口暂不可用（错误码 $code）")
                                 val map = data.optJSONObject("data") ?: throw IOException("播放信息为空")
                                 responseMap = map
-                                map.optJSONObject(id) ?: (if (ids.size == 1)
-                                    map.keys().asSequence().mapNotNull { map.optJSONObject(it) }.firstOrNull() else null)
-                                    ?: throw IOException("播放信息为空")
+                                StrictEpisodeModel.find(map, id)
+                                    ?: throw IOException("播放模型不包含请求的分集")
                             }
                             // 只有模型结构有效才记为健康，HTTP 200 或非空正文不能代表播放成功。
                             val model = row.optJSONObject("video_model") ?: runCatching { JSONObject(row.str("video_model")) }.getOrNull()
@@ -1054,7 +1053,7 @@ constructor(
                                 identity, body = singlePayload)
                             val raw = fetchPlaybackModel(request, transport(), trace,
                                 PlaybackRequestTrace.Stage.POST)
-                            SingleVideoPlaybackModel.parse(raw)?.let { row ->
+                            SingleVideoPlaybackModel.parse(raw, id)?.let { row ->
                                 current = row
                                 identity.offerModel(id, row, playbackModelOwner, clock())
                                 resetPlaybackFailures()
@@ -1084,7 +1083,7 @@ constructor(
                     val map = responseMap ?: JSONObject()
                     synchronized(upcomingPlaybackModels) {
                         ids.drop(1).forEach { next ->
-                            map.optJSONObject(next)
+                            StrictEpisodeModel.find(map, next)
                                 ?.takeIf { row ->
                                     val model = row.opt("video_model")
                                     (model is JSONObject ||
