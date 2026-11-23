@@ -6,12 +6,18 @@ set -euo pipefail
 
 ROOT="$(cd "$(dirname "${BASH_SOURCE[0]}")/.." && pwd)"
 AAR="$ROOT/app/libs/openhongguo-16kb-recovery.aar"
+STAMP="$AAR.buildstamp"
+PATCH_ID="v3-current-v5-video-tab-74332"
 SOURCE_REPO="https://github.com/beilunyang/openhongguo.git"
 SOURCE_TAG="v0.4.0"
 SOURCE_SHA="cd27b9ef42a4aa06859d12e5a24ba7653fa64a2c"
 GOMOBILE_VERSION="v0.0.0-20261011034528-197770444867"
 
-if [[ -s "$AAR" ]] && python3 "$ROOT/scripts/verify-16kb-elf.py" "$AAR"; then
+# An ELF-aligned AAR may still contain the obsolete, already-cached v2
+# protocol. Reuse it only when the tested patch version also matches.
+if [[ -s "$AAR" && -f "$STAMP" ]] &&
+   [[ "$(cat "$STAMP")" == "$PATCH_ID" ]] &&
+   python3 "$ROOT/scripts/verify-16kb-elf.py" "$AAR"; then
   echo "Using previously verified official 16 KiB SDK: $AAR"
   exit 0
 fi
@@ -73,4 +79,5 @@ cp "$TMP/expanded/jni/arm64-v8a/libgojni.so" "$ANDROID_LIB/src/main/jniLibs/arm6
 mkdir -p "$(dirname "$AAR")"
 cp "$ANDROID_LIB/build/outputs/aar/openhongguo-release.aar" "$AAR"
 python3 "$ROOT/scripts/verify-16kb-elf.py" "$AAR"
-echo "Created $AAR from pinned official openhongguo $SOURCE_TAG with tested V5 video_tab recovery and 16 KiB ARM64 ELF alignment."
+printf '%s\n' "$PATCH_ID" > "$STAMP"
+echo "Created $AAR from pinned official openhongguo $SOURCE_TAG with tested current V5 route, video_tab recovery and 16 KiB ARM64 ELF alignment ($PATCH_ID)."
