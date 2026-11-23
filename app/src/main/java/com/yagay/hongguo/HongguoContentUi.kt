@@ -76,12 +76,10 @@ internal val LocalPosterMotion = compositionLocalOf<PosterMotion?> { null }
 
 @Composable
 internal fun HongguoPosterMotionHost(enabled: Boolean, content: @Composable () -> Unit) {
-    if (!enabled) {
-        content()
-        return
-    }
+    // Keep the same composition subtree when switching Classic and M3;
+    // conditional content branches here could dispose a live Media3 player.
     val counter = remember { PosterLoadingCounter() }
-    val active = counter.count > 0 && ValueAnimator.areAnimatorsEnabled()
+    val active = enabled && counter.count > 0 && ValueAnimator.areAnimatorsEnabled()
     val offset = if (active) {
         val transition = rememberInfiniteTransition(label = "sharedPosterSkeleton")
         val shift by transition.animateFloat(
@@ -92,7 +90,9 @@ internal fun HongguoPosterMotionHost(enabled: Boolean, content: @Composable () -
         )
         shift
     } else 0f
-    CompositionLocalProvider(LocalPosterMotion provides PosterMotion(counter, offset)) {
+    CompositionLocalProvider(
+        LocalPosterMotion provides if (enabled) PosterMotion(counter, offset) else null,
+    ) {
         content()
     }
 }
