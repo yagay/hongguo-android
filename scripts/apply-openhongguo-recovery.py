@@ -18,10 +18,11 @@ def change(path: Path, old: str, new: str) -> None:
 
 def main(root: Path) -> None:
     protocol = root / "internal/protocol/playback_v5.go"
-    # Port the verified 2026-11-20 route from upstream PR #17. The old
-    # /player/v1 path returns HTTP 200 with zero bytes, not a 404.
+    # The official 7.4.2.32 runtime actually sends /player/v1. Preserve the
+    # version-pinned primary path and register the distinct signed GET fallback.
+    # HTTP 200/empty is not evidence that an endpoint has been retired.
     change(protocol, 'PathPlaybackV5      = "/novel/player/multi_video_model/player/v1"',
-           'PathPlaybackV5      = "/novel/player/multi_video_model/v1/"\n'
+           'PathPlaybackV5      = "/novel/player/multi_video_model/player/v1"\n'
            '\tPathPlaybackVideoTab = "/reading/bookapi/video_tab/multi_video_model/v1/"')
 
     media = root / "sdk/media.go"
@@ -35,7 +36,7 @@ def main(root: Path) -> None:
 \t\t\t// V5 HTTP 200/empty is not proof of rate limiting. Try one
 \t\t\t// differently signed read-only route with the SAME registered
 \t\t\t// identity before the SDK considers a device reset.
-\t\t\tif errors.Is(err, ErrAnonymousLimited) {
+\t\t\tif errors.Is(err, ErrPlaybackEmpty) {
 \t\t\t\trecovered, recoveryErr := c.recoverPlaybackVideoTab(ctx, p, episodeID)
 \t\t\t\tif recoveryErr == nil {
 \t\t\t\t\tif recovered.Protected {
@@ -64,6 +65,21 @@ def main(root: Path) -> None:
 """
     change(media, old, new)
 
+    # A missing playback model and an explicit anonymous denial are different
+    # failure classes. A successful HTTP status with no JSON gives no evidence
+    # that the server has classified this account as anonymous-limited.
+    change(root / "sdk/errors.go",
+           '\tErrAnonymousLimited = errors.New("openhongguo: anonymous response was empty")',
+           '\tErrAnonymousLimited = errors.New("openhongguo: anonymous response was empty")\n'
+           '\tErrPlaybackEmpty = errors.New("openhongguo: playback model response was empty")')
+    change(root / "bindings/internal/dispatch/dispatch.go",
+           '\t{sdk.ErrAnonymousLimited, "ANONYMOUS_LIMITED"},',
+           '\t{sdk.ErrAnonymousLimited, "ANONYMOUS_LIMITED"},\n'
+           '\t{sdk.ErrPlaybackEmpty, "PLAYBACK_EMPTY"},')
+    change(root / "bindings/mobile/android/src/main/kotlin/dev/openhongguo/Errors.kt",
+           '    ANONYMOUS_LIMITED,',
+           '    ANONYMOUS_LIMITED,\n    PLAYBACK_EMPTY,')
+
     # HTTP 200 with an empty body and Retry-After is an explicit request to
     # back off. Do not launch a GET probe or rotate devices in that situation.
     client = root / "sdk/client.go"
@@ -77,7 +93,7 @@ def main(root: Path) -> None:
 \t\t\t\treturn nil, &explicitRetryAfterLimit{}
 \t\t\t}
 \t\t}
-\t\treturn nil, ErrAnonymousLimited
+\t\treturn nil, ErrPlaybackEmpty
 \t}""")
     # Retry-After is an explicit server instruction, not a recoverable
     # transient network error. It must stop the SDK's internal retry loop too.
@@ -180,7 +196,7 @@ func (c *Client) recoverPlaybackVideoTab(ctx context.Context, p *DeviceProfile, 
     return protocol.ParsePlayback(normalized, episodeID)
 }
 '''.replace('\\`', '`'), encoding="utf-8")
-    print("Applied official OpenHongguo V5 same-session video_tab recovery patch")
+    print("Applied official OpenHongguo player/v1 + distinct PLAYBACK_EMPTY classification + same-identity video_tab recovery")
 
 
 if __name__ == "__main__":
