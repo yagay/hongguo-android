@@ -198,13 +198,12 @@ internal fun SettingsScreen(
                             color = HongguoColors.muted,
                             fontSize = 11.sp,
                         )
-                        OutlinedTextField(
+                        HongguoTextField(
                             value = address,
                             onValueChange = { address = it },
-                            label = { Text("替代 API 地址（可选）") },
-                            placeholder = { Text("https://your-server.example") },
+                            label = "替代 API 地址（可选）",
+                            placeholder = "https://your-server.example",
                             modifier = Modifier.fillMaxWidth().testTag("backend_address"),
-                            shape = RoundedCornerShape(HongguoUi.controlRadius),
                             singleLine = true,
                         )
                         FlowRow(
