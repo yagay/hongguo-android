@@ -15,19 +15,21 @@ import org.junit.runner.RunWith
 class HongguoThemeSmokeTest {
     @get:Rule val composeRule = createComposeRule()
 
-    @Test fun bothThemesRenderConsistentSharedControls() {
-        for (style in listOf("classic", "material3")) {
-            composeRule.setContent {
-                HongguoAppTheme(previewTheme(style)) {
-                    HongguoCard {
-                        HongguoAction(label = "测试操作", onClick = {})
-                        Text("主题页面")
-                    }
+    @Test fun classicThemeRendersSharedControls() = render("classic")
+
+    @Test fun material3ThemeRendersSharedControls() = render("material3")
+
+    private fun render(style: String) {
+        composeRule.setContent {
+            HongguoAppTheme(previewTheme(style)) {
+                HongguoCard {
+                    HongguoAction(label = "测试操作", onClick = {})
+                    Text("主题页面")
                 }
             }
-            composeRule.onNodeWithText("主题页面").assertExists()
-            composeRule.onNodeWithText("测试操作").assertExists()
         }
+        composeRule.onNodeWithText("主题页面").assertExists()
+        composeRule.onNodeWithText("测试操作").assertExists()
     }
 
     private fun previewTheme(style: String): HongguoResolvedTheme {
