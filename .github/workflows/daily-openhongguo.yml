@@ -1,0 +1,294 @@
+name: Daily OpenHongguo update and signed APK
+
+on:
+  schedule:
+    # Once per day in UTC. GitHub may delay scheduled jobs.
+    - cron: '23 4 * * *'
+  workflow_dispatch:
+    inputs:
+      rebuild_current:
+        description: 'Rebuild/publish current pinned version even if upstream has no new commits'
+        type: boolean
+        default: false
+
+concurrency:
+  group: daily-openhongguo-auto-release
+  cancel-in-progress: false
+
+permissions:
+  contents: read
+
+jobs:
+  candidate:
+    name: Unprivileged upstream build and verification
+    runs-on: ubuntu-latest
+    permissions:
+      contents: read
+    outputs:
+      build: ${{ steps.discover.outputs.build }}
+      upstream_sha: ${{ steps.discover.outputs.upstream_sha }}
+      version_code: ${{ steps.discover.outputs.version_code }}
+      version_name: ${{ steps.discover.outputs.version_name }}
+      tag: ${{ steps.discover.outputs.tag }}
+      pin_digest: ${{ steps.pin.outputs.pin_digest }}
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          ref: rewrite
+          persist-credentials: false
+
+      - name: Check official upstream HEAD and existing signed Releases
+        id: discover
+        shell: bash
+        env:
+          GH_TOKEN: ${{ github.token }}
+          FORCE: ${{ inputs.rebuild_current || false }}
+        run: |
+          set -euo pipefail
+          upstream="$(git ls-remote https://github.com/beilunyang/openhongguo.git refs/heads/main | awk '{print $1}')"
+          [[ "${#upstream}" == 40 ]] && [[ "$upstream" =~ ^[a-f0-9]{40}$ ]] || {
+            echo "Cannot resolve official upstream main SHA" >&2; exit 1;
+          }
+          current="$(sed -n 's/^SOURCE_SHA="\([a-f0-9]*\)"$/\1/p' scripts/build-openhongguo-16kb.sh)"
+          [[ "${#current}" == 40 ]] || exit 1
+          suffix="-${upstream:0:12}"
+          previous="$(gh release list --repo "$GITHUB_REPOSITORY" --limit 100 --json tagName |
+            jq -r --arg suffix "$suffix" '[.[] | select(.tagName | endswith($suffix))] | length')"
+          echo "Pinned=$current upstream=$upstream existingSignedReleases=$previous"
+          if [[ "$FORCE" != "true" && "$upstream" == "$current" && "$previous" -gt 0 ]]; then
+            echo "No source change and signed Release already published."
+            echo 'build=false' >> "$GITHUB_OUTPUT"
+            exit 0
+          fi
+          version_code="$((1000000 + GITHUB_RUN_NUMBER))"
+          version_name="0.1.0-upstream-${upstream:0:12}"
+          tag="upstream-auto-v$version_code-${upstream:0:12}"
+          {
+            echo 'build=true'
+            echo "upstream_sha=$upstream"
+            echo "version_code=$version_code"
+            echo "version_name=$version_name"
+            echo "tag=$tag"
+          } >> "$GITHUB_OUTPUT"
+
+      - name: Pin the exact candidate commit (without changing working branch)
+        if: steps.discover.outputs.build == 'true'
+        id: pin
+        shell: bash
+        run: |
+          set -euo pipefail
+          python3 scripts/pin-openhongguo-source.py "${{ steps.discover.outputs.upstream_sha }}"
+          sha256sum scripts/build-openhongguo-16kb.sh
+          echo "pin_digest=$(sha256sum scripts/build-openhongguo-16kb.sh | cut -d ' ' -f1)" >> "$GITHUB_OUTPUT"
+
+      - uses: actions/setup-java@v4
+        if: steps.discover.outputs.build == 'true'
+        with:
+          distribution: temurin
+          java-version: '17'
+          cache: gradle
+
+      - uses: android-actions/setup-android@v4
+        if: steps.discover.outputs.build == 'true'
+        with:
+          packages: 'platform-tools'
+
+      - name: Install Android SDK 36 and NDK 28c
+        if: steps.discover.outputs.build == 'true'
+        shell: bash
+        run: sdkmanager --install "platforms;android-36" "build-tools;36.0.0" "ndk;28.2.13676358"
+
+      - uses: actions/setup-go@v6
+        if: steps.discover.outputs.build == 'true'
+        with:
+          go-version: '1.26.0'
+          cache: false
+
+      - name: Compile official signer with local recovery and run Go regression tests
+        if: steps.discover.outputs.build == 'true'
+        shell: bash
+        run: |
+          set -euo pipefail
+          export ANDROID_NDK_HOME="$ANDROID_HOME/ndk/28.2.13676358"
+          bash scripts/build-openhongguo-16kb.sh
+
+      - name: Compile and test Debug APK
+        if: steps.discover.outputs.build == 'true'
+        shell: bash
+        run: |
+          set -euo pipefail
+          bash ./gradlew :app:testDebugUnitTest :app:assembleDebug --build-cache --no-daemon
+          python3 scripts/verify-16kb-elf.py app/build/outputs/apk/debug/app-debug.apk
+          "$ANDROID_HOME/build-tools/36.0.0/zipalign" -c -P 16 -v 4 app/build/outputs/apk/debug/app-debug.apk
+
+      - name: Generate a temporary candidate Release signing identity
+        if: steps.discover.outputs.build == 'true'
+        shell: bash
+        run: |
+          set -euo pipefail
+          keytool -genkeypair -noprompt -alias ci-temporary -keyalg RSA \
+            -keysize 2048 -storetype PKCS12 \
+            -keystore "$RUNNER_TEMP/candidate.p12" \
+            -storepass temporary-ci-only -keypass temporary-ci-only \
+            -dname "CN=Temporary candidate test, O=CI" -validity 1
+          echo "HG_RELEASE_STORE_FILE=$RUNNER_TEMP/candidate.p12" >> "$GITHUB_ENV"
+          echo 'HG_RELEASE_STORE_PASSWORD=temporary-ci-only' >> "$GITHUB_ENV"
+          echo 'HG_RELEASE_KEY_ALIAS=ci-temporary' >> "$GITHUB_ENV"
+          echo 'HG_RELEASE_KEY_PASSWORD=temporary-ci-only' >> "$GITHUB_ENV"
+
+      - name: Build candidate Release without accessing production signing secrets
+        if: steps.discover.outputs.build == 'true'
+        shell: bash
+        run: |
+          set -euo pipefail
+          bash ./gradlew :app:assembleRelease --build-cache --no-daemon \
+            "-PappVersionCode=${{ steps.discover.outputs.version_code }}" \
+            "-PappVersionName=${{ steps.discover.outputs.version_name }}"
+          python3 scripts/verify-16kb-elf.py app/build/outputs/apk/release/app-release.apk
+          "$ANDROID_HOME/build-tools/36.0.0/zipalign" -c -P 16 -v 4 app/build/outputs/apk/release/app-release.apk
+
+      - uses: actions/upload-artifact@v4
+        if: steps.discover.outputs.build == 'true'
+        with:
+          name: upstream-candidate-release
+          path: app/build/outputs/apk/release/app-release.apk
+          if-no-files-found: error
+          compression-level: 0
+          retention-days: 7
+
+  publish:
+    name: Sign, promote verified SHA and publish update
+    needs: candidate
+    if: needs.candidate.outputs.build == 'true'
+    runs-on: ubuntu-latest
+    permissions:
+      contents: write
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          ref: rewrite
+          fetch-depth: 0
+      - uses: android-actions/setup-android@v4
+        with:
+          packages: 'platform-tools'
+      - name: Install APK signing and alignment tools
+        shell: bash
+        run: sdkmanager --install "build-tools;36.0.0"
+
+      - uses: actions/download-artifact@v4
+        with:
+          name: upstream-candidate-release
+          path: candidate
+
+      - name: Verify candidate code, source and pinned build
+        shell: bash
+        env:
+          UPSTREAM_SHA: ${{ needs.candidate.outputs.upstream_sha }}
+          EXPECTED_DIGEST: ${{ needs.candidate.outputs.pin_digest }}
+          EXPECTED_VERSION: ${{ needs.candidate.outputs.version_code }}
+        run: |
+          set -euo pipefail
+          python3 scripts/pin-openhongguo-source.py "$UPSTREAM_SHA"
+          actual="$(sha256sum scripts/build-openhongguo-16kb.sh | cut -d ' ' -f1)"
+          [[ "$actual" == "$EXPECTED_DIGEST" ]] || {
+            echo "Candidate pin differs from reviewed build" >&2; exit 1;
+          }
+          expected_name="0.1.0-upstream-${UPSTREAM_SHA:0:12}"
+          actual_name="$("$ANDROID_HOME/build-tools/36.0.0/aapt" dump badging candidate/app-release.apk | sed -n "s/.*versionName='\([^']*\)'.*/\1/p" | head -n1)"
+          actual_code="$("$ANDROID_HOME/build-tools/36.0.0/aapt" dump badging candidate/app-release.apk | sed -n "s/.*versionCode='\([0-9]*\)'.*/\1/p" | head -n1)"
+          [[ "$actual_name" == "$expected_name" && "$actual_code" == "$EXPECTED_VERSION" ]] || {
+            echo "Candidate APK version does not match validated inputs" >&2; exit 1;
+          }
+
+      - name: Sign APK with protected, stable Release certificate
+        shell: bash
+        env:
+          HG_RELEASE_KEYSTORE_BASE64: ${{ secrets.HG_RELEASE_KEYSTORE_BASE64 }}
+          HG_RELEASE_STORE_PASSWORD: ${{ secrets.HG_RELEASE_STORE_PASSWORD }}
+          HG_RELEASE_KEY_ALIAS: ${{ secrets.HG_RELEASE_KEY_ALIAS }}
+          HG_RELEASE_KEY_PASSWORD: ${{ secrets.HG_RELEASE_KEY_PASSWORD }}
+        run: |
+          set -euo pipefail
+          for name in HG_RELEASE_KEYSTORE_BASE64 HG_RELEASE_STORE_PASSWORD HG_RELEASE_KEY_ALIAS HG_RELEASE_KEY_PASSWORD; do
+            [[ -n "${!name:-}" ]] || { echo "Missing required signing secret: $name" >&2; exit 1; }
+          done
+          printf '%s' "$HG_RELEASE_KEYSTORE_BASE64" | base64 --decode > "$RUNNER_TEMP/release.p12"
+          chmod 600 "$RUNNER_TEMP/release.p12"
+          mkdir -p signed
+          "$ANDROID_HOME/build-tools/36.0.0/zipalign" -P 16 -f 4 \
+            candidate/app-release.apk "$RUNNER_TEMP/candidate-aligned.apk"
+          "$ANDROID_HOME/build-tools/36.0.0/apksigner" sign \
+            --ks "$RUNNER_TEMP/release.p12" --ks-type PKCS12 \
+            --ks-key-alias "$HG_RELEASE_KEY_ALIAS" \
+            --ks-pass env:HG_RELEASE_STORE_PASSWORD \
+            --key-pass env:HG_RELEASE_KEY_PASSWORD \
+            --out signed/YHongguo-update.apk "$RUNNER_TEMP/candidate-aligned.apk"
+          rm -f "$RUNNER_TEMP/release.p12"
+          "$ANDROID_HOME/build-tools/36.0.0/apksigner" verify \
+            --verbose --print-certs signed/YHongguo-update.apk
+          actual="$("$ANDROID_HOME/build-tools/36.0.0/apksigner" verify \
+            --print-certs signed/YHongguo-update.apk |
+            awk -F': ' '/Signer #1 certificate SHA-256 digest/{print tolower($2); exit}')"
+          expected="3586fd60c0243bb205f127b347e8eed7311f32d3ba146de97130229c8c220975"
+          [[ "$actual" == "$expected" ]] || {
+            echo "Protected release signing certificate mismatch" >&2; exit 1;
+          }
+          "$ANDROID_HOME/build-tools/36.0.0/zipalign" -c -P 16 -v 4 signed/YHongguo-update.apk
+          package="$("$ANDROID_HOME/build-tools/36.0.0/aapt" dump badging signed/YHongguo-update.apk |
+            sed -n "s/^package: name='\([^']*\)'.*/\1/p" | head -n1)"
+          [[ "$package" == "com.yagay.hongguo" ]] || exit 1
+          sha256sum signed/YHongguo-update.apk
+
+      - name: Promote tested upstream SHA only after successful signing
+        shell: bash
+        env:
+          UPSTREAM_SHA: ${{ needs.candidate.outputs.upstream_sha }}
+        run: |
+          set -euo pipefail
+          git add scripts/build-openhongguo-16kb.sh
+          if ! git diff --cached --quiet; then
+            git -c user.name="github-actions[bot]" \
+                -c user.email="41898282+github-actions[bot]@users.noreply.github.com" \
+                commit -m "ci(upstream): pin tested ${UPSTREAM_SHA:0:12} [skip ci]"
+            # Never force push over a user's simultaneous changes.
+            git push origin HEAD:rewrite
+          fi
+
+      - name: Publish verified signed APK for in-app update checks
+        shell: bash
+        env:
+          GH_TOKEN: ${{ github.token }}
+          UPSTREAM_SHA: ${{ needs.candidate.outputs.upstream_sha }}
+          VERSION_CODE: ${{ needs.candidate.outputs.version_code }}
+          VERSION_NAME: ${{ needs.candidate.outputs.version_name }}
+          UPDATE_TAG: ${{ needs.candidate.outputs.tag }}
+        run: |
+          set -euo pipefail
+          sha="$(sha256sum signed/YHongguo-update.apk | cut -d ' ' -f1)"
+          {
+            echo "Automated update built from pinned OpenHongguo $UPSTREAM_SHA."
+            echo
+            echo "Go SDK signing tests, Android Debug tests, release build and 16KB checks passed."
+            echo "Installed package: com.yagay.hongguo"
+            echo "Version code: $VERSION_CODE"
+            echo "APK SHA256: $sha"
+            echo "Installation always requires user confirmation. This is a prerelease."
+          } > "$RUNNER_TEMP/notes.md"
+          gh release create "$UPDATE_TAG" \
+            "signed/YHongguo-update.apk#YHongguo-update.apk" \
+            --repo "$GITHUB_REPOSITORY" --target "$(git rev-parse HEAD)" \
+            --prerelease --title "YHongguo $VERSION_NAME" \
+            --notes-file "$RUNNER_TEMP/notes.md"
+
+      - uses: actions/upload-artifact@v4
+        with:
+          name: yhongguo-signed-auto-update
+          path: signed/YHongguo-update.apk
+          if-no-files-found: error
+          compression-level: 0
+          retention-days: 30
+
+      - name: Clean protected signing material
+        if: always()
+        shell: bash
+        run: rm -f "$RUNNER_TEMP/release.p12"
