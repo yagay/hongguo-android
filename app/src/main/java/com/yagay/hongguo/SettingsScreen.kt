@@ -216,6 +216,7 @@ internal fun SettingsScreen(
                             placeholder = "https://your-server.example",
                             modifier = Modifier.fillMaxWidth().testTag("backend_address"),
                             singleLine = true,
+                            classicShape = RoundedCornerShape(HongguoUi.controlRadius),
                         )
                         FlowRow(
                             horizontalArrangement = Arrangement.spacedBy(6.dp),
