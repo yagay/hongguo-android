@@ -61,7 +61,7 @@ jobs:
           path: |
             app/libs/openhongguo-16kb-recovery.aar
             app/libs/openhongguo-16kb-recovery.aar.buildstamp
-          key: ${{ runner.os }}-official-openhongguo-v0.4.0-ndk28c-go126-arm64-16k-v3-current-v5-video-tab
+          key: ${{ runner.os }}-official-openhongguo-v0.4.0-ndk28c-go126-arm64-16k-v4-official-player-response-empty-strictid
       - name: Build or restore official 16 KiB OpenHongguo SDK
         run: |
           export ANDROID_NDK_HOME="$ANDROID_HOME/ndk/28.2.13676358"
@@ -158,7 +158,7 @@ jobs:
           path: |
             app/libs/openhongguo-16kb-recovery.aar
             app/libs/openhongguo-16kb-recovery.aar.buildstamp
-          key: ${{ runner.os }}-official-openhongguo-v0.4.0-ndk28c-go126-arm64-16k-v3-current-v5-video-tab
+          key: ${{ runner.os }}-official-openhongguo-v0.4.0-ndk28c-go126-arm64-16k-v4-official-player-response-empty-strictid
       - name: Build or restore official 16 KiB OpenHongguo SDK
         run: |
           export ANDROID_NDK_HOME="$ANDROID_HOME/ndk/28.2.13676358"
