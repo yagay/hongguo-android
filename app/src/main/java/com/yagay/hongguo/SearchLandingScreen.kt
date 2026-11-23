@@ -113,10 +113,19 @@ internal fun SearchLandingScreen(
                     compact = true,
                     onSearch = { submit(state.search) },
                 )
-                Text("搜索", color = SearchInk, fontSize = 15.sp,
-                    modifier = Modifier.clickable { submit(state.search) }
-                        .padding(horizontal = 6.dp, vertical = 12.dp)
-                        .testTag("search_landing_submit"))
+                if (HongguoColors.isMaterial3) {
+                    HongguoAction(
+                        label = "搜索",
+                        onClick = { submit(state.search) },
+                        modifier = Modifier.testTag("search_landing_submit"),
+                        style = HongguoActionStyle.QUIET,
+                    )
+                } else {
+                    Text("搜索", color = SearchInk, fontSize = 15.sp,
+                        modifier = Modifier.clickable { submit(state.search) }
+                            .padding(horizontal = 6.dp, vertical = 12.dp)
+                            .testTag("search_landing_submit"))
+                }
             }
         }
         if (browse.section == Section.SEARCH && browse.query.isNotBlank() &&
