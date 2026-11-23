@@ -274,10 +274,10 @@ internal fun AccountScreen(model: DramaViewModel) {
                             verticalArrangement = Arrangement.spacedBy(12.dp)) {
                     Text("手机号验证码登录", fontWeight = FontWeight.Bold,
                         color = HongguoColors.ink)
-                    OutlinedTextField(
+                    HongguoTextField(
                         value = phone, onValueChange = { phone = it.take(30) },
-                        label = { Text("国际区号 + 手机号") },
-                        placeholder = { Text("+86 13800138000") },
+                        label = "国际区号 + 手机号",
+                        placeholder = "+86 13800138000",
                         singleLine = true, modifier = Modifier.fillMaxWidth()
                             .testTag("account_phone_input"),
                         keyboardOptions = androidx.compose.foundation.text.KeyboardOptions(
@@ -292,11 +292,11 @@ internal fun AccountScreen(model: DramaViewModel) {
                     if (account.smsSent) {
                         Text("验证码已发送至 " + account.maskedPhone,
                             fontSize = 12.sp, color = HongguoColors.muted)
-                        OutlinedTextField(
+                        HongguoTextField(
                             value = code, onValueChange = {
                                 code = it.filter(Char::isDigit).take(8)
                             },
-                            label = { Text("短信验证码") },
+                            label = "短信验证码",
                             singleLine = true, modifier = Modifier.fillMaxWidth()
                                 .focusRequester(otpFocus).testTag("account_sms_code"),
                             keyboardOptions = androidx.compose.foundation.text.KeyboardOptions(
@@ -337,9 +337,9 @@ internal fun AccountScreen(model: DramaViewModel) {
                             if (advancedOpen) {
                                 Text("仅导入你本人的账号 Cookie。必须通过真实云端身份验证后才会登录；不记录或导出凭据。",
                                     color = HongguoColors.muted, fontSize = 12.sp)
-                                OutlinedTextField(value = importedCookie,
+                                HongguoTextField(value = importedCookie,
                                     onValueChange = { importedCookie = it.take(8192) },
-                                    label = { Text("已有红果登录 Cookie") }, singleLine = true,
+                                    label = "已有红果登录 Cookie", singleLine = true,
                                     visualTransformation = PasswordVisualTransformation(),
                                     enabled = !account.busy,
                                     modifier = Modifier.fillMaxWidth().testTag("account_cookie_input"))
