@@ -427,6 +427,7 @@ internal fun MyScreen(state: AppState, model: DramaViewModel, onBack: () -> Unit
                             fontWeight = if (HongguoColors.isMaterial3)
                                 FontWeight.Medium else FontWeight.Normal,
                             maxLines = if (HongguoColors.isMaterial3) 2 else 1,
+                            minLines = if (HongguoColors.isMaterial3) 2 else 1,
                             overflow = TextOverflow.Ellipsis)
                         if (libraryTab == 3) {
                             val upcoming = account.upcoming.firstOrNull {
@@ -448,7 +449,8 @@ internal fun MyScreen(state: AppState, model: DramaViewModel, onBack: () -> Unit
                                     PlaybackTimeFormatter.format(cloud.position)
                             else entry?.let { "第${it.episode}集" } ?: "观看记录"
                             Text(progressText, color = HongguoColors.muted,
-                                fontSize = 11.sp, maxLines = 1,
+                                fontSize = if (HongguoColors.isMaterial3) 12.sp else 11.sp,
+                                maxLines = 1,
                                 overflow = TextOverflow.Ellipsis)
                             if (localHistoryEdit && entry != null) {
                                 Text(if (drama.id in state.completedDramaIds)
@@ -463,7 +465,7 @@ internal fun MyScreen(state: AppState, model: DramaViewModel, onBack: () -> Unit
                         }
                     }
                 }
-                repeat(3 - row.size) { Spacer(Modifier.weight(1f)) }
+                repeat(galleryColumns - row.size) { Spacer(Modifier.weight(1f)) }
             }
         }
         item {

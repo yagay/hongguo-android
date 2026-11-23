@@ -690,7 +690,9 @@ private fun AccountPoster(
             }
         }
         Text(series.title.ifBlank { "未命名短剧" },
-            maxLines = 2, minLines = 1, overflow = TextOverflow.Ellipsis,
+            maxLines = 2,
+            minLines = if (HongguoColors.isMaterial3) 2 else 1,
+            overflow = TextOverflow.Ellipsis,
             color = HongguoColors.ink,
             fontSize = if (HongguoColors.isMaterial3) 14.sp else 13.sp,
             lineHeight = if (HongguoColors.isMaterial3) 20.sp else 18.sp,

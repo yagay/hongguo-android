@@ -9,6 +9,7 @@ import androidx.compose.animation.core.rememberInfiniteTransition
 import androidx.compose.animation.core.tween
 import androidx.compose.foundation.BorderStroke
 import androidx.compose.foundation.background
+import androidx.compose.ui.draw.drawBehind
 import androidx.compose.foundation.clickable
 import androidx.compose.foundation.layout.Arrangement
 import androidx.compose.foundation.layout.Box
@@ -27,6 +28,7 @@ import androidx.compose.foundation.text.KeyboardOptions
 import androidx.compose.ui.text.input.VisualTransformation
 import androidx.compose.material.icons.Icons
 import androidx.compose.material.icons.outlined.Search
+import androidx.compose.material.icons.outlined.BrokenImage
 import androidx.compose.material3.AlertDialog
 import androidx.compose.material3.CircularProgressIndicator
 import androidx.compose.material3.Icon
@@ -39,6 +41,7 @@ import androidx.compose.material3.TextButton
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.CompositionLocalProvider
 import androidx.compose.runtime.DisposableEffect
+import androidx.compose.runtime.State
 import androidx.compose.runtime.compositionLocalOf
 import androidx.compose.runtime.staticCompositionLocalOf
 import androidx.compose.runtime.mutableIntStateOf
@@ -71,7 +74,7 @@ import coil.compose.AsyncImage
 internal class PosterLoadingCounter {
     var count by mutableIntStateOf(0)
 }
-internal data class PosterMotion(val counter: PosterLoadingCounter, val offset: Float)
+internal data class PosterMotion(val counter: PosterLoadingCounter, val offset: State<Float>?)
 internal val LocalPosterMotion = compositionLocalOf<PosterMotion?> { null }
 
 @Composable
@@ -80,16 +83,16 @@ internal fun HongguoPosterMotionHost(enabled: Boolean, content: @Composable () -
     // conditional content branches here could dispose a live Media3 player.
     val counter = remember { PosterLoadingCounter() }
     val active = enabled && counter.count > 0 && ValueAnimator.areAnimatorsEnabled()
+    // Read the shared offset in draw, not in composition of the poster grid.
     val offset = if (active) {
         val transition = rememberInfiniteTransition(label = "sharedPosterSkeleton")
-        val shift by transition.animateFloat(
+        transition.animateFloat(
             initialValue = -300f, targetValue = 900f,
             animationSpec = infiniteRepeatable(
                 animation = tween(1150), repeatMode = RepeatMode.Restart),
             label = "sharedPosterOffset",
         )
-        shift
-    } else 0f
+    } else null
     CompositionLocalProvider(
         LocalPosterMotion provides if (enabled) PosterMotion(counter, offset) else null,
     ) {
@@ -139,6 +142,7 @@ internal fun HongguoPosterArtwork(
     val placeholderColor = if (material3)
         MaterialTheme.colorScheme.surfaceContainerHigh else classicPlaceholderColor
     var loading by remember(cover) { mutableStateOf(true) }
+    var failed by remember(cover) { mutableStateOf(false) }
     var showSkeleton by remember(cover) { mutableStateOf(false) }
     // Cache hits render immediately without triggering a costly shimmer.
     LaunchedEffect(cover, material3) {
@@ -160,13 +164,18 @@ internal fun HongguoPosterArtwork(
             }
         }
     }
-    val shimmer = motion?.offset ?: 0f
-    val placeholderBrush = if (canAnimate) Brush.linearGradient(
-        listOf(MaterialTheme.colorScheme.surfaceContainerHigh,
-            MaterialTheme.colorScheme.surfaceContainerLow,
-            MaterialTheme.colorScheme.surfaceContainerHigh),
-        start = Offset(shimmer - 240f, 0f), end = Offset(shimmer + 240f, 240f),
-    ) else Brush.linearGradient(listOf(placeholderColor, placeholderColor))
+    val shimmerColors = if (material3) listOf(
+        MaterialTheme.colorScheme.surfaceContainerHigh,
+        MaterialTheme.colorScheme.surfaceContainerLow,
+        MaterialTheme.colorScheme.surfaceContainerHigh,
+    ) else listOf(placeholderColor, placeholderColor)
+    val shimmerModifier = if (canAnimate) Modifier.drawBehind {
+        val shift = motion?.offset?.value ?: 0f
+        drawRect(Brush.linearGradient(
+            shimmerColors, start = Offset(shift - 240f, 0f),
+            end = Offset(shift + 240f, 240f),
+        ))
+    } else Modifier
     val context = LocalContext.current
     // Keep Coil's async image path (no Subcompose layout in scrolling poster grids).
     // Crossfade only in M3; Classic retains its original immediate presentation.
@@ -174,20 +183,32 @@ internal fun HongguoPosterArtwork(
         ImageRequest.Builder(context).data(cover)
             .crossfade(if (material3) 180 else 0).build()
     }
-    Box(modifier.clip(RoundedCornerShape(radius)).background(placeholderBrush)) {
+    Box(modifier.clip(RoundedCornerShape(radius))
+        .background(placeholderColor).then(shimmerModifier)) {
         if (cover != null && (cover !is String || cover.isNotBlank())) {
             AsyncImage(
                 model = request, contentDescription = title,
                 placeholder = if (material3) null else ColorPainter(placeholderColor),
                 error = ColorPainter(placeholderColor),
-                onSuccess = { loading = false },
-                onError = { loading = false },
+                onSuccess = { loading = false; failed = false },
+                onError = { loading = false; failed = true },
                 contentScale = ContentScale.Crop,
                 modifier = Modifier
                     .hongguoSharedPoster(sharedDramaId, sharedAsDetail)
                     .fillMaxSize(),
             )
         } else fallback()
+        if (material3 && failed) {
+            Column(Modifier.align(Alignment.Center).padding(6.dp),
+                horizontalAlignment = Alignment.CenterHorizontally,
+                verticalArrangement = Arrangement.spacedBy(4.dp)) {
+                Icon(Icons.Outlined.BrokenImage, contentDescription = null,
+                    tint = MaterialTheme.colorScheme.onSurfaceVariant,
+                    modifier = Modifier.size(22.dp))
+                Text("封面加载失败", color = MaterialTheme.colorScheme.onSurfaceVariant,
+                    fontSize = 11.sp, maxLines = 1, overflow = TextOverflow.Ellipsis)
+            }
+        }
         overlay()
     }
 }

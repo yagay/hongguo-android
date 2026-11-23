@@ -213,7 +213,7 @@ internal fun SettingsScreen(
                         Text(
                             "默认使用原生模块；可选连接自建接口。",
                             color = HongguoColors.muted,
-                            fontSize = 11.sp,
+                            fontSize = if (HongguoColors.isMaterial3) 12.sp else 11.sp,
                         )
                         HongguoTextField(
                             value = address,
@@ -247,7 +247,7 @@ internal fun SettingsScreen(
                         }
                         Text(
                             "公网 API 请使用 HTTPS；127.0.0.1 不指向电脑。",
-                            color = HongguoColors.muted, fontSize = 11.sp,
+                            color = HongguoColors.muted, fontSize = if (HongguoColors.isMaterial3) 12.sp else 11.sp,
                         )
                     }
                 }
@@ -324,7 +324,7 @@ internal fun SettingsScreen(
                         onClick = model::clearOtherVideoCache,
                     )
                     state.settingsMessage?.takeIf { it.startsWith("缓存") }?.let {
-                        Text(it, color = HongguoColors.accent, fontSize = 11.sp)
+                        Text(it, color = HongguoColors.accent, fontSize = if (HongguoColors.isMaterial3) 12.sp else 11.sp)
                     }
                     HongguoSettingsDivider()
                     Text(
@@ -333,7 +333,7 @@ internal fun SettingsScreen(
                     )
                     Text(
                         "缓存位于应用临时目录，重启应用后重新建立；不会将播放密钥或签名 URL 存盘。系统清理缓存也可能释放文件。",
-                        color = HongguoColors.muted, fontSize = 11.sp,
+                        color = HongguoColors.muted, fontSize = if (HongguoColors.isMaterial3) 12.sp else 11.sp,
                     )
                 }
             }
@@ -370,7 +370,7 @@ internal fun SettingsScreen(
                         onClick = model::checkTrackedUpdates,
                     )
                     state.trackingUpdateMessage?.let {
-                        Text(it, color = HongguoColors.muted, fontSize = 11.sp)
+                        Text(it, color = HongguoColors.muted, fontSize = if (HongguoColors.isMaterial3) 12.sp else 11.sp)
                     }
                 }
             }
@@ -392,7 +392,7 @@ internal fun SettingsScreen(
                     )
                     // Keep the original backup/import success and error feedback.
                     state.settingsMessage?.let {
-                        Text(it, color = HongguoColors.accent, fontSize = 11.sp)
+                        Text(it, color = HongguoColors.accent, fontSize = if (HongguoColors.isMaterial3) 12.sp else 11.sp)
                     }
                 }
             }
@@ -455,7 +455,7 @@ internal fun SettingsScreen(
                         }
                     }
                     state.logNotice?.let {
-                        Text(it, color = HongguoColors.accent, fontSize = 11.sp)
+                        Text(it, color = HongguoColors.accent, fontSize = if (HongguoColors.isMaterial3) 12.sp else 11.sp)
                     }
                 }
             }
@@ -470,11 +470,11 @@ internal fun SettingsScreen(
                     )
                     if (appUpdateStatus.isNotBlank()) {
                         Text(appUpdateStatus, color = HongguoColors.muted,
-                            fontSize = 11.sp)
+                            fontSize = if (HongguoColors.isMaterial3) 12.sp else 11.sp)
                     }
                     Text(
                         "打开 App 时自动检查，每 12 小时最多联网一次。安装新版本需手动确认。",
-                        color = HongguoColors.muted, fontSize = 11.sp,
+                        color = HongguoColors.muted, fontSize = if (HongguoColors.isMaterial3) 12.sp else 11.sp,
                     )
                 }
             }
@@ -488,7 +488,7 @@ internal fun SettingsScreen(
                     )
                     Text(
                         "Jetpack Compose + Media3 · 部分内容受上游接口可用性影响",
-                        color = HongguoColors.muted, fontSize = 11.sp,
+                        color = HongguoColors.muted, fontSize = if (HongguoColors.isMaterial3) 12.sp else 11.sp,
                         modifier = Modifier.padding(bottom = 3.dp),
                     )
                 }

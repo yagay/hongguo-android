@@ -63,6 +63,7 @@ import androidx.compose.ui.input.pointer.pointerInput
 import androidx.compose.ui.graphics.vector.ImageVector
 import androidx.compose.ui.platform.testTag
 import androidx.compose.ui.platform.LocalDensity
+import androidx.compose.ui.platform.LocalConfiguration
 import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.text.style.TextOverflow
 import androidx.compose.ui.unit.dp
@@ -216,7 +217,9 @@ internal fun ReelScreenshotOverlay(
         // An unknown value must remain a label, never a fake zero.
         if (showSideButtons) Column(
             Modifier.align(Alignment.BottomEnd)
-                .padding(end = 7.dp, bottom = 14.dp),
+                .padding(
+                    end = if (LocalConfiguration.current.screenWidthDp < 360) 3.dp else 7.dp,
+                    bottom = 14.dp),
             horizontalAlignment = Alignment.CenterHorizontally,
             verticalArrangement = Arrangement.spacedBy(7.dp),
         ) {
@@ -258,7 +261,9 @@ internal fun ReelScreenshotOverlay(
         Column(
             Modifier.align(Alignment.BottomStart)
                 .fillMaxWidth()
-                .padding(start = 15.dp, end = 90.dp, bottom = 18.dp),
+                .padding(start = 15.dp,
+                    end = if (LocalConfiguration.current.screenWidthDp < 360) 75.dp else 90.dp,
+                    bottom = 18.dp),
             verticalArrangement = Arrangement.spacedBy(9.dp),
         ) {
             // A small source indicator above caption controls; hidden with
@@ -505,10 +510,11 @@ private fun ReferenceAction(
     Column(
         horizontalAlignment = Alignment.CenterHorizontally,
         verticalArrangement = Arrangement.spacedBy(0.dp),
-        modifier = Modifier.width(58.dp),
+        modifier = Modifier.width(
+            if (LocalConfiguration.current.screenWidthDp < 360) 50.dp else 58.dp),
     ) {
         Box(
-            modifier = Modifier.size(43.dp).clickable(onClick = onClick).testTag(tag),
+            modifier = Modifier.size(48.dp).clickable(onClick = onClick).testTag(tag),
             contentAlignment = Alignment.Center,
         ) {
             Icon(icon, contentDescription = label, tint = tint,
@@ -519,7 +525,7 @@ private fun ReferenceAction(
             color = Color.White, maxLines = 1, fontWeight = FontWeight.Medium,
         )
         if (count != null && scope != null) {
-            Text(scope, fontSize = 9.sp, lineHeight = 11.sp,
+            Text(scope, fontSize = 11.sp, lineHeight = 14.sp,
                 color = Color(0xFFE0E0E0), maxLines = 1)
         }
     }
@@ -534,11 +540,13 @@ private fun ReferenceMetric(
     tag: String,
 ) {
     Column(
-        modifier = Modifier.width(58.dp).testTag(tag),
+        modifier = Modifier.width(
+            if (LocalConfiguration.current.screenWidthDp < 360) 50.dp else 58.dp)
+            .testTag(tag),
         horizontalAlignment = Alignment.CenterHorizontally,
         verticalArrangement = Arrangement.spacedBy(0.dp),
     ) {
-        Box(Modifier.size(43.dp), contentAlignment = Alignment.Center) {
+        Box(Modifier.size(48.dp), contentAlignment = Alignment.Center) {
             Icon(icon, contentDescription = label, tint = Color.White,
                 modifier = Modifier.size(29.dp))
         }

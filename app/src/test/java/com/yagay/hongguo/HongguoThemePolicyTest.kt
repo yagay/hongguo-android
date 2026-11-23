@@ -34,6 +34,13 @@ class HongguoThemePolicyTest {
         assertTrue(HongguoThemePolicy.catalogColumns(1080, 1f) >= 5)
     }
 
+    @Test fun tabletDetailSidebarUsesClampedResponsiveWidths() {
+        assertEquals(260, HongguoThemePolicy.detailSidebarDp(840, 1f))
+        assertEquals(320, HongguoThemePolicy.detailSidebarDp(1000, 1f))
+        assertEquals(360, HongguoThemePolicy.detailSidebarDp(1000, 1.5f))
+        assertEquals(380, HongguoThemePolicy.detailSidebarDp(1600, 1.5f))
+    }
+
     @Test fun detailTwoPaneRequiresSufficientWidth() {
         assertFalse(HongguoThemePolicy.useTwoPaneDetail(390))
         assertFalse(HongguoThemePolicy.useTwoPaneDetail(600))

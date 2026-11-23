@@ -117,7 +117,33 @@ jobs:
             mkdir -p visual-regression
             adb shell ls -l /sdcard/Pictures/YHongguo-visual-regression/
             adb pull /sdcard/Pictures/YHongguo-visual-regression/ visual-regression/
-            test -n "$(find visual-regression/ -name '*.png' -print -quit)"
+            for name in theme_classic_light theme_classic_dark \
+                        theme_material3_light theme_material3_dark \
+                        theme_surface_classic_light theme_surface_material3_light \
+                        poster_material3_dark poster_shared_element; do
+              test -s "visual-regression/YHongguo-visual-regression/${name}.png" || {
+                echo "::error::Missing UI screenshot: ${name}.png"
+                exit 1
+              }
+            done
+            python3 - <<'PY'
+            import hashlib
+            from pathlib import Path
+            root = Path("visual-regression/YHongguo-visual-regression")
+            images = sorted(root.glob("*.png"))
+            assert len(images) >= 8, f"Expected 8 snapshots, found {len(images)}"
+            for path in images:
+                assert path.read_bytes().startswith(bytes.fromhex("89504e470d0a1a0a")), f"Invalid PNG: {path}"
+            for a, b in (
+                ("theme_classic_light", "theme_classic_dark"),
+                ("theme_material3_light", "theme_material3_dark"),
+                ("theme_surface_classic_light", "theme_surface_material3_light"),
+            ):
+                x = hashlib.sha256((root / (a + ".png")).read_bytes()).digest()
+                y = hashlib.sha256((root / (b + ".png")).read_bytes()).digest()
+                assert x != y, f"Theme screenshots unexpectedly identical: {a} {b}"
+            print("Validated", len(images), "nonempty PNG snapshots")
+            PY
 
       - name: Upload UI visual regression screenshots
         if: always()

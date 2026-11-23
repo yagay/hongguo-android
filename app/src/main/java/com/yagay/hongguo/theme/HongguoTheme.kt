@@ -68,6 +68,10 @@ internal object HongguoThemePolicy {
         else -> 3
     }
     fun useTwoPaneDetail(widthDp: Int): Boolean = widthDp >= 840
+    fun detailSidebarDp(widthDp: Int, fontScale: Float): Int {
+        val preferred = (widthDp * (if (fontScale >= 1.3f) 0.36f else 0.32f)).toInt()
+        return preferred.coerceIn(260, 380)
+    }
 
     fun episodeColumns(widthDp: Int, largeFont: Boolean): Int = when {
         largeFont && widthDp < 600 -> 4

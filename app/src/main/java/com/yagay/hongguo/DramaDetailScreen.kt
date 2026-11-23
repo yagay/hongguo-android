@@ -80,11 +80,11 @@ internal fun DramaDetailScreen(state: AppState, model: DramaViewModel) {
     val fontScale = LocalDensity.current.fontScale
     val tabletLayout = material3 &&
         HongguoThemePolicy.useTwoPaneDetail(screenWidthDp)
+    val sidebarDp = HongguoThemePolicy.detailSidebarDp(screenWidthDp, fontScale)
+    val detailContentDp = screenWidthDp - if (tabletLayout) sidebarDp else 0
     val episodeColumns = if (material3)
-        HongguoThemePolicy.episodeColumns(
-            if (tabletLayout) screenWidthDp - 300 else screenWidthDp,
-            fontScale >= 1.3f,
-        ) else 5
+        HongguoThemePolicy.episodeColumns(detailContentDp, fontScale >= 1.3f)
+        else 5
     val scheme = MaterialTheme.colorScheme
     val DetailBackground = if (material3) scheme.background else HongguoColors.background
     val DetailTop = if (material3) scheme.surfaceContainer else HongguoColors.accentSoft
@@ -155,7 +155,7 @@ internal fun DramaDetailScreen(state: AppState, model: DramaViewModel) {
         Row(Modifier.fillMaxWidth().weight(1f)) {
             if (tabletLayout) {
                 Column(
-                    Modifier.width(300.dp).fillMaxHeight()
+                    Modifier.width(sidebarDp.dp).fillMaxHeight()
                         .background(scheme.surfaceContainerLow)
                         .verticalScroll(rememberScrollState())
                         .padding(20.dp).testTag("detail_tablet_summary"),
@@ -168,7 +168,8 @@ internal fun DramaDetailScreen(state: AppState, model: DramaViewModel) {
                         modifier = Modifier.fillMaxWidth().aspectRatio(2f / 3f),
                     )
                     Text(drama.title, color = DetailText,
-                        style = MaterialTheme.typography.headlineSmall)
+                        style = MaterialTheme.typography.headlineSmall,
+                        maxLines = 4, overflow = TextOverflow.Ellipsis)
                     Text("全${detail.episodes.size}集", color = DetailMuted,
                         style = MaterialTheme.typography.bodyMedium)
                     if (drama.synopsis.isNotBlank()) Text(
@@ -376,7 +377,8 @@ internal fun DramaDetailScreen(state: AppState, model: DramaViewModel) {
                         Row(Modifier.fillMaxWidth().heightIn(min = 54.dp),
                             verticalAlignment = Alignment.CenterVertically) {
                             Column(
-                                Modifier.width(69.dp).background(DetailCardLight)
+                                Modifier.width(if (material3 && fontScale >= 1.3f) 88.dp else 69.dp)
+                                    .background(DetailCardLight)
                                     .padding(horizontal = 7.dp, vertical = 12.dp),
                                 horizontalAlignment = Alignment.CenterHorizontally) {
                                 Text(verified?.rating?.let {
@@ -414,7 +416,8 @@ internal fun DramaDetailScreen(state: AppState, model: DramaViewModel) {
                             verified.reviews.take(if (showAllReviews) 30 else 10)
                                 .forEach { review ->
                                 Surface(
-                                    modifier = Modifier.width(294.dp).heightIn(min = 108.dp),
+                                    modifier = Modifier.width(detailContentDp.coerceIn(280, 360).dp)
+                                        .heightIn(min = 108.dp),
                                     color = DetailCard,
                                     shape = RoundedCornerShape(if (material3) 20.dp
                                         else HongguoUi.controlRadius),
