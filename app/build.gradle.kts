@@ -22,8 +22,12 @@ android {
         applicationId = "com.yagay.hongguo"
         minSdk = 26
         targetSdk = 36
-        versionCode = 1
-        versionName = "0.1.0-web-rewrite"
+        // Auto-update workflow supplies a monotonically increasing code.
+        // Ordinary local/Debug builds retain the original development version.
+        versionCode = providers.gradleProperty("appVersionCode").orNull
+            ?.toIntOrNull()?.takeIf { it in 2..2100000000 } ?: 1
+        versionName = providers.gradleProperty("appVersionName").orNull
+            ?.takeIf { it.length in 1..80 } ?: "0.1.0-web-rewrite"
         testInstrumentationRunner = "androidx.test.runner.AndroidJUnitRunner"
     }
     signingConfigs {
