@@ -17,6 +17,7 @@ import androidx.compose.foundation.layout.size
 import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.foundation.text.KeyboardActions
 import androidx.compose.foundation.text.KeyboardOptions
+import androidx.compose.ui.text.input.VisualTransformation
 import androidx.compose.material.icons.Icons
 import androidx.compose.material.icons.outlined.Search
 import androidx.compose.material3.AlertDialog
@@ -109,6 +110,57 @@ internal fun HongguoSearchField(
     )
 }
 
+/**
+ * One neutral text-field contract for account forms, settings, local Library
+ * and modal editors. It never changes validation, editing state or callbacks.
+ * Material 3 follows the active MaterialTheme color scheme; classic retains
+ * the compact original outline and control radius.
+ */
+@Composable
+internal fun HongguoTextField(
+    value: String,
+    onValueChange: (String) -> Unit,
+    modifier: Modifier = Modifier,
+    label: String? = null,
+    placeholder: String? = null,
+    enabled: Boolean = true,
+    singleLine: Boolean = false,
+    minLines: Int = 1,
+    maxLines: Int = Int.MAX_VALUE,
+    keyboardOptions: KeyboardOptions = KeyboardOptions.Default,
+    keyboardActions: KeyboardActions = KeyboardActions.Default,
+    visualTransformation: VisualTransformation = VisualTransformation.None,
+) {
+    val material3 = HongguoColors.isMaterial3
+    OutlinedTextField(
+        value = value,
+        onValueChange = onValueChange,
+        modifier = modifier,
+        enabled = enabled,
+        label = label?.let { { Text(it) } },
+        placeholder = placeholder?.let { { Text(it) } },
+        singleLine = singleLine,
+        minLines = minLines,
+        maxLines = if (singleLine) 1 else maxLines,
+        keyboardOptions = keyboardOptions,
+        keyboardActions = keyboardActions,
+        visualTransformation = visualTransformation,
+        shape = RoundedCornerShape(
+            if (material3) 16.dp else HongguoUi.controlRadius
+        ),
+        colors = if (material3) OutlinedTextFieldDefaults.colors()
+        else OutlinedTextFieldDefaults.colors(
+            focusedBorderColor = HongguoColors.accent,
+            unfocusedBorderColor = HongguoColors.divider,
+            cursorColor = HongguoColors.accent,
+            focusedTextColor = HongguoColors.ink,
+            unfocusedTextColor = HongguoColors.ink,
+            focusedLabelColor = HongguoColors.accent,
+            unfocusedLabelColor = HongguoColors.muted,
+        ),
+    )
+}
+
 /** The theater opens the same search page instead of owning another text field. */
 @Composable
 internal fun HongguoSearchEntry(
@@ -165,22 +217,27 @@ internal fun HongguoFormDialog(
     onDismiss: () -> Unit,
     content: @Composable () -> Unit,
 ) {
+    val material3 = HongguoColors.isMaterial3
     AlertDialog(
         onDismissRequest = onDismiss,
-        title = { Text(title, color = HongguoColors.ink) },
+        title = { Text(title, color = if (material3)
+            MaterialTheme.colorScheme.onSurface else HongguoColors.ink) },
         text = content,
         confirmButton = {
             TextButton(onClick = onConfirm, enabled = confirmEnabled) {
-                Text(confirmLabel, color = if (confirmEnabled)
-                    HongguoColors.accent else HongguoColors.muted)
+                Text(confirmLabel, color = if (material3)
+                    MaterialTheme.colorScheme.primary
+                    else if (confirmEnabled) HongguoColors.accent else HongguoColors.muted)
             }
         },
         dismissButton = {
-            TextButton(onClick = onDismiss) { Text("取消", color = HongguoColors.ink) }
+            TextButton(onClick = onDismiss) { Text("取消", color = if (material3)
+                MaterialTheme.colorScheme.onSurfaceVariant else HongguoColors.ink) }
         },
         shape = RoundedCornerShape(if (HongguoColors.isMaterial3) 28.dp
             else HongguoUi.cardRadius),
-        containerColor = HongguoColors.surface,
+        containerColor = if (material3) MaterialTheme.colorScheme.surfaceContainerHigh
+            else HongguoColors.surface,
     )
 }
 
