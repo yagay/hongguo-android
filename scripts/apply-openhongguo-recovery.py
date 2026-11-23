@@ -36,7 +36,7 @@ def main(root: Path) -> None:
 \t\t\t// V5 HTTP 200/empty is not proof of rate limiting. Try one
 \t\t\t// differently signed read-only route with the SAME registered
 \t\t\t// identity before the SDK considers a device reset.
-\t\t\tif errors.Is(err, ErrPlaybackEmpty) {
+\t\t\tif errors.Is(err, ErrResponseEmpty) {
 \t\t\t\trecovered, recoveryErr := c.recoverPlaybackVideoTab(ctx, p, episodeID)
 \t\t\t\tif recoveryErr == nil {
 \t\t\t\t\tif recovered.Protected {
@@ -71,14 +71,14 @@ def main(root: Path) -> None:
     change(root / "sdk/errors.go",
            '\tErrAnonymousLimited = errors.New("openhongguo: anonymous response was empty")',
            '\tErrAnonymousLimited = errors.New("openhongguo: anonymous response was empty")\n'
-           '\tErrPlaybackEmpty = errors.New("openhongguo: playback model response was empty")')
+           '\tErrResponseEmpty = errors.New("openhongguo: successful HTTP response body was empty")')
     change(root / "bindings/internal/dispatch/dispatch.go",
            '\t{sdk.ErrAnonymousLimited, "ANONYMOUS_LIMITED"},',
            '\t{sdk.ErrAnonymousLimited, "ANONYMOUS_LIMITED"},\n'
-           '\t{sdk.ErrPlaybackEmpty, "PLAYBACK_EMPTY"},')
+           '\t{sdk.ErrResponseEmpty, "RESPONSE_EMPTY"},')
     change(root / "bindings/mobile/android/src/main/kotlin/dev/openhongguo/Errors.kt",
            '    ANONYMOUS_LIMITED,',
-           '    ANONYMOUS_LIMITED,\n    PLAYBACK_EMPTY,')
+           '    ANONYMOUS_LIMITED,\n    RESPONSE_EMPTY,')
 
     # HTTP 200 with an empty body and Retry-After is an explicit request to
     # back off. Do not launch a GET probe or rotate devices in that situation.
@@ -93,7 +93,7 @@ def main(root: Path) -> None:
 \t\t\t\treturn nil, &explicitRetryAfterLimit{}
 \t\t\t}
 \t\t}
-\t\treturn nil, ErrPlaybackEmpty
+\t\treturn nil, ErrResponseEmpty
 \t}""")
     # Retry-After is an explicit server instruction, not a recoverable
     # transient network error. It must stop the SDK's internal retry loop too.
@@ -196,7 +196,7 @@ func (c *Client) recoverPlaybackVideoTab(ctx context.Context, p *DeviceProfile, 
     return protocol.ParsePlayback(normalized, episodeID)
 }
 '''.replace('\\`', '`'), encoding="utf-8")
-    print("Applied official OpenHongguo player/v1 + distinct PLAYBACK_EMPTY classification + same-identity video_tab recovery")
+    print("Applied official OpenHongguo player/v1 + distinct RESPONSE_EMPTY classification + same-identity video_tab recovery")
 
 
 if __name__ == "__main__":
