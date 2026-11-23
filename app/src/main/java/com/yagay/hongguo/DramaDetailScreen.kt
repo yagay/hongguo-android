@@ -651,7 +651,7 @@ internal fun DramaDetailScreen(state: AppState, model: DramaViewModel) {
             } else {
             Button(
                 onClick = { model.toggleFavoriteForDrama(drama) },
-                modifier = Modifier.weight(1f).height(42.dp)
+                modifier = Modifier.weight(1f).height(48.dp)
                     .testTag("detail_favorite_button"),
                 shape = RoundedCornerShape(HongguoUi.controlRadius),
                 colors = ButtonDefaults.buttonColors(containerColor = DetailCardLight),
@@ -664,7 +664,7 @@ internal fun DramaDetailScreen(state: AppState, model: DramaViewModel) {
             FeatureAvailability.reviewComposerAction()?.let { openComposer ->
                 Button(
                     onClick = { openComposer(drama.id) },
-                    modifier = Modifier.weight(1f).height(42.dp)
+                    modifier = Modifier.weight(1f).height(48.dp)
                         .testTag("detail_write_review_button"),
                     shape = RoundedCornerShape(HongguoUi.controlRadius),
                     colors = ButtonDefaults.buttonColors(containerColor = DetailChip),

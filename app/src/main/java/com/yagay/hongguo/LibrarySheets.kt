@@ -155,7 +155,7 @@ private fun LibraryRows(state: AppState, model: DramaViewModel) {
     Text("显示 " + filtered.size + " / " + rows.size + " 部",
         color = HongguoColors.muted, fontSize = 12.sp)
     LazyColumn(
-        Modifier.fillMaxWidth().heightIn(max = 500.dp),
+        Modifier.fillMaxWidth().heightIn(max = (androidx.compose.ui.platform.LocalConfiguration.current.screenHeightDp * 0.58f).dp),
         verticalArrangement = Arrangement.spacedBy(4.dp),
     ) {
         items(filtered, key = { it.drama.id }) { entry ->
@@ -181,24 +181,20 @@ private fun LibraryRows(state: AppState, model: DramaViewModel) {
                             else selectedIds - entry.drama.id
                     })
                 val image = model.cover(entry.drama.cover)
-                if (image.isNotBlank()) {
-                    AsyncImage(
-                        model = image, contentDescription = null,
-                        modifier = Modifier.size(width = 58.dp, height = 78.dp),
-                        contentScale = ContentScale.Crop,
-                    )
-                } else {
-                    Box(Modifier.size(width = 58.dp, height = 78.dp),
-                        contentAlignment = Alignment.Center) {
-                        Text("短剧", color = HongguoColors.muted, fontSize = 12.sp)
-                    }
-                }
+                HongguoPosterCover(
+                    cover = image.takeIf { it.isNotBlank() },
+                    title = entry.drama.title,
+                    modifier = Modifier.size(width = 58.dp, height = 87.dp)
+                        .testTag("library_poster_" + entry.drama.id),
+                    classicRadius = 8.dp,
+                )
                 Column(Modifier.weight(1f), verticalArrangement = Arrangement.spacedBy(4.dp)) {
                     Text(entry.drama.title, maxLines = 2,
                         overflow = TextOverflow.Ellipsis, fontWeight = FontWeight.SemiBold)
                     Text("看到第 " + entry.episode + " 集",
                         color = HongguoColors.muted, fontSize = 12.sp)
-                    Text("点击继续观看", color = HongguoColors.accent, fontSize = 11.sp)
+                    Text("点击继续观看", color = HongguoColors.accent,
+                        fontSize = if (HongguoColors.isMaterial3) 12.sp else 11.sp)
                 }
                 if (!selecting && isFavorites) Box {
                     TextButton(onClick = { menuFor = entry.drama.id }) {
@@ -298,7 +294,7 @@ private fun DownloadRows(state: AppState, model: DramaViewModel) {
         else "这些是所连接服务的下载任务，文件不自动保存在手机。",
         color = HongguoColors.muted, fontSize = 12.sp)
     LazyColumn(
-        Modifier.fillMaxWidth().heightIn(max = 440.dp),
+        Modifier.fillMaxWidth().heightIn(max = (androidx.compose.ui.platform.LocalConfiguration.current.screenHeightDp * 0.52f).dp),
         verticalArrangement = Arrangement.spacedBy(8.dp),
     ) {
         items(state.downloadTasks, key = { it.id }) { task ->

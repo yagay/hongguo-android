@@ -17,12 +17,17 @@ import androidx.compose.material.icons.Icons
 import androidx.compose.material.icons.outlined.Check
 import androidx.compose.material.icons.outlined.ChevronRight
 import androidx.compose.material.icons.outlined.ExpandLess
+import androidx.compose.material.icons.outlined.ExpandMore
 import androidx.compose.material3.HorizontalDivider
 import androidx.compose.material3.Icon
 import androidx.compose.material3.MaterialTheme
 import androidx.compose.material3.Surface
 import androidx.compose.material3.Text
 import androidx.compose.runtime.Composable
+import androidx.compose.runtime.getValue
+import androidx.compose.runtime.setValue
+import androidx.compose.runtime.mutableStateOf
+import androidx.compose.runtime.saveable.rememberSaveable
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.graphics.vector.ImageVector
@@ -43,15 +48,29 @@ internal fun HongguoSettingsSection(
     modifier: Modifier = Modifier,
     content: @Composable ColumnScope.() -> Unit,
 ) {
+    var expanded by rememberSaveable(title) { mutableStateOf(true) }
     Column(modifier, verticalArrangement = Arrangement.spacedBy(if (HongguoColors.isMaterial3) 8.dp else 4.dp)) {
-        Text(
-            title,
-            color = HongguoColors.muted,
-            fontSize = if (HongguoColors.isMaterial3) 14.sp else 12.sp,
-            fontWeight = FontWeight.Medium,
-            modifier = Modifier.padding(start = 12.dp, top = if (HongguoColors.isMaterial3) 10.dp else 7.dp, bottom = if (HongguoColors.isMaterial3) 4.dp else 2.dp),
-        )
-        Surface(
+        Row(
+            Modifier.fillMaxWidth()
+                .then(if (HongguoColors.isMaterial3) Modifier.clickable { expanded = !expanded }
+                    .testTag("settings_section_toggle_$title") else Modifier)
+                .padding(start = 12.dp, end = 10.dp,
+                    top = if (HongguoColors.isMaterial3) 10.dp else 7.dp,
+                    bottom = if (HongguoColors.isMaterial3) 4.dp else 2.dp),
+            verticalAlignment = Alignment.CenterVertically,
+        ) {
+            Text(title, modifier = Modifier.weight(1f),
+                color = HongguoColors.muted,
+                fontSize = if (HongguoColors.isMaterial3) 14.sp else 12.sp,
+                fontWeight = FontWeight.Medium)
+            if (HongguoColors.isMaterial3) Icon(
+                if (expanded) Icons.Outlined.ExpandLess else Icons.Outlined.ExpandMore,
+                contentDescription = if (expanded) "收起$title" else "展开$title",
+                tint = HongguoColors.muted,
+                modifier = Modifier.size(20.dp),
+            )
+        }
+        if (!HongguoColors.isMaterial3 || expanded) Surface(
             shape = RoundedCornerShape(if (HongguoColors.isMaterial3) 24.dp else 12.dp),
             color = HongguoColors.surface,
             tonalElevation = if (HongguoColors.isMaterial3) 1.dp else 0.dp,

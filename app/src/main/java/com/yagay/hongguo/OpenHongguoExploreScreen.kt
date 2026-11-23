@@ -5,6 +5,8 @@ import androidx.compose.foundation.background
 import androidx.compose.foundation.clickable
 import androidx.compose.foundation.horizontalScroll
 import androidx.compose.foundation.layout.Arrangement
+import androidx.compose.foundation.layout.FlowRow
+import androidx.compose.foundation.layout.heightIn
 import androidx.compose.foundation.layout.Box
 import androidx.compose.foundation.layout.Column
 import androidx.compose.foundation.layout.Row
@@ -23,6 +25,7 @@ import androidx.compose.material.icons.Icons
 import androidx.compose.material.icons.automirrored.outlined.ArrowBack
 import androidx.compose.material3.CircularProgressIndicator
 import androidx.compose.material3.FilterChip
+import androidx.compose.material3.MaterialTheme
 import androidx.compose.material3.Icon
 import androidx.compose.material3.IconButton
 import androidx.compose.material3.OutlinedButton
@@ -91,6 +94,7 @@ internal fun OpenHongguoExploreScreen(
     var rankCell by remember { mutableStateOf("") }
     var filterRows by remember { mutableStateOf(emptyList<FilterRow>()) }
     var selectedFilters by remember { mutableStateOf(emptyMap<String, List<String>>()) }
+    var filterSheetOpen by remember { mutableStateOf(false) }
     var rows by remember { mutableStateOf(emptyList<OpenHongguoBrowseItem>()) }
     var more by remember { mutableStateOf(false) }
     var nextCursor by remember { mutableStateOf("") }
@@ -255,28 +259,36 @@ internal fun OpenHongguoExploreScreen(
         }
         if (actorId.isBlank() && tab in setOf("filter", "filterComic", "filterAI") &&
             filterRows.isNotEmpty()) {
-            Column(Modifier.fillMaxWidth().padding(horizontal = HongguoUi.pagePadding),
-                verticalArrangement = Arrangement.spacedBy(2.dp)) {
-                filterRows.take(8).forEach { row ->
-                    Row(Modifier.fillMaxWidth().horizontalScroll(rememberScrollState()),
-                        horizontalArrangement = Arrangement.spacedBy(6.dp),
-                        verticalAlignment = Alignment.CenterVertically) {
-                        Text(row.name, fontSize = 12.sp, color = HongguoColors.muted)
-                        HongguoChoiceChip(label = "全部",
-                            selected = selectedFilters[row.key].isNullOrEmpty(),
-                            onClick = {
-                                selectedFilters = selectedFilters - row.key
-                                cursor = ""; rows = emptyList(); nextCursor = ""
-                            })
-                        row.options.take(12).forEach { option ->
+            Row(Modifier.fillMaxWidth()
+                .padding(horizontal = HongguoUi.pagePadding, vertical = 6.dp),
+                verticalAlignment = Alignment.CenterVertically,
+                horizontalArrangement = Arrangement.spacedBy(8.dp)) {
+                HongguoAction(
+                    label = "筛选条件 · ${selectedFilters.size} 组",
+                    onClick = { filterSheetOpen = true },
+                    modifier = Modifier.testTag("explore_open_filters"),
+                )
+                if (selectedFilters.isNotEmpty()) {
+                    TextButton(onClick = {
+                        selectedFilters = emptyMap()
+                        cursor = ""; rows = emptyList(); nextCursor = ""
+                    }) { Text("清除筛选") }
+                }
+            }
+            if (selectedFilters.isNotEmpty()) {
+                Row(Modifier.fillMaxWidth().horizontalScroll(rememberScrollState())
+                    .padding(horizontal = HongguoUi.pagePadding),
+                    horizontalArrangement = Arrangement.spacedBy(6.dp)) {
+                    selectedFilters.forEach { (key, values) ->
+                        val group = filterRows.firstOrNull { it.key == key }
+                        values.forEach { value ->
+                            val label = group?.options?.firstOrNull { it.value == value }?.name
+                                ?: value
                             HongguoChoiceChip(
-                                label = option.name,
-                                selected = selectedFilters[row.key]?.contains(option.value) == true,
+                                label = "${group?.name ?: key}: $label ×",
+                                selected = true,
                                 onClick = {
-                                    val old = selectedFilters[row.key].orEmpty()
-                                    selectedFilters = if (option.value in old)
-                                        selectedFilters - row.key
-                                    else selectedFilters + (row.key to listOf(option.value))
+                                    selectedFilters = selectedFilters - key
                                     cursor = ""; rows = emptyList(); nextCursor = ""
                                 },
                             )
@@ -458,6 +470,55 @@ internal fun OpenHongguoExploreScreen(
                 }
             }
         }
+        }
+        if (filterSheetOpen && actorId.isBlank()) {
+            HongguoModalSheet(onDismissRequest = { filterSheetOpen = false },
+                modifier = Modifier.testTag("explore_filter_sheet")) {
+                Column(Modifier.fillMaxWidth().padding(horizontal = 16.dp),
+                    verticalArrangement = Arrangement.spacedBy(10.dp)) {
+                    Row(Modifier.fillMaxWidth(), verticalAlignment = Alignment.CenterVertically) {
+                        Text("筛选作品", style = MaterialTheme.typography.titleLarge,
+                            modifier = Modifier.weight(1f))
+                        TextButton(onClick = {
+                            selectedFilters = emptyMap()
+                            cursor = ""; rows = emptyList(); nextCursor = ""
+                        }) { Text("重置") }
+                    }
+                    LazyColumn(Modifier.fillMaxWidth().heightIn(max = 540.dp),
+                        verticalArrangement = Arrangement.spacedBy(16.dp)) {
+                        items(filterRows, key = { it.key }) { group ->
+                            Column(verticalArrangement = Arrangement.spacedBy(6.dp)) {
+                                Text(group.name, style = MaterialTheme.typography.titleSmall)
+                                FlowRow(horizontalArrangement = Arrangement.spacedBy(6.dp),
+                                    verticalArrangement = Arrangement.spacedBy(4.dp)) {
+                                    FilterChip(selected = selectedFilters[group.key].isNullOrEmpty(),
+                                        onClick = {
+                                            selectedFilters = selectedFilters - group.key
+                                            cursor = ""; rows = emptyList(); nextCursor = ""
+                                        },
+                                        label = { Text("全部") })
+                                    group.options.forEach { option ->
+                                        FilterChip(
+                                            selected = selectedFilters[group.key]?.contains(option.value) == true,
+                                            onClick = {
+                                                val old = selectedFilters[group.key].orEmpty()
+                                                selectedFilters = if (option.value in old)
+                                                    selectedFilters - group.key
+                                                else selectedFilters + (group.key to listOf(option.value))
+                                                cursor = ""; rows = emptyList(); nextCursor = ""
+                                            },
+                                            label = { Text(option.name, maxLines = 1) },
+                                        )
+                                    }
+                                }
+                            }
+                        }
+                    }
+                    HongguoAction(label = "查看筛选结果",
+                        onClick = { filterSheetOpen = false },
+                        modifier = Modifier.fillMaxWidth().testTag("explore_apply_filters"))
+                }
+            }
         }
     }
 }

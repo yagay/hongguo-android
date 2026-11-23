@@ -155,8 +155,12 @@ internal fun CatalogScreen(
                     }
                 }
             }
-            item(span = { GridItemSpan(maxLineSpan) }) {
-                CatalogSectionTools(state, model, onFilters = { filtersOpen = true })
+            // Material3 puts the continue-watching shortcut before filters,
+            // rather than hiding the primary next action beneath the tools.
+            if (!HongguoColors.isMaterial3) {
+                item(span = { GridItemSpan(maxLineSpan) }) {
+                    CatalogSectionTools(state, model, onFilters = { filtersOpen = true })
+                }
             }
             // Continue-watching is a theater feature, not a RECOMMEND-only
             // widget. Use the saved cloud checkpoint when it is available,
@@ -178,11 +182,12 @@ internal fun CatalogScreen(
                         }.padding(9.dp).testTag("theater_continue_watching"),
                             horizontalArrangement = Arrangement.spacedBy(11.dp),
                             verticalAlignment = Alignment.CenterVertically) {
-                            AsyncImage(model = model.cover(drama.cover),
-                                contentDescription = drama.title,
-                                contentScale = ContentScale.Crop,
-                                modifier = Modifier.width(48.dp).aspectRatio(2f / 3f)
-                                    .clip(RoundedCornerShape(8.dp)))
+                            HongguoPosterCover(
+                                cover = model.cover(drama.cover),
+                                title = drama.title,
+                                modifier = Modifier.width(48.dp).aspectRatio(2f / 3f),
+                                classicRadius = 8.dp,
+                            )
                             Column(Modifier.weight(1f),
                                 verticalArrangement = Arrangement.spacedBy(5.dp)) {
                                 Text("继续播放", color = HongguoColors.accent,
@@ -204,12 +209,19 @@ internal fun CatalogScreen(
                     }
                 }
             }
+            if (HongguoColors.isMaterial3) {
+                item(span = { GridItemSpan(maxLineSpan) }) {
+                    CatalogSectionTools(state, model, onFilters = { filtersOpen = true })
+                }
+            }
             if (state.section == Section.RECOMMEND || state.section == Section.RANK) {
                 item(span = { GridItemSpan(maxLineSpan) }) {
                     TextButton(onClick = { openSourceExplore = true },
                         modifier = Modifier.testTag("openhongguo_discovery_entry")) {
-                        Text("发现更多 · 上新 / 真人榜 / 演员榜 / 漫剧 / 热搜",
-                            color = HongguoColors.accent, fontSize = 12.sp)
+                        Text(if (HongguoColors.isMaterial3) "探索更多分类 ›"
+                             else "发现更多 · 上新 / 真人榜 / 演员榜 / 漫剧 / 热搜",
+                            color = HongguoColors.accent,
+                            fontSize = if (HongguoColors.isMaterial3) 14.sp else 12.sp)
                     }
                 }
             }

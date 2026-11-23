@@ -102,6 +102,23 @@ class HongguoThemeSmokeTest {
             .captureToImage().asAndroidBitmap())
     }
 
+    @Test fun materialSettingsSectionsCollapseWithoutRemovingControls() {
+        composeRule.setContent {
+            HongguoAppTheme(previewTheme("material3", "light")) {
+                Column {
+                    HongguoSettingsSection("测试分组") {
+                        Text("可见的设置选项")
+                    }
+                }
+            }
+        }
+        composeRule.onNodeWithText("可见的设置选项").assertExists()
+        composeRule.onNodeWithTag("settings_section_toggle_测试分组").performClick()
+        composeRule.onNodeWithText("可见的设置选项").assertDoesNotExist()
+        composeRule.onNodeWithTag("settings_section_toggle_测试分组").performClick()
+        composeRule.onNodeWithText("可见的设置选项").assertExists()
+    }
+
     @Test fun posterPlaceholderRendersInMaterialDarkTheme() {
         composeRule.setContent {
             HongguoAppTheme(previewTheme("material3", "dark")) {

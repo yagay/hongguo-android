@@ -98,14 +98,9 @@ internal fun SearchLandingScreen(
         model.searchBrowseQuery(text)
     }
 
-    LazyColumn(
-        modifier = Modifier.fillMaxSize().background(SearchBg)
-            .testTag("search_landing"),
-        contentPadding = PaddingValues(bottom = 28.dp),
-        verticalArrangement = Arrangement.spacedBy(HongguoUi.pageSectionGap),
-    ) {
-        item {
-            Row(Modifier.fillMaxWidth().padding(start = 8.dp, end = HongguoUi.pagePadding, top = 8.dp),
+    Column(Modifier.fillMaxSize().background(SearchBg).testTag("search_landing")) {
+        Row(Modifier.fillMaxWidth()
+            .padding(start = 8.dp, end = HongguoUi.pagePadding, top = 8.dp),
                 verticalAlignment = Alignment.CenterVertically,
                 horizontalArrangement = Arrangement.spacedBy(6.dp)) {
                 HongguoIconAction(onClick = onClose) {
@@ -134,7 +129,9 @@ internal fun SearchLandingScreen(
                             .testTag("search_landing_submit"))
                 }
             }
-        }
+        LazyColumn(Modifier.fillMaxSize().weight(1f),
+            contentPadding = PaddingValues(bottom = 28.dp),
+            verticalArrangement = Arrangement.spacedBy(HongguoUi.pageSectionGap)) {
         if (browse.section == Section.SEARCH && browse.query.isNotBlank() &&
             state.search.trim() == browse.query) {
             item {
@@ -300,5 +297,6 @@ internal fun SearchLandingScreen(
             }
         }
         } // Search suggestions/history, not another catalog tab
+        }
     }
 }

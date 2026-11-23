@@ -182,25 +182,46 @@ internal fun AccountScreen(model: DramaViewModel) {
                 }
                 item {
                     HongguoCard() {
-                        Row(Modifier.fillMaxWidth().padding(6.dp),
-                            horizontalArrangement = Arrangement.spacedBy(8.dp)) {
-                            listOf("手机验证码", "官网登录", "扫码登录").forEachIndexed { index, label ->
-                                HongguoChoiceChip(
-                                    label = label,
-                                    selected = loginMethod == index,
-                                    onClick = {
-                                        if (loginMethod != index) {
-                                            model.account.cancelActiveLogin()
-                                            loginMethod = index
-                                        }
-                                    },
-                                    modifier = Modifier.weight(1f).testTag(
-                                        when (index) {
-                                            0 -> "account_method_sms"
-                                            1 -> "account_method_web"
-                                            else -> "account_method_qr"
-                                        }),
-                                )
+                        if (HongguoColors.isMaterial3) {
+                            androidx.compose.foundation.layout.FlowRow(
+                                Modifier.fillMaxWidth().padding(6.dp),
+                                horizontalArrangement = Arrangement.spacedBy(8.dp),
+                                verticalArrangement = Arrangement.spacedBy(6.dp),
+                            ) {
+                                listOf("手机验证码", "官网登录", "扫码登录").forEachIndexed { index, label ->
+                                    HongguoChoiceChip(
+                                label = label, selected = loginMethod == index,
+                                onClick = { if (loginMethod != index) {
+                                    model.account.cancelActiveLogin()
+                                    loginMethod = index
+                                } },
+                                modifier = Modifier.testTag(
+                                    when (index) {
+                                        0 -> "account_method_sms"
+                                        1 -> "account_method_web"
+                                        else -> "account_method_qr"
+                                    }),
+                            )
+                                }
+                            }
+                        } else {
+                            Row(Modifier.fillMaxWidth().padding(6.dp),
+                                horizontalArrangement = Arrangement.spacedBy(8.dp)) {
+                                listOf("手机验证码", "官网登录", "扫码登录").forEachIndexed { index, label ->
+                                    HongguoChoiceChip(
+                                label = label, selected = loginMethod == index,
+                                onClick = { if (loginMethod != index) {
+                                    model.account.cancelActiveLogin()
+                                    loginMethod = index
+                                } },
+                                modifier = Modifier.weight(1f).testTag(
+                                    when (index) {
+                                        0 -> "account_method_sms"
+                                        1 -> "account_method_web"
+                                        else -> "account_method_qr"
+                                    }),
+                            )
+                                }
                             }
                         }
                     }
@@ -235,7 +256,9 @@ internal fun AccountScreen(model: DramaViewModel) {
                                 androidx.compose.foundation.Image(
                                     bitmap = bitmap.asImageBitmap(),
                                     contentDescription = "红果账号扫码二维码",
-                                    modifier = Modifier.size(230.dp)
+                                    modifier = Modifier.size(
+                                        (LocalConfiguration.current.screenWidthDp - 96)
+                                            .coerceIn(150, 230).dp)
                                         .testTag("account_qr_image"),
                                 )
                             }
@@ -340,7 +363,7 @@ internal fun AccountScreen(model: DramaViewModel) {
                                 advancedOpen = !advancedOpen
                                 importedCookie = ""
                             }, modifier = Modifier.testTag("account_cookie_expand")) {
-                                Text(if (advancedOpen) "收起高级登录" else "高级：导入已有登录态")
+                                Text(if (advancedOpen) "收起高级登录" else "高级登录选项")
                             }
                             if (advancedOpen) {
                                 Text("仅导入你本人的账号 Cookie。必须通过真实云端身份验证后才会登录；不记录或导出凭据。",
