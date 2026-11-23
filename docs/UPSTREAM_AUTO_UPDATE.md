@@ -1,0 +1,55 @@
+# YHongguo · 自动检查上游与应用版本提醒
+
+## 每天自动检查
+
+默认分支 rewrite 中的 [Daily OpenHongguo update and signed APK](../.github/workflows/daily-openhongguo.yml)
+工作流每天 **04:23 UTC** 检查 beilunyang/openhongguo 的 main 分支。GitHub 计划任务可能延后，
+并且开源项目的上游版本本身并不保证播放永远可用。
+
+只有上游 SHA 变化，或还没有发布当前 SHA 的签名升级包时才构建；
+也可以从 Actions 手动运行，并选择 rebuild_current。
+
+更新流程：
+
+1. 查上游 main 的完整 SHA，生成一个精确锁定的候选源码版本。
+2. 在 **无仓库写权限、无正式签名 Secrets 的构建任务**中，
+   运行 OpenHongguo 的签名测试、播放恢复测试、Android Debug 单元测试，
+   并构建、校验 arm64/16KB APK。
+3. 用临时 CI 证书生成候选 Release APK（该证书不对用户发布）。
+4. 所有测试成功后，单独的受保护发布任务下载候选 APK，使用仓库现有
+   HG_RELEASE_* Secrets **重新签名**，验证证书指纹、包名和 16KB 对齐。
+5. 只有这些检查全部通过，才将新的上游 SHA 推送至 rewrite，并发布
+   GitHub Releases 预发布版本，附件名称固定为 YHongguo-update.apk。
+6. 如果构建、测试、签名、校验或 Git 推送失败，不发布升级通知；
+   当前可以播放的 rewrite 版本保持不变。
+
+此流程不自动更新手机上的 App、不绕过安装确认，也不自动合并不兼容的上游 API。
+失败日志可从 GitHub Actions 查阅并修复，下一次运行将继续检查。
+
+## Android 客户端
+
+打开 App 时检查公开的 GitHub Releases，最多每 12 小时联网一次。
+仅处理标记为 upstream-auto-v<versionCode>-<SHA12>、版本号更高并且有
+YHongguo-update.apk 附件的发布。设置 → 应用更新 → 立即检查应用更新
+可以强制检查。发现更新会提示版本信息，点击后跳转到对应 GitHub Release 页面；
+用户自行下载安装，或选择以后再说。
+
+**签名限制**：固定 Release 签名可覆盖此前使用同一证书的正式版。
+GitHub Actions 临时 Debug 签名或其他开发版不能直接覆盖安装签名不同的正式版。
+首次切换正式版前请备份本地数据；不提供静默安装。
+
+## 前置配置
+
+必须事先在仓库 Settings → Secrets and variables → Actions 配置：
+
+- HG_RELEASE_KEYSTORE_BASE64
+- HG_RELEASE_STORE_PASSWORD
+- HG_RELEASE_KEY_ALIAS
+- HG_RELEASE_KEY_PASSWORD
+
+签名证书必须与现有 Release 证书指纹匹配；密钥不能进入 Git 仓库。
+若 GitHub Actions 的默认令牌不能推送 rewrite 或创建 Release，
+需在仓库 Actions 权限中启用 **Read and write permissions**（或让
+有写权限的 GitHub App Token 执行发布步骤）。
+
+构建通过只代表源代码兼容，不能证明官方服务端始终接受匿名播放签名。
