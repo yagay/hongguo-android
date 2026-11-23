@@ -74,6 +74,7 @@ import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.layout.ContentScale
 import androidx.compose.ui.platform.testTag
 import androidx.compose.ui.platform.LocalConfiguration
+import androidx.compose.ui.platform.LocalDensity
 import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.text.input.ImeAction
 import androidx.compose.ui.text.style.TextOverflow
@@ -123,7 +124,8 @@ internal fun CatalogScreen(
     ) { insets ->
         LazyVerticalGrid(
             columns = GridCells.Fixed(if (HongguoColors.isMaterial3)
-                HongguoThemePolicy.catalogColumns(LocalConfiguration.current.screenWidthDp)
+                HongguoThemePolicy.catalogColumns(LocalConfiguration.current.screenWidthDp,
+                    LocalDensity.current.fontScale)
                 else 2),
             state = grid,
             modifier = Modifier.fillMaxSize().padding(insets).testTag("web_catalog"),

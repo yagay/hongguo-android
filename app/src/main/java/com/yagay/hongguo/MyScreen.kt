@@ -60,6 +60,7 @@ import androidx.compose.ui.graphics.vector.ImageVector
 import androidx.compose.ui.layout.ContentScale
 import coil.compose.AsyncImage
 import androidx.compose.ui.platform.LocalConfiguration
+import androidx.compose.ui.platform.LocalDensity
 import androidx.compose.ui.platform.testTag
 import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.text.style.TextOverflow
@@ -75,7 +76,8 @@ import androidx.lifecycle.compose.collectAsStateWithLifecycle
 internal fun MyScreen(state: AppState, model: DramaViewModel, onBack: () -> Unit) {
     val account by model.account.state.collectAsStateWithLifecycle()
     val galleryColumns = if (HongguoColors.isMaterial3)
-        HongguoThemePolicy.galleryColumns(LocalConfiguration.current.screenWidthDp)
+        HongguoThemePolicy.galleryColumns(LocalConfiguration.current.screenWidthDp,
+            LocalDensity.current.fontScale)
         else 3
     val openAccount = { model.show(Modal.ACCOUNT) }
     var watchLaterOpen by remember { mutableStateOf(false) }

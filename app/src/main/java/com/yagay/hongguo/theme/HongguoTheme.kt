@@ -56,10 +56,15 @@ internal object HongguoThemePolicy {
     }
     fun shouldUseDynamic(style: String, source: String, sdk: Int): Boolean =
         style == "material3" && source == "dynamic" && sdk >= 31
-    fun catalogColumns(widthDp: Int): Int = (widthDp / 154).coerceIn(2, 6)
-    fun galleryColumns(widthDp: Int): Int = when {
-        widthDp >= 840 -> 6
-        widthDp >= 600 -> 5
+    /** Width includes system window; subtract page gutters before sizing posters. */
+    fun catalogColumns(widthDp: Int, fontScale: Float = 1f): Int {
+        val target = if (fontScale >= 1.3f) 184 else 160
+        return ((widthDp - 32 + 12).coerceAtLeast(0) / (target + 12)).coerceIn(2, 6)
+    }
+    fun galleryColumns(widthDp: Int, fontScale: Float = 1f): Int = when {
+        widthDp >= 840 -> if (fontScale >= 1.3f) 5 else 6
+        widthDp >= 600 -> if (fontScale >= 1.3f) 4 else 5
+        widthDp < 360 || fontScale >= 1.3f -> 2
         else -> 3
     }
     fun episodeColumns(widthDp: Int, largeFont: Boolean): Int = when {

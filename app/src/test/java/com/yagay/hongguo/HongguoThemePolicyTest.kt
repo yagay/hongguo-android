@@ -24,6 +24,11 @@ class HongguoThemePolicyTest {
         assertEquals(3, HongguoThemePolicy.galleryColumns(390))
         assertEquals(5, HongguoThemePolicy.galleryColumns(760))
         assertEquals(6, HongguoThemePolicy.galleryColumns(1080))
+        assertEquals(2, HongguoThemePolicy.galleryColumns(320))
+        assertEquals(2, HongguoThemePolicy.galleryColumns(390, 1.5f))
+        assertEquals(4, HongguoThemePolicy.galleryColumns(760, 1.5f))
+        assertEquals(2, HongguoThemePolicy.catalogColumns(390, 1.5f))
+        assertTrue(HongguoThemePolicy.catalogColumns(1080, 1f) >= 5)
     }
 
     @Test fun episodeGridPreservesFiveColumnsExceptSmallOrLargeFont() {

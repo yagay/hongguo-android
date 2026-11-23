@@ -33,6 +33,7 @@ import androidx.compose.runtime.Composable
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.draw.clip
+import androidx.compose.ui.graphics.Brush
 import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.layout.ContentScale
 import androidx.compose.ui.text.font.FontWeight
@@ -42,6 +43,10 @@ import androidx.compose.ui.unit.Dp
 import androidx.compose.ui.graphics.Shape
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
+import androidx.compose.ui.platform.LocalContext
+import androidx.compose.runtime.remember
+import androidx.compose.ui.graphics.painter.ColorPainter
+import coil.request.ImageRequest
 import coil.compose.AsyncImage
 
 /** One poster surface shared by catalog, account, history and related works.
@@ -57,13 +62,31 @@ internal fun HongguoPosterArtwork(
     fallback: @Composable BoxScope.() -> Unit = {},
     overlay: @Composable BoxScope.() -> Unit = {},
 ) {
-    val radius = if (HongguoColors.isMaterial3) 16.dp else classicRadius
-    Box(modifier.clip(RoundedCornerShape(radius))
-        .background(if (HongguoColors.isMaterial3) HongguoColors.accentSoft
-            else classicPlaceholderColor)) {
+    val material3 = HongguoColors.isMaterial3
+    val radius = if (material3) 16.dp else classicRadius
+    val placeholderColor = if (material3)
+        MaterialTheme.colorScheme.surfaceContainerHigh else classicPlaceholderColor
+    val placeholderBrush = if (material3) Brush.linearGradient(
+        listOf(MaterialTheme.colorScheme.surfaceContainerHigh,
+            MaterialTheme.colorScheme.surfaceContainerLow,
+            MaterialTheme.colorScheme.surfaceContainerHigh),
+    ) else Brush.linearGradient(listOf(placeholderColor, placeholderColor))
+    val context = LocalContext.current
+    // Keep Coil's async image path (no Subcompose layout in scrolling poster grids).
+    // Crossfade only in M3; Classic retains its original immediate presentation.
+    val request = remember(context, cover, material3) {
+        ImageRequest.Builder(context).data(cover)
+            .crossfade(if (material3) 180 else 0).build()
+    }
+    Box(modifier.clip(RoundedCornerShape(radius)).background(placeholderBrush)) {
         if (cover != null && (cover !is String || cover.isNotBlank())) {
-            AsyncImage(model = cover, contentDescription = title,
-                contentScale = ContentScale.Crop, modifier = Modifier.fillMaxSize())
+            AsyncImage(
+                model = request, contentDescription = title,
+                placeholder = ColorPainter(placeholderColor),
+                error = ColorPainter(placeholderColor),
+                contentScale = ContentScale.Crop,
+                modifier = Modifier.fillMaxSize(),
+            )
         } else fallback()
         overlay()
     }
