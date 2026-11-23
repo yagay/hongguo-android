@@ -378,6 +378,28 @@ class MainActivity : ComponentActivity() {
 private fun HongguoApp(model: DramaViewModel = viewModel()) {
     val state by model.state.collectAsStateWithLifecycle()
     val appContext = LocalContext.current
+    var availableAppUpdate by remember {
+        mutableStateOf<AppUpdateChecker.Candidate?>(null)
+    }
+    var appUpdateStatus by remember { mutableStateOf("") }
+    val updateScope = rememberCoroutineScope()
+    val checkAppUpdate: (Boolean) -> Unit = { force ->
+        updateScope.launch {
+            if (force) appUpdateStatus = "正在检查应用更新…"
+            when (val result = AppUpdateChecker.check(appContext.applicationContext, force)) {
+                is AppUpdateChecker.Result.Update -> {
+                    availableAppUpdate = result.candidate
+                    appUpdateStatus = "发现新版：" + result.candidate.versionName
+                }
+                AppUpdateChecker.Result.UpToDate ->
+                    appUpdateStatus = "当前已是最新发布版本"
+                AppUpdateChecker.Result.Skipped -> Unit
+                is AppUpdateChecker.Result.Failed ->
+                    appUpdateStatus = result.message
+            }
+        }
+    }
+    LaunchedEffect(Unit) { checkAppUpdate(false) }
     var autoPipEnabled by remember(appContext) {
         mutableStateOf(readAutoPipEnabled(appContext))
     }
@@ -711,7 +733,9 @@ private fun HongguoApp(model: DramaViewModel = viewModel()) {
                         }
                     Box(Modifier.fillMaxSize()) {
                     when {
-                        state.modal == Modal.SETTINGS -> SettingsScreen(state, model)
+                        state.modal == Modal.SETTINGS -> SettingsScreen(state, model,
+                            onCheckAppUpdate = { checkAppUpdate(true) },
+                            appUpdateStatus = appUpdateStatus)
                         state.modal == Modal.ACCOUNT -> AccountScreen(model)
                         activeRoute == PlaybackDestination.DETAILS &&
                             state.detail != null && !playerDetailsOverlay ->
@@ -858,6 +882,45 @@ private fun HongguoApp(model: DramaViewModel = viewModel()) {
                     )
                     .windowInsetsBottomHeight(WindowInsets.safeDrawing))
             }
+        }
+        availableAppUpdate?.takeIf { !systemPictureInPicture }?.let { update ->
+            AlertDialog(
+                onDismissRequest = {
+                    AppUpdateChecker.dismiss(appContext, update.versionCode)
+                    availableAppUpdate = null
+                },
+                title = { Text("Y红果发现新版本") },
+                text = {
+                    Column(verticalArrangement = Arrangement.spacedBy(9.dp)) {
+                        Text("最新版本：" + update.versionName)
+                        Text("已通过自动构建和签名检查。安装需要你手动确认。")
+                        if (BuildConfig.DEBUG) {
+                            Text("当前是 Debug 版，签名可能与正式版不同，不能直接覆盖安装。")
+                        }
+                    }
+                },
+                confirmButton = {
+                    TextButton(onClick = {
+                        val opened = runCatching {
+                            appContext.startActivity(
+                                Intent(Intent.ACTION_VIEW, Uri.parse(update.releaseUrl))
+                            )
+                        }.isSuccess
+                        if (!opened) Toast.makeText(
+                            appContext, "无法打开更新页面，请前往 GitHub Releases",
+                            Toast.LENGTH_LONG,
+                        ).show()
+                        AppUpdateChecker.dismiss(appContext, update.versionCode)
+                        availableAppUpdate = null
+                    }) { Text("查看并下载安装") }
+                },
+                dismissButton = {
+                    TextButton(onClick = {
+                        AppUpdateChecker.dismiss(appContext, update.versionCode)
+                        availableAppUpdate = null
+                    }) { Text("以后再说") }
+                },
+            )
         }
         if (confirmExitFeed) {
             HongguoConfirmDialog(
