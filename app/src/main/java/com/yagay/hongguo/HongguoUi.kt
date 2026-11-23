@@ -1122,15 +1122,20 @@ internal fun HongguoConfirmDialog(
     destructive: Boolean = false,
     cancelLabel: String = "取消",
 ) {
+    val material3 = HongguoColors.isMaterial3
     AlertDialog(
         onDismissRequest = onDismiss,
-        title = { Text(title, color = HongguoColors.ink) },
-        text = { Text(message, color = HongguoColors.muted) },
+        title = { Text(title, color = if (material3)
+            MaterialTheme.colorScheme.onSurface else HongguoColors.ink) },
+        text = { Text(message, color = if (material3)
+            MaterialTheme.colorScheme.onSurfaceVariant else HongguoColors.muted) },
         confirmButton = {
             if (destructive) {
                 TextButton(onClick = onConfirm,
-                    shape = RoundedCornerShape(HongguoUi.controlRadius)) {
-                    Text(confirmLabel, color = Color(0xFFD94B40))
+                    shape = RoundedCornerShape(if (material3) 24.dp
+                        else HongguoUi.controlRadius)) {
+                    Text(confirmLabel, color = if (material3)
+                        MaterialTheme.colorScheme.error else Color(0xFFD94B40))
                 }
             } else {
                 HongguoAction(label = confirmLabel, onClick = onConfirm,
@@ -1141,8 +1146,9 @@ internal fun HongguoConfirmDialog(
             HongguoAction(label = cancelLabel, onClick = onDismiss,
                 style = HongguoActionStyle.QUIET)
         },
-        shape = RoundedCornerShape(if (HongguoColors.isMaterial3) 28.dp
+        shape = RoundedCornerShape(if (material3) 28.dp
             else HongguoUi.cardRadius),
-        containerColor = HongguoColors.surface,
+        containerColor = if (material3)
+            MaterialTheme.colorScheme.surfaceContainerHigh else HongguoColors.surface,
     )
 }
