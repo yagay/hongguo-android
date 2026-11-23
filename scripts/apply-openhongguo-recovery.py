@@ -18,8 +18,10 @@ def change(path: Path, old: str, new: str) -> None:
 
 def main(root: Path) -> None:
     protocol = root / "internal/protocol/playback_v5.go"
+    # Port the verified 2026-11-20 route from upstream PR #17. The old
+    # /player/v1 path returns HTTP 200 with zero bytes, not a 404.
     change(protocol, 'PathPlaybackV5      = "/novel/player/multi_video_model/player/v1"',
-           'PathPlaybackV5      = "/novel/player/multi_video_model/player/v1"\n'
+           'PathPlaybackV5      = "/novel/player/multi_video_model/v1/"\n'
            '\tPathPlaybackVideoTab = "/reading/bookapi/video_tab/multi_video_model/v1/"')
 
     media = root / "sdk/media.go"
@@ -101,6 +103,7 @@ import (
     "context"
     "encoding/json"
     "fmt"
+    "strconv"
 
     "github.com/beilunyang/openhongguo/internal/protocol"
     "github.com/beilunyang/openhongguo/sdk/model"
@@ -110,33 +113,32 @@ import (
 // V5 model. It uses the SAME registered profile and the SAME V5 signer,
 // not another independent device/cookie/signature implementation.
 func (c *Client) recoverPlaybackVideoTab(ctx context.Context, p *DeviceProfile, episodeID string) (*model.Playback, error) {
-    pairs := protocol.PlaybackV5Pairs(c.identity(p))
-    for index := range pairs {
-        switch pairs[index][0] {
-        case "version_code", "manifest_version_code", "update_version_code", "pv_player":
-            pairs[index][1] = protocol.VersionCode
-        case "version_name":
-            pairs[index][1] = protocol.VersionName
-        }
+    // The bodyless video_tab GET has a distinct, ordered parameter template.
+    // Do not reuse PlaybackV5Pairs (which contains POST-only fields) or the
+    // older protocol.VersionCode: the captured 7.4.3.32 endpoint expects 74332.
+    // Ported from upstream PR #18's protocol.VideoTabPairs.
+    identity := c.identity(p)
+    device := identity.Device.OrDefault()
+    version := strconv.Itoa(protocol.PlaybackVersionCode)
+    pairs := [][2]string{
+        {"aid", protocol.AID}, {"app_name", protocol.AppName},
+        {"version_code", version}, {"version_name", protocol.PlaybackVersionName},
+        {"channel", device.Channel}, {"device_platform", "android"},
+        {"device_type", device.Model}, {"os_version", device.OSVersion},
+        {"update_version_code", version}, {"iid", identity.InstallID},
+        {"cdid", identity.CDID}, {"device_id", identity.DeviceID},
+        {"video_id", episodeID}, {"video_id_type", "0"},
+        {"device_level", "1"}, {"need_all_video_definition", "1"},
+        {"need_mp4_align", "0"}, {"use_os_player", "0"},
+        {"video_platform", "1024"}, {"source", "0"}, {"from_video_id", ""},
     }
-    pairs = append(pairs,
-        [2]string{"video_id", episodeID},
-        [2]string{"video_id_type", "0"},
-        [2]string{"device_level", "1"},
-        [2]string{"need_all_video_definition", "1"},
-        [2]string{"need_mp4_align", "0"},
-        [2]string{"use_os_player", "0"},
-        [2]string{"video_platform", "1024"},
-        [2]string{"source", "0"},
-        [2]string{"from_video_id", ""},
-    )
     ticket := c.clock().UnixMilli()
     query, headers, err := c.playbackSigner.Sign(pairs, ticket, nil, nil)
     if err != nil {
         return nil, err
     }
     headers = anonymousHeaders(c, p, ticket, headers)
-    headers["User-Agent"] = protocol.UserAgent(c.deviceOf(p))
+    headers["User-Agent"] = protocol.PlaybackUserAgent(c.deviceOf(p))
     headers["Accept"] = "application/json"
     headers["Accept-Language"] = "zh-CN,zh;q=0.9"
     // The TV recovery route does not send signed POST-body or session
