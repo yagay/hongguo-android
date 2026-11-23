@@ -18,6 +18,9 @@ import androidx.compose.runtime.mutableStateOf
 import androidx.compose.runtime.remember
 import androidx.compose.runtime.setValue
 import androidx.compose.ui.graphics.asAndroidBitmap
+import android.content.ContentValues
+import android.os.Build
+import android.provider.MediaStore
 import android.graphics.Bitmap
 import java.io.File
 import androidx.compose.ui.Modifier
@@ -166,14 +169,42 @@ class HongguoThemeSmokeTest {
     private fun saveScreenshot(name: String, bitmap: Bitmap) {
         val context = androidx.test.platform.app.InstrumentationRegistry
             .getInstrumentation().targetContext
-        val directory = context.getExternalFilesDir("visual-regression")
-            ?: File(context.filesDir, "visual-regression")
-        require(directory.exists() || directory.mkdirs()) {
-            "Cannot create visual regression directory"
-        }
-        File(directory, "${name}.png").outputStream().use { output ->
-            require(bitmap.compress(Bitmap.CompressFormat.PNG, 100, output)) {
-                "Screenshot PNG encoding failed"
+        if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.Q) {
+            // Android Gradle Test can uninstall the app after instrumentation.
+            // App-specific externalFilesDir is deleted on uninstall, so persist
+            // CI snapshots through MediaStore into the emulator's public gallery.
+            val values = ContentValues().apply {
+                put(MediaStore.MediaColumns.DISPLAY_NAME, "${name}.png")
+                put(MediaStore.MediaColumns.MIME_TYPE, "image/png")
+                put(MediaStore.MediaColumns.RELATIVE_PATH, "Pictures/YHongguo-visual-regression")
+                put(MediaStore.MediaColumns.IS_PENDING, 1)
+            }
+            val resolver = context.contentResolver
+            val uri = requireNotNull(
+                resolver.insert(MediaStore.Images.Media.EXTERNAL_CONTENT_URI, values)
+            ) { "Cannot create screenshot in Android MediaStore" }
+            try {
+                val output = requireNotNull(resolver.openOutputStream(uri)) {
+                    "Cannot open screenshot MediaStore output"
+                }
+                output.use {
+                    require(bitmap.compress(Bitmap.CompressFormat.PNG, 100, it)) {
+                        "Screenshot PNG encoding failed"
+                    }
+                }
+            } finally {
+                val published = ContentValues().apply {
+                    put(MediaStore.MediaColumns.IS_PENDING, 0)
+                }
+                resolver.update(uri, published, null, null)
+            }
+        } else {
+            val directory = File(context.filesDir, "visual-regression")
+            require(directory.exists() || directory.mkdirs()) {
+                "Cannot create visual regression directory"
+            }
+            File(directory, "${name}.png").outputStream().use {
+                require(bitmap.compress(Bitmap.CompressFormat.PNG, 100, it))
             }
         }
     }

@@ -115,7 +115,9 @@ jobs:
             set -e
             bash ./gradlew :app:connectedDebugAndroidTest -PuiSmokeOnly=true --build-cache --no-daemon
             mkdir -p visual-regression
-            adb pull /sdcard/Android/data/com.yagay.hongguo/files/visual-regression/ visual-regression/ || true
+            adb shell ls -l /sdcard/Pictures/YHongguo-visual-regression/
+            adb pull /sdcard/Pictures/YHongguo-visual-regression/ visual-regression/
+            test -n "$(find visual-regression/ -name '*.png' -print -quit)"
 
       - name: Upload UI visual regression screenshots
         if: always()
@@ -123,7 +125,7 @@ jobs:
         with:
           name: hongguo-compose-visual-regression
           path: visual-regression/
-          if-no-files-found: warn
+          if-no-files-found: error
           retention-days: 14
 
       - name: Lint diagnostic (does not block Debug APK)
