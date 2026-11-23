@@ -1,5 +1,6 @@
 package com.yagay.hongguo
 
+import androidx.compose.animation.animateColorAsState
 import androidx.compose.foundation.clickable
 import androidx.compose.foundation.Canvas
 import androidx.compose.foundation.gestures.detectDragGestures
@@ -244,8 +245,11 @@ internal fun HongguoTabs(
                 Box(
                     modifier = Modifier.weight(1f)
                         .clip(RoundedCornerShape(24.dp))
-                        .background(if (selected) MaterialTheme.colorScheme.secondaryContainer
-                            else MaterialTheme.colorScheme.surfaceContainer)
+                        .background(animateColorAsState(
+                            targetValue = if (selected) MaterialTheme.colorScheme.secondaryContainer
+                                else MaterialTheme.colorScheme.surfaceContainer,
+                            label = "galleryTabColor",
+                        ).value)
                         .clickable { if (!selected) onSelect(index) }
                         .testTag(tagPrefix + "_" + index)
                         .heightIn(min = LocalHongguoSpacing.current.minTouchTarget),

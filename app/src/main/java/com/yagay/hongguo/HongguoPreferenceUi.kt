@@ -43,13 +43,13 @@ internal fun HongguoSettingsSection(
     modifier: Modifier = Modifier,
     content: @Composable ColumnScope.() -> Unit,
 ) {
-    Column(modifier, verticalArrangement = Arrangement.spacedBy(4.dp)) {
+    Column(modifier, verticalArrangement = Arrangement.spacedBy(if (HongguoColors.isMaterial3) 8.dp else 4.dp)) {
         Text(
             title,
             color = HongguoColors.muted,
             fontSize = if (HongguoColors.isMaterial3) 14.sp else 12.sp,
             fontWeight = FontWeight.Medium,
-            modifier = Modifier.padding(start = 12.dp, top = 7.dp, bottom = 2.dp),
+            modifier = Modifier.padding(start = 12.dp, top = if (HongguoColors.isMaterial3) 10.dp else 7.dp, bottom = if (HongguoColors.isMaterial3) 4.dp else 2.dp),
         )
         Surface(
             shape = RoundedCornerShape(if (HongguoColors.isMaterial3) 24.dp else 12.dp),
@@ -58,7 +58,7 @@ internal fun HongguoSettingsSection(
             modifier = Modifier.fillMaxWidth(),
         ) {
             Column(
-                modifier = Modifier.fillMaxWidth().padding(horizontal = 13.dp, vertical = 2.dp),
+                modifier = Modifier.fillMaxWidth().padding(horizontal = if (HongguoColors.isMaterial3) 16.dp else 13.dp, vertical = if (HongguoColors.isMaterial3) 6.dp else 2.dp),
                 verticalArrangement = Arrangement.spacedBy(3.dp),
                 content = content,
             )

@@ -163,7 +163,9 @@ internal fun HongguoSearchEntry(
         shape = RoundedCornerShape(if (HongguoColors.isMaterial3) 28.dp
             else HongguoUi.controlRadius),
         color = HongguoColors.background) {
-        Row(Modifier.fillMaxWidth().padding(horizontal = 12.dp, vertical = 9.dp),
+        Row(Modifier.fillMaxWidth()
+            .heightIn(min = if (HongguoColors.isMaterial3) 52.dp else 0.dp)
+            .padding(horizontal = 12.dp, vertical = 9.dp),
             verticalAlignment = Alignment.CenterVertically,
             horizontalArrangement = Arrangement.spacedBy(9.dp)) {
             Icon(Icons.Outlined.Search, contentDescription = null,
@@ -178,11 +180,11 @@ internal fun HongguoSearchEntry(
 @Composable
 internal fun HongguoMetadataBadge(text: String, modifier: Modifier = Modifier) {
     Text(text, color = HongguoColors.muted,
-        fontSize = if (HongguoColors.isMaterial3) 11.sp else 10.sp,
+        fontSize = if (HongguoColors.isMaterial3) 12.sp else 10.sp,
         maxLines = 1,
         modifier = modifier.background(HongguoColors.surface,
             RoundedCornerShape(if (HongguoColors.isMaterial3) 12.dp else 4.dp))
-            .padding(horizontal = 5.dp, vertical = 3.dp))
+            .padding(horizontal = if (HongguoColors.isMaterial3) 8.dp else 5.dp, vertical = 3.dp))
 }
 
 @Composable

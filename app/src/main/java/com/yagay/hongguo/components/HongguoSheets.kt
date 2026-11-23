@@ -1,5 +1,6 @@
 package com.yagay.hongguo
 
+import androidx.compose.animation.animateColorAsState
 import androidx.compose.foundation.clickable
 import androidx.compose.foundation.Canvas
 import androidx.compose.foundation.gestures.detectDragGestures
@@ -208,6 +209,15 @@ internal fun HongguoEpisodeCell(
     cellHeight: androidx.compose.ui.unit.Dp = 44.dp,
 ) {
     val material3 = HongguoColors.isMaterial3
+    val targetBackground = when {
+        material3 && selected -> MaterialTheme.colorScheme.secondaryContainer
+        material3 -> MaterialTheme.colorScheme.surfaceContainerHigh
+        selected -> HongguoColors.accent
+        else -> HongguoColors.playerControlBackground
+    }
+    val cellBackground = if (material3)
+        animateColorAsState(targetValue = targetBackground, label = "episodeSelection").value
+    else targetBackground
     Box(
         modifier = modifier.height(
                 if (material3) maxOf(cellHeight, LocalHongguoSpacing.current.minTouchTarget)
@@ -215,12 +225,7 @@ internal fun HongguoEpisodeCell(
             )
             .clip(RoundedCornerShape(if (material3) 16.dp
                 else HongguoUi.controlRadius))
-            .background(when {
-                material3 && selected -> MaterialTheme.colorScheme.secondaryContainer
-                material3 -> MaterialTheme.colorScheme.surfaceContainerHigh
-                selected -> HongguoColors.accent
-                else -> HongguoColors.playerControlBackground
-            })
+            .background(cellBackground)
             .clickable(onClick = onClick),
         contentAlignment = Alignment.Center,
     ) {
@@ -265,7 +270,7 @@ internal fun HongguoPlayerPanel(
         if (!subtitle.isNullOrBlank()) {
             Text(
                 subtitle,
-                fontSize = HongguoUi.rowDescriptionSize,
+                fontSize = if (HongguoColors.isMaterial3) 13.sp else HongguoUi.rowDescriptionSize,
                 color = HongguoColors.muted,
             )
         }

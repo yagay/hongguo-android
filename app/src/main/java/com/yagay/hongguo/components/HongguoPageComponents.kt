@@ -96,7 +96,8 @@ internal fun HongguoEmptyState(message: String, modifier: Modifier = Modifier) {
         contentAlignment = Alignment.Center,
     ) {
         Text(message, color = HongguoColors.muted,
-            fontSize = if (HongguoColors.isMaterial3) 14.sp else 13.sp)
+            fontSize = if (HongguoColors.isMaterial3) 14.sp else 13.sp,
+            lineHeight = if (HongguoColors.isMaterial3) 20.sp else 18.sp)
     }
 }
 
