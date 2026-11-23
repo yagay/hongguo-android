@@ -803,10 +803,8 @@ constructor(
             if (code != 0) { trace.rejected(code); continue }
             val data = root.optJSONObject("data") ?: continue
             val rows = data.optJSONObject("video_model_data") ?: data
-            val row = StrictEpisodeModel.find(rows, id) ?: run {
-                trace.rejected()
-                continue
-            }
+            val row = StrictEpisodeModel.find(rows, id)
+            if (row == null) { trace.rejected(); continue }
             val raw = row.opt("video_model") ?: continue
             val model =
                 (when (raw) {
