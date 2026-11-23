@@ -44,6 +44,7 @@ object PlaybackProblem {
         val messages = chain.mapNotNull { it.message }
         val sdkCode = chain.filterIsInstance<OpenhongguoException>().firstOrNull()?.code
         val code = when {
+            sdkCode == ErrorCode.PLAYBACK_EMPTY -> "PLAYBACK_MODEL_EMPTY"
             sdkCode == ErrorCode.ANONYMOUS_LIMITED -> "PLAYBACK_ANONYMOUS_LIMITED"
             sdkCode == ErrorCode.DEVICE_REJECTED -> "PLAYBACK_DEVICE_REJECTED"
             sdkCode == ErrorCode.TRANSPORT -> "NETWORK_IO"
@@ -82,6 +83,7 @@ object PlaybackProblem {
         val hint = when (code) {
             "DEVICE_REGISTER_DNS" -> "设备注册阶段无法解析服务器域名"
             "DEVICE_REGISTER_TIMEOUT" -> "设备注册阶段请求超时"
+            "PLAYBACK_MODEL_EMPTY" -> "播放接口返回空模型，不能据此判定匿名限制"
             "PLAYBACK_EMPTY_RESPONSE" -> "播放模型接口返回空响应，上游暂不可用"
             "PLAYBACK_ANONYMOUS_LIMITED" -> "匿名播放模型未返回内容"
             "PLAYBACK_DEVICE_REJECTED" -> "播放设备身份被服务端拒绝"
