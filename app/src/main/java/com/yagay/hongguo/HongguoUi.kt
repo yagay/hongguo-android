@@ -198,8 +198,10 @@ internal fun <T> HongguoChoiceGroup(
             FilterChip(
                 selected = selected == value,
                 onClick = { onSelect(value) },
-                label = { Text(label, fontSize = HongguoUi.chipTextSize) },
-                shape = RoundedCornerShape(HongguoUi.controlRadius),
+                label = { Text(label, fontSize = if (HongguoColors.isMaterial3 && !dark)
+                    14.sp else HongguoUi.chipTextSize) },
+                shape = RoundedCornerShape(if (HongguoColors.isMaterial3 && !dark)
+                    16.dp else HongguoUi.controlRadius),
                 colors = HongguoChoiceColors(dark),
                 modifier = Modifier.testTag(tag + "_" +
                     (if (tagByValue) value.toString() else index.toString())),
@@ -224,7 +226,8 @@ internal fun HongguoToggleRow(
     val titleColor = if (dark) Color.White else HongguoColors.ink
     val supportingColor = if (dark) Color(0xFFC5C3C9) else HongguoColors.muted
     Row(
-        Modifier.fillMaxWidth().heightIn(min = 40.dp),
+        Modifier.fillMaxWidth().heightIn(min = if (HongguoColors.isMaterial3 && !dark)
+            56.dp else 40.dp),
         verticalAlignment = Alignment.CenterVertically,
         horizontalArrangement = Arrangement.spacedBy(10.dp),
     ) {
@@ -232,10 +235,12 @@ internal fun HongguoToggleRow(
             modifier = Modifier.weight(1f),
             verticalArrangement = Arrangement.spacedBy(3.dp),
         ) {
-            Text(title, color = titleColor, fontSize = 13.sp,
+            Text(title, color = titleColor,
+                fontSize = if (HongguoColors.isMaterial3 && !dark) 16.sp else 13.sp,
                 fontWeight = FontWeight.Medium)
             if (!description.isNullOrBlank()) {
-                Text(description, color = supportingColor, fontSize = 11.sp)
+                Text(description, color = supportingColor,
+                    fontSize = if (HongguoColors.isMaterial3 && !dark) 13.sp else 11.sp)
             }
         }
         Switch(
@@ -263,8 +268,10 @@ internal fun HongguoChoiceChip(
     FilterChip(
         selected = selected,
         onClick = onClick,
-        label = { Text(label, fontSize = HongguoUi.chipTextSize) },
-        shape = RoundedCornerShape(HongguoUi.controlRadius),
+        label = { Text(label, fontSize = if (HongguoColors.isMaterial3 && !dark)
+            14.sp else HongguoUi.chipTextSize) },
+        shape = RoundedCornerShape(if (HongguoColors.isMaterial3 && !dark)
+            16.dp else HongguoUi.controlRadius),
         colors = HongguoChoiceColors(dark),
         modifier = modifier,
     )
