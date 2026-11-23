@@ -10,6 +10,7 @@ import androidx.compose.foundation.layout.Box
 import androidx.compose.foundation.layout.Column
 import androidx.compose.foundation.layout.PaddingValues
 import androidx.compose.foundation.layout.Row
+import androidx.compose.foundation.layout.RowScope
 import androidx.compose.foundation.layout.Spacer
 import androidx.compose.foundation.layout.fillMaxSize
 import androidx.compose.foundation.layout.fillMaxWidth
@@ -69,13 +70,15 @@ internal fun DramaDetailScreen(state: AppState, model: DramaViewModel) {
     // Use the global theme across normal content, even on the detail route.
     // The hero still has a subtle gradient, but is no longer an unrelated
     // brown-only design system that clashes with Theater and My.
-    val DetailBackground = HongguoColors.background
-    val DetailTop = HongguoColors.accentSoft
-    val DetailCard = HongguoColors.surface
-    val DetailCardLight = HongguoColors.accentSoft
-    val DetailText = HongguoColors.ink
-    val DetailMuted = HongguoColors.muted
-    val DetailChip = HongguoColors.accentSoft
+    val material3 = HongguoColors.isMaterial3
+    val scheme = MaterialTheme.colorScheme
+    val DetailBackground = if (material3) scheme.background else HongguoColors.background
+    val DetailTop = if (material3) scheme.surfaceContainer else HongguoColors.accentSoft
+    val DetailCard = if (material3) scheme.surfaceContainerLow else HongguoColors.surface
+    val DetailCardLight = if (material3) scheme.secondaryContainer else HongguoColors.accentSoft
+    val DetailText = if (material3) scheme.onSurface else HongguoColors.ink
+    val DetailMuted = if (material3) scheme.onSurfaceVariant else HongguoColors.muted
+    val DetailChip = if (material3) scheme.secondaryContainer else HongguoColors.accentSoft
     val detail = state.detail ?: return
     val drama = detail.drama
     val context = LocalContext.current
@@ -103,6 +106,36 @@ internal fun DramaDetailScreen(state: AppState, model: DramaViewModel) {
         context.startActivity(Intent.createChooser(intent, "分享短剧"))
     }
 
+    val detailActions: @Composable RowScope.() -> Unit = {
+        HongguoIconAction(onClick = shareDrama) {
+            Icon(Icons.Outlined.Share, "分享", tint = DetailText)
+        }
+        Box {
+            HongguoIconAction(onClick = { showMenu = true }) {
+                Icon(Icons.Outlined.MoreVert, "更多", tint = DetailText)
+            }
+            HongguoPopupMenu(expanded = showMenu,
+                onDismissRequest = { showMenu = false }) {
+                DropdownMenuItem(
+                    text = { Text("播放当前集") },
+                    onClick = {
+                        showMenu = false
+                        model.playFromDetails(state.episodeIndex.coerceIn(
+                            0, detail.episodes.lastIndex.coerceAtLeast(0)))
+                    },
+                )
+                DropdownMenuItem(
+                    text = { Text(if (cloudSaved) "取消账号追剧" else "账号追剧") },
+                    onClick = {
+                        showMenu = false
+                        if (account.profile == null) model.show(Modal.ACCOUNT)
+                        else model.account.cloudFavorite(drama.id, !cloudSaved)
+                    },
+                )
+            }
+        }
+    }
+
     Column(Modifier.fillMaxSize().background(DetailBackground)
         .testTag("drama_detail_screen")) {
         LazyColumn(
@@ -115,45 +148,28 @@ internal fun DramaDetailScreen(state: AppState, model: DramaViewModel) {
                     Modifier.fillMaxWidth().background(
                         Brush.verticalGradient(listOf(DetailTop, DetailBackground)))
                 ) {
-                    Row(
-                        Modifier.fillMaxWidth().height(HongguoUi.pageTopBarHeight)
-                             .padding(horizontal = HongguoUi.pagePadding),
-                        verticalAlignment = Alignment.CenterVertically,
-                    ) {
-                        HongguoIconAction(
-                            onClick = model::backFromDramaDetails,
-                            modifier = Modifier.testTag("detail_back"),
+                    if (material3) {
+                        HongguoPageHeader(
+                            title = drama.title,
+                            onBack = model::backFromDramaDetails,
+                            modifier = Modifier.testTag("detail_material_topbar"),
+                            actions = detailActions,
+                        )
+                    } else {
+                        Row(
+                            Modifier.fillMaxWidth().height(HongguoUi.pageTopBarHeight)
+                                .padding(horizontal = HongguoUi.pagePadding),
+                            verticalAlignment = Alignment.CenterVertically,
                         ) {
-                            Icon(Icons.AutoMirrored.Outlined.ArrowBack, "返回",
-                                tint = DetailText)
-                        }
-                        Spacer(Modifier.weight(1f))
-                        HongguoIconAction(onClick = shareDrama) {
-                            Icon(Icons.Outlined.Share, "分享", tint = DetailText)
-                        }
-                        Box {
-                            HongguoIconAction(onClick = { showMenu = true }) {
-                                Icon(Icons.Outlined.MoreVert, "更多", tint = DetailText)
+                            HongguoIconAction(
+                                onClick = model::backFromDramaDetails,
+                                modifier = Modifier.testTag("detail_back"),
+                            ) {
+                                Icon(Icons.AutoMirrored.Outlined.ArrowBack, "返回",
+                                    tint = DetailText)
                             }
-                            HongguoPopupMenu(expanded = showMenu,
-                                onDismissRequest = { showMenu = false }) {
-                                DropdownMenuItem(
-                                    text = { Text("播放当前集") },
-                                    onClick = {
-                                        showMenu = false
-                                        model.playFromDetails(state.episodeIndex.coerceIn(
-                                            0, detail.episodes.lastIndex.coerceAtLeast(0)))
-                                    },
-                                )
-                                DropdownMenuItem(
-                                    text = { Text(if (cloudSaved) "取消账号追剧" else "账号追剧") },
-                                    onClick = {
-                                        showMenu = false
-                                        if (account.profile == null) model.show(Modal.ACCOUNT)
-                                        else model.account.cloudFavorite(drama.id, !cloudSaved)
-                                    },
-                                )
-                            }
+                            Spacer(Modifier.weight(1f))
+                            detailActions()
                         }
                     }
                     Row(
@@ -166,8 +182,9 @@ internal fun DramaDetailScreen(state: AppState, model: DramaViewModel) {
                             model = model.cover(drama.cover),
                             contentDescription = drama.title,
                             contentScale = ContentScale.Crop,
-                            modifier = Modifier.width(91.dp).height(130.dp)
-                                .clip(RoundedCornerShape(10.dp))
+                            modifier = Modifier.width(if (material3) 98.dp else 91.dp)
+                                .height(if (material3) 142.dp else 130.dp)
+                                .clip(RoundedCornerShape(if (material3) 18.dp else 10.dp))
                                 .background(DetailCard)
                                 .testTag("detail_poster"),
                         )
@@ -187,12 +204,12 @@ internal fun DramaDetailScreen(state: AppState, model: DramaViewModel) {
                                     Surface(
                                         onClick = { model.openTagResults(tag) },
                                         modifier = Modifier.testTag("detail_tag_${tag}"),
-                                        shape = RoundedCornerShape(6.dp),
+                                        shape = RoundedCornerShape(if (material3) 14.dp else 6.dp),
                                         color = DetailChip,
                                     ) {
                                         Text(tag + " ›", Modifier.padding(
                                             horizontal = 7.dp, vertical = 4.dp),
-                                            fontSize = 11.sp, color = DetailMuted,
+                                            fontSize = 11.sp, color = if (material3) scheme.onSecondaryContainer else DetailMuted,
                                             maxLines = 1)
                                     }
                                 }
@@ -307,7 +324,7 @@ internal fun DramaDetailScreen(state: AppState, model: DramaViewModel) {
                             modifier = Modifier.clickable { showAllReviews = !showAllReviews },
                             color = DetailMuted, fontSize = 12.sp)
                     }
-                    Surface(shape = RoundedCornerShape(14.dp),
+                    Surface(shape = RoundedCornerShape(if (material3) 24.dp else 14.dp),
                         color = DetailCard) {
                         Row(Modifier.fillMaxWidth().heightIn(min = 54.dp),
                             verticalAlignment = Alignment.CenterVertically) {
@@ -352,7 +369,8 @@ internal fun DramaDetailScreen(state: AppState, model: DramaViewModel) {
                                 Surface(
                                     modifier = Modifier.width(294.dp).heightIn(min = 108.dp),
                                     color = DetailCard,
-                                    shape = RoundedCornerShape(HongguoUi.controlRadius),
+                                    shape = RoundedCornerShape(if (material3) 20.dp
+                                        else HongguoUi.controlRadius),
                                 ) {
                                     Column(Modifier.padding(12.dp),
                                         verticalArrangement = Arrangement.spacedBy(10.dp)) {
@@ -537,9 +555,9 @@ internal fun DramaDetailScreen(state: AppState, model: DramaViewModel) {
                                     .testTag("detail_episode_$index"),
                                 color = if (index == state.episodeIndex)
                                     DetailCardLight else DetailCard,
-                                shape = RoundedCornerShape(9.dp),
+                                shape = RoundedCornerShape(if (material3) 16.dp else 9.dp),
                             ) {
-                                Box(Modifier.height(44.dp),
+                                Box(Modifier.height(if (material3) 48.dp else 44.dp),
                                     contentAlignment = Alignment.Center) {
                                     Text("${episode.index}", color = DetailText,
                                         fontSize = 14.sp)
@@ -552,10 +570,28 @@ internal fun DramaDetailScreen(state: AppState, model: DramaViewModel) {
         }
 
         Row(
-            Modifier.fillMaxWidth().background(HongguoColors.surface)
-                .padding(horizontal = 15.dp, vertical = 6.dp),
+            Modifier.fillMaxWidth().background(
+                if (material3) scheme.surfaceContainer else HongguoColors.surface)
+                .padding(horizontal = 15.dp, vertical = if (material3) 10.dp else 6.dp),
             horizontalArrangement = Arrangement.spacedBy(12.dp),
         ) {
+            if (material3) {
+                HongguoAction(
+                    label = if (locallySaved) "已收藏" else "收藏",
+                    onClick = { model.toggleFavoriteForDrama(drama) },
+                    icon = Icons.Outlined.BookmarkBorder,
+                    style = HongguoActionStyle.OUTLINE,
+                    modifier = Modifier.weight(1f).testTag("detail_favorite_button"),
+                )
+                FeatureAvailability.reviewComposerAction()?.let { openComposer ->
+                    HongguoAction(
+                        label = "写剧评",
+                        onClick = { openComposer(drama.id) },
+                        style = HongguoActionStyle.PRIMARY,
+                        modifier = Modifier.weight(1f).testTag("detail_write_review_button"),
+                    )
+                }
+            } else {
             Button(
                 onClick = { model.toggleFavoriteForDrama(drama) },
                 modifier = Modifier.weight(1f).height(42.dp)
@@ -578,6 +614,7 @@ internal fun DramaDetailScreen(state: AppState, model: DramaViewModel) {
                 ) {
                     Text("写剧评", color = DetailText, fontSize = 15.sp)
                 }
+            }
             }
         }
     }
