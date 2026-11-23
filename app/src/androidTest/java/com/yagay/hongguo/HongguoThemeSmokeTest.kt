@@ -4,6 +4,8 @@ import androidx.compose.material3.Text
 import androidx.compose.runtime.Composable
 import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.test.assertExists
+import androidx.compose.ui.test.captureToImage
+import androidx.compose.ui.test.onRoot
 import androidx.compose.ui.test.junit4.createComposeRule
 import androidx.compose.ui.test.onNodeWithText
 import androidx.test.ext.junit.runners.AndroidJUnit4
@@ -30,6 +32,9 @@ class HongguoThemeSmokeTest {
         }
         composeRule.onNodeWithText("主题页面").assertExists()
         composeRule.onNodeWithText("测试操作").assertExists()
+        val image = composeRule.onRoot().captureToImage()
+        org.junit.Assert.assertTrue(image.width > 0)
+        org.junit.Assert.assertTrue(image.height > 0)
     }
 
     private fun previewTheme(style: String): HongguoResolvedTheme {
