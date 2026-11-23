@@ -321,11 +321,11 @@ internal object KxgPlaybackStreams {
             if (error.code == ErrorCode.ANONYMOUS_LIMITED ||
                 error.code == ErrorCode.DEVICE_REJECTED ||
                 error.code == ErrorCode.RATE_LIMITED ||
-                error.code == ErrorCode.PLAYBACK_EMPTY) {
+                error.code == ErrorCode.RESPONSE_EMPTY) {
                 speculativeLimitedUntilMs =
                     System.currentTimeMillis() + SPECULATIVE_LIMIT_COOLDOWN_MS
                 diagnostics?.record("PRELOAD",
-                    if (error.code == ErrorCode.PLAYBACK_EMPTY)
+                    if (error.code == ErrorCode.RESPONSE_EMPTY)
                         "EMPTY_MODEL_SPECULATIVE_COOLDOWN" else "MODEL_DENIAL_SPECULATIVE_COOLDOWN")
             }
             throw error
