@@ -1,6 +1,8 @@
 package com.yagay.hongguo
 
 import androidx.compose.foundation.clickable
+import androidx.compose.foundation.selection.toggleable
+import androidx.compose.ui.semantics.Role
 import androidx.compose.foundation.Canvas
 import androidx.compose.foundation.gestures.detectDragGestures
 import androidx.compose.foundation.gestures.detectTapGestures
@@ -176,7 +178,9 @@ internal fun HongguoToggleRow(
     val supportingColor = if (dark) Color(0xFFC5C3C9) else HongguoColors.muted
     Row(
         Modifier.fillMaxWidth().heightIn(min = if (HongguoColors.isMaterial3 && !dark)
-            56.dp else 40.dp),
+            56.dp else 40.dp)
+            .toggleable(value = checked, role = Role.Switch,
+                onValueChange = onCheckedChange),
         verticalAlignment = Alignment.CenterVertically,
         horizontalArrangement = Arrangement.spacedBy(10.dp),
     ) {
@@ -194,7 +198,8 @@ internal fun HongguoToggleRow(
         }
         Switch(
             checked = checked,
-            onCheckedChange = onCheckedChange,
+            // The whole settings row is the single accessible switch target.
+            onCheckedChange = null,
             modifier = Modifier.testTag(tag),
             colors = if (HongguoColors.isMaterial3) SwitchDefaults.colors()
                 else SwitchDefaults.colors(

@@ -209,7 +209,10 @@ internal fun HongguoEpisodeCell(
 ) {
     val material3 = HongguoColors.isMaterial3
     Box(
-        modifier = modifier.height(cellHeight)
+        modifier = modifier.height(
+                if (material3) maxOf(cellHeight, LocalHongguoSpacing.current.minTouchTarget)
+                else cellHeight
+            )
             .clip(RoundedCornerShape(if (material3) 16.dp
                 else HongguoUi.controlRadius))
             .background(when {

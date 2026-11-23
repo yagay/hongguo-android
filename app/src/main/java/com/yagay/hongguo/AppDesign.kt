@@ -4,6 +4,15 @@ import androidx.compose.runtime.Composable
 import androidx.compose.runtime.ReadOnlyComposable
 import androidx.compose.ui.graphics.Color
 
+/**
+ * Player viewport colors are intentionally independent of the light/dynamic
+ * page scheme. Sheet/dialog colors still come from LocalHongguoTokens so
+ * their text retains adequate contrast in both Classic and Material 3.
+ */
+internal object HongguoPlayerPalette {
+    val viewportBackground = Color(0xFF101012)
+}
+
 /** Read-only compatibility bridge to HongguoAppTheme's CompositionLocal. */
 internal object HongguoColors {
     val accent: Color @Composable @ReadOnlyComposable get() = LocalHongguoTokens.current.accent
@@ -15,7 +24,7 @@ internal object HongguoColors {
     val divider: Color @Composable @ReadOnlyComposable get() = LocalHongguoTokens.current.divider
     val isDark: Boolean @Composable @ReadOnlyComposable get() = LocalHongguoTokens.current.dark
     val isMaterial3: Boolean @Composable @ReadOnlyComposable get() = LocalHongguoTokens.current.material3
-    val playerBackground = Color(0xFF101012)
+    val playerBackground = HongguoPlayerPalette.viewportBackground
     val playerSheet: Color @Composable @ReadOnlyComposable get() = surface
     val playerChrome: Color @Composable @ReadOnlyComposable get() = surface
     val playerChromeMuted: Color @Composable @ReadOnlyComposable get() = muted

@@ -247,10 +247,11 @@ internal fun HongguoTabs(
                             else MaterialTheme.colorScheme.surfaceContainer)
                         .clickable { if (!selected) onSelect(index) }
                         .testTag(tagPrefix + "_" + index)
-                        .height(44.dp),
+                        .heightIn(min = LocalHongguoSpacing.current.minTouchTarget),
                     contentAlignment = Alignment.Center,
                 ) {
                     Text(label,
+                        maxLines = 2,
                         color = if (selected) MaterialTheme.colorScheme.onSecondaryContainer
                             else MaterialTheme.colorScheme.onSurfaceVariant,
                         fontWeight = if (selected) FontWeight.SemiBold else FontWeight.Normal)
