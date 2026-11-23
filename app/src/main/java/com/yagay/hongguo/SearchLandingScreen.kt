@@ -6,6 +6,7 @@ import androidx.compose.foundation.background
 import androidx.compose.foundation.clickable
 import androidx.compose.foundation.horizontalScroll
 import androidx.compose.foundation.layout.Arrangement
+import androidx.compose.foundation.layout.aspectRatio
 import androidx.compose.foundation.layout.Box
 import androidx.compose.foundation.layout.Column
 import androidx.compose.foundation.layout.PaddingValues
@@ -54,6 +55,8 @@ import androidx.compose.ui.draw.clip
 import androidx.compose.ui.graphics.Brush
 import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.layout.ContentScale
+import androidx.compose.ui.platform.LocalConfiguration
+import androidx.compose.ui.platform.LocalDensity
 import androidx.compose.ui.platform.LocalContext
 import androidx.compose.ui.platform.testTag
 import androidx.compose.ui.text.font.FontWeight
@@ -84,6 +87,9 @@ internal fun SearchLandingScreen(
     val SearchInk = HongguoColors.ink
     val SearchMuted = HongguoColors.muted
     val browse by model.searchBrowse.collectAsStateWithLifecycle()
+    val posterColumns = if (HongguoColors.isMaterial3)
+        HongguoThemePolicy.galleryColumns(LocalConfiguration.current.screenWidthDp,
+            LocalDensity.current.fontScale) else 3
     val context = LocalContext.current
     LaunchedEffect(Unit) { model.loadSearchLanding() }
     fun submit(text: String) {
@@ -154,9 +160,10 @@ internal fun SearchLandingScreen(
                         )
                 }
             }
-            items(browse.items.chunked(3)) { dramas ->
+            items(browse.items.chunked(posterColumns)) { dramas ->
                 Row(Modifier.fillMaxWidth().padding(horizontal = HongguoUi.pagePadding),
-                    horizontalArrangement = Arrangement.spacedBy(9.dp)) {
+                    horizontalArrangement = Arrangement.spacedBy(
+                        if (HongguoColors.isMaterial3) 12.dp else 9.dp)) {
                     dramas.forEach { drama ->
                         Column(Modifier.weight(1f)
                             .clickable { onOpenDrama(drama); onClose() }
@@ -165,14 +172,17 @@ internal fun SearchLandingScreen(
                             HongguoPosterCover(
                                 cover = model.cover(drama.cover),
                                 title = drama.title,
-                                modifier = Modifier.fillMaxWidth().height(150.dp),
+                                modifier = if (HongguoColors.isMaterial3)
+                                    Modifier.fillMaxWidth().aspectRatio(2f / 3f)
+                                else Modifier.fillMaxWidth().height(150.dp),
                             )
                             Text(drama.title, color = SearchInk,
                                 maxLines = 2, overflow = TextOverflow.Ellipsis,
-                                fontSize = 12.sp)
+                                fontSize = if (HongguoColors.isMaterial3) 14.sp else 12.sp,
+                                lineHeight = if (HongguoColors.isMaterial3) 19.sp else 16.sp)
                         }
                     }
-                    repeat(3 - dramas.size) { Spacer(Modifier.weight(1f)) }
+                    repeat(posterColumns - dramas.size) { Spacer(Modifier.weight(1f)) }
                 }
             }
             if (browse.hasMore) item {

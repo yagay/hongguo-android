@@ -52,6 +52,8 @@ import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
 import androidx.compose.ui.platform.LocalContext
 import androidx.compose.runtime.remember
+import androidx.compose.runtime.LaunchedEffect
+import kotlinx.coroutines.delay
 import androidx.compose.runtime.getValue
 import androidx.compose.runtime.mutableStateOf
 import androidx.compose.runtime.setValue
@@ -77,7 +79,16 @@ internal fun HongguoPosterArtwork(
     val placeholderColor = if (material3)
         MaterialTheme.colorScheme.surfaceContainerHigh else classicPlaceholderColor
     var loading by remember(cover) { mutableStateOf(true) }
-    val canAnimate = material3 && loading && cover != null &&
+    var showSkeleton by remember(cover) { mutableStateOf(false) }
+    // Cache hits render immediately without triggering a costly shimmer.
+    LaunchedEffect(cover, material3) {
+        showSkeleton = false
+        if (material3) {
+            delay(140)
+            showSkeleton = true
+        }
+    }
+    val canAnimate = material3 && loading && showSkeleton && cover != null &&
         (cover !is String || cover.isNotBlank()) && ValueAnimator.areAnimatorsEnabled()
     val shimmer = if (canAnimate) {
         val transition = rememberInfiniteTransition(label = "posterSkeleton")

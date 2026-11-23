@@ -9,6 +9,8 @@ import android.app.Activity
 import android.content.Intent
 import androidx.activity.compose.rememberLauncherForActivityResult
 import androidx.activity.result.contract.ActivityResultContracts
+import androidx.compose.ui.platform.LocalConfiguration
+import androidx.compose.ui.platform.LocalDensity
 import androidx.compose.ui.platform.LocalContext
 import androidx.activity.compose.BackHandler
 import androidx.compose.foundation.background
@@ -56,6 +58,9 @@ internal fun AccountScreen(model: DramaViewModel) {
     val account by model.account.state.collectAsStateWithLifecycle()
     val libraryState by model.state.collectAsStateWithLifecycle()
     val context = LocalContext.current
+    val posterColumns = if (HongguoColors.isMaterial3)
+        HongguoThemePolicy.galleryColumns(LocalConfiguration.current.screenWidthDp,
+            LocalDensity.current.fontScale) else 3
     var webOpen by remember { mutableStateOf(false) }
     var webError by remember { mutableStateOf<String?>(null) }
     val webLauncher = rememberLauncherForActivityResult(ActivityResultContracts.StartActivityForResult()) { result ->
@@ -561,7 +566,7 @@ internal fun AccountScreen(model: DramaViewModel) {
                         }, color = HongguoColors.muted, fontSize = 13.sp)
                     }
                 }
-                items(gallery.chunked(3)) { line ->
+                items(gallery.chunked(posterColumns)) { line ->
                     Row(Modifier.fillMaxWidth(), horizontalArrangement = Arrangement.spacedBy(9.dp),
                         verticalAlignment = Alignment.Top) {
                         line.forEach { item ->
@@ -574,7 +579,7 @@ internal fun AccountScreen(model: DramaViewModel) {
                                     model.toggleLocalLikeForDrama(item.series.id)
                                 }), modifier = Modifier.weight(1f))
                         }
-                        repeat(3 - line.size) { Spacer(Modifier.weight(1f)) }
+                        repeat(posterColumns - line.size) { Spacer(Modifier.weight(1f)) }
                     }
                 }
             }
@@ -650,7 +655,8 @@ private fun AccountPoster(
             HongguoPosterArtwork(
                 cover = series.cover,
                 title = series.title,
-                modifier = Modifier.fillMaxWidth().aspectRatio(0.75f)
+                modifier = Modifier.fillMaxWidth().aspectRatio(
+                    if (HongguoColors.isMaterial3) 2f / 3f else 0.75f)
                     .combinedClickable(
                         enabled = onOpen != null || onSave != null,
                         onClick = { onOpen?.invoke() },
@@ -677,12 +683,15 @@ private fun AccountPoster(
         }
         Text(series.title.ifBlank { "未命名短剧" },
             maxLines = 2, minLines = 1, overflow = TextOverflow.Ellipsis,
-            color = HongguoColors.ink, fontSize = 13.sp,
-            lineHeight = 18.sp, fontWeight = FontWeight.Medium,
+            color = HongguoColors.ink,
+            fontSize = if (HongguoColors.isMaterial3) 14.sp else 13.sp,
+            lineHeight = if (HongguoColors.isMaterial3) 20.sp else 18.sp,
+            fontWeight = FontWeight.Medium,
             modifier = Modifier.fillMaxWidth().clickable { onOpen?.invoke() })
         if (subtitle.isNotBlank()) Text(
             subtitle, maxLines = 1, overflow = TextOverflow.Ellipsis,
-            color = HongguoColors.muted, fontSize = 11.sp,
+            color = HongguoColors.muted,
+            fontSize = if (HongguoColors.isMaterial3) 12.sp else 11.sp,
             modifier = Modifier.fillMaxWidth())
     }
 }

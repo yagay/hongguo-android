@@ -24,6 +24,9 @@ class HongguoThemePolicyTest {
         assertEquals(3, HongguoThemePolicy.galleryColumns(390))
         assertEquals(5, HongguoThemePolicy.galleryColumns(760))
         assertEquals(6, HongguoThemePolicy.galleryColumns(1080))
+        // Account, search and My should use this same grid policy.
+        assertEquals(2, HongguoThemePolicy.galleryColumns(390, 1.4f))
+        assertEquals(4, HongguoThemePolicy.galleryColumns(760, 1.4f))
         assertEquals(2, HongguoThemePolicy.galleryColumns(320))
         assertEquals(2, HongguoThemePolicy.galleryColumns(390, 1.5f))
         assertEquals(4, HongguoThemePolicy.galleryColumns(760, 1.5f))

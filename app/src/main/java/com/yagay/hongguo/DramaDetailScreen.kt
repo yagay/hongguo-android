@@ -7,6 +7,7 @@ import androidx.compose.foundation.clickable
 import androidx.compose.foundation.horizontalScroll
 import androidx.compose.foundation.verticalScroll
 import androidx.compose.foundation.layout.Arrangement
+import androidx.compose.foundation.layout.aspectRatio
 import androidx.compose.foundation.layout.Box
 import androidx.compose.foundation.layout.Column
 import androidx.compose.foundation.layout.PaddingValues
@@ -155,7 +156,7 @@ internal fun DramaDetailScreen(state: AppState, model: DramaViewModel) {
                     HongguoPosterCover(
                         cover = model.cover(drama.cover),
                         title = drama.title,
-                        modifier = Modifier.fillMaxWidth().height(390.dp),
+                        modifier = Modifier.fillMaxWidth().aspectRatio(2f / 3f),
                     )
                     Text(drama.title, color = DetailText,
                         style = MaterialTheme.typography.headlineSmall)
@@ -186,7 +187,7 @@ internal fun DramaDetailScreen(state: AppState, model: DramaViewModel) {
                 ) {
                     if (material3) {
                         HongguoPageHeader(
-                            title = drama.title,
+                            title = if (tabletLayout) "剧集详情" else drama.title,
                             onBack = model::backFromDramaDetails,
                             modifier = Modifier.testTag("detail_material_topbar"),
                             actions = detailActions,
@@ -246,7 +247,8 @@ internal fun DramaDetailScreen(state: AppState, model: DramaViewModel) {
                                     ) {
                                         Text(tag + " ›", Modifier.padding(
                                             horizontal = 7.dp, vertical = 4.dp),
-                                            fontSize = 11.sp, color = if (material3) scheme.onSecondaryContainer else DetailMuted,
+                                            fontSize = if (material3) 12.sp else 11.sp,
+                                            color = if (material3) scheme.onSecondaryContainer else DetailMuted,
                                             maxLines = 1)
                                     }
                                 }
@@ -271,7 +273,7 @@ internal fun DramaDetailScreen(state: AppState, model: DramaViewModel) {
                 }
             }
 
-            if (drama.synopsis.isNotBlank()) item {
+            if (drama.synopsis.isNotBlank() && !tabletLayout) item {
                 Column(Modifier.padding(horizontal = 15.dp),
                     verticalArrangement = Arrangement.spacedBy(9.dp)) {
                     DetailHeader("剧情简介")
@@ -343,7 +345,7 @@ internal fun DramaDetailScreen(state: AppState, model: DramaViewModel) {
                                         model.openTagResults(actor.role)
                                     },
                                     color = DetailMuted,
-                                    fontSize = 10.sp, maxLines = 1,
+                                    fontSize = if (material3) 12.sp else 10.sp, maxLines = 1,
                                     overflow = TextOverflow.Ellipsis)
                         }
                     }
@@ -501,7 +503,9 @@ internal fun DramaDetailScreen(state: AppState, model: DramaViewModel) {
                                 HongguoPosterCover(
                                     cover = model.cover(work.drama.cover),
                                     title = work.drama.title,
-                                    modifier = Modifier.width(90.dp).height(122.dp),
+                                    modifier = if (material3)
+                                        Modifier.width(90.dp).aspectRatio(2f / 3f)
+                                    else Modifier.width(90.dp).height(122.dp),
                                     classicRadius = 8.dp,
                                 )
                                 if (work.season.isNotBlank() || work.upcoming)
@@ -528,11 +532,13 @@ internal fun DramaDetailScreen(state: AppState, model: DramaViewModel) {
                         state.openHongguoSeasons.forEach { season ->
                             Column(Modifier.width(94.dp).clickable { model.openRelatedDrama(season) },
                                 verticalArrangement = Arrangement.spacedBy(6.dp)) {
-                                AsyncImage(model = model.cover(season.cover),
-                                    contentDescription = season.title,
-                                    contentScale = ContentScale.Crop,
-                                    modifier = Modifier.width(90.dp).height(122.dp)
-                                        .clip(RoundedCornerShape(8.dp)))
+                                HongguoPosterCover(
+                                    cover = model.cover(season.cover),
+                                    title = season.title,
+                                    modifier = if (material3)
+                                        Modifier.width(90.dp).aspectRatio(2f / 3f)
+                                    else Modifier.width(90.dp).height(122.dp),
+                                    classicRadius = 8.dp)
                                 Text(season.title, color = DetailText, fontSize = 12.sp,
                                     maxLines = 2, overflow = TextOverflow.Ellipsis)
                             }
@@ -555,11 +561,13 @@ internal fun DramaDetailScreen(state: AppState, model: DramaViewModel) {
                         state.guessWorks.take(18).forEach { guess ->
                             Column(Modifier.width(94.dp).clickable { model.openRelatedDrama(guess) },
                                 verticalArrangement = Arrangement.spacedBy(6.dp)) {
-                                AsyncImage(model = model.cover(guess.cover),
-                                    contentDescription = guess.title,
-                                    contentScale = ContentScale.Crop,
-                                    modifier = Modifier.width(90.dp).height(122.dp)
-                                        .clip(RoundedCornerShape(8.dp)))
+                                HongguoPosterCover(
+                                    cover = model.cover(guess.cover),
+                                    title = guess.title,
+                                    modifier = if (material3)
+                                        Modifier.width(90.dp).aspectRatio(2f / 3f)
+                                    else Modifier.width(90.dp).height(122.dp),
+                                    classicRadius = 8.dp)
                                 Text(guess.title, color = DetailText, fontSize = 12.sp,
                                     maxLines = 2, overflow = TextOverflow.Ellipsis)
                             }
