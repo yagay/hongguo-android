@@ -129,7 +129,7 @@ func TestV5RecoveryNeverAcceptsAnotherEpisode(t *testing.T) {
     })
     client, _ := resetClient(t, handler, sdk.Int(0))
     pb, err := client.ResolvePlayback(context.Background(), recoveryEpisode, sdk.PlaybackOptions{})
-    if pb != nil || !errors.Is(err, sdk.ErrPlaybackEmpty) || tabRequests != 1 || legacyRequests != 0 {
+    if pb != nil || !errors.Is(err, sdk.ErrResponseEmpty) || tabRequests != 1 || legacyRequests != 0 {
         t.Fatalf("cross-episode recovery must fail closed: model=%#v err=%v tab=%d legacy=%d",
             pb, err, tabRequests, legacyRequests)
     }
