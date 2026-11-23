@@ -10,10 +10,20 @@ import org.json.JSONObject
  * for the preferred signed video_tab request. Never select another VID.
  */
 internal object SingleVideoPlaybackModel {
-    fun parse(body: String): JSONObject? {
+    fun parse(body: String, requestedEpisodeId: String): JSONObject? {
+        if (!requestedEpisodeId.matches(Regex("[0-9]{1,30}"))) return null
         val root = runCatching { JSONObject(body) }.getOrNull() ?: return null
         if (root.optInt("code", root.optInt("Code", -1)) != 0) return null
         val data = root.optJSONObject("data") ?: return null
+        // A single-video RPC need not echo the ID; when it does, however,
+        // a mismatch is strong evidence the response belongs to another VID.
+        fun belongsToRequestedEpisode(obj: JSONObject): Boolean =
+            listOf("video_id", "vid", "episode_id").all { key ->
+                !obj.has(key) || obj.isNull(key) ||
+                    obj.optString(key).isBlank() ||
+                    obj.optString(key) == requestedEpisodeId
+            }
+        if (!belongsToRequestedEpisode(data)) return null
         val raw = data.opt("video_model")
         val model = when (raw) {
             is JSONObject -> raw
@@ -30,6 +40,7 @@ internal object SingleVideoPlaybackModel {
             }
             else -> null
         } ?: if (data.has("video_list")) data else return null
+        if (!belongsToRequestedEpisode(model)) return null
         val list = model.opt("video_list")
         if (list is JSONObject) {
             val normalized = JSONArray()
