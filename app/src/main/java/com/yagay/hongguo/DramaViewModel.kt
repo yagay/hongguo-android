@@ -360,7 +360,7 @@ class DramaViewModel(application: Application) : AndroidViewModel(application) {
     private val publicWebsite = NativeWebsiteSource(diagnostics = diagnostics)
     private val nativeSource = NativeHongguoSource(diagnostics = diagnostics)
     /** Kaixinguo SDK is now the catalog and MP4 playback-model source. */
-    private val openHongguo = OpenHongguoSource(application)
+    private val openHongguo = OpenHongguoSource(application, diagnostics)
     private val kxgSource = com.yagay.hongguo.kxg.KxgContentSource(openHongguo)
     private val catalogRepository = CatalogRepository(kxgSource) { source }
     internal val openHongguoDiscovery: OpenHongguoSource get() = openHongguo
@@ -3060,6 +3060,10 @@ class DramaViewModel(application: Application) : AndroidViewModel(application) {
         // the comment action, without delaying playback address preparation.
         loadComments(reset = true)
         diagnostics.record("PLAYBACK", "START")
+        diagnostics.record("PLAYBACK",
+            if (account.state.value.profile != null)
+                "ACCOUNT_VERIFIED_GUEST_PLAYBACK_UNLINKED"
+            else "GUEST_PLAYBACK_NO_ACCOUNT")
         playbackStartAtMs = android.os.SystemClock.elapsedRealtime()
         detailJob = viewModelScope.launch {
             val started = System.nanoTime()
@@ -3149,6 +3153,7 @@ class DramaViewModel(application: Application) : AndroidViewModel(application) {
                             detail, index, uri, null, checkpoint, version)
                     } else if (shouldUseNative) {
                         diagnostics.record("PLAYBACK", "SIGNED_NATIVE_FALLBACK_START")
+                        diagnostics.record("PLAYBACK", "NATIVE_DEVICE_IS_GUEST_NOT_WEB_ACCOUNT")
                         mutable.update { it.copy(
                             playbackRecoveryMessage = "正在尝试备用播放线路",
                             playbackError = null) }
