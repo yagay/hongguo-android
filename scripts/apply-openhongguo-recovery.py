@@ -1,5 +1,5 @@
 #!/usr/bin/env python3
-"""Apply a narrowly-scoped, fail-closed playback recovery patch to official v0.4.0.
+"""Apply a narrowly-scoped, fail-closed playback recovery patch to pinned upstream main.
 
 The patch lives outside the vendored source: the build script clones a pinned,
 auditable upstream commit, then applies this patch before building its AAR.
@@ -17,6 +17,13 @@ def change(path: Path, old: str, new: str) -> None:
 
 
 def main(root: Path) -> None:
+    # The upstream baseline already includes the 2026-11-23 v04.10.03
+    # signing fixes (real-device-shaped x-medusa and matching gorgon/helios).
+    # Never patch internal/protocol/sign here: preserve upstream signer intact.
+    sign = root / "internal/protocol/sign/medusa_v5.go"
+    content = sign.read_text(encoding="utf-8")
+    if "medusaDeviceStatus   = 369" not in content or "medusaEmulatorStatus = 377" not in content:
+        raise SystemExit("Pinned source does not contain expected 2026-11-23 signer repair")
     protocol = root / "internal/protocol/playback_v5.go"
     # The official 7.4.2.32 runtime actually sends /player/v1. Preserve the
     # version-pinned primary path and register the distinct signed GET fallback.
@@ -204,7 +211,7 @@ func (c *Client) recoverPlaybackVideoTab(ctx context.Context, p *DeviceProfile, 
     return protocol.ParsePlayback(normalized, episodeID)
 }
 '''.replace('\\`', '`'), encoding="utf-8")
-    print("Applied official OpenHongguo player/v1 + distinct RESPONSE_EMPTY classification + same-identity video_tab recovery")
+    print("Applied upstream 2026-11-23 signing fix unchanged + player/v1 + RESPONSE_EMPTY + same-identity video_tab recovery")
 
 
 if __name__ == "__main__":
