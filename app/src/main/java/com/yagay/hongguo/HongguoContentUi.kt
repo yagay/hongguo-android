@@ -39,6 +39,7 @@ import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.text.style.TextOverflow
 import androidx.compose.ui.text.input.ImeAction
 import androidx.compose.ui.unit.Dp
+import androidx.compose.ui.graphics.Shape
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
 import coil.compose.AsyncImage
@@ -130,6 +131,7 @@ internal fun HongguoTextField(
     keyboardOptions: KeyboardOptions = KeyboardOptions.Default,
     keyboardActions: KeyboardActions = KeyboardActions.Default,
     visualTransformation: VisualTransformation = VisualTransformation.None,
+    classicShape: Shape = OutlinedTextFieldDefaults.shape,
 ) {
     val material3 = HongguoColors.isMaterial3
     OutlinedTextField(
@@ -145,19 +147,8 @@ internal fun HongguoTextField(
         keyboardOptions = keyboardOptions,
         keyboardActions = keyboardActions,
         visualTransformation = visualTransformation,
-        shape = RoundedCornerShape(
-            if (material3) 16.dp else HongguoUi.controlRadius
-        ),
-        colors = if (material3) OutlinedTextFieldDefaults.colors()
-        else OutlinedTextFieldDefaults.colors(
-            focusedBorderColor = HongguoColors.accent,
-            unfocusedBorderColor = HongguoColors.divider,
-            cursorColor = HongguoColors.accent,
-            focusedTextColor = HongguoColors.ink,
-            unfocusedTextColor = HongguoColors.ink,
-            focusedLabelColor = HongguoColors.accent,
-            unfocusedLabelColor = HongguoColors.muted,
-        ),
+        shape = if (material3) RoundedCornerShape(16.dp) else classicShape,
+        colors = OutlinedTextFieldDefaults.colors(),
     )
 }
 
