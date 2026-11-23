@@ -158,16 +158,27 @@ internal fun SettingsScreen(
                         onClick = { choiceSheet = "ui_style" },
                     )
                     HongguoSettingsDivider()
-                    HongguoSettingsRow(
-                        title = "主题样式",
-                        value = when (state.themeStyle) {
-                            "immersive" -> "沉浸暗场"
-                            "cards" -> "内容卡片"
-                            else -> "暖白精修"
-                        },
-                        tag = "theme_style_row",
-                        onClick = { choiceSheet = "theme_style" },
-                    )
+                    if (state.uiStyle == "material3") {
+                        HongguoSettingsRow(
+                            title = "Material You 配色",
+                            value = if (Build.VERSION.SDK_INT >= 31)
+                                "系统动态配色" else "红果暖色方案",
+                            subtitle = "圆角、按钮、卡片和弹窗共用 Material 3 色彩与形状",
+                            tag = "material3_colors_row",
+                            showChevron = false,
+                        )
+                    } else {
+                        HongguoSettingsRow(
+                            title = "主题样式",
+                            value = when (state.themeStyle) {
+                                "immersive" -> "沉浸暗场"
+                                "cards" -> "内容卡片"
+                                else -> "暖白精修"
+                            },
+                            tag = "theme_style_row",
+                            onClick = { choiceSheet = "theme_style" },
+                        )
+                    }
                     HongguoSettingsDivider()
                     HongguoSettingsRow(
                         title = "显示模式",
