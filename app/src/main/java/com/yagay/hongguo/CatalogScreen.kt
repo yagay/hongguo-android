@@ -165,10 +165,7 @@ internal fun CatalogScreen(
                     val drama = if (cloud != null)
                         Drama(cloud.series.id, cloud.series.title, cloud.series.cover)
                     else local!!.drama
-                    Surface(
-                        shape = RoundedCornerShape(HongguoUi.cardRadius),
-                        color = HongguoColors.surface,
-                    ) {
+                    HongguoCard() {
                         Row(Modifier.fillMaxWidth().clickable {
                             if (cloud != null) model.openCloudProgress(cloud)
                             else if (local != null) model.open(
@@ -221,12 +218,19 @@ internal fun CatalogScreen(
             }
             state.error?.let { error ->
                 item(span = { GridItemSpan(maxLineSpan) }) {
-                    Surface(color = HongguoColors.accentSoft, shape = RoundedCornerShape(14.dp)) {
+                    Surface(
+                        color = if (HongguoColors.isMaterial3)
+                            MaterialTheme.colorScheme.errorContainer else HongguoColors.accentSoft,
+                        shape = RoundedCornerShape(
+                            if (HongguoColors.isMaterial3) 24.dp else 14.dp),
+                    ) {
                         Column(Modifier.fillMaxWidth().padding(18.dp),
                             verticalArrangement = Arrangement.spacedBy(8.dp)) {
                             Text("暂时无法加载", color = HongguoColors.ink,
                                 fontWeight = FontWeight.SemiBold)
-                            Text(error, color = Color(0xFF8B4434), fontSize = 12.sp)
+                            Text(error, color = if (HongguoColors.isMaterial3)
+                                MaterialTheme.colorScheme.onErrorContainer else Color(0xFF8B4434),
+                                fontSize = 12.sp)
                             TextButton(onClick = model::refresh) { Text("重试") }
                         }
                     }
@@ -484,7 +488,9 @@ private fun CatalogPoster(drama: Drama, cover: String,
         }
         Text(
             drama.title, maxLines = 2, overflow = TextOverflow.Ellipsis,
-            lineHeight = 17.sp, fontSize = 13.sp, fontWeight = FontWeight.SemiBold,
+            lineHeight = if (HongguoColors.isMaterial3) 19.sp else 17.sp,
+            fontSize = if (HongguoColors.isMaterial3) 14.sp else 13.sp,
+            fontWeight = FontWeight.SemiBold,
             color = HongguoColors.ink,
         )
         // Real category/actor labels are filled in asynchronously from the
