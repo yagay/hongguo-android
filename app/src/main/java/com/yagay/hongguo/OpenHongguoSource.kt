@@ -37,7 +37,10 @@ internal class OpenHongguoSource(context: Context) {
     private val applicationContext = context.applicationContext
     private val client: OpenhongguoClient by lazy(LazyThreadSafetyMode.SYNCHRONIZED) {
         OpenhongguoClient.create(applicationContext,
-            ClientOptions(retryAttempts = 3, deviceResets = 3))
+            // Register a stable guest identity, and do not rotate identities on
+        // ambiguous HTTP-200/empty playback models. Explicit device rejection
+        // stays a separate SDK error; callers can surface it, not bypass it.
+        ClientOptions(retryAttempts = 2, deviceResets = 0))
     }
 
     /**
