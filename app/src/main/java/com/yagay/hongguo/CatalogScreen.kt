@@ -93,6 +93,7 @@ internal fun CatalogScreen(
     onMine: () -> Unit = {}, onSearchOpen: () -> Unit = {},
 ) {
     val account by model.account.state.collectAsStateWithLifecycle()
+    val material3Layout = HongguoColors.isMaterial3
     var filtersOpen by rememberSaveable { mutableStateOf(false) }
     var openSourceExplore by rememberSaveable { mutableStateOf(false) }
     val grid = rememberLazyGridState()
@@ -157,7 +158,7 @@ internal fun CatalogScreen(
             }
             // Material3 puts the continue-watching shortcut before filters,
             // rather than hiding the primary next action beneath the tools.
-            if (!HongguoColors.isMaterial3) {
+            if (!material3Layout) {
                 item(span = { GridItemSpan(maxLineSpan) }) {
                     CatalogSectionTools(state, model, onFilters = { filtersOpen = true })
                 }
@@ -209,7 +210,7 @@ internal fun CatalogScreen(
                     }
                 }
             }
-            if (HongguoColors.isMaterial3) {
+            if (material3Layout) {
                 item(span = { GridItemSpan(maxLineSpan) }) {
                     CatalogSectionTools(state, model, onFilters = { filtersOpen = true })
                 }
