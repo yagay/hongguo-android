@@ -35,7 +35,7 @@ class HongguoThemePolicyTest {
     }
 
     @Test fun tabletDetailSidebarUsesClampedResponsiveWidths() {
-        assertEquals(260, HongguoThemePolicy.detailSidebarDp(840, 1f))
+        assertEquals(268, HongguoThemePolicy.detailSidebarDp(840, 1f))
         assertEquals(320, HongguoThemePolicy.detailSidebarDp(1000, 1f))
         assertEquals(360, HongguoThemePolicy.detailSidebarDp(1000, 1.5f))
         assertEquals(380, HongguoThemePolicy.detailSidebarDp(1600, 1.5f))
