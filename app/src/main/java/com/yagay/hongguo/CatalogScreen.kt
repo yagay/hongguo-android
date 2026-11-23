@@ -122,7 +122,9 @@ internal fun CatalogScreen(
                     account.upcoming.isNotEmpty() || account.online.isNotEmpty())) },
     ) { insets ->
         LazyVerticalGrid(
-            columns = GridCells.Fixed(2),
+            columns = GridCells.Fixed(if (HongguoColors.isMaterial3)
+                HongguoThemePolicy.catalogColumns(LocalConfiguration.current.screenWidthDp)
+                else 2),
             state = grid,
             modifier = Modifier.fillMaxSize().padding(insets).testTag("web_catalog"),
             contentPadding = PaddingValues(start = HongguoUi.pagePadding, top = 10.dp,

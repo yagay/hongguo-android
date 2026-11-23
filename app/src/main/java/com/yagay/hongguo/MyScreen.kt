@@ -73,6 +73,9 @@ import androidx.lifecycle.compose.collectAsStateWithLifecycle
 @Composable
 internal fun MyScreen(state: AppState, model: DramaViewModel, onBack: () -> Unit) {
     val account by model.account.state.collectAsStateWithLifecycle()
+    val galleryColumns = if (HongguoColors.isMaterial3)
+        HongguoThemePolicy.galleryColumns(LocalConfiguration.current.screenWidthDp)
+        else 3
     val openAccount = { model.show(Modal.ACCOUNT) }
     var watchLaterOpen by remember { mutableStateOf(false) }
     var offlineOpen by remember { mutableStateOf(false) }
@@ -376,7 +379,7 @@ internal fun MyScreen(state: AppState, model: DramaViewModel, onBack: () -> Unit
                     else "暂无预约作品"
             }, color = HongguoColors.muted, fontSize = 13.sp)
         }
-        items(gallery.chunked(3)) { row ->
+        items(gallery.chunked(galleryColumns)) { row ->
             Row(Modifier.fillMaxWidth(),
                 horizontalArrangement = Arrangement.spacedBy(8.dp)) {
                 row.forEach { drama ->

@@ -31,6 +31,7 @@ import androidx.compose.ui.Modifier
 import androidx.compose.ui.draw.clip
 import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.platform.LocalConfiguration
+import androidx.compose.ui.platform.LocalDensity
 import androidx.compose.ui.platform.testTag
 import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.text.style.TextOverflow
@@ -59,7 +60,13 @@ internal fun ReelEpisodeSelectionSheet(
     val maxGridHeight = (screenHeight * 0.64f).dp
     val currentIndex = state.episodeIndex.coerceIn(0, detail.episodes.lastIndex)
     val currentEpisode = detail.episodes[currentIndex].index
-    val initialItem = if (currentIndex > 25) (currentIndex / 5 - 1) * 5 else 0
+    val episodeColumns = if (HongguoColors.isMaterial3)
+        HongguoThemePolicy.episodeColumns(
+            LocalConfiguration.current.screenWidthDp,
+            LocalDensity.current.fontScale > 1.3f)
+        else 5
+    val initialItem = if (currentIndex > episodeColumns * 5)
+        ((currentIndex / episodeColumns) - 1) * episodeColumns else 0
     val gridState = rememberLazyGridState(initialFirstVisibleItemIndex = initialItem)
 
     HongguoPlayerSheet(
@@ -104,7 +111,7 @@ internal fun ReelEpisodeSelectionSheet(
             }
 
             LazyVerticalGrid(
-                columns = GridCells.Fixed(5),
+                columns = GridCells.Fixed(episodeColumns),
                 state = gridState,
                 modifier = Modifier.fillMaxWidth()
                     .heightIn(max = maxGridHeight)
@@ -126,7 +133,7 @@ internal fun ReelEpisodeSelectionSheet(
                     )
                 }
 
-                item(key = "related_heading", span = { GridItemSpan(5) }) {
+                item(key = "related_heading", span = { GridItemSpan(episodeColumns) }) {
                     Column(Modifier.fillMaxWidth().padding(top = 8.dp)) {
                         HongguoMenuSeparator()
                         HongguoSheetHeader(title = "其他季 / 相关作品") {
@@ -152,7 +159,7 @@ internal fun ReelEpisodeSelectionSheet(
                     }
                 }
 
-                item(key = "related_grid", span = { GridItemSpan(5) }) {
+                item(key = "related_grid", span = { GridItemSpan(episodeColumns) }) {
                     val currentRelated = state.relatedSeries == detail.drama.id
                     val related = if (currentRelated) state.relatedWorks.take(15)
                         else emptyList()

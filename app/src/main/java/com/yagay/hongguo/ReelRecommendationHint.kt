@@ -74,10 +74,10 @@ internal fun ReelRecommendationHint(
         )
     }
     if (explanationOpen) {
-        AlertDialog(
+        HongguoContentDialog(
             onDismissRequest = { explanationOpen = false },
-            title = { Text("刷剧推荐来源与个性化核验") },
-            text = {
+            title = "刷剧推荐来源与个性化核验",
+            content = {
                 Column(
                     modifier = Modifier.heightIn(max = 410.dp)
                         .verticalScroll(rememberScrollState()),

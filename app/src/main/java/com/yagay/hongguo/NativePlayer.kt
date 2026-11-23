@@ -968,10 +968,10 @@ internal fun NativePlayer(
     } // ReelModeSlidePlayer content
     } // ModalNavigationDrawer content
 
-    if (clearScreenMenuOpen) AlertDialog(
+    if (clearScreenMenuOpen) HongguoContentDialog(
         onDismissRequest = { clearScreenMenuOpen = false },
-        title = { Text("清屏设置") },
-        text = {
+        title = "清屏设置",
+        content = {
             Column(verticalArrangement = Arrangement.spacedBy(2.dp)) {
                 Text("选择要从视频画面上隐藏的内容",
                     color = HongguoColors.muted, fontSize = 12.sp)
