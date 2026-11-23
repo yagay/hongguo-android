@@ -21,6 +21,19 @@ class PlaybackSourceRecoveryPolicyTest {
             .startsWith("PLAYBACK_ANONYMOUS_LIMITED"))
     }
 
+    @Test fun emptyHttp200DoesNotMasqueradeAsAnonymousDenial() {
+        val empty = OpenhongguoException(ErrorCode.RESPONSE_EMPTY,
+            "synthetic HTTP 200 empty model")
+        assertTrue(PlaybackSourceRecoveryPolicy.nativeFallback(empty))
+        assertFalse(PlaybackSourceRecoveryPolicy.retrySdk(empty, 1))
+        assertEquals("PLAYBACK_MODEL_EMPTY",
+            PlaybackProblem.describe("播放模型", empty).substringBefore(" · "))
+        assertFalse(PlaybackSourceRecoveryPolicy.nativeFallback(
+            OpenhongguoException(ErrorCode.DEVICE_REJECTED, "device denied")))
+        assertFalse(PlaybackSourceRecoveryPolicy.nativeFallback(
+            OpenhongguoException(ErrorCode.ANONYMOUS_LIMITED, "explicit guest access denied")))
+    }
+
     @Test fun onlyOneAdditionalOuterSdkAttemptAfterInternalRetries() {
         val error = OpenhongguoException(ErrorCode.TRANSPORT,
             "network temporarily failed", retryable = true)
