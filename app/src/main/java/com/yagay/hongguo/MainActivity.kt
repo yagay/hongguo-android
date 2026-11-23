@@ -462,6 +462,9 @@ private fun HongguoApp(model: DramaViewModel = viewModel()) {
             if (event == Lifecycle.Event.ON_RESUME) {
                 model.recoverPlaybackAfterServiceLoss()
                 pipSystemStatus = VideoPiPAccess.status(appContext)
+                // Re-check on foreground return as well as first launch.
+                // AppUpdateChecker enforces a 12-hour successful-check interval.
+                checkAppUpdate(false)
             }
         }
         lifecycleOwner.lifecycle.addObserver(observer)
