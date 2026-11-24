@@ -114,6 +114,7 @@ internal fun CatalogScreen(
         containerColor = HongguoColors.background,
         topBar = { CatalogHeader(state, model, onMine,
             onSearchOpen = onSearchOpen,
+            onExplore = { openSourceExplore = true },
             onFilters = {
                 if (state.section != Section.BROWSE) model.section(Section.BROWSE)
                 filtersOpen = true
@@ -138,9 +139,10 @@ internal fun CatalogScreen(
             if (state.section == Section.RECOMMEND && state.trackedEpisodeUpdates.isNotEmpty()) {
                 item(span = { GridItemSpan(maxLineSpan) }) {
                     Column(verticalArrangement = Arrangement.spacedBy(8.dp)) {
-                        Text("追剧有更新", color = HongguoColors.ink,
-                            fontSize = 18.sp, fontWeight = FontWeight.Bold)
-                        state.trackedEpisodeUpdates.entries.take(4).forEach { (id, count) ->
+                        Text(if (material3Layout) "追剧更新 · ${state.trackedEpisodeUpdates.size} 部" else "追剧有更新",
+                            color = HongguoColors.ink,
+                            fontSize = if (material3Layout) 14.sp else 18.sp, fontWeight = FontWeight.Bold)
+                        state.trackedEpisodeUpdates.entries.take(if (material3Layout) 2 else 4).forEach { (id, count) ->
                             val drama = (state.favorites.map { it.drama } + state.watchLater)
                                 .firstOrNull { it.id == id }
                             if (drama != null) Row(
@@ -215,7 +217,7 @@ internal fun CatalogScreen(
                     CatalogSectionTools(state, model, onFilters = { filtersOpen = true })
                 }
             }
-            if (state.section == Section.RECOMMEND || state.section == Section.RANK) {
+            if (!material3Layout && (state.section == Section.RECOMMEND || state.section == Section.RANK)) {
                 item(span = { GridItemSpan(maxLineSpan) }) {
                     TextButton(onClick = { openSourceExplore = true },
                         modifier = Modifier.testTag("openhongguo_discovery_entry")) {
@@ -304,6 +306,7 @@ internal fun CatalogScreen(
 @Composable
 private fun CatalogHeader(state: AppState, model: DramaViewModel,
     onMine: () -> Unit, onSearchOpen: () -> Unit,
+    onExplore: () -> Unit,
     onFilters: () -> Unit,
     onReservations: () -> Unit,
     hasReservations: Boolean) {
@@ -311,13 +314,19 @@ private fun CatalogHeader(state: AppState, model: DramaViewModel,
         verticalArrangement = Arrangement.spacedBy(3.dp)) {
         // Search is a single entrypoint. Category selection remains within
         // the theater; it never replaces or restarts the swipe-feed player.
-        HongguoSearchEntry(
-            placeholder = "搜索短剧、演员或关键词",
-            onClick = onSearchOpen,
-            modifier = Modifier.fillMaxWidth()
-                .padding(horizontal = 12.dp, vertical = 5.dp)
-                .testTag("theater_search"),
-        )
+        Row(Modifier.fillMaxWidth().padding(horizontal = 12.dp, vertical = 5.dp),
+            verticalAlignment = Alignment.CenterVertically,
+            horizontalArrangement = Arrangement.spacedBy(6.dp)) {
+            HongguoSearchEntry(
+                placeholder = "搜索短剧、演员或关键词",
+                onClick = onSearchOpen,
+                modifier = Modifier.weight(1f).testTag("theater_search"),
+            )
+            if (HongguoColors.isMaterial3) HongguoAction(
+                label = "发现", onClick = onExplore,
+                style = HongguoActionStyle.QUIET,
+                modifier = Modifier.testTag("openhongguo_discovery_entry"))
+        }
         // A single category navigation; no duplicated quick-action row.
         // Genre chips and the filter action live with the content section.
         HongguoCategoryNavigation(

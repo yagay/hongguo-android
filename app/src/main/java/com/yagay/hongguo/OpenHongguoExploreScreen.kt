@@ -68,7 +68,7 @@ import kotlinx.coroutines.withContext
 internal fun OpenHongguoExploreScreen(
     model: DramaViewModel,
     onClose: () -> Unit,
-    initialTab: String = "new",
+    initialTab: String = "",
     onOpenDrama: (Drama) -> Unit = { model.open(it) },
 ) {
     val source = model.openHongguoDiscovery
@@ -92,6 +92,17 @@ internal fun OpenHongguoExploreScreen(
     var tab by remember(initialTab) {
         mutableStateOf(initialTab.takeIf { id -> tabs.any { it.first == id } } ?: "new")
     }
+    val material3 = HongguoColors.isMaterial3
+    var directoryOpen by remember(initialTab, material3) {
+        mutableStateOf(material3 && initialTab.isBlank())
+    }
+    var enteredChannel by remember(initialTab, material3) {
+        mutableStateOf(!material3 || initialTab.isNotBlank())
+    }
+    val channelScroll = remember { mutableMapOf<String, androidx.compose.foundation.lazy.LazyListState>() }
+    val channelFilters = remember { mutableMapOf<String, Map<String, List<String>>>() }
+    val channelCache = remember { mutableMapOf<String, ExploreChannelSnapshot>() }
+    var restoredChannel by remember { mutableStateOf(false) }
     var cursor by remember { mutableStateOf("") }
     var query by remember { mutableStateOf("") }
     var activeQuery by remember { mutableStateOf("") }
@@ -120,18 +131,31 @@ internal fun OpenHongguoExploreScreen(
     var suggestions by remember { mutableStateOf(emptyList<String>()) }
 
     val switchTab: (String) -> Unit = { id ->
+        directoryOpen = false
+        enteredChannel = true
         if (id != tab) {
+            channelFilters[tab] = selectedFilters
+            if (material3 && !loading && error == null && rows.isNotEmpty() &&
+                actorId.isBlank() && rankCell.isBlank()) {
+                channelCache[tab] = ExploreChannelSnapshot(
+                    query, activeQuery, cursor, rows, more, nextCursor, selectedFilters,
+                )
+            } else channelCache.remove(tab)
+            val saved = if (material3) channelCache[id] else null
             tab = id
-            query = ""
-            activeQuery = ""
+            query = saved?.query.orEmpty()
+            activeQuery = saved?.activeQuery.orEmpty()
             rankCell = ""
-            cursor = ""
-            rows = emptyList()
-            more = false
-            nextCursor = ""
+            cursor = saved?.cursor.orEmpty()
+            rows = saved?.rows.orEmpty()
+            more = saved?.more ?: false
+            nextCursor = saved?.nextCursor.orEmpty()
             error = null
-            selectedFilters = emptyMap()
-            draftFilters = emptyMap()
+            selectedFilters = if (material3)
+                saved?.filters ?: channelFilters[id].orEmpty()
+                else emptyMap()
+            draftFilters = selectedFilters
+            restoredChannel = saved != null
             filterSheetOpen = false
             suggestions = emptyList()
         }
@@ -141,11 +165,13 @@ internal fun OpenHongguoExploreScreen(
         when {
             actorId.isNotBlank() -> actorId = ""
             rankCell.isNotBlank() -> { rankCell = ""; cursor = ""; rows = emptyList() }
+            material3 && !directoryOpen && initialTab.isBlank() -> directoryOpen = true
             else -> onClose()
         }
     }
 
-    LaunchedEffect(tab) {
+    LaunchedEffect(tab, enteredChannel) {
+        if (!enteredChannel) return@LaunchedEffect
         filterRows = emptyList()
         if (tab in setOf("filter", "filterComic", "filterAI")) {
             try {
@@ -162,7 +188,13 @@ internal fun OpenHongguoExploreScreen(
         }
     }
 
-    LaunchedEffect(tab, cursor, refresh, activeQuery, rankCell, selectedFilters) {
+    LaunchedEffect(tab, cursor, refresh, activeQuery, rankCell, selectedFilters, enteredChannel) {
+        if (!enteredChannel) return@LaunchedEffect
+        if (restoredChannel) {
+            restoredChannel = false
+            loading = false
+            return@LaunchedEffect
+        }
         if (tab in setOf("search", "calendar", "category") && activeQuery.isBlank()) {
             rows = emptyList()
             error = null
@@ -237,16 +269,61 @@ internal fun OpenHongguoExploreScreen(
         }
     }
 
+    if (directoryOpen) {
+        HongguoPageSurface(Modifier.fillMaxSize().testTag("explore_directory")) {
+            Column(Modifier.fillMaxSize()) {
+                HongguoPageHeader(title = "发现", onBack = onClose)
+                LazyColumn(Modifier.fillMaxSize(),
+                    contentPadding = androidx.compose.foundation.layout.PaddingValues(
+                        horizontal = HongguoUi.pagePadding, vertical = 12.dp),
+                    verticalArrangement = Arrangement.spacedBy(12.dp)) {
+                    val groups = listOf(
+                        "找新剧" to listOf("new", "hot"),
+                        "热门榜单" to listOf("human", "comic", "ai", "actor"),
+                        "分类筛选" to listOf("filter", "filterComic", "filterAI"),
+                        "更多频道" to listOf("discover", "search", "rankGroups",
+                            "activity", "category", "calendar"),
+                    )
+                    groups.forEach { (title, ids) ->
+                        item {
+                            HongguoCard {
+                                Column(Modifier.fillMaxWidth().padding(12.dp),
+                                    verticalArrangement = Arrangement.spacedBy(6.dp)) {
+                                    Text(title, style = MaterialTheme.typography.titleMedium,
+                                        color = HongguoColors.ink)
+                                    FlowRow(horizontalArrangement = Arrangement.spacedBy(8.dp),
+                                        verticalArrangement = Arrangement.spacedBy(4.dp)) {
+                                        ids.forEach { id ->
+                                            HongguoChoiceChip(
+                                                label = tabs.first { it.first == id }.second,
+                                                selected = enteredChannel && tab == id,
+                                                onClick = { switchTab(id) },
+                                                modifier = Modifier.testTag("explore_directory_$id"))
+                                        }
+                                    }
+                                }
+                            }
+                        }
+                    }
+                }
+            }
+        }
+        return
+    }
     HongguoPageSurface(Modifier.fillMaxSize().testTag("openhongguo_explore")) {
         Column(Modifier.fillMaxSize()) {
         HongguoPageHeader(
-            title = if (actorId.isBlank()) "更多发现" else "演员作品",
+            title = if (actorId.isBlank()) {
+                if (material3) tabs.firstOrNull { it.first == tab }?.second ?: "发现"
+                else "更多发现"
+            } else "演员作品",
             onBack = {
                 when {
                     actorId.isNotBlank() -> actorId = ""
                     rankCell.isNotBlank() -> {
                         rankCell = ""; cursor = ""; rows = emptyList()
                     }
+                    material3 && initialTab.isBlank() -> directoryOpen = true
                     else -> onClose()
                 }
             },
@@ -258,7 +335,7 @@ internal fun OpenHongguoExploreScreen(
                 enabled = !loading, style = HongguoActionStyle.QUIET,
             )
         }
-        if (actorId.isBlank()) {
+        if (actorId.isBlank() && !material3) {
             Row(Modifier.fillMaxWidth().horizontalScroll(rememberScrollState())
                 .padding(horizontal = HongguoUi.pagePadding),
                 horizontalArrangement = Arrangement.spacedBy(7.dp)) {
@@ -427,7 +504,12 @@ internal fun OpenHongguoExploreScreen(
         val posterColumns = HongguoThemePolicy.galleryColumns(
             LocalConfiguration.current.screenWidthDp, LocalDensity.current.fontScale,
         )
-        LazyColumn(Modifier.fillMaxSize(), verticalArrangement = Arrangement.spacedBy(10.dp)) {
+        val scrollKey = if (actorId.isNotBlank()) "actor:$actorId" else "$tab:$rankCell"
+        val scrollState = remember(scrollKey) {
+            channelScroll.getOrPut(scrollKey) { androidx.compose.foundation.lazy.LazyListState() }
+        }
+        LazyColumn(Modifier.fillMaxSize(), state = scrollState,
+            verticalArrangement = Arrangement.spacedBy(10.dp)) {
             if (actorId.isBlank()) {
                 if (usePosterGrid) {
                     items(actionableRows.chunked(posterColumns)) { line ->
@@ -649,3 +731,14 @@ private fun BrowseEntry(
             .padding(horizontal = 16.dp, vertical = 6.dp),
     )
 }
+
+/** Channel cache is scoped to the discovery screen; no persisted network data or credentials. */
+private data class ExploreChannelSnapshot(
+    val query: String,
+    val activeQuery: String,
+    val cursor: String,
+    val rows: List<OpenHongguoBrowseItem>,
+    val more: Boolean,
+    val nextCursor: String,
+    val filters: Map<String, List<String>>,
+)

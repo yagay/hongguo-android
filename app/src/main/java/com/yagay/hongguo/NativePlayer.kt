@@ -784,33 +784,11 @@ internal fun NativePlayer(
                         }
                     }
                     state.playbackError?.let { error ->
-                        Column(
-                            Modifier.fillMaxWidth().padding(horizontal = 40.dp),
-                            verticalArrangement = Arrangement.spacedBy(12.dp),
-                            horizontalAlignment = Alignment.CenterHorizontally,
-                        ) {
-                            Text(if (state.playbackRecoveryMessage != null)
-                                    "正在等待自动恢复"
-                                 else "本集暂时不能播放", color = Color.White,
-                                fontWeight = FontWeight.Bold)
-                            Text(error, color = Color(0xFFD9D4D1), fontSize = 13.sp)
-                            HongguoVideoRetryActions(
-                                onRetry = {
-                                    if (state.feedMode) model.refreshFailedReels()
-                                    else model.retryPlayback()
-                                },
-                                retryLabel = if (state.feedMode) "刷新推荐列表" else "立即重试",
-                                recoveryStatus = state.playbackRecoveryMessage,
-                                onStopRetry = model::stopPeriodicPlaybackRetry,
-                                retryTag = "playback_manual_retry",
-                                statusTag = "periodic_playback_retry_status",
-                                stopTag = "periodic_playback_retry_stop",
-                            )
-                            Text(if (state.feedMode)
-                                    "继续上滑也会请求新的推荐，不再循环播放失效列表"
-                                 else "可重新尝试或切换其他剧集",
-                                color = Color.LightGray, fontSize = 12.sp)
-                        }
+                        PlaybackErrorOverlay(error = error,
+                            recoveryStatus = state.playbackRecoveryMessage, feedMode = state.feedMode,
+                            onRetry = {
+                                if (state.feedMode) model.refreshFailedReels() else model.retryPlayback()
+                            }, onStopRetry = model::stopPeriodicPlaybackRetry)
                     }
                 } else if (!pagerRecenterPending) {
                     val preview = if (state.feedMode) {
@@ -973,61 +951,10 @@ internal fun NativePlayer(
     } // ReelModeSlidePlayer content
     } // ModalNavigationDrawer content
 
-    if (clearScreenMenuOpen) HongguoContentDialog(
-        onDismissRequest = { clearScreenMenuOpen = false },
-        title = "清屏设置",
-        content = {
-            Column(verticalArrangement = Arrangement.spacedBy(2.dp)) {
-                Text("选择要从视频画面上隐藏的内容",
-                    color = HongguoColors.muted, fontSize = 12.sp)
-                listOf(
-                    Triple(1, "顶部按钮", "推荐分类、返回、画中画和设置"),
-                    Triple(2, "右侧按钮", "收藏、评论、喜欢、播放量"),
-                    Triple(4, "剧名", "剧名和进入详情的入口"),
-                    Triple(8, "演员与标签", "分类、演员及 AI 提示"),
-                    Triple(16, "简介文案", "视频下方的剧情介绍"),
-                    Triple(32, "弹幕", "画面弹幕与弹幕开关"),
-                ).forEach { (bit, label, description) ->
-                    Row(
-                        Modifier.fillMaxWidth()
-                            .clickable {
-                                setHiddenChromeMask(hiddenChromeMask xor bit)
-                            }.padding(vertical = 2.dp)
-                            .testTag("clear_screen_option_$bit"),
-                        verticalAlignment = Alignment.CenterVertically,
-                    ) {
-                        Checkbox(
-                            checked = (hiddenChromeMask and bit) != 0,
-                            onCheckedChange = { hide ->
-                                setHiddenChromeMask(
-                                    if (hide) hiddenChromeMask or bit
-                                    else hiddenChromeMask and bit.inv()
-                                )
-                            },
-                        )
-                        Column(Modifier.weight(1f)) {
-                            Text(label, color = HongguoColors.ink, fontSize = 14.sp)
-                            Text(description, color = HongguoColors.muted,
-                                fontSize = 11.sp, lineHeight = 14.sp)
-                        }
-                    }
-                }
-                Text("进度条、选集、底部导航始终保留。",
-                    color = HongguoColors.muted, fontSize = 11.sp)
-            }
-        },
-        confirmButton = {
-            TextButton(
-                onClick = { clearScreenMenuOpen = false },
-                modifier = Modifier.testTag("player_clear_screen_toggle"),
-            ) { Text("完成") }
-        },
-        dismissButton = {
-            TextButton(onClick = { setHiddenChromeMask(
-                if (hiddenChromeMask == 63) 0 else 63
-            ) }) { Text(if (clearScreenEnabled) "全部显示" else "全部清屏") }
-        },
-        modifier = Modifier.testTag("player_clear_screen_dialog"),
+    if (clearScreenMenuOpen) PlayerClearScreenDialog(
+        hiddenChromeMask = hiddenChromeMask,
+        onMaskChange = ::setHiddenChromeMask,
+        onDismiss = { clearScreenMenuOpen = false },
     )
 
     focusedPlaybackSetting?.let { currentSetting ->

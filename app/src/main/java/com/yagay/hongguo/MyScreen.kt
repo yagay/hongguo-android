@@ -1,5 +1,6 @@
 package com.yagay.hongguo
 
+import androidx.activity.compose.BackHandler
 import androidx.compose.foundation.background
 import androidx.compose.foundation.clickable
 import androidx.compose.foundation.layout.Arrangement
@@ -33,6 +34,8 @@ import androidx.compose.material.icons.outlined.PrivacyTip
 import androidx.compose.material.icons.outlined.Settings
 import androidx.compose.material.icons.outlined.Share
 import androidx.compose.material.icons.outlined.StarBorder
+import androidx.compose.material.icons.outlined.ThumbUp
+import androidx.compose.material.icons.outlined.DateRange
 import androidx.compose.material3.DropdownMenu
 import androidx.compose.material3.DropdownMenuItem
 import androidx.compose.material3.AlertDialog
@@ -82,6 +85,9 @@ internal fun MyScreen(state: AppState, model: DramaViewModel, onBack: () -> Unit
     val openAccount = { model.show(Modal.ACCOUNT) }
     var watchLaterOpen by remember { mutableStateOf(false) }
     var offlineOpen by remember { mutableStateOf(false) }
+    val material3 = HongguoColors.isMaterial3
+    var libraryOpen by rememberSaveable { mutableStateOf(false) }
+    var librarySource by rememberSaveable { mutableStateOf(0) }
     var libraryTab by rememberSaveable { mutableStateOf(0) }
     var watchFilter by rememberSaveable { mutableStateOf(0) }
     var gallerySearchOpen by rememberSaveable { mutableStateOf(false) }
@@ -90,9 +96,37 @@ internal fun MyScreen(state: AppState, model: DramaViewModel, onBack: () -> Unit
     var managementMenuOpen by remember { mutableStateOf(false) }
     var accountOperationsOpen by remember { mutableStateOf(false) }
     var confirmAccountLogout by remember { mutableStateOf(false) }
+    val openLibrary: (Int) -> Unit = { index ->
+        libraryTab = index
+        watchFilter = 0
+        librarySource = 0
+        libraryOpen = true
+        watchLaterOpen = false
+        offlineOpen = false
+        if (index == 2 && account.profile != null && !account.likesLoaded && !account.likesLoading)
+            model.account.loadLikes(force = true)
+        if (index == 3 && account.profile != null && !account.reservationsLoaded)
+            model.account.loadReservations()
+    }
+    val subpage = material3 && (libraryOpen || watchLaterOpen || offlineOpen)
+    val closeSubpage: () -> Unit = {
+        libraryOpen = false
+        watchLaterOpen = false
+        offlineOpen = false
+        gallerySearchOpen = false
+        galleryQuery = ""
+        localHistoryEdit = false
+    }
+    BackHandler(enabled = subpage, onBack = closeSubpage)
     Column(Modifier.fillMaxSize().testTag("my_screen")) {
         HongguoPageHeader(
-            title = "我的",
+            title = when {
+                material3 && offlineOpen -> "本机离线"
+                material3 && watchLaterOpen -> "稍后看"
+                material3 && libraryOpen -> "我的片单"
+                else -> "我的"
+            },
+            onBack = if (subpage) closeSubpage else null,
             horizontalPadding = 0.dp,
             modifier = Modifier.padding(horizontal = HongguoUi.pagePadding),
             ) {
@@ -114,6 +148,7 @@ internal fun MyScreen(state: AppState, model: DramaViewModel, onBack: () -> Unit
                             onClick = {
                                 managementMenuOpen = false
                                 offlineOpen = false
+                                libraryOpen = false
                                 watchLaterOpen = true
                             },
                         )
@@ -128,6 +163,7 @@ internal fun MyScreen(state: AppState, model: DramaViewModel, onBack: () -> Unit
                             onClick = {
                                 managementMenuOpen = false
                                 watchLaterOpen = false
+                                libraryOpen = false
                                 offlineOpen = true
                             },
                         )
@@ -170,7 +206,7 @@ internal fun MyScreen(state: AppState, model: DramaViewModel, onBack: () -> Unit
             contentPadding = PaddingValues(top = 8.dp, bottom = 28.dp),
             verticalArrangement = Arrangement.spacedBy(12.dp),
         ) {
-        item {
+        if (!subpage) item {
             HongguoCard() {
                 Row(
                     Modifier.fillMaxWidth().testTag("my_account_card")
@@ -198,7 +234,7 @@ internal fun MyScreen(state: AppState, model: DramaViewModel, onBack: () -> Unit
                     }
                     Column(
                         Modifier.weight(1f).then(
-                            if (account.profile == null)
+                            if (account.profile == null || material3)
                                 Modifier.clickable(onClick = openAccount) else Modifier
                         ),
                         verticalArrangement = Arrangement.spacedBy(4.dp),
@@ -284,8 +320,81 @@ internal fun MyScreen(state: AppState, model: DramaViewModel, onBack: () -> Unit
                 }
             }
         }
-        // Account and local records share one gallery, but the data sources
-        // remain separate. Cloud items never overwrite local checkpoints.
+        if (material3 && !subpage) {
+            item {
+                Row(Modifier.fillMaxWidth().testTag("my_library_shortcuts"),
+                    horizontalArrangement = Arrangement.spacedBy(6.dp)) {
+                    listOf("历史" to Icons.Outlined.History,
+                        "收藏" to Icons.Outlined.StarBorder,
+                        "点赞" to Icons.Outlined.ThumbUp,
+                        "预约" to Icons.Outlined.DateRange).forEachIndexed { index, (title, icon) ->
+                        Surface(onClick = { openLibrary(index) },
+                            modifier = Modifier.weight(1f).testTag("my_library_open_$index"),
+                            color = MaterialTheme.colorScheme.surfaceContainerLow,
+                            shape = RoundedCornerShape(16.dp)) {
+                            Column(Modifier.padding(vertical = 14.dp),
+                                horizontalAlignment = Alignment.CenterHorizontally,
+                                verticalArrangement = Arrangement.spacedBy(6.dp)) {
+                                Icon(icon, contentDescription = null, tint = HongguoColors.accent)
+                                Text(title, color = HongguoColors.ink, fontSize = 13.sp)
+                            }
+                        }
+                    }
+                }
+            }
+            val cloud = account.history.firstOrNull()
+            val local = state.library.firstOrNull()
+            if (cloud != null || local != null) item {
+                val recent = cloud?.let { Drama(it.series.id, it.series.title, it.series.cover) }
+                    ?: local!!.drama
+                HongguoCard {
+                    Row(Modifier.fillMaxWidth().clickable {
+                        if (cloud != null) model.openCloudProgress(cloud)
+                        else if (local != null) model.open(local.drama, resumeEp = local.episode)
+                    }.padding(12.dp).testTag("my_continue_watching"),
+                        verticalAlignment = Alignment.CenterVertically,
+                        horizontalArrangement = Arrangement.spacedBy(12.dp)) {
+                        HongguoPosterCover(cover = model.cover(recent.cover), title = recent.title,
+                            modifier = Modifier.width(54.dp).aspectRatio(2f / 3f))
+                        Column(Modifier.weight(1f), verticalArrangement = Arrangement.spacedBy(4.dp)) {
+                            Text("继续观看", color = HongguoColors.accent, fontSize = 12.sp)
+                            Text(recent.title, color = HongguoColors.ink,
+                                fontWeight = FontWeight.SemiBold, maxLines = 2)
+                            Text(if (cloud != null)
+                                "云端 · 第${cloud.episodeIndex + 1}集 · " +
+                                    PlaybackTimeFormatter.format(cloud.position)
+                                else "本机 · 第${local?.episode ?: 1}集",
+                                color = HongguoColors.muted, fontSize = 12.sp)
+                        }
+                        Icon(Icons.Outlined.ChevronRight, "继续观看")
+                    }
+                }
+            }
+            item {
+                HongguoCard {
+                    Column(Modifier.padding(horizontal = 12.dp)) {
+                        HongguoSettingsRow(title = "稍后看", value = "${state.watchLater.size} 部",
+                            icon = Icons.Outlined.BookmarkBorder, tag = "my_open_later",
+                            onClick = { watchLaterOpen = true })
+                        HongguoSettingsDivider()
+                        HongguoSettingsRow(title = "本机离线", value = "${state.offlineEpisodes.size} 集",
+                            icon = Icons.Outlined.Download, tag = "my_open_offline",
+                            onClick = { offlineOpen = true })
+                        HongguoSettingsDivider()
+                        HongguoSettingsRow(title = "下载任务", tag = "my_open_downloads",
+                            icon = Icons.Outlined.Download,
+                            onClick = { model.updateDownloads(); model.show(Modal.DOWNLOAD) })
+                        HongguoSettingsDivider()
+                        HongguoSettingsRow(title = "账号与隐私", tag = "my_open_account",
+                            icon = Icons.Outlined.PersonOutline, onClick = openAccount)
+                        HongguoSettingsDivider()
+                        HongguoSettingsRow(title = "设置", tag = "my_open_settings",
+                            icon = Icons.Outlined.Settings, onClick = { model.show(Modal.SETTINGS) })
+                    }
+                }
+            }
+        }
+        if (!material3 || (libraryOpen && !offlineOpen && !watchLaterOpen)) {
         item {
             Row(Modifier.fillMaxWidth(),
                 horizontalArrangement = Arrangement.SpaceBetween,
@@ -312,6 +421,15 @@ internal fun MyScreen(state: AppState, model: DramaViewModel, onBack: () -> Unit
                     }.padding(5.dp).testTag("my_gallery_search_toggle"))
             }
         }
+        if (material3) item {
+            Row(Modifier.fillMaxWidth(), horizontalArrangement = Arrangement.spacedBy(6.dp)) {
+                listOf("全部来源", "本机", "云端").forEachIndexed { index, label ->
+                    HongguoChoiceChip(label = label, selected = librarySource == index,
+                        onClick = { librarySource = index; watchFilter = 0 },
+                        modifier = Modifier.testTag("my_library_source_$index"))
+                }
+            }
+        }
         if (gallerySearchOpen) item {
             HongguoSearchField(
                 value = galleryQuery,
@@ -320,6 +438,25 @@ internal fun MyScreen(state: AppState, model: DramaViewModel, onBack: () -> Unit
                 placeholder = "搜索当前片单的剧名",
             )
         }
+        if (material3 && librarySource == 2) {
+            if (account.profile == null) item {
+                HongguoFeedbackPanel(title = "登录后查看云端片单",
+                    kind = HongguoFeedbackKind.EMPTY,
+                    retryLabel = "登录账号", onRetry = openAccount)
+            } else {
+                item {
+                    HongguoSettingsRow(title = "刷新云端片单",
+                        tag = "my_cloud_library_refresh", onClick = {
+                            if (libraryTab == 2) model.account.loadLikes(force = true)
+                            else {
+                                model.account.refresh()
+                                if (libraryTab == 3) model.account.loadReservations()
+                            }
+                        })
+                }
+                cloudLibraryItems(account, state, model, libraryTab, galleryColumns, galleryQuery)
+            }
+        } else {
         if (libraryTab == 0) item {
             HongguoChoiceGroup(
                 options = listOf("全部", "已看完", "未看完")
@@ -358,9 +495,15 @@ internal fun MyScreen(state: AppState, model: DramaViewModel, onBack: () -> Unit
                 .map { Drama(it.series.id, it.series.title, it.series.cover) }
                 .distinctBy { it.id }
         }
+        val localIds = when (libraryTab) {
+            0 -> state.library.map { it.drama.id }.toSet()
+            1 -> state.favorites.map { it.drama.id }.toSet()
+            2 -> state.likedDramaIds.toSet()
+            else -> emptySet()
+        }
         val gallery = gallerySource.filter {
-            galleryQuery.isBlank() || it.title.contains(galleryQuery.trim(),
-                ignoreCase = true)
+            (!material3 || librarySource != 1 || it.id in localIds) &&
+                (galleryQuery.isBlank() || it.title.contains(galleryQuery.trim(), ignoreCase = true))
         }
         if (libraryTab == 0 && !gallerySearchOpen) item {
             Row(Modifier.fillMaxWidth(), horizontalArrangement = Arrangement.End,
@@ -396,7 +539,8 @@ internal fun MyScreen(state: AppState, model: DramaViewModel, onBack: () -> Unit
                             when (libraryTab) {
                                 0 -> {
                                     val cloud = account.history.firstOrNull { it.series.id == drama.id }
-                                    if (cloud != null) model.openCloudProgress(cloud)
+                                    if (cloud != null && (!material3 || librarySource != 1))
+                                        model.openCloudProgress(cloud)
                                     else {
                                         val local = state.library.firstOrNull { it.drama.id == drama.id }
                                         model.open(drama, resumeEp = local?.episode)
@@ -429,6 +573,20 @@ internal fun MyScreen(state: AppState, model: DramaViewModel, onBack: () -> Unit
                             maxLines = if (HongguoColors.isMaterial3) 2 else 1,
                             minLines = if (HongguoColors.isMaterial3) 2 else 1,
                             overflow = TextOverflow.Ellipsis)
+                        if (material3) {
+                            val cloudRecord = when (libraryTab) {
+                                0 -> account.history.any { it.series.id == drama.id }
+                                1 -> account.favorites.any { it.series.id == drama.id }
+                                2 -> account.likes.any { it.series.id == drama.id }
+                                else -> true
+                            }
+                            Text(when {
+                                librarySource == 1 -> "本机"
+                                drama.id in localIds && cloudRecord -> "本机 · 云端"
+                                cloudRecord -> "云端"
+                                else -> "本机"
+                            }, color = HongguoColors.accent, fontSize = 11.sp)
+                        }
                         if (libraryTab == 3) {
                             val upcoming = account.upcoming.firstOrNull {
                                 it.series.id == drama.id
@@ -444,7 +602,7 @@ internal fun MyScreen(state: AppState, model: DramaViewModel, onBack: () -> Unit
                             val cloud = account.history.firstOrNull {
                                 it.series.id == drama.id
                             }
-                            val progressText = if (cloud != null)
+                            val progressText = if (cloud != null && (!material3 || librarySource != 1))
                                 "第${cloud.episodeIndex + 1}集 · " +
                                     PlaybackTimeFormatter.format(cloud.position)
                             else entry?.let { "第${it.episode}集" } ?: "观看记录"
@@ -468,7 +626,9 @@ internal fun MyScreen(state: AppState, model: DramaViewModel, onBack: () -> Unit
                 repeat(galleryColumns - row.size) { Spacer(Modifier.weight(1f)) }
             }
         }
-        item {
+        } // local/combined library
+        } // library page
+        if (!subpage) item {
             HongguoCard() {
                 Column(Modifier.fillMaxWidth().padding(16.dp),
                     verticalArrangement = Arrangement.spacedBy(8.dp)) {

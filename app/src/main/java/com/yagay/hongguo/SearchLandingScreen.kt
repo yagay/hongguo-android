@@ -50,6 +50,8 @@ import androidx.compose.runtime.mutableIntStateOf
 import androidx.compose.runtime.mutableStateOf
 import androidx.compose.runtime.remember
 import androidx.compose.runtime.setValue
+import androidx.compose.runtime.saveable.rememberSaveable
+import androidx.compose.foundation.lazy.rememberLazyListState
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.draw.clip
@@ -92,7 +94,21 @@ internal fun SearchLandingScreen(
         HongguoThemePolicy.galleryColumns(LocalConfiguration.current.screenWidthDp,
             LocalDensity.current.fontScale) else 3
     val context = LocalContext.current
+    val material3 = HongguoColors.isMaterial3
+    var advancedSearchOpen by rememberSaveable { mutableStateOf(false) }
+    val searchScroll = rememberLazyListState()
+    val showingResults = browse.section == Section.SEARCH &&
+        browse.query.isNotBlank() && state.search.trim() == browse.query
+    LaunchedEffect(browse.query, showingResults) {
+        searchScroll.scrollToItem(0)
+    }
     LaunchedEffect(Unit) { model.loadSearchLanding() }
+    if (advancedSearchOpen && material3) {
+        OpenHongguoExploreScreen(model, initialTab = "search",
+            onClose = { advancedSearchOpen = false },
+            onOpenDrama = { drama -> onOpenDrama(drama); onClose() })
+        return
+    }
     fun submit(text: String) {
         if (text.isBlank()) return
         model.searchBrowseQuery(text)
@@ -129,11 +145,19 @@ internal fun SearchLandingScreen(
                             .testTag("search_landing_submit"))
                 }
             }
-        LazyColumn(Modifier.fillMaxSize().weight(1f),
+        if (material3) {
+            Row(Modifier.fillMaxWidth().padding(horizontal = HongguoUi.pagePadding),
+                verticalAlignment = Alignment.CenterVertically) {
+                Text(if (showingResults) "搜索结果" else "发现短剧",
+                    color = SearchMuted, fontSize = 13.sp, modifier = Modifier.weight(1f))
+                TextButton(onClick = { advancedSearchOpen = true },
+                    modifier = Modifier.testTag("search_advanced_entry")) { Text("高级搜索") }
+            }
+        }
+        LazyColumn(Modifier.fillMaxSize().weight(1f), state = searchScroll,
             contentPadding = PaddingValues(bottom = 28.dp),
             verticalArrangement = Arrangement.spacedBy(HongguoUi.pageSectionGap)) {
-        if (browse.section == Section.SEARCH && browse.query.isNotBlank() &&
-            state.search.trim() == browse.query) {
+        if (showingResults) {
             item {
                 Column(Modifier.fillMaxWidth().padding(horizontal = HongguoUi.pagePadding),
                     verticalArrangement = Arrangement.spacedBy(10.dp)) {

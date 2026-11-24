@@ -87,6 +87,19 @@ internal fun SettingsScreen(
     var showLogPreview by rememberSaveable { mutableStateOf(false) }
     var backendExpanded by rememberSaveable { mutableStateOf(false) }
     var choiceSheet by rememberSaveable { mutableStateOf<String?>(null) }
+    val material3 = HongguoColors.isMaterial3
+    var category by rememberSaveable { mutableStateOf<String?>(null) }
+    val categories = listOf(
+        Triple("appearance", "外观与主题", "界面风格、配色、深浅色"),
+        Triple("playback", "播放与缓存", "视频读取、缓存与预加载"),
+        Triple("account", "账号与隐私", "登录、进度同步"),
+        Triple("data", "本机数据", "推荐管理、追剧提醒、备份"),
+        Triple("advanced", "高级与诊断", "内容来源、日志、应用更新、关于"),
+    )
+    val showCategory: (String) -> Boolean = { !material3 || category == it }
+    val back: () -> Unit = {
+        if (material3 && category != null) category = null else model.closeModal()
+    }
     val account by model.account.state.collectAsStateWithLifecycle()
     val exporter = rememberLauncherForActivityResult(
         ActivityResultContracts.CreateDocument("text/plain")
@@ -105,15 +118,16 @@ internal fun SettingsScreen(
         if (granted) model.setEpisodeUpdateNotifications(true)
     }
     LaunchedEffect(Unit) { model.refreshDiagnostics() }
-    BackHandler { model.closeModal() }
+    BackHandler(onBack = back)
 
     Scaffold(
         containerColor = HongguoColors.background,
         contentWindowInsets = WindowInsets(0, 0, 0, 0),
         topBar = {
             HongguoPageHeader(
-                title = "设置",
-                onBack = model::closeModal,
+                title = if (material3) categories.firstOrNull { it.first == category }?.second
+                    ?: "设置" else "设置",
+                onBack = back,
                 modifier = Modifier.background(HongguoColors.surface),
             )
         },
@@ -127,7 +141,20 @@ internal fun SettingsScreen(
                 bottom = 24.dp),
             verticalArrangement = Arrangement.spacedBy(if (HongguoColors.isMaterial3) 12.dp else 7.dp),
         ) {
-            item {
+            if (material3 && category == null) {
+                item {
+                    HongguoCard {
+                        Column(Modifier.padding(horizontal = 12.dp)) {
+                            categories.forEachIndexed { index, (id, title, subtitle) ->
+                                if (index > 0) HongguoSettingsDivider()
+                                HongguoSettingsRow(title = title, subtitle = subtitle,
+                                    tag = "settings_category_$id", onClick = { category = id })
+                            }
+                        }
+                    }
+                }
+            }
+            if (showCategory("account")) item {
                 HongguoSettingsSection("账号与隐私") {
                     HongguoSettingsRow(
                         icon = Icons.Outlined.PersonOutline,
@@ -151,7 +178,7 @@ internal fun SettingsScreen(
                     }
                 }
             }
-            item {
+            if (showCategory("appearance")) item {
                 HongguoSettingsSection("外观") {
                     HongguoSettingsRow(
                         title = "界面风格",
@@ -200,7 +227,7 @@ internal fun SettingsScreen(
             }
             // Playback brightness, audio enhancement and other video controls
             // live exclusively in the player's own PlaybackExperienceSheet.
-            item {
+            if (showCategory("advanced")) item {
                 HongguoSettingsSection("内容来源") {
                     HongguoSettingsRow(
                         title = "内容接口",
@@ -252,7 +279,7 @@ internal fun SettingsScreen(
                     }
                 }
             }
-            item {
+            if (showCategory("playback")) item {
                 HongguoSettingsSection("视频读取") {
                     HongguoSettingsToggle(
                         "预加载下一集／下一部",
@@ -337,7 +364,7 @@ internal fun SettingsScreen(
                     )
                 }
             }
-            item {
+            if (showCategory("data")) item {
                 HongguoSettingsSection("推荐管理") {
                     HongguoSettingsRow(
                         title = "恢复隐藏的推荐",
@@ -348,7 +375,7 @@ internal fun SettingsScreen(
                     )
                 }
             }
-            item {
+            if (showCategory("data")) item {
                 HongguoSettingsSection("追剧更新提醒") {
                     HongguoSettingsToggle(
                         "定期检查收藏更新",
@@ -374,7 +401,7 @@ internal fun SettingsScreen(
                     }
                 }
             }
-            item {
+            if (showCategory("data")) item {
                 HongguoSettingsSection("本机数据备份") {
                     HongguoSettingsRow(
                         title = "导出本机备份",
@@ -396,7 +423,7 @@ internal fun SettingsScreen(
                     }
                 }
             }
-            item {
+            if (showCategory("advanced")) item {
                 HongguoSettingsSection("诊断与日志") {
                     HongguoSettingsToggle(
                         title = "记录诊断事件",
@@ -459,7 +486,7 @@ internal fun SettingsScreen(
                     }
                 }
             }
-            item {
+            if (showCategory("advanced")) item {
                 HongguoSettingsSection("应用更新") {
                     HongguoSettingsRow(
                         title = "立即检查应用更新",
@@ -478,7 +505,7 @@ internal fun SettingsScreen(
                     )
                 }
             }
-            item {
+            if (showCategory("advanced")) item {
                 HongguoSettingsSection("关于") {
                     HongguoSettingsRow(
                         title = "红果短剧 · Native Rewrite",

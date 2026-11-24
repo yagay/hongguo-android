@@ -23,6 +23,7 @@ import androidx.compose.foundation.layout.width
 import androidx.compose.ui.text.style.TextAlign
 import androidx.compose.foundation.layout.*
 import androidx.compose.foundation.lazy.LazyColumn
+import androidx.compose.foundation.lazy.LazyListScope
 import androidx.compose.foundation.lazy.items
 import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.material.icons.Icons
@@ -93,6 +94,8 @@ internal fun AccountScreen(model: DramaViewModel) {
             keyboard?.show()
         } else code = ""
     }
+    val material3 = HongguoColors.isMaterial3
+    var cloudLibraryOpen by rememberSaveable { mutableStateOf(false) }
     var tab by rememberSaveable { mutableIntStateOf(0) }
     LaunchedEffect(tab, account.profile?.id) {
         if (tab == 2 && account.profile != null) model.account.loadLikes()
@@ -107,14 +110,18 @@ internal fun AccountScreen(model: DramaViewModel) {
     }
     var advancedOpen by rememberSaveable { mutableStateOf(false) }
     var importedCookie by remember { mutableStateOf("") }
-    BackHandler { model.closeAccount() }
+    val goBack: () -> Unit = {
+        if (material3 && cloudLibraryOpen) cloudLibraryOpen = false
+        else model.closeAccount()
+    }
+    BackHandler(onBack = goBack)
     Scaffold(
         containerColor = HongguoColors.background,
         contentWindowInsets = WindowInsets(0, 0, 0, 0),
         topBar = {
             HongguoPageHeader(
-                title = "我的账号",
-                onBack = model::closeAccount,
+                title = if (material3 && cloudLibraryOpen) "云端片单" else "我的账号",
+                onBack = goBack,
                 modifier = Modifier.background(HongguoColors.surface),
             )
         },
@@ -498,6 +505,25 @@ internal fun AccountScreen(model: DramaViewModel) {
                         }
                     }
                 }
+                if (material3 && !cloudLibraryOpen) item {
+                    HongguoCard {
+                        Column(Modifier.fillMaxWidth().padding(horizontal = 12.dp)) {
+                            HongguoSettingsToggle("刷短剧使用登录账号",
+                                "推荐由服务端决定", account.accountRecommendations,
+                                model::setAccountRecommendations, "account_center_recommendations")
+                            HongguoSettingsDivider()
+                            HongguoSettingsToggle("同步观看进度",
+                                "仅同步启用后的进度", account.syncEnabled,
+                                model.account::setProgressSync, "account_center_sync")
+                            HongguoSettingsDivider()
+                            HongguoSettingsRow(title = "云端片单",
+                                subtitle = "历史、收藏、点赞与预约",
+                                tag = "account_open_cloud_library",
+                                onClick = { cloudLibraryOpen = true })
+                        }
+                    }
+                }
+                if (!material3 || cloudLibraryOpen) {
                 item {
                     Row(
                         Modifier.fillMaxWidth().padding(top = 12.dp, bottom = 2.dp),
@@ -532,109 +558,7 @@ internal fun AccountScreen(model: DramaViewModel) {
                     )
                 }
 
-                val gallery: List<AccountGalleryEntry> = when (tab) {
-                    0 -> account.history.map { progress ->
-                        val saved = account.favorites.any {
-                            it.series.id == progress.series.id
-                        }
-                        AccountGalleryEntry(
-                            progress.series,
-                            "第 ${progress.episodeIndex + 1} 集 · " +
-                                PlaybackTimeFormatter.format(progress.position),
-                            onOpen = { model.openCloudProgress(progress) },
-                            saved = if (account.favoritesLoaded) saved else null,
-                            onSave = if (account.favoritesLoaded) ({
-                                model.account.cloudFavorite(progress.series.id, !saved)
-                            }) else null,
-                        )
-                    }
-                    1 -> account.favorites.map { favorite ->
-                        AccountGalleryEntry(favorite.series, favorite.series.badge,
-                            onOpen = { model.openCloudDrama(favorite.series) },
-                            saved = true,
-                            onSave = {
-                                model.account.cloudFavorite(favorite.series.id, false)
-                            })
-                    }
-                    2 -> account.likes.map { item ->
-                        AccountGalleryEntry(item.series, item.series.badge.ifBlank { "账号点赞" },
-                            onOpen = { model.openCloudDrama(item.series) },
-                            saved = null, onSave = null)
-                    }
-                    else -> (account.upcoming.map { it to false } +
-                        account.online.map { it to true })
-                        .map { (reservation, online) ->
-                            AccountGalleryEntry(reservation.series,
-                                if (online) "已上线" else
-                                    reservation.publishText.ifBlank { "待上线" },
-                                onOpen = if (online) ({
-                                    model.openCloudDrama(reservation.series)
-                                }) else null, saved = null, onSave = null)
-                        }
-                }
-                if (gallery.isEmpty()) item {
-                    val title = when (tab) {
-                        0 -> "观看历史"
-                        1 -> "账号收藏"
-                        2 -> "账号点赞"
-                        else -> "预约短剧"
-                    }
-                    val loaded = when (tab) {
-                        0 -> account.historyLoaded
-                        1 -> account.favoritesLoaded
-                        2 -> account.likesLoaded
-                        else -> account.reservationsLoaded
-                    }
-                    val message = when (tab) {
-                        0 -> if (loaded) "还没有观看历史"
-                            else "历史尚未读取成功，可以刷新重试"
-                        1 -> if (loaded) "还没有收藏的短剧"
-                            else "收藏尚未读取成功，可以刷新重试"
-                        2 -> when {
-                            account.likesLoading -> "正在读取点赞记录…"
-                            account.likesError != null -> account.likesError.orEmpty()
-                            loaded -> "账号暂无点赞作品"
-                            else -> "点赞记录尚未读取，可以刷新重试"
-                        }
-                        else -> if (loaded) "暂无预约短剧"
-                            else "预约尚未加载，可以刷新重试"
-                    }
-                    val kind = when {
-                        tab == 2 && account.likesLoading -> HongguoFeedbackKind.LOADING
-                        tab == 2 && account.likesError != null -> HongguoFeedbackKind.ERROR
-                        !loaded -> HongguoFeedbackKind.ERROR
-                        else -> HongguoFeedbackKind.EMPTY
-                    }
-                    HongguoFeedbackPanel(
-                        title = title,
-                        message = message,
-                        kind = kind,
-                        tag = "account_library_empty_$tab",
-                        retryLabel = "刷新片单",
-                        onRetry = if (kind == HongguoFeedbackKind.LOADING) null else ({
-                            if (tab == 2) model.account.loadLikes(force = true)
-                            else {
-                                model.account.refresh()
-                                if (tab == 3) model.account.loadReservations()
-                            }
-                        }),
-                    )
-                }
-                items(gallery.chunked(posterColumns)) { line ->
-                    Row(Modifier.fillMaxWidth(), horizontalArrangement = Arrangement.spacedBy(9.dp),
-                        verticalAlignment = Alignment.Top) {
-                        line.forEach { item ->
-                            AccountPoster(
-                                series = item.series, subtitle = item.subtitle,
-                                onOpen = item.onOpen, saved = item.saved,
-                                onSave = item.onSave,
-                                liked = item.series.id in libraryState.likedDramaIds,
-                                onLike = if (tab == 2) null else ({
-                                    model.toggleLocalLikeForDrama(item.series.id)
-                                }), modifier = Modifier.weight(1f))
-                        }
-                        repeat(posterColumns - line.size) { Spacer(Modifier.weight(1f)) }
-                    }
+                cloudLibraryItems(account, libraryState, model, tab, posterColumns)
                 }
             }
         }
@@ -757,5 +681,123 @@ private fun AccountPoster(
             color = HongguoColors.muted,
             fontSize = if (HongguoColors.isMaterial3) 12.sp else 11.sp,
             modifier = Modifier.fillMaxWidth())
+    }
+}
+
+/** Shared cloud-only library used by account management and My. */
+internal fun LazyListScope.cloudLibraryItems(
+    account: AccountUiState,
+    libraryState: AppState,
+    model: DramaViewModel,
+    tab: Int,
+    posterColumns: Int,
+    query: String = "",
+) {
+    val entries: List<AccountGalleryEntry> = when (tab) {
+        0 -> account.history.map { progress ->
+            val saved = account.favorites.any {
+                it.series.id == progress.series.id
+            }
+            AccountGalleryEntry(
+                progress.series,
+                "第 ${progress.episodeIndex + 1} 集 · " +
+                    PlaybackTimeFormatter.format(progress.position),
+                onOpen = { model.openCloudProgress(progress) },
+                saved = if (account.favoritesLoaded) saved else null,
+                onSave = if (account.favoritesLoaded) ({
+                    model.account.cloudFavorite(progress.series.id, !saved)
+                }) else null,
+            )
+        }
+        1 -> account.favorites.map { favorite ->
+            AccountGalleryEntry(favorite.series, favorite.series.badge,
+                onOpen = { model.openCloudDrama(favorite.series) },
+                saved = true,
+                onSave = {
+                    model.account.cloudFavorite(favorite.series.id, false)
+                })
+        }
+        2 -> account.likes.map { item ->
+            AccountGalleryEntry(item.series, item.series.badge.ifBlank { "账号点赞" },
+                onOpen = { model.openCloudDrama(item.series) },
+                saved = null, onSave = null)
+        }
+        else -> (account.upcoming.map { it to false } +
+            account.online.map { it to true })
+            .map { (reservation, online) ->
+                AccountGalleryEntry(reservation.series,
+                    if (online) "已上线" else
+                        reservation.publishText.ifBlank { "待上线" },
+                    onOpen = if (online) ({
+                        model.openCloudDrama(reservation.series)
+                    }) else null, saved = null, onSave = null)
+            }
+    }
+    val gallery = entries.filter {
+        query.isBlank() || it.series.title.contains(query.trim(), ignoreCase = true)
+    }
+    if (gallery.isEmpty()) item {
+        val title = when (tab) {
+            0 -> "观看历史"
+            1 -> "账号收藏"
+            2 -> "账号点赞"
+            else -> "预约短剧"
+        }
+        val loaded = when (tab) {
+            0 -> account.historyLoaded
+            1 -> account.favoritesLoaded
+            2 -> account.likesLoaded
+            else -> account.reservationsLoaded
+        }
+        val message = when (tab) {
+            0 -> if (loaded) "还没有观看历史"
+                else "历史尚未读取成功，可以刷新重试"
+            1 -> if (loaded) "还没有收藏的短剧"
+                else "收藏尚未读取成功，可以刷新重试"
+            2 -> when {
+                account.likesLoading -> "正在读取点赞记录…"
+                account.likesError != null -> account.likesError.orEmpty()
+                loaded -> "账号暂无点赞作品"
+                else -> "点赞记录尚未读取，可以刷新重试"
+            }
+            else -> if (loaded) "暂无预约短剧"
+                else "预约尚未加载，可以刷新重试"
+        }
+        val kind = when {
+            tab == 2 && account.likesLoading -> HongguoFeedbackKind.LOADING
+            tab == 2 && account.likesError != null -> HongguoFeedbackKind.ERROR
+            !loaded -> HongguoFeedbackKind.ERROR
+            else -> HongguoFeedbackKind.EMPTY
+        }
+        HongguoFeedbackPanel(
+            title = title,
+            message = if (query.isNotBlank() && entries.isNotEmpty()) "没有符合搜索条件的作品" else message,
+            kind = kind,
+            tag = "account_library_empty_$tab",
+            retryLabel = "刷新片单",
+            onRetry = if (kind == HongguoFeedbackKind.LOADING) null else ({
+                if (tab == 2) model.account.loadLikes(force = true)
+                else {
+                    model.account.refresh()
+                    if (tab == 3) model.account.loadReservations()
+                }
+            }),
+        )
+    }
+    items(gallery.chunked(posterColumns)) { line ->
+        Row(Modifier.fillMaxWidth(), horizontalArrangement = Arrangement.spacedBy(9.dp),
+            verticalAlignment = Alignment.Top) {
+            line.forEach { item ->
+                AccountPoster(
+                    series = item.series, subtitle = item.subtitle,
+                    onOpen = item.onOpen, saved = item.saved,
+                    onSave = item.onSave,
+                    liked = item.series.id in libraryState.likedDramaIds,
+                    onLike = if (tab == 2) null else ({
+                        model.toggleLocalLikeForDrama(item.series.id)
+                    }), modifier = Modifier.weight(1f))
+            }
+            repeat(posterColumns - line.size) { Spacer(Modifier.weight(1f)) }
+        }
     }
 }

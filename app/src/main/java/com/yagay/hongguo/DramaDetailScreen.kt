@@ -267,6 +267,56 @@ internal fun DramaDetailScreen(state: AppState, model: DramaViewModel) {
                 }
             }
 
+            if (material3) {
+                if (!tabletLayout) item {
+                    HongguoAction(label = if (state.episodeIndex > 0)
+                        "继续观看 · 第${state.episodeIndex + 1}集" else "开始播放",
+                        enabled = detail.episodes.isNotEmpty(),
+                        onClick = { model.playFromDetails(state.episodeIndex.coerceIn(
+                            0, detail.episodes.lastIndex.coerceAtLeast(0))) },
+                        modifier = Modifier.fillMaxWidth().padding(horizontal = 16.dp)
+                            .testTag("detail_primary_play"))
+                }
+            item {
+                Column(Modifier.padding(horizontal = 16.dp),
+                    verticalArrangement = Arrangement.spacedBy(9.dp)) {
+                    TextButton(onClick = { showEpisodes = !showEpisodes }) {
+                        Text("选集 · 全${detail.episodes.size}集  " +
+                            if (showEpisodes) "收起 ↑" else "查看全部 ↓",
+                            color = DetailText)
+                    }
+                }
+            }
+            val visibleEpisodeCount = if (showEpisodes) detail.episodes.size
+                else minOf(detail.episodes.size, episodeColumns * 2)
+            if (visibleEpisodeCount > 0) {
+                items((visibleEpisodeCount + episodeColumns - 1) / episodeColumns) { row ->
+                    Row(Modifier.fillMaxWidth().padding(horizontal = 16.dp),
+                        horizontalArrangement = Arrangement.spacedBy(8.dp)) {
+                        repeat(episodeColumns) { col ->
+                            val index = row * episodeColumns + col
+                            val episode = if (index < visibleEpisodeCount) detail.episodes.getOrNull(index) else null
+                            if (episode == null) Spacer(Modifier.weight(1f))
+                            else Surface(
+                                onClick = { model.playFromDetails(index) },
+                                modifier = Modifier.weight(1f)
+                                    .testTag("detail_episode_$index"),
+                                color = if (index == state.episodeIndex)
+                                    DetailCardLight else DetailCard,
+                                shape = RoundedCornerShape(if (material3) 16.dp else 9.dp),
+                            ) {
+                                Box(Modifier.height(if (material3) 48.dp else 44.dp),
+                                    contentAlignment = Alignment.Center) {
+                                    Text("${episode.index}", color = DetailText,
+                                        fontSize = if (material3 && fontScale >= 1.3f) 13.sp else 14.sp)
+                                }
+                            }
+                        }
+                    }
+                }
+            }
+            }
+
             metadata?.authorAiStatement?.let { declaration ->
                 item {
                     Text(
@@ -587,6 +637,7 @@ internal fun DramaDetailScreen(state: AppState, model: DramaViewModel) {
                 }
             }
 
+            if (!material3) {
             item {
                 Column(Modifier.padding(horizontal = 16.dp),
                     verticalArrangement = Arrangement.spacedBy(9.dp)) {
@@ -623,6 +674,7 @@ internal fun DramaDetailScreen(state: AppState, model: DramaViewModel) {
                     }
                 }
             }
+            }
         }
         } // Tablet split ends; bottom actions are shared.
 
@@ -644,7 +696,7 @@ internal fun DramaDetailScreen(state: AppState, model: DramaViewModel) {
                     HongguoAction(
                         label = "写剧评",
                         onClick = { openComposer(drama.id) },
-                        style = HongguoActionStyle.PRIMARY,
+                        style = HongguoActionStyle.OUTLINE,
                         modifier = Modifier.weight(1f).testTag("detail_write_review_button"),
                     )
                 }
