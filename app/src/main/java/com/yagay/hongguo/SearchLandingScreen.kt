@@ -149,12 +149,28 @@ internal fun SearchLandingScreen(
                     Text("关键词：${browse.query}",
                         color = SearchMuted, fontSize = 12.sp)
                     if (browse.loading && browse.items.isEmpty())
-                        HongguoInlineLoading()
-                    browse.error?.let { Text(it, color = SearchMuted, fontSize = 13.sp) }
+                        HongguoFeedbackPanel(
+                            title = "正在搜索",
+                            message = "正在查找与关键词匹配的短剧…",
+                            kind = HongguoFeedbackKind.LOADING,
+                            tag = "search_loading",
+                        )
+                    browse.error?.let { error ->
+                        HongguoFeedbackPanel(
+                            title = "搜索暂时失败",
+                            message = error,
+                            kind = HongguoFeedbackKind.ERROR,
+                            onRetry = model::refreshSearchBrowse,
+                            tag = "search_error",
+                        )
+                    }
                     if (!browse.loading && browse.items.isEmpty() && browse.error == null)
-                        HongguoEmptyState(
-                            if (browse.hasMore) "当前页没有匹配作品，可加载更多"
-                            else "没有找到匹配作品",
+                        HongguoFeedbackPanel(
+                            title = "没有找到匹配作品",
+                            message = if (browse.hasMore) "当前页没有结果，可以尝试加载更多"
+                                else "试试其他剧名或更短的关键词",
+                            kind = HongguoFeedbackKind.EMPTY,
+                            tag = "search_empty",
                         )
                 }
             }

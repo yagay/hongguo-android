@@ -22,6 +22,8 @@ EXPECTED = {
     "poster_shared_element",
     "seek_accessibility",
     "large_font_login",
+    "feedback_error_material3",
+    "video_retry_controls",
 }
 PAIRS = (
     ("theme_classic_light", "theme_classic_dark"),

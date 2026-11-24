@@ -228,38 +228,36 @@ internal fun CatalogScreen(
             }
             if (state.loading && state.items.isEmpty()) {
                 item(span = { GridItemSpan(maxLineSpan) }) {
-                    Box(Modifier.fillMaxWidth().height(180.dp),
-                        contentAlignment = Alignment.Center) {
-                        CircularProgressIndicator(color = HongguoColors.accent)
-                    }
+                    HongguoFeedbackPanel(
+                        title = "正在加载短剧",
+                        message = "正在获取最新作品…",
+                        kind = HongguoFeedbackKind.LOADING,
+                        tag = "catalog_loading",
+                    )
                 }
             }
             state.error?.let { error ->
                 item(span = { GridItemSpan(maxLineSpan) }) {
-                    Surface(
-                        color = if (HongguoColors.isMaterial3)
-                            MaterialTheme.colorScheme.errorContainer else HongguoColors.accentSoft,
-                        shape = RoundedCornerShape(
-                            if (HongguoColors.isMaterial3) 24.dp else 14.dp),
-                    ) {
-                        Column(Modifier.fillMaxWidth().padding(18.dp),
-                            verticalArrangement = Arrangement.spacedBy(8.dp)) {
-                            Text("暂时无法加载", color = HongguoColors.ink,
-                                fontWeight = FontWeight.SemiBold)
-                            Text(error, color = if (HongguoColors.isMaterial3)
-                                MaterialTheme.colorScheme.onErrorContainer else Color(0xFF8B4434),
-                                fontSize = 12.sp)
-                            TextButton(onClick = model::refresh) { Text("重试") }
-                        }
-                    }
+                    HongguoFeedbackPanel(
+                        title = "暂时无法加载",
+                        message = error,
+                        kind = HongguoFeedbackKind.ERROR,
+                        onRetry = model::refresh,
+                        tag = "catalog_error",
+                    )
                 }
             }
             if (!state.loading && state.items.isEmpty() && state.error == null) {
                 item(span = { GridItemSpan(maxLineSpan) }) {
-                    HongguoEmptyState(
-                        if (state.section == Section.SEARCH) "尝试搜索其他剧名"
-                        else "这里暂时没有剧集",
-                        modifier = Modifier.height(170.dp),
+                    HongguoFeedbackPanel(
+                        title = if (state.section == Section.SEARCH)
+                            "没有找到相关短剧" else "这里暂时没有剧集",
+                        message = if (state.section == Section.SEARCH)
+                            "试试搜索其他剧名或关键词" else "可以刷新内容或切换分类",
+                        kind = HongguoFeedbackKind.EMPTY,
+                        onRetry = model::refresh,
+                        retryLabel = "刷新内容",
+                        tag = "catalog_empty",
                     )
                 }
             }

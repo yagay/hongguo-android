@@ -571,7 +571,11 @@ internal fun OpenHongguoExploreScreen(
                             draftFilters = emptyMap()
                         }) { Text("重置") }
                     }
-                    LazyColumn(Modifier.fillMaxWidth().heightIn(max = 540.dp),
+                    val filterHeight = (LocalConfiguration.current.screenHeightDp * 0.55f)
+                        .coerceIn(210f, 540f).dp
+                    LazyColumn(
+                        Modifier.fillMaxWidth().heightIn(max = filterHeight)
+                            .testTag("explore_filter_options"),
                         verticalArrangement = Arrangement.spacedBy(16.dp)) {
                         items(filterRows, key = { it.key }) { group ->
                             Column(verticalArrangement = Arrangement.spacedBy(6.dp)) {

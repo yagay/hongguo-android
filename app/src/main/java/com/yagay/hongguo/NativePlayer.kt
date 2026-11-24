@@ -789,27 +789,23 @@ internal fun NativePlayer(
                             verticalArrangement = Arrangement.spacedBy(12.dp),
                             horizontalAlignment = Alignment.CenterHorizontally,
                         ) {
-                            Text("本集暂时不能播放", color = Color.White,
+                            Text(if (state.playbackRecoveryMessage != null)
+                                    "正在等待自动恢复"
+                                 else "本集暂时不能播放", color = Color.White,
                                 fontWeight = FontWeight.Bold)
                             Text(error, color = Color(0xFFD9D4D1), fontSize = 13.sp)
-                            state.playbackRecoveryMessage?.let { status ->
-                                Text(status, color = Color(0xFFFFCF9E),
-                                    fontSize = 13.sp,
-                                    modifier = Modifier.testTag("periodic_playback_retry_status"))
-                                TextButton(
-                                    onClick = model::stopPeriodicPlaybackRetry,
-                                    modifier = Modifier.testTag("periodic_playback_retry_stop"),
-                                ) { Text("停止自动重试", color = Color.White) }
-                            }
-                            OutlinedButton(
-                                onClick = {
+                            HongguoVideoRetryActions(
+                                onRetry = {
                                     if (state.feedMode) model.refreshFailedReels()
                                     else model.retryPlayback()
                                 },
-                            ) {
-                                Icon(Icons.Outlined.Refresh, null)
-                                Text(if (state.feedMode) "刷新推荐列表" else "重新尝试")
-                            }
+                                retryLabel = if (state.feedMode) "刷新推荐列表" else "立即重试",
+                                recoveryStatus = state.playbackRecoveryMessage,
+                                onStopRetry = model::stopPeriodicPlaybackRetry,
+                                retryTag = "playback_manual_retry",
+                                statusTag = "periodic_playback_retry_status",
+                                stopTag = "periodic_playback_retry_stop",
+                            )
                             Text(if (state.feedMode)
                                     "继续上滑也会请求新的推荐，不再循环播放失效列表"
                                  else "可重新尝试或切换其他剧集",

@@ -176,6 +176,54 @@ class HongguoThemeSmokeTest {
             .captureToImage().asAndroidBitmap())
     }
 
+    @Test fun sharedFeedbackPanelShowsRetryAndSupportsTap() {
+        var retryCount = 0
+        composeRule.setContent {
+            HongguoAppTheme(previewTheme("material3", "light")) {
+                Column(Modifier.fillMaxSize()) {
+                    HongguoFeedbackPanel(
+                        title = "暂时无法加载",
+                        message = "临时网络连接失败",
+                        kind = HongguoFeedbackKind.ERROR,
+                        onRetry = { retryCount++ },
+                        tag = "feedback_error_smoke",
+                    )
+                }
+            }
+        }
+        composeRule.onNodeWithText("暂时无法加载").assertExists()
+        composeRule.onNodeWithTag("feedback_error_smoke_retry").performClick()
+        composeRule.runOnIdle { org.junit.Assert.assertEquals(1, retryCount) }
+        saveScreenshot("feedback_error_material3", composeRule.onRoot()
+            .captureToImage().asAndroidBitmap())
+    }
+
+    @Test fun sharedPlaybackRetryControlsKeepManualAndStopActions() {
+        var retryCount = 0
+        var stopCount = 0
+        composeRule.setContent {
+            HongguoAppTheme(previewTheme("material3", "dark")) {
+                Column(Modifier.fillMaxSize().background(Color.Black)) {
+                    HongguoVideoRetryActions(
+                        onRetry = { retryCount++ },
+                        retryLabel = "立即重试",
+                        recoveryStatus = "30 秒后再次自动重试",
+                        onStopRetry = { stopCount++ },
+                    )
+                }
+            }
+        }
+        composeRule.onNodeWithTag("video_retry_countdown").assertExists()
+        composeRule.onNodeWithTag("video_retry_manual").performClick()
+        composeRule.onNodeWithTag("video_retry_stop").performClick()
+        composeRule.runOnIdle {
+            org.junit.Assert.assertEquals(1, retryCount)
+            org.junit.Assert.assertEquals(1, stopCount)
+        }
+        saveScreenshot("video_retry_controls", composeRule.onRoot()
+            .captureToImage().asAndroidBitmap())
+    }
+
     @Test fun posterPlaceholderRendersInMaterialDarkTheme() {
         composeRule.setContent {
             HongguoAppTheme(previewTheme("material3", "dark")) {

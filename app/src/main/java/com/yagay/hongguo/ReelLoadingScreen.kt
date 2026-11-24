@@ -208,28 +208,26 @@ internal fun ReelLoadingScreen(
                         maxLines = 3, overflow = TextOverflow.Ellipsis,
                         textAlign = TextAlign.Center)
                 }
-                if (failed && state.playbackRecoveryMessage != null) {
-                    Text(state.playbackRecoveryMessage,
-                        color = Color(0xFFFFCF9E), fontSize = 12.sp,
-                        textAlign = TextAlign.Center,
-                        modifier = Modifier.testTag("loading_periodic_retry_status"))
-                    TextButton(
-                        onClick = model::stopPeriodicPlaybackRetry,
-                        modifier = Modifier.testTag("loading_periodic_retry_stop"),
-                    ) { Text("停止自动重试", color = Color.White) }
+                if (failed) {
+                    HongguoVideoRetryActions(
+                        onRetry = onRetry,
+                        retryLabel = "立即重试",
+                        recoveryStatus = state.playbackRecoveryMessage,
+                        onStopRetry = model::stopPeriodicPlaybackRetry,
+                        retryTag = "reel_loading_retry",
+                        statusTag = "loading_periodic_retry_status",
+                        stopTag = "loading_periodic_retry_stop",
+                    )
                 }
                 if (!failed && loading && elapsedSeconds >= 10) {
                     Text("网络响应较慢，可以重新获取",
                         color = Color(0xFFFFD0C0), fontSize = 11.sp,
                         textAlign = TextAlign.Center)
                 }
-                if (failed || (loading && elapsedSeconds >= 8)) {
-                    TextButton(
-                        onClick = onRetry,
-                        modifier = Modifier.testTag("reel_loading_retry"),
-                    ) {
-                        Text(if (failed) "重试" else "重新获取",
-                            color = Color.White, fontSize = 13.sp,
+                if (!failed && loading && elapsedSeconds >= 8) {
+                    TextButton(onClick = onRetry,
+                        modifier = Modifier.testTag("reel_loading_refresh")) {
+                        Text("重新获取", color = Color.White, fontSize = 13.sp,
                             fontWeight = FontWeight.SemiBold)
                     }
                 }

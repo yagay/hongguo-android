@@ -73,6 +73,7 @@ import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.graphics.vector.ImageVector
 import androidx.compose.ui.platform.testTag
 import androidx.compose.ui.platform.LocalDensity
+import androidx.compose.ui.platform.LocalConfiguration
 import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
@@ -101,12 +102,18 @@ internal fun HongguoActionMenu(
     modifier: Modifier = Modifier,
     content: @Composable androidx.compose.foundation.layout.ColumnScope.() -> Unit,
 ) {
+    val m3 = HongguoColors.isMaterial3
+    val availableDp = (LocalConfiguration.current.screenWidthDp - 32).coerceAtLeast(160)
+    val menuDp = if (m3) {
+        val target = if (LocalDensity.current.fontScale >= 1.3f) 296 else 264
+        availableDp.coerceAtMost(target)
+    } else 244.coerceAtMost(availableDp)
     HongguoPopupMenu(
         expanded = expanded,
         onDismissRequest = onDismissRequest,
-        modifier = modifier.width(244.dp)
+        modifier = modifier.width(menuDp.dp)
             .background(HongguoColors.surface, RoundedCornerShape(
-                if (HongguoColors.isMaterial3) 24.dp else HongguoUi.cardRadius)),
+                if (m3) 24.dp else HongguoUi.cardRadius)),
         content = content,
     )
 }

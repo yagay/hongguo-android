@@ -573,21 +573,52 @@ internal fun AccountScreen(model: DramaViewModel) {
                         }
                 }
                 if (gallery.isEmpty()) item {
-                    Box(Modifier.fillMaxWidth().height(190.dp),
-                        contentAlignment = Alignment.Center) {
-                        Text(when (tab) {
-                            0 -> if (account.historyLoaded) "还没有观看历史"
-                                else "历史暂未加载成功，点击刷新重试"
-                            1 -> if (account.favoritesLoaded) "还没有收藏的短剧"
-                                else "收藏暂未加载成功，点击刷新重试"
-                            2 -> if (account.likesLoading) "正在读取账号点赞…"
-                                else if (account.likesError != null) account.likesError.orEmpty()
-                                else if (account.likesLoaded) "账号暂无点赞作品"
-                                else "点赞记录尚未读取，请点击刷新"
-                            else -> if (account.reservationsLoaded) "暂无预约短剧"
-                                else "预约尚未加载，点击刷新重试"
-                        }, color = HongguoColors.muted, fontSize = 13.sp)
+                    val title = when (tab) {
+                        0 -> "观看历史"
+                        1 -> "账号收藏"
+                        2 -> "账号点赞"
+                        else -> "预约短剧"
                     }
+                    val loaded = when (tab) {
+                        0 -> account.historyLoaded
+                        1 -> account.favoritesLoaded
+                        2 -> account.likesLoaded
+                        else -> account.reservationsLoaded
+                    }
+                    val message = when (tab) {
+                        0 -> if (loaded) "还没有观看历史"
+                            else "历史尚未读取成功，可以刷新重试"
+                        1 -> if (loaded) "还没有收藏的短剧"
+                            else "收藏尚未读取成功，可以刷新重试"
+                        2 -> when {
+                            account.likesLoading -> "正在读取点赞记录…"
+                            account.likesError != null -> account.likesError.orEmpty()
+                            loaded -> "账号暂无点赞作品"
+                            else -> "点赞记录尚未读取，可以刷新重试"
+                        }
+                        else -> if (loaded) "暂无预约短剧"
+                            else "预约尚未加载，可以刷新重试"
+                    }
+                    val kind = when {
+                        tab == 2 && account.likesLoading -> HongguoFeedbackKind.LOADING
+                        tab == 2 && account.likesError != null -> HongguoFeedbackKind.ERROR
+                        !loaded -> HongguoFeedbackKind.ERROR
+                        else -> HongguoFeedbackKind.EMPTY
+                    }
+                    HongguoFeedbackPanel(
+                        title = title,
+                        message = message,
+                        kind = kind,
+                        tag = "account_library_empty_$tab",
+                        retryLabel = "刷新片单",
+                        onRetry = if (kind == HongguoFeedbackKind.LOADING) null else ({
+                            if (tab == 2) model.account.loadLikes(force = true)
+                            else {
+                                model.account.refresh()
+                                if (tab == 3) model.account.loadReservations()
+                            }
+                        }),
+                    )
                 }
                 items(gallery.chunked(posterColumns)) { line ->
                     Row(Modifier.fillMaxWidth(), horizontalArrangement = Arrangement.spacedBy(9.dp),
