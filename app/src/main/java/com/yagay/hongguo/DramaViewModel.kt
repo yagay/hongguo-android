@@ -1247,7 +1247,7 @@ class DramaViewModel(application: Application) : AndroidViewModel(application) {
         mutable.update { it.copy(
             feedItems = listOf(anchor), feedIndex = 0,
             feedLoading = false, feedHasMore = true, feedError = null,
-            playbackError = null,
+            playbackError = null, playbackRecoveryMessage = null,
             nextDramaTransition = NextDramaTransition.FINDING_RECOMMENDATION,
         ) }
         diagnostics.record("REELS", "FAILED_QUEUE_REFRESH_WITHOUT_PLAYER_RESET")

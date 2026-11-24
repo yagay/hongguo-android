@@ -207,7 +207,18 @@ internal fun ReelLoadingScreen(
                         color = Color(0xFFFFB09A), fontSize = 12.sp,
                         maxLines = 3, overflow = TextOverflow.Ellipsis,
                         textAlign = TextAlign.Center)
-                } else if (loading && elapsedSeconds >= 10) {
+                }
+                if (failed && state.playbackRecoveryMessage != null) {
+                    Text(state.playbackRecoveryMessage,
+                        color = Color(0xFFFFCF9E), fontSize = 12.sp,
+                        textAlign = TextAlign.Center,
+                        modifier = Modifier.testTag("loading_periodic_retry_status"))
+                    TextButton(
+                        onClick = model::stopPeriodicPlaybackRetry,
+                        modifier = Modifier.testTag("loading_periodic_retry_stop"),
+                    ) { Text("停止自动重试", color = Color.White) }
+                }
+                if (!failed && loading && elapsedSeconds >= 10) {
                     Text("网络响应较慢，可以重新获取",
                         color = Color(0xFFFFD0C0), fontSize = 11.sp,
                         textAlign = TextAlign.Center)
