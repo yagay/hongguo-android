@@ -13,6 +13,10 @@ import androidx.compose.foundation.layout.width
 import androidx.compose.foundation.layout.Arrangement
 import androidx.compose.foundation.layout.Row
 import androidx.compose.material3.Button
+import androidx.compose.material3.ExperimentalMaterial3Api
+import androidx.compose.material3.SheetState
+import androidx.compose.material3.SheetValue
+import androidx.compose.material3.rememberModalBottomSheetState
 import androidx.compose.ui.graphics.Color
 import androidx.compose.runtime.CompositionLocalProvider
 import androidx.compose.foundation.layout.Box
@@ -61,12 +65,16 @@ class HongguoThemeSmokeTest {
     @Test fun material3LightControlsRespond() = render("material3", "light")
     @Test fun material3DarkControlsRespond() = render("material3", "dark")
 
+    @OptIn(ExperimentalMaterial3Api::class)
     @Test fun episodeSheetKeepsGesturesWithoutUpwardEdgeBounce() {
         var open by mutableStateOf(true)
+        lateinit var state: SheetState
         composeRule.setContent {
             HongguoAppTheme(previewTheme("material3", "light")) {
+                state = rememberModalBottomSheetState(skipPartiallyExpanded = false)
                 if (open) HongguoPlayerSheet(
                     onDismissRequest = { open = false },
+                    sheetState = state,
                     modifier = Modifier.testTag("episode_sheet_smoke"),
                 ) {
                     Button(onClick = { open = false },
@@ -81,7 +89,7 @@ class HongguoThemeSmokeTest {
                             .testTag("episode_grid_smoke"),
                         overscrollEffect = null,
                     ) {
-                        items(100) { index ->
+                        items(150) { index ->
                             HongguoEpisodeCell(label = "${index + 1}",
                                 selected = false, onClick = {},
                                 modifier = Modifier.testTag("smoke_episode_$index"))
@@ -92,34 +100,53 @@ class HongguoThemeSmokeTest {
         }
         val sheet = composeRule.onNodeWithTag("episode_sheet_smoke")
         val grid = composeRule.onNodeWithTag("episode_grid_smoke")
+        val handle = composeRule.onNodeWithTag("hongguo_sheet_drag_handle", useUnmergedTree = true)
         composeRule.waitForIdle()
-        val partialTop = sheet.fetchSemanticsNode().boundsInRoot.top
-        grid.performTouchInput { swipeUp() }
-        composeRule.waitForIdle()
-        val expandedTop = sheet.fetchSemanticsNode().boundsInRoot.top
-        org.junit.Assert.assertTrue(expandedTop < partialTop)
+        val initial = composeRule.runOnIdle { state.currentValue }
+        val distance = composeRule.runOnIdle { state.requireOffset() * .7f }
+        org.junit.Assert.assertTrue("Sheet must be visible", initial != SheetValue.Hidden)
+        if (initial == SheetValue.PartiallyExpanded) {
+            handle.performTouchInput {
+                swipeUp(startY = center.y, endY = center.y - distance, durationMillis = 300)
+            }
+        }
+        composeRule.runOnIdle {
+            org.junit.Assert.assertEquals("Upward handle swipe expands sheet",
+                SheetValue.Expanded, state.currentValue)
+        }
+        val expandedOffset = composeRule.runOnIdle { state.requireOffset() }
 
-        grid.performScrollToIndex(99)
+        grid.performScrollToIndex(149)
         repeat(3) {
             grid.performTouchInput { swipeUp() }
-            composeRule.waitForIdle()
-            org.junit.Assert.assertEquals(expandedTop,
-                sheet.fetchSemanticsNode().boundsInRoot.top, 1f)
+            composeRule.runOnIdle {
+                org.junit.Assert.assertEquals("Upward grid edge must not move sheet",
+                    expandedOffset, state.requireOffset(), 1f)
+                org.junit.Assert.assertEquals(SheetValue.Expanded, state.currentValue)
+            }
         }
-        composeRule.onNodeWithTag("smoke_episode_99").assertExists()
+        composeRule.onNodeWithTag("smoke_episode_149").assertExists()
 
-        // Scrolling back through the grid must not collapse the sheet.
-        grid.performTouchInput { swipeDown(durationMillis = 400) }
-        composeRule.waitForIdle()
-        org.junit.Assert.assertEquals(expandedTop,
-            sheet.fetchSemanticsNode().boundsInRoot.top, 1f)
+        grid.performTouchInput {
+            swipeDown(startY = height * .35f, endY = height * .55f, durationMillis = 600)
+        }
+        composeRule.runOnIdle {
+            org.junit.Assert.assertEquals("Normal downward grid scroll keeps sheet expanded",
+                SheetValue.Expanded, state.currentValue)
+            org.junit.Assert.assertEquals(expandedOffset, state.requireOffset(), 1f)
+        }
 
-        // A downward drag from the sheet handle must still move/dismiss it.
-        sheet.performTouchInput { swipeDown(startY = 10f, endY = height * .65f) }
-        composeRule.waitForIdle()
-        if (open) {
-            org.junit.Assert.assertTrue(
-                sheet.fetchSemanticsNode().boundsInRoot.top > expandedTop)
+        // Drag from the handle, not from the grid or a clipped sheet node.
+        handle.performTouchInput {
+            swipeDown(startY = center.y, endY = center.y + distance.coerceAtLeast(300f),
+                durationMillis = 300)
+        }
+        val stillOpen = composeRule.runOnIdle { open }
+        if (stillOpen) {
+            composeRule.runOnIdle {
+                org.junit.Assert.assertTrue("Downward handle swipe collapses sheet",
+                    state.currentValue != SheetValue.Expanded)
+            }
             composeRule.onNodeWithTag("episode_sheet_smoke_close").performClick()
         }
         sheet.assertDoesNotExist()

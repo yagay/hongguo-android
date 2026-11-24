@@ -162,6 +162,8 @@ jobs:
             lint-debug.log
             debug-tests.log
             app/build/test-results/testDebugUnitTest/
+            app/build/outputs/androidTest-results/connected/
+            app/build/reports/androidTests/connected/
             app/build/reports/lint-results-debug.html
             app/build/reports/lint-results-debug.xml
           if-no-files-found: ignore

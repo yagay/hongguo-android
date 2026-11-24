@@ -63,6 +63,7 @@ import androidx.compose.material3.DropdownMenu
 import androidx.compose.material3.DropdownMenuItem
 import androidx.compose.material3.HorizontalDivider
 import androidx.compose.material3.ModalBottomSheet
+import androidx.compose.material3.SheetState
 import androidx.compose.material3.rememberModalBottomSheetState
 import androidx.compose.material3.ExperimentalMaterial3Api
 import androidx.compose.material3.Text
@@ -167,12 +168,10 @@ internal fun HongguoModalSheet(
     onDismissRequest: () -> Unit,
     modifier: Modifier = Modifier,
     fixedPosition: Boolean = false,
+    sheetState: SheetState = rememberModalBottomSheetState(skipPartiallyExpanded = fixedPosition),
     content: @Composable ColumnScope.() -> Unit,
 ) {
-    // A scrolling grid can hand unconsumed movement/fling to the sheet.
-    // A fixed selection sheet has only an expanded anchor and never
-    // participates in that nested drag; back/scrim/explicit close still work.
-    val sheetState = rememberModalBottomSheetState(skipPartiallyExpanded = fixedPosition)
+    // Fixed surfaces opt out explicitly; ordinary player sheets keep Material gestures.
     ModalBottomSheet(
         onDismissRequest = onDismissRequest,
         sheetState = sheetState,
@@ -186,8 +185,11 @@ internal fun HongguoModalSheet(
             topEnd = if (HongguoColors.isMaterial3) 28.dp else HongguoUi.cardRadius,
         ),
         dragHandle = if (fixedPosition) null else ({
-            BottomSheetDefaults.DragHandle(color = if (HongguoColors.isMaterial3)
-                MaterialTheme.colorScheme.onSurfaceVariant else HongguoColors.muted)
+            BottomSheetDefaults.DragHandle(
+                modifier = Modifier.testTag("hongguo_sheet_drag_handle"),
+                color = if (HongguoColors.isMaterial3)
+                    MaterialTheme.colorScheme.onSurfaceVariant else HongguoColors.muted,
+            )
         }),
         modifier = modifier,
         content = content,
@@ -195,14 +197,16 @@ internal fun HongguoModalSheet(
 }
 
 /** Kept for existing player call sites; now uses the same modal as Library. */
+@OptIn(ExperimentalMaterial3Api::class)
 @Composable
 internal fun HongguoPlayerSheet(
     onDismissRequest: () -> Unit,
     modifier: Modifier = Modifier,
     fixedPosition: Boolean = false,
+    sheetState: SheetState = rememberModalBottomSheetState(skipPartiallyExpanded = fixedPosition),
     content: @Composable ColumnScope.() -> Unit,
 ) = HongguoModalSheet(onDismissRequest, modifier,
-    fixedPosition = fixedPosition, content = content)
+    fixedPosition = fixedPosition, sheetState = sheetState, content = content)
 
 /** Same quiet action style as regular menus and Settings. */
 @Composable
