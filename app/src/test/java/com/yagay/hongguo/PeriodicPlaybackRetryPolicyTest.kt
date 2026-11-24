@@ -15,6 +15,19 @@ class PeriodicPlaybackRetryPolicyTest {
         assertEquals(300_000L, PeriodicPlaybackRetryPolicy.delayMs(1_000))
     }
 
+    @Test fun failedCatalogMiniPlayerDoesNotRestartWhileBrowsing() {
+        val feed = PlaybackNavigation().toFeed()
+        val series = feed.toSeries()
+        val catalog = series.toCatalog()
+        assertTrue(PeriodicPlaybackRetryPolicy.permitsSession(feed, false))
+        assertTrue(PeriodicPlaybackRetryPolicy.permitsSession(series, false))
+        assertTrue(PeriodicPlaybackRetryPolicy.permitsSession(series.toDetails(), false))
+        assertFalse(PeriodicPlaybackRetryPolicy.permitsSession(catalog, false))
+        assertFalse(PeriodicPlaybackRetryPolicy.permitsSession(catalog.toDetails(), false))
+        assertTrue(PeriodicPlaybackRetryPolicy.permitsSession(catalog, true))
+        assertTrue(PeriodicPlaybackRetryPolicy.permitsSession(catalog.restorePlayer(false), false))
+    }
+
     @Test fun permanentFailuresNeverAutomaticallyRepeat() {
         listOf("UPSTREAM_RATE_LIMIT", "UPSTREAM_UNAUTHORIZED",
             "UPSTREAM_FORBIDDEN", "CONTENT_UNAVAILABLE",

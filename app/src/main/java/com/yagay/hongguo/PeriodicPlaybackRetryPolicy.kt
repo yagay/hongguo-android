@@ -14,6 +14,12 @@ internal object PeriodicPlaybackRetryPolicy {
     fun delayMs(attempt: Int): Long =
         backoffMs[(attempt.coerceAtLeast(1) - 1).coerceAtMost(backoffMs.lastIndex)]
 
+    /** Browsing the catalog may retain a working mini-player, but must not
+     * keep resurrecting a failed source. Lock-screen/background playback in
+     * FEED or SERIES remains eligible, even without an Activity surface. */
+    fun permitsSession(navigation: PlaybackNavigation, hasUsableSource: Boolean): Boolean =
+        !navigation.isExplicitCatalog || hasUsableSource
+
     fun recoverableCode(code: String): Boolean =
         code.substringBefore(" · ").trim() in setOf(
             "NETWORK_DNS", "NETWORK_TIMEOUT", "NETWORK_CONNECT",

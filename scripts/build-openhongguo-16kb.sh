@@ -7,7 +7,7 @@ set -euo pipefail
 ROOT="$(cd "$(dirname "${BASH_SOURCE[0]}")/.." && pwd)"
 AAR="$ROOT/app/libs/openhongguo-16kb-recovery.aar"
 STAMP="$AAR.buildstamp"
-PATCH_ID="v6-upstream-auto-cac5dbc0e115-player-empty-strictid"
+PATCH_ID="v7-upstream-auto-cac5dbc0e115-player-empty-strictid"
 SOURCE_REPO="https://github.com/beilunyang/openhongguo.git"
 SOURCE_TAG="main@cac5dbc0"
 SOURCE_SHA="cac5dbc0e1150c0f93e309d8de68bb483f50f499"

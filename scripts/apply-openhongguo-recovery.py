@@ -98,6 +98,12 @@ def main(root: Path) -> None:
     # HTTP 200 with an empty body and Retry-After is an explicit request to
     # back off. Do not launch a GET probe or rotate devices in that situation.
     client = root / "sdk/client.go"
+    # Expose response size only (never raw bodies, URLs, or header values).
+    change(client,
+           '\t\tc.logger.Printf("HTTP %s %s -> %d", method, protocol.RedactedURL(req.URL), statusOf(resp))',
+           '\t\tresponseBytes := 0\n'
+           '\t\tif resp != nil { responseBytes = len(resp.Body) }\n'
+           '\t\tc.logger.Printf("HTTP %s %s -> %d bytes=%d", method, protocol.RedactedURL(req.URL), statusOf(resp), responseBytes)')
     change(client,
            """\tif len(bytes.TrimSpace(body)) == 0 {
 \t\treturn nil, ErrAnonymousLimited

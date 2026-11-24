@@ -2973,6 +2973,8 @@ class DramaViewModel(application: Application) : AndroidViewModel(application) {
     ): Boolean {
         val snapshot = state.value
         return generation == detailId && snapshot.retryPlaybackAutomatically &&
+            PeriodicPlaybackRetryPolicy.permitsSession(snapshot.navigation,
+                snapshot.playbackUrl != null && BackgroundPlaybackService.active != null) &&
             snapshot.offlinePlaybackUri == null && snapshot.detail?.drama?.id == expectedDramaId &&
             snapshot.qualityLimit == quality &&
             snapshot.detail?.episodes?.getOrNull(snapshot.episodeIndex)?.vid == expectedVid
@@ -2990,6 +2992,8 @@ class DramaViewModel(application: Application) : AndroidViewModel(application) {
         val snapshot = state.value
         val dramaId = snapshot.detail?.drama?.id ?: return false
         if (!snapshot.retryPlaybackAutomatically ||
+            !PeriodicPlaybackRetryPolicy.permitsSession(snapshot.navigation,
+                snapshot.playbackUrl != null && BackgroundPlaybackService.active != null) ||
             snapshot.offlinePlaybackUri != null ||
             snapshot.detail?.episodes?.getOrNull(snapshot.episodeIndex)?.vid != expectedVid
         ) return false
@@ -3097,6 +3101,9 @@ class DramaViewModel(application: Application) : AndroidViewModel(application) {
     ) {
         val detail = state.value.detail ?: return
         if (index !in detail.episodes.indices) return
+        if (periodicRetry && !PeriodicPlaybackRetryPolicy.permitsSession(
+                state.value.navigation, state.value.playbackUrl != null &&
+                    BackgroundPlaybackService.active != null)) return
         if (!periodicRetry) cancelPeriodicPlaybackRetry()
         if (networkResumeMs == null) cancelNextSeasonLookup()
         if (finaleRecommendationRequestFor != null &&
@@ -3689,8 +3696,14 @@ class DramaViewModel(application: Application) : AndroidViewModel(application) {
     fun minimizePlayer() {
         val snapshot = state.value
         if (snapshot.detail == null || snapshot.detailPageVisible) return
+        val failedSource = snapshot.playbackUrl == null || snapshot.playbackError != null
+        if (failedSource) {
+            cancelPeriodicPlaybackRetry()
+            diagnostics.record("PLAYBACK", "PERIODIC_RETRY_SUSPENDED_BROWSE")
+        }
         mutable.update { it.copy(miniPlayerVisible = true, modal = Modal.NONE,
-            navigation = it.navigation.toCatalog()) }
+            navigation = it.navigation.toCatalog(),
+            playbackRecoveryMessage = if (failedSource) null else it.playbackRecoveryMessage) }
         diagnostics.record("NAVIGATION", "EXPLICIT_BROWSE_HOME")
         // Home data is not loaded at cold start now that reels is the root.
         if (state.value.section == Section.RECOMMEND && state.value.items.isEmpty())
@@ -3708,6 +3721,13 @@ class DramaViewModel(application: Application) : AndroidViewModel(application) {
             modal = Modal.NONE,
         ) }
         diagnostics.record("PLAYER", "MINI_RESTORE")
+        val failedVid = snapshot.detail?.episodes?.getOrNull(snapshot.episodeIndex)?.vid
+        if (snapshot.playbackUrl == null && failedVid != null &&
+            snapshot.playbackError?.let(PeriodicPlaybackRetryPolicy::recoverableCode) == true &&
+            snapshot.retryPlaybackAutomatically) {
+            if (schedulePeriodicPlaybackRetry(failedVid))
+                diagnostics.record("PLAYBACK", "PERIODIC_RETRY_RESUMED_PLAYER")
+        }
         if (snapshot.playing && snapshot.playbackUrl != null &&
             BackgroundPlaybackService.active == null) {
             recoverPlaybackAfterServiceLoss()

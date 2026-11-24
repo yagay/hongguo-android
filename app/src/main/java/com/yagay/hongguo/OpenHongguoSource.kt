@@ -51,7 +51,9 @@ internal class OpenHongguoSource(
         }
         val status = message.substringAfter("->", "").trim().take(3).toIntOrNull()
             ?.takeIf { it in 100..599 }
-        diagnostics?.record("PLAYBACK_WIRE", path, httpStatus = status)
+        val responseBytes = message.substringAfterLast(" bytes=", "")
+            .trim().toIntOrNull()?.takeIf { it >= 0 }
+        diagnostics?.record("PLAYBACK_WIRE", path, httpStatus = status, bytes = responseBytes)
     }
 
     private val client: OpenhongguoClient by lazy(LazyThreadSafetyMode.SYNCHRONIZED) {
