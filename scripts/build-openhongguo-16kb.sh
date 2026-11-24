@@ -7,10 +7,10 @@ set -euo pipefail
 ROOT="$(cd "$(dirname "${BASH_SOURCE[0]}")/.." && pwd)"
 AAR="$ROOT/app/libs/openhongguo-16kb-recovery.aar"
 STAMP="$AAR.buildstamp"
-PATCH_ID="v5-upstream-medusa-v041-32d2a8c6-player-empty-strictid"
+PATCH_ID="v6-upstream-auto-cac5dbc0e115-player-empty-strictid"
 SOURCE_REPO="https://github.com/beilunyang/openhongguo.git"
-SOURCE_TAG="main@32d2a8c6"
-SOURCE_SHA="32d2a8c6387d4a63fe9262525531dd9d363f9833"
+SOURCE_TAG="main@cac5dbc0"
+SOURCE_SHA="cac5dbc0e1150c0f93e309d8de68bb483f50f499"
 GOMOBILE_VERSION="v0.0.0-20261011034528-197770444867"
 
 # An ELF-aligned AAR may still contain the obsolete, already-cached v2
