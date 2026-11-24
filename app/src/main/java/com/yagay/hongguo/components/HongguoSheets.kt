@@ -63,6 +63,7 @@ import androidx.compose.material3.DropdownMenu
 import androidx.compose.material3.DropdownMenuItem
 import androidx.compose.material3.HorizontalDivider
 import androidx.compose.material3.ModalBottomSheet
+import androidx.compose.material3.rememberModalBottomSheetState
 import androidx.compose.material3.ExperimentalMaterial3Api
 import androidx.compose.material3.Text
 import androidx.compose.material3.AlertDialog
@@ -165,10 +166,17 @@ internal fun HongguoMenuSeparator(dark: Boolean = false) {
 internal fun HongguoModalSheet(
     onDismissRequest: () -> Unit,
     modifier: Modifier = Modifier,
+    fixedPosition: Boolean = false,
     content: @Composable ColumnScope.() -> Unit,
 ) {
+    // A scrolling grid can hand unconsumed movement/fling to the sheet.
+    // A fixed selection sheet has only an expanded anchor and never
+    // participates in that nested drag; back/scrim/explicit close still work.
+    val sheetState = rememberModalBottomSheetState(skipPartiallyExpanded = fixedPosition)
     ModalBottomSheet(
         onDismissRequest = onDismissRequest,
+        sheetState = sheetState,
+        sheetGesturesEnabled = !fixedPosition,
         containerColor = if (HongguoColors.isMaterial3)
             MaterialTheme.colorScheme.surfaceContainerLow else HongguoColors.surface,
         contentColor = if (HongguoColors.isMaterial3)
@@ -177,10 +185,10 @@ internal fun HongguoModalSheet(
             topStart = if (HongguoColors.isMaterial3) 28.dp else HongguoUi.cardRadius,
             topEnd = if (HongguoColors.isMaterial3) 28.dp else HongguoUi.cardRadius,
         ),
-        dragHandle = {
+        dragHandle = if (fixedPosition) null else ({
             BottomSheetDefaults.DragHandle(color = if (HongguoColors.isMaterial3)
                 MaterialTheme.colorScheme.onSurfaceVariant else HongguoColors.muted)
-        },
+        }),
         modifier = modifier,
         content = content,
     )
@@ -191,8 +199,10 @@ internal fun HongguoModalSheet(
 internal fun HongguoPlayerSheet(
     onDismissRequest: () -> Unit,
     modifier: Modifier = Modifier,
+    fixedPosition: Boolean = false,
     content: @Composable ColumnScope.() -> Unit,
-) = HongguoModalSheet(onDismissRequest, modifier, content)
+) = HongguoModalSheet(onDismissRequest, modifier,
+    fixedPosition = fixedPosition, content = content)
 
 /** Same quiet action style as regular menus and Settings. */
 @Composable

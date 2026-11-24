@@ -2,6 +2,10 @@ package com.yagay.hongguo
 
 import androidx.compose.foundation.background
 import androidx.compose.foundation.layout.fillMaxSize
+import androidx.compose.foundation.layout.fillMaxWidth
+import androidx.compose.foundation.layout.height
+import androidx.compose.foundation.lazy.grid.GridCells
+import androidx.compose.foundation.lazy.grid.LazyVerticalGrid
 import androidx.compose.animation.SharedTransitionLayout
 import androidx.compose.foundation.layout.Column
 import androidx.compose.foundation.layout.FlowRow
@@ -35,6 +39,10 @@ import androidx.compose.ui.test.onNodeWithTag
 import androidx.compose.ui.test.onNodeWithText
 import androidx.compose.ui.test.onRoot
 import androidx.compose.ui.test.performClick
+import androidx.compose.ui.test.performScrollToIndex
+import androidx.compose.ui.test.performTouchInput
+import androidx.compose.ui.test.swipeUp
+import androidx.compose.ui.test.swipeDown
 import androidx.compose.ui.test.performSemanticsAction
 import androidx.compose.ui.semantics.SemanticsActions
 import androidx.compose.ui.test.junit4.createComposeRule
@@ -51,6 +59,53 @@ class HongguoThemeSmokeTest {
     @Test fun classicDarkControlsRespond() = render("classic", "dark")
     @Test fun material3LightControlsRespond() = render("material3", "light")
     @Test fun material3DarkControlsRespond() = render("material3", "dark")
+
+    @Test fun fixedEpisodeSheetStaysPutAtBothScrollEdges() {
+        var open by mutableStateOf(true)
+        composeRule.setContent {
+            HongguoAppTheme(previewTheme("material3", "light")) {
+                if (open) HongguoPlayerSheet(
+                    onDismissRequest = { open = false },
+                    fixedPosition = true,
+                    modifier = Modifier.testTag("fixed_episode_sheet_smoke"),
+                ) {
+                    Button(onClick = { open = false },
+                        modifier = Modifier.testTag("fixed_episode_sheet_close")) {
+                        Text("关闭选集")
+                    }
+                    LazyVerticalGrid(
+                        columns = GridCells.Fixed(5),
+                        modifier = Modifier.fillMaxWidth().height(220.dp)
+                            .testTag("fixed_episode_grid_smoke"),
+                    ) {
+                        items(60) { index ->
+                            HongguoEpisodeCell(label = "${index + 1}",
+                                selected = false, onClick = {},
+                                modifier = Modifier.testTag("fixed_episode_$index"))
+                        }
+                    }
+                }
+            }
+        }
+        val sheet = composeRule.onNodeWithTag("fixed_episode_sheet_smoke")
+        val grid = composeRule.onNodeWithTag("fixed_episode_grid_smoke")
+        composeRule.waitForIdle()
+        val originalTop = sheet.fetchSemanticsNode().boundsInRoot.top
+        grid.performScrollToIndex(59)
+        repeat(3) { grid.performTouchInput { swipeUp() } }
+        composeRule.waitForIdle()
+        composeRule.onNodeWithTag("fixed_episode_59").assertExists()
+        org.junit.Assert.assertEquals(originalTop,
+            sheet.fetchSemanticsNode().boundsInRoot.top, 1f)
+        grid.performScrollToIndex(0)
+        repeat(3) { grid.performTouchInput { swipeDown() } }
+        composeRule.waitForIdle()
+        composeRule.onNodeWithTag("fixed_episode_0").assertExists()
+        org.junit.Assert.assertEquals(originalTop,
+            sheet.fetchSemanticsNode().boundsInRoot.top, 1f)
+        composeRule.onNodeWithTag("fixed_episode_sheet_close").performClick()
+        sheet.assertDoesNotExist()
+    }
 
     @Test fun themeBackgroundChangesBetweenClassicAndMaterial() {
         var style by mutableStateOf("classic")

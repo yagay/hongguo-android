@@ -22,6 +22,7 @@ import androidx.compose.foundation.lazy.grid.rememberLazyGridState
 import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.material.icons.Icons
 import androidx.compose.material.icons.outlined.Refresh
+import androidx.compose.material.icons.outlined.Close
 import androidx.compose.material3.CircularProgressIndicator
 import androidx.compose.material3.Icon
 import androidx.compose.material3.Text
@@ -60,6 +61,7 @@ internal fun ReelEpisodeSelectionSheet(
     val screenHeight = LocalConfiguration.current.screenHeightDp
     val maxGridHeight = (screenHeight * 0.64f).dp
     var relatedTab by rememberSaveable(detail.drama.id) { mutableStateOf(false) }
+    if (detail.episodes.isEmpty()) return
     val currentIndex = state.episodeIndex.coerceIn(0, detail.episodes.lastIndex)
     val currentEpisode = detail.episodes[currentIndex].index
     val episodeColumns = if (HongguoColors.isMaterial3)
@@ -75,6 +77,7 @@ internal fun ReelEpisodeSelectionSheet(
     HongguoPlayerSheet(
         onDismissRequest = onDismiss,
         modifier = Modifier.testTag("reel_episodes_sheet"),
+        fixedPosition = true,
     ) {
         HongguoPlayerPanel(
             title = "选集",
@@ -89,6 +92,13 @@ internal fun ReelEpisodeSelectionSheet(
                     onClick = onDownloadFive,
                     modifier = Modifier.testTag("batch_download_5"),
                 )
+                HongguoIconAction(
+                    onClick = onDismiss,
+                    modifier = Modifier.testTag("episode_sheet_close"),
+                ) {
+                    Icon(Icons.Outlined.Close, contentDescription = "关闭选集",
+                        tint = HongguoColors.ink)
+                }
             },
         ) {
             Row(
@@ -143,6 +153,7 @@ internal fun ReelEpisodeSelectionSheet(
                 horizontalArrangement = Arrangement.spacedBy(6.dp),
                 verticalArrangement = Arrangement.spacedBy(6.dp),
                 contentPadding = PaddingValues(bottom = 16.dp),
+                overscrollEffect = null,
             ) {
                 if (!relatedTab) itemsIndexed(
                     detail.episodes,
