@@ -121,6 +121,9 @@ public final class AppSource {
         long started = System.currentTimeMillis();
         Exception failure = null;
         IOException renewal = null;
+        int attempts = 0;
+        int emptyResponses = 0;
+        int unavailableModels = 0;
         for (PlaybackRoute route : PLAYBACK_ROUTES) {
             if (System.currentTimeMillis() - started >= PLAYBACK_BUDGET_MS) break;
             if (Thread.currentThread().isInterrupted()) throw new InterruptedIOException("播放请求已取消");
@@ -135,20 +138,60 @@ public final class AppSource {
             }
             Map<String, Object> j;
             try {
+                attempts++;
                 j = route.post ? playbackPost.post(body, identity, route.host) : playbackTab.get(vid, identity);
             } catch (EmptyPlaybackResponseException e) {
+                emptyResponses++;
                 continue;
             } catch (PlaybackHttpException | IOException e) {
                 if (Thread.currentThread().isInterrupted()) throw e;
                 failure = e;
                 continue;
+            } catch (IllegalStateException e) {
+                // A malformed/partial response may be transient on this route.
+                // Never retry a decoder, key, URL-security or other semantic rejection here.
+                if (!isRetryableModelError(e)) throw e;
+                unavailableModels++;
+                continue;
             }
-            if (j != null) return parseModel(vid, j, quality);
+            if (j != null) {
+                try {
+                    return parseModel(vid, j, quality);
+                } catch (IllegalStateException e) {
+                    if (!isRetryableModelError(e)) throw e;
+                    unavailableModels++;
+                    continue;
+                }
+            }
+            unavailableModels++;
         }
-        if (failure != null) throw failure;
+        if (failure != null) {
+            if (failure instanceof PlaybackHttpException) {
+                ((PlaybackHttpException) failure).attempts = attempts;
+            }
+            throw failure;
+        }
+        if (emptyResponses == 0 && unavailableModels > 0) {
+            throw new PlaybackModelUnavailableException(attempts);
+        }
         EmptyPlaybackResponseException empty = new EmptyPlaybackResponseException();
+        empty.attempts = attempts;
         if (renewal != null) empty.addSuppressed(renewal);
         throw empty;
+    }
+
+    /**
+     * Only missing/partial model envelopes merit another signed route.
+     * Codec incompatibility, decryption/security checks and unexpected programming errors remain terminal.
+     */
+    private static boolean isRetryableModelError(IllegalStateException error) {
+        String reason = error.getMessage();
+        return "播放信息格式无效".equals(reason)
+                || "App 接口未返回播放数据".equals(reason)
+                || "App 接口暂未提供本集播放信息".equals(reason)
+                || "App 接口未返回所选分集".equals(reason)
+                || "App 接口未返回 video_model".equals(reason)
+                || "本集未返回可用片源列表".equals(reason);
     }
 
     /** 一条候选路径：GET 或 POST、主机、是否先换新身份。 */
@@ -176,17 +219,34 @@ public final class AppSource {
     private static final int PLAYBACK_TIMEOUT_MS = 8_000;
 
     /** 播放接口 HTTP 状态异常：换路径可能恢复，与业务或格式错误不同。 */
-    static final class PlaybackHttpException extends IllegalStateException {
+    public static final class PlaybackHttpException extends IllegalStateException {
+        private final int status;
+        private int attempts;
         PlaybackHttpException(int status) {
             super("App 接口 HTTP " + status);
+            this.status = status;
         }
+        public int getStatus() { return status; }
+        public int getAttempts() { return attempts; }
     }
 
     /** 播放接口返回空响应：疑似匿名身份被拒，fetch 会换新身份重试一次。 */
-    static final class EmptyPlaybackResponseException extends IllegalStateException {
+    public static final class EmptyPlaybackResponseException extends IllegalStateException {
+        private int attempts;
         EmptyPlaybackResponseException() {
             super("App 接口返回空响应，疑似播放设备身份被拒，请稍后重试");
         }
+        public int getAttempts() { return attempts; }
+    }
+
+    /** The endpoint replied, but no usable model was present on any attempted route. */
+    public static final class PlaybackModelUnavailableException extends IllegalStateException {
+        private final int attempts;
+        PlaybackModelUnavailableException(int attempts) {
+            super("App 接口未返回可用播放模型");
+            this.attempts = attempts;
+        }
+        public int getAttempts() { return attempts; }
     }
 
     /** 可替换的播放请求（JVM 测试注入）；生产实现见 {@link #postPlayback}. */
@@ -641,13 +701,10 @@ public final class AppSource {
         req.followRedirect = false;
         for (Map.Entry<String, String> e : signed.headers.entrySet()) req.header(e.getKey(), e.getValue());
         Http.Resp res;
-        try {
-            res = Http.send(req);
-        } catch (IOException e) {
-            if (Thread.currentThread().isInterrupted()) throw e;
-            return null;
-        }
-        return res.status == 200 ? parseTabResponse(vid, res.text()) : null;
+        res = Http.send(req);
+        if (res.status != 200) throw new PlaybackHttpException(res.status);
+        if (res.body.length == 0) throw new EmptyPlaybackResponseException();
+        return parseTabResponse(vid, res.text());
     }
 
     /**

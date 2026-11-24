@@ -1,0 +1,125 @@
+# 红果 Android 播放诊断与排障
+
+## 本次改动
+
+- 播放失败不再统一显示“准备播放失败，请检查网络”。`PlaybackDiagnostic` 为已知错误提供固定代码、阶段与简短说明。
+- 在播放器错误界面显示 `阶段 · 错误码`；点“复制诊断”可以复制安全摘要。
+- 空的 HTTP 200 正文（`VIDEO_MODEL_EMPTY`）与有响应但未返回可用模型（`VIDEO_MODEL_INVALID`）分别处理。
+- GET video_tab 遇到 HTTP 非 200 或真正空响应时不再无声返回 null；其他候选路由仍有机会尝试。
+- 某条路线返回不完整模型时，只对已明确列出的“缺模型/响应格式不完整”重试备用签名路由；编码不兼容、媒体密钥、URL 白名单等拒绝不会被忽略。
+- HTTP 底层向上保留已脱敏的 DNS/SSL 异常类型，便于区分网络原因。
+- 不修改请求签名算法、版本号、注册身份创建流程、Cookie 处理、缓存协议或解密逻辑。
+
+## 错误码
+
+| Code | Stage | 含义 |
+| --- | --- | --- |
+| `DEVICE_REGISTER_FAILED` | `device_register` | 未分类的设备初始化失败 |
+| `DEVICE_REGISTER_DNS_FAILED` / `DEVICE_REGISTER_TIMEOUT` / `DEVICE_REGISTER_TLS_FAILED` | `device_register` | 分别表示 DNS、超时和 TLS 安全连接失败 |
+| `DEVICE_REGISTER_HTTP` | `device_register` | 注册接口返回非 200 HTTP 状态，诊断附带状态码 |
+| `DEVICE_REGISTER_EMPTY` / `DEVICE_REGISTER_INVALID_JSON` | `device_register` | 返回空正文或非 JSON |
+| `DEVICE_REGISTER_INVALID_IDS` / `DEVICE_REGISTER_REJECTED` | `device_register` | 服务器未返回有效注册编号或拒绝请求 |
+| `DEVICE_REGISTER_NETWORK_FAILED` / `DEVICE_REGISTER_RESPONSE_TOO_LARGE` | `device_register` | 网络读取未完成或响应超出安全大小限制 |
+| `VIDEO_MODEL_EMPTY` | `multi_video_model` | 片源接口返回 HTTP 200 但正文为空 |
+| `VIDEO_MODEL_HTTP` | `multi_video_model` | 片源接口返回非 200 HTTP 状态 |
+| `VIDEO_MODEL_INVALID` | `multi_video_model` | 接口有响应，但本集模型缺失、格式不符合预期 |
+| `CODEC_UNSUPPORTED` | `codec_select` | 本集未提供受支持的 H.264 / HEVC 轨道，例如只有 ByteVC2 |
+| `MEDIA_SOURCE_INVALID` | `media_source` | 片源地址无效或不可用 |
+| `MEDIA_FORMAT_UNSUPPORTED` | `media_prepare` | 媒体索引、密钥、格式或加密数据无法处理 |
+| `MEDIA_STORAGE_FULL` | `media_cache` | 存储空间不足 |
+| `PLAYBACK_DNS_FAILED` | `network` | 域名解析失败 |
+| `PLAYBACK_TIMEOUT` | `network` | 请求超时 |
+| `PLAYBACK_TLS_FAILED` | `network` | TLS 安全连接失败 |
+| `PLAYBACK_NETWORK_FAILED` | `network` | 通用的网络请求失败 |
+| `MEDIA_PREPARE_IO_FAILED` | `media_prepare` | 读写或媒体准备 I/O 失败 |
+| `PLAYBACK_PREPARE_FAILED` | `playback_prepare` | 尚未识别的准备错误，需要测试或后续添加分类 |
+| `PLAYER_DECODER_UNSUPPORTED` | `media_decoder` | Media3 播放器解码失败 |
+| `PLAYER_PLAYBACK_FAILED` | `media_player` | Media3 播放器播放阶段失败 |
+
+注意：不是所有状态都有 HTTP 状态码、响应字节数或尝试次数；仅在确实由请求层报告时显示。尤其是 `VIDEO_MODEL_INVALID` 不代表“HTTP 200 空正文”。
+
+## 真机验证步骤
+
+1. 使用本 PR 的 **Debug** APK，在安卓手机上播放一集新内容（不要只测试已有完整 MP4 缓存的剧集）。
+2. 若出现错误，点击“复制诊断”并附上代码/阶段、实际播放触发方式（首次播放 / 切集 / 预加载）和应用版本。
+3. 测试不同剧集、移动网络/Wi-Fi，排查是否与线路或单剧编码相关。
+4. 切集、退出播放器、打开另一个剧集，确认旧诊断不会留在新请求上。
+5. 测试缓存命中、渐进式播放与完整下载兼容路径。
+6. 验证正常播放时“复制诊断”按钮不出现；取消与后台暂停不产生无关错误。
+
+## 安全与隐私
+
+**复制诊断只包括白名单字段**：稳定错误码、阶段、请求次数、HTTP 状态（如有）、响应长度（如有）。不记录/导出 URL、用户登录状态、设备标识符、Cookie、加密参数、签名头或原始服务端响应。
+
+## 后续排查
+
+若真机仍然无法播放，应基于复制出的错误码定位对应环节。对于 `DEVICE_REGISTER_FAILED` 和 `VIDEO_MODEL_EMPTY`，先验证请求及网络情况；对于 `CODEC_UNSUPPORTED`，需要根据实际源视频编码能力处理，**不应该通过延长超时解决**。
+
+本轮没有更改签名生成或模拟设备参数；在缺少实机证据时，直接换协议配置可能让当前已经能取址的环境出现回归。
+
+## 设备注册失败专项分析
+
+设备注册失败表示**还没有进入视频片源接口**，不应归咎于 ByteVC2 或 ExoPlayer。旧版只有 `DEVICE_REGISTER_FAILED`，无法区分 HTTP、DNS 或 JSON 类型。
+
+当前源码将原有泛用异常拆为安全、可复制的具体错误码，保留原有 10 秒失败冷却；考虑跨地区网络时延，注册请求单次超时由 8 秒调整为 12 秒，**不引入无上限重试或身份绕过**。针对 Android 上可能出现的 gzip 正文，只有检测到 gzip 文件头时才执行有大小上限的解压；若网络栈已经解压，则直接按文本解析。
+
+如果更新后仍失败，按新错误码判断：DNS/TLS/timeout 可以比较 Wi-Fi 与蜂窝网络；HTTP 或服务业务拒绝请记录状态码和大致时间（不发送账号和 Cookie），它不是本机视频解码问题；INVALID_IDS/INVALID_JSON 提示上游响应与当前注册协议不匹配，不能通过盲目延长播放器缓冲解决。
+
+这些改动**不能保证**上游注册服务接受第三方请求。切换网络或等待可能帮助排查，但修复最终依赖真实错误码，必要时使用服务提供的官方客户端或正式支持的接口。
+
+## 注册传输兼容性（2026-11-07）
+
+若诊断是 `DEVICE_REGISTER_NETWORK_FAILED` 且 **没有** `http_status`，表示请求没有取得可用 HTTP 响应，**并不等于服务端明确拒绝注册**。之前注册专用的 `HttpURLConnection` 通道会把连接拒绝、连接中断和提前关闭等 I/O 统统缩为 `IOException("网络请求失败")`，无法定位。
+
+现改为 `RegistrationHttp` 单一注册传输模块：
+- **首选** App 已依赖的 OkHttp 4.12；遵循设备的 HTTPS/系统代理配置，并可协商 HTTP/2。单次连接、发送与总预算均有限时。
+- **回退**：只有首选方式发生 I/O/握手/连接异常时，才使用原 `HttpURLConnection` 对 **同一域名、相同 POST 二进制内容和原始注册头** 重试一次。HTTP 状态码或格式明确错误不会触发此传输回退。不存在第三方代理/隐藏转发/随机域名，也不会绕过服务端身份审查。
+- 如果两个传输都失败，安全诊断报告增加 `primary_transport` 和 `fallback_transport`，如 `DEVICE_REGISTER_CONNECT_FAILED`、`DEVICE_REGISTER_SOCKET_FAILED`、`DEVICE_REGISTER_EOF`、`DEVICE_REGISTER_UNREACHABLE` 或 `DEVICE_REGISTER_NETWORK_FAILED`。
+- 两套传输都是同步调用，不引入新的后台或持续重试任务。仍遵守已有的 10 秒注册失败冷却。
+- **不可保证成功**：两条连接路径均不可用可能是网络出口/系统代理/运营商连通性问题，或者服务端临时限制。客户端无法替网络提供实际连接。
+
+复现时，请复制完整诊断（不含 URL/凭据）；优先比较同一台手机上的 Wi-Fi、移动数据和代理/私有 DNS 的不同结果。若两条传输都失败且 code 不同，保留两个原因便于继续定位。若改为 `DEVICE_REGISTER_HTTP` 或 `DEVICE_REGISTER_REJECTED`，说明网络已经能取得 HTTP/业务回应，不应继续按纯连接问题排查。
+
+## 双栈仍无法连接：备用官方注册域名
+
+真机报 `DEVICE_REGISTER_CONNECT_FAILED`，同时 `primary_transport=DEVICE_REGISTER_CONNECT_FAILED`、`fallback_transport=DEVICE_REGISTER_NETWORK_FAILED`，表示原域名的 OkHttp TCP 连接失败，旧网络栈也未成功。旧网络栈原先把 `ConnectException`、`SocketException`、`EOFException` 等统一缩成无说明的 IOException，现已保留脱敏的异常类型。
+
+在上述**两条传输均于 HTTP 响应前失败**的情况下，增加第三条受限备用路线：其他独立开源客户端使用的 `https://log.snssdk.com/service/2/device_register/`，对应 **JSON** 设备注册格式，使用与当前匿名应用模型一致的公开设备 profile；不能将加密 `tt_data=a` 二进制正文直接发往这个 JSON 路由。只尝试一次；不发送账号/登录 Cookie、认证头、视频直链、媒体密钥或原签名正文。优先原接口，若原域名能正常注册不会访问备用域名。
+
+若备用 JSON 注册成功，沿用现有 `PlaybackDevice.parse` 校验服务返回的设备 ID，并继续现有播放模型请求。若备用连接也失败，错误 `DEVICE_REGISTER_ALTERNATE_FAILED` 包含 `alternate_transport` 安全原因码；备用服务器响应非 200 时返回 `DEVICE_REGISTER_ALTERNATE_HTTP` 并显示 HTTP 状态。依旧不能保证源站会接受身份或允许视频播放。
+
+**需要对比网络**：手机 Wi-Fi、移动数据和当前代理/私有 DNS；尝试将 `log5-applog-lf.fqnovel.com` 与 `log.snssdk.com` 交给同一规则处理（只在用户信任的网络方案中设置）。不要为了排障关闭所有设备的网络安全保护。若注册可以通过，但出现 `VIDEO_MODEL_...`，应转向播放模型请求处理，而不继续改注册协议。
+
+另外，OkHttp 注册连接恢复设置使用 `retryOnConnectionFailure(true)`：允许在 **同一个最长 9 秒的请求期限内** 尝试 DNS 返回的其他 IPv4/IPv6 地址及受支持的代理路由，而不是第一个 TCP 连接失败就终止。这里不是无上限重试，随后才会进入有界的旧网络栈/备用域名回退。单次注册可能由于多条路径而耗时较长；遇到明确的 HTTP 拒绝不会进行备用域名注册。
+
+## 所有三个注册连接均无法建立：网络路由诊断（2026-11-07）
+
+真机新报表：
+
+```
+code=DEVICE_REGISTER_ALTERNATE_FAILED
+stage=device_register
+primary_transport=DEVICE_REGISTER_CONNECT_FAILED
+fallback_transport=DEVICE_REGISTER_CONNECT_FAILED
+alternate_transport=DEVICE_REGISTER_CONNECT_FAILED
+```
+
+这说明两个公开注册域名、三个连接尝试均在获取 HTTP 响应前失败，不能据此断言服务端已经拒绝设备身份。此时继续增补注册域名、改签名、改视频解码、增大 HTTP 读取超时都缺乏证据。应先排查手机实际 TCP 网络路由。
+
+现在仅在设备注册失败时附带**脱敏**的网络环境快照：
+- `network_transport=wifi|cellular|ethernet|other|none|unknown`：应用看到的默认网络类型。
+- `vpn_active=yes|no`：Android 当前默认网络是否通过 VPN transport。
+- `system_proxy=yes|no`：Android 系统默认 HTTP 代理是否配置。
+- `private_dns=yes|no`：系统报告是否启用 Private DNS（Android 9+）。
+- `network_validated=yes|no`：Android 是否将默认网络判为具有通用互联网连通性（**不代表注册域名一定可达**）。
+
+不记录网络接口、VPN 应用名、SSID、DNS 服务器、IP 地址、代理主机/端口、账号和请求 URL。Root iptables/NAT 转发、UID 防火墙和 root 透明代理通常**不会直接在上述 Android 网络 API 中体现**，需要外部诊断。
+
+建议复测矩阵（每次重试前注意已有 10 秒失败冷却）：
+1. 当前 Wi-Fi/代理配置；记录五项新状态。
+2. 只关掉临时 VPN/透明代理路由后，再试同一 Wi-Fi，其他条件不变。
+3. 只使用移动数据（暂时关闭 Wi-Fi，并确保适用的代理规则不会覆盖），再试。
+4. 若浏览器/Termux 可直接连接但应用无法连接，排查此 App 的 VPN 分应用路由、Root UID 规则、联网权限，以及本地代理端口是否监听。
+5. 不对公开服务做无限重试或请求洪泛；涉及代理/过滤策略时仅调整自己控制的设备，并可随时恢复原设置。
+
+网络快照是**故障发生时的背景环境**，不构成 Root 流量一定经过某条规则的证明。
