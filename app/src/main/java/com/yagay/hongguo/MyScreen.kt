@@ -90,16 +90,11 @@ internal fun MyScreen(state: AppState, model: DramaViewModel, onBack: () -> Unit
     var managementMenuOpen by remember { mutableStateOf(false) }
     var accountOperationsOpen by remember { mutableStateOf(false) }
     var confirmAccountLogout by remember { mutableStateOf(false) }
-    LazyColumn(
-        Modifier.fillMaxSize().testTag("my_screen")
-            .padding(horizontal = HongguoUi.pagePadding),
-        contentPadding = PaddingValues(top = 8.dp, bottom = 28.dp),
-        verticalArrangement = Arrangement.spacedBy(12.dp),
-    ) {
-        item {
-            HongguoPageHeader(
-                title = "我的",
-                horizontalPadding = 0.dp,
+    Column(Modifier.fillMaxSize().testTag("my_screen")) {
+        HongguoPageHeader(
+            title = "我的",
+            horizontalPadding = 0.dp,
+            modifier = Modifier.padding(horizontal = HongguoUi.pagePadding),
             ) {
                 Box {
                     HongguoIconAction(
@@ -169,7 +164,12 @@ internal fun MyScreen(state: AppState, model: DramaViewModel, onBack: () -> Unit
                     }
                 }
             }
-        }
+        LazyColumn(
+            Modifier.weight(1f).fillMaxWidth()
+                .padding(horizontal = HongguoUi.pagePadding),
+            contentPadding = PaddingValues(top = 8.dp, bottom = 28.dp),
+            verticalArrangement = Arrangement.spacedBy(12.dp),
+        ) {
         item {
             HongguoCard() {
                 Row(
@@ -576,6 +576,7 @@ internal fun MyScreen(state: AppState, model: DramaViewModel, onBack: () -> Unit
                     color = HongguoColors.muted, fontSize = 12.sp,
                     modifier = Modifier.padding(top = 8.dp))
             }
+        }
         }
     }
     if (confirmAccountLogout) HongguoConfirmDialog(

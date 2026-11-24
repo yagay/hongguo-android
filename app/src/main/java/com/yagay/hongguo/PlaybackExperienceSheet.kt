@@ -51,6 +51,7 @@ import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.graphics.vector.ImageVector
+import androidx.compose.ui.platform.LocalConfiguration
 import androidx.compose.ui.platform.testTag
 import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.text.style.TextOverflow
@@ -89,6 +90,8 @@ internal fun PlaybackExperienceSheet(
 ) {
     val account by model.account.state.collectAsStateWithLifecycle()
     val focused = initialSection
+    val maxPanelHeight = (LocalConfiguration.current.screenHeightDp * 0.74f)
+        .coerceIn(250f, 620f).dp
 
     val foreground = HongguoColors.ink
     val secondary = HongguoColors.muted
@@ -104,7 +107,7 @@ internal fun PlaybackExperienceSheet(
         modifier = Modifier.testTag("playback_settings_sheet"),
     ) {
         HongguoPlayerPanel(
-            modifier = Modifier.heightIn(max = 530.dp)
+            modifier = Modifier.heightIn(max = maxPanelHeight)
                 .verticalScroll(rememberScrollState()),
             title = when (focused) {
                 PlaybackQuickSetting.VIDEO -> "画面设置"

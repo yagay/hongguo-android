@@ -95,6 +95,9 @@ internal fun OpenHongguoExploreScreen(
     var filterRows by remember { mutableStateOf(emptyList<FilterRow>()) }
     var selectedFilters by remember { mutableStateOf(emptyMap<String, List<String>>()) }
     var filterSheetOpen by remember { mutableStateOf(false) }
+    // Edits stay local until Apply; the browse request observes selectedFilters only.
+    var draftFilters by remember { mutableStateOf(emptyMap<String, List<String>>()) }
+    var advancedTabsOpen by remember { mutableStateOf(false) }
     var rows by remember { mutableStateOf(emptyList<OpenHongguoBrowseItem>()) }
     var more by remember { mutableStateOf(false) }
     var nextCursor by remember { mutableStateOf("") }
@@ -111,6 +114,24 @@ internal fun OpenHongguoExploreScreen(
     var worksRefresh by remember { mutableIntStateOf(0) }
     var suggestionRequest by remember { mutableIntStateOf(0) }
     var suggestions by remember { mutableStateOf(emptyList<String>()) }
+
+    val switchTab: (String) -> Unit = { id ->
+        if (id != tab) {
+            tab = id
+            query = ""
+            activeQuery = ""
+            rankCell = ""
+            cursor = ""
+            rows = emptyList()
+            more = false
+            nextCursor = ""
+            error = null
+            selectedFilters = emptyMap()
+            draftFilters = emptyMap()
+            filterSheetOpen = false
+            suggestions = emptyList()
+        }
+    }
 
     BackHandler {
         when {
@@ -237,23 +258,33 @@ internal fun OpenHongguoExploreScreen(
             Row(Modifier.fillMaxWidth().horizontalScroll(rememberScrollState())
                 .padding(horizontal = HongguoUi.pagePadding),
                 horizontalArrangement = Arrangement.spacedBy(7.dp)) {
-                tabs.forEach { (id, name) ->
+                tabs.take(6).forEach { (id, name) ->
                     HongguoChoiceChip(label = name, selected = tab == id,
-                        onClick = {
-                            if (id != tab) {
-                                tab = id
-                                query = ""
-                                activeQuery = ""
-                                rankCell = ""
-                                cursor = ""
-                                rows = emptyList()
-                                more = false
-                                nextCursor = ""
-                                error = null
-                                selectedFilters = emptyMap()
-                                suggestions = emptyList()
-                            }
-                        })
+                        onClick = { switchTab(id) })
+                }
+                Box {
+                    HongguoChoiceChip(
+                        label = tabs.drop(6).firstOrNull { it.first == tab }?.second
+                            ?: "更多频道",
+                        selected = tabs.drop(6).any { it.first == tab },
+                        onClick = { advancedTabsOpen = true },
+                        modifier = Modifier.testTag("explore_more_categories"),
+                    )
+                    HongguoActionMenu(
+                        expanded = advancedTabsOpen,
+                        onDismissRequest = { advancedTabsOpen = false },
+                    ) {
+                        tabs.drop(6).forEach { (id, name) ->
+                            HongguoMenuAction(
+                                label = name,
+                                onClick = {
+                                    advancedTabsOpen = false
+                                    switchTab(id)
+                                },
+                                modifier = Modifier.testTag("explore_category_$id"),
+                            )
+                        }
+                    }
                 }
             }
         }
@@ -265,7 +296,10 @@ internal fun OpenHongguoExploreScreen(
                 horizontalArrangement = Arrangement.spacedBy(8.dp)) {
                 HongguoAction(
                     label = "筛选条件 · ${selectedFilters.size} 组",
-                    onClick = { filterSheetOpen = true },
+                    onClick = {
+                        draftFilters = selectedFilters
+                        filterSheetOpen = true
+                    },
                     modifier = Modifier.testTag("explore_open_filters"),
                 )
                 if (selectedFilters.isNotEmpty()) {
@@ -288,7 +322,9 @@ internal fun OpenHongguoExploreScreen(
                                 label = "${group?.name ?: key}: $label ×",
                                 selected = true,
                                 onClick = {
-                                    selectedFilters = selectedFilters - key
+                                    selectedFilters = ExploreFilterSelection.removeValue(
+                                        selectedFilters, key, value,
+                                    )
                                     cursor = ""; rows = emptyList(); nextCursor = ""
                                 },
                             )
@@ -472,16 +508,17 @@ internal fun OpenHongguoExploreScreen(
         }
         }
         if (filterSheetOpen && actorId.isBlank()) {
-            HongguoModalSheet(onDismissRequest = { filterSheetOpen = false },
-                modifier = Modifier.testTag("explore_filter_sheet")) {
+            HongguoModalSheet(onDismissRequest = {
+                draftFilters = selectedFilters
+                filterSheetOpen = false
+            }, modifier = Modifier.testTag("explore_filter_sheet")) {
                 Column(Modifier.fillMaxWidth().padding(horizontal = 16.dp),
                     verticalArrangement = Arrangement.spacedBy(10.dp)) {
                     Row(Modifier.fillMaxWidth(), verticalAlignment = Alignment.CenterVertically) {
                         Text("筛选作品", style = MaterialTheme.typography.titleLarge,
                             modifier = Modifier.weight(1f))
                         TextButton(onClick = {
-                            selectedFilters = emptyMap()
-                            cursor = ""; rows = emptyList(); nextCursor = ""
+                            draftFilters = emptyMap()
                         }) { Text("重置") }
                     }
                     LazyColumn(Modifier.fillMaxWidth().heightIn(max = 540.dp),
@@ -491,21 +528,18 @@ internal fun OpenHongguoExploreScreen(
                                 Text(group.name, style = MaterialTheme.typography.titleSmall)
                                 FlowRow(horizontalArrangement = Arrangement.spacedBy(6.dp),
                                     verticalArrangement = Arrangement.spacedBy(4.dp)) {
-                                    FilterChip(selected = selectedFilters[group.key].isNullOrEmpty(),
+                                    FilterChip(selected = draftFilters[group.key].isNullOrEmpty(),
                                         onClick = {
-                                            selectedFilters = selectedFilters - group.key
-                                            cursor = ""; rows = emptyList(); nextCursor = ""
+                                            draftFilters = draftFilters - group.key
                                         },
                                         label = { Text("全部") })
                                     group.options.forEach { option ->
                                         FilterChip(
-                                            selected = selectedFilters[group.key]?.contains(option.value) == true,
+                                            selected = draftFilters[group.key]?.contains(option.value) == true,
                                             onClick = {
-                                                val old = selectedFilters[group.key].orEmpty()
-                                                selectedFilters = if (option.value in old)
-                                                    selectedFilters - group.key
-                                                else selectedFilters + (group.key to listOf(option.value))
-                                                cursor = ""; rows = emptyList(); nextCursor = ""
+                                                draftFilters = ExploreFilterSelection.toggle(
+                                                    draftFilters, group.key, option.value,
+                                                )
                                             },
                                             label = { Text(option.name, maxLines = 1) },
                                         )
@@ -514,9 +548,33 @@ internal fun OpenHongguoExploreScreen(
                             }
                         }
                     }
-                    HongguoAction(label = "查看筛选结果",
-                        onClick = { filterSheetOpen = false },
-                        modifier = Modifier.fillMaxWidth().testTag("explore_apply_filters"))
+                    Row(Modifier.fillMaxWidth(),
+                        horizontalArrangement = Arrangement.spacedBy(8.dp)) {
+                        HongguoAction(
+                            label = "取消",
+                            onClick = {
+                                draftFilters = selectedFilters
+                                filterSheetOpen = false
+                            },
+                            style = HongguoActionStyle.QUIET,
+                            modifier = Modifier.weight(1f)
+                                .testTag("explore_cancel_filters"),
+                        )
+                        HongguoAction(
+                            label = "应用筛选",
+                            onClick = {
+                                if (selectedFilters != draftFilters) {
+                                    selectedFilters = draftFilters
+                                    cursor = ""
+                                    rows = emptyList()
+                                    nextCursor = ""
+                                }
+                                filterSheetOpen = false
+                            },
+                            modifier = Modifier.weight(1f)
+                                .testTag("explore_apply_filters"),
+                        )
+                    }
                 }
             }
         }

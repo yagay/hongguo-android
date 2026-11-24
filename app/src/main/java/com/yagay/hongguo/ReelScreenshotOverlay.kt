@@ -113,6 +113,9 @@ internal fun ReelScreenshotOverlay(
     val social = state.socialStats?.takeIf {
         it.seriesId == detail.drama.id && state.socialForSeries == detail.drama.id
     }
+    val compactOverlay =
+        LocalConfiguration.current.screenHeightDp < 620 ||
+            LocalDensity.current.fontScale >= 1.3f
     val favoriteMetric = social?.favoriteMetric()
     val likeMetric = episode?.vid?.let { social?.likeMetric(it) }
     val commentCount = state.commentsTotal
@@ -248,7 +251,7 @@ internal fun ReelScreenshotOverlay(
             // The provider's series_play_cnt is a series-wide view metric.
             // It is display-only and must not behave like a clickable action
             // or be inflated from local playback history.
-            ReferenceMetric(
+            if (!compactOverlay) ReferenceMetric(
                 icon = Icons.Outlined.Visibility,
                 label = "全剧播放量",
                 count = social?.playCount?.let(SocialCountFormatter::format)

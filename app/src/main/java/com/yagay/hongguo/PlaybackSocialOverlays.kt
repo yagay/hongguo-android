@@ -135,9 +135,13 @@ internal fun CommentsSheet(state: AppState, model: DramaViewModel) {
         ?.comments)?.let { total ->
         "共 " + SocialCountFormatter.format(total) + " 条"
     } ?: "已加载 " + state.comments.size + " 条"
+    val dialogHeight = (LocalConfiguration.current.screenHeightDp * .76f)
+        .coerceIn(260f, 610f).dp
+    val listHeight = (LocalConfiguration.current.screenHeightDp * .58f)
+        .coerceIn(160f, 460f).dp
     HongguoPlayerPanel(
         title = "评论",
-        modifier = Modifier.heightIn(max = 540.dp),
+        modifier = Modifier.heightIn(max = dialogHeight),
         subtitle = countLabel + " · 仅当前分集的公开评论",
         actions = {
             HongguoIconAction(
@@ -153,7 +157,7 @@ internal fun CommentsSheet(state: AppState, model: DramaViewModel) {
             Text("当前显示官网公开的部分评论，非全部评论",
                 color = HongguoColors.accent, fontSize = 12.sp)
         }
-        LazyColumn(Modifier.fillMaxWidth().heightIn(max = 400.dp),
+        LazyColumn(Modifier.fillMaxWidth().heightIn(max = listHeight),
             verticalArrangement = Arrangement.spacedBy(10.dp)) {
             items(state.comments, key = { it.id }) { comment ->
                 HongguoSheetListRow {

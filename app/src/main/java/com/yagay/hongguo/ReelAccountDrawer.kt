@@ -51,6 +51,8 @@ import androidx.compose.ui.Modifier
 import androidx.compose.ui.draw.clip
 import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.layout.ContentScale
+import androidx.compose.ui.platform.LocalConfiguration
+import androidx.compose.ui.platform.LocalDensity
 import androidx.compose.ui.platform.testTag
 import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.text.style.TextOverflow
@@ -75,6 +77,8 @@ internal fun ReelAccountDrawer(
     onClose: () -> Unit,
 ) {
     val account by model.account.state.collectAsStateWithLifecycle()
+    val expandedColumns = if (LocalConfiguration.current.screenWidthDp < 360 ||
+        LocalDensity.current.fontScale >= 1.3f) 2 else 3
     // History can include repeat visits; show each drama only once, most recent first.
     val recentlyWatched = remember(state.library) {
         state.library.sortedByDescending { it.updated }.distinctBy { it.drama.id }
@@ -150,7 +154,8 @@ internal fun ReelAccountDrawer(
                                         fontSize = 14.sp, maxLines = 2,
                                         overflow = TextOverflow.Ellipsis,
                                         color = HongguoColors.ink)
-                                    Text("点击继续观看", fontSize = 11.sp, color = HongguoColors.muted)
+                                    Text("点击继续观看", fontSize = if (HongguoColors.isMaterial3) 12.sp else 11.sp,
+                                        color = HongguoColors.muted)
                                 }
                                 TextButton(onClick = { model.toggleWatchLater(drama) },
                                     modifier = Modifier.testTag("drawer_later_remove_" + drama.id)) {
@@ -268,7 +273,7 @@ internal fun ReelAccountDrawer(
         if (recentExpanded && recentlyWatched.isNotEmpty()) {
             // Three proportional 2:3 posters per row. Each row is an item
             // of the outer LazyColumn, avoiding nested vertical scrolling.
-            items(recentlyWatched.chunked(3),
+            items(recentlyWatched.chunked(expandedColumns),
                 key = { row -> "recent_expanded_" + row.first().drama.id }) { row ->
                 Row(
                     modifier = Modifier.fillMaxWidth()
@@ -280,7 +285,7 @@ internal fun ReelAccountDrawer(
                             modifier = Modifier.weight(1f),
                             onClick = { onHistoryItem(watched.drama) })
                     }
-                    repeat(3 - row.size) { Spacer(Modifier.weight(1f)) }
+                    repeat(expandedColumns - row.size) { Spacer(Modifier.weight(1f)) }
                 }
             }
         }

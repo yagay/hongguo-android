@@ -2,58 +2,46 @@ package com.yagay.hongguo
 
 import androidx.compose.foundation.background
 import androidx.compose.foundation.clickable
-import androidx.compose.foundation.layout.Arrangement
+import androidx.compose.foundation.gestures.detectDragGestures
 import androidx.compose.foundation.layout.Box
-import androidx.compose.foundation.layout.Column
-import androidx.compose.foundation.layout.Row
-import androidx.compose.foundation.layout.Spacer
 import androidx.compose.foundation.layout.fillMaxSize
-import androidx.compose.foundation.layout.fillMaxWidth
-import androidx.compose.foundation.layout.height
-import androidx.compose.foundation.layout.padding
+import androidx.compose.foundation.layout.offset
 import androidx.compose.foundation.layout.size
-import androidx.compose.foundation.layout.width
 import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.material.icons.Icons
-import androidx.compose.material.icons.outlined.Close
-import androidx.compose.material.icons.outlined.Pause
-import androidx.compose.material.icons.outlined.PlayArrow
-import androidx.compose.material.icons.outlined.PictureInPictureAlt
+import androidx.compose.material.icons.outlined.CloseFullscreen
+import androidx.compose.material.icons.outlined.OpenInFull
 import androidx.compose.material3.Icon
-import androidx.compose.material3.IconButton
-import androidx.compose.material3.Text
 import androidx.compose.runtime.Composable
-import androidx.compose.runtime.LaunchedEffect
 import androidx.compose.runtime.getValue
+import androidx.compose.runtime.mutableFloatStateOf
 import androidx.compose.runtime.mutableStateOf
 import androidx.compose.runtime.remember
+import androidx.compose.runtime.saveable.rememberSaveable
 import androidx.compose.runtime.setValue
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.draw.clip
 import androidx.compose.ui.graphics.Color
+import androidx.compose.ui.input.pointer.pointerInput
 import androidx.compose.ui.layout.ContentScale
+import androidx.compose.ui.platform.LocalConfiguration
 import androidx.compose.ui.platform.LocalContext
+import androidx.compose.ui.platform.LocalDensity
 import androidx.compose.ui.platform.testTag
-import androidx.compose.ui.text.font.FontWeight
-import androidx.compose.ui.text.style.TextOverflow
+import androidx.compose.ui.unit.IntOffset
 import androidx.compose.ui.unit.dp
-import androidx.compose.ui.unit.sp
 import androidx.compose.ui.viewinterop.AndroidView
 import androidx.lifecycle.compose.collectAsStateWithLifecycle
 import androidx.media3.common.util.UnstableApi
 import androidx.media3.ui.AspectRatioFrameLayout
 import androidx.media3.ui.PlayerView
 import coil.compose.AsyncImage
-import kotlinx.coroutines.delay
-import kotlinx.coroutines.isActive
+import kotlin.math.roundToInt
 
 /**
- * In-app mini player for catalog, search, account and drama detail pages.
- *
- * It is only a second video *surface* for the existing MediaSessionService
- * ExoPlayer, never another ExoPlayer, MediaSession or media source. The full
- * player and this view are never composed simultaneously in the app shell.
+ * Moveable, edge-snapping mini video surface. The Media3 player still belongs
+ * to BackgroundPlaybackService; dragging and folding never create a player.
  */
 @androidx.annotation.OptIn(UnstableApi::class)
 @Composable
@@ -66,27 +54,43 @@ internal fun InAppMiniPlayer(
     val detail = state.detail ?: return
     val selected = detail.episodes.getOrNull(state.episodeIndex) ?: return
     val media by BackgroundPlaybackService.playerFlow.collectAsStateWithLifecycle()
-    // A MediaItem transition can briefly invalidate the selected vid, but
-    // never unmount the PlayerView: its video surface must survive every
-    // automatic episode and reel switch.
-    // Only cover an absent or mismatched media item. During buffering the
-    // existing PlayerView retains its last decoded frame instead of flashing
-    // the poster over a still-valid playing video.
-    val showCover = PlaybackFramePolicy.showCover(selected.vid,
-        media?.currentMediaItem?.mediaId)
-
-    // A compact portrait video-only overlay, not a layout-consuming 94dp
-    // control bar. The surrounding page remains full-height and scrollable.
+    val showCover = PlaybackFramePolicy.showCover(
+        selected.vid, media?.currentMediaItem?.mediaId,
+    )
+    val context = LocalContext.current
+    val prefs = remember(context) {
+        context.getSharedPreferences("hongguo_in_app_mini_position", android.content.Context.MODE_PRIVATE)
+    }
+    var xFraction by rememberSaveable { mutableFloatStateOf(prefs.getFloat("x", 1f)) }
+    var yFraction by rememberSaveable { mutableFloatStateOf(prefs.getFloat("y", 1f)) }
+    var folded by rememberSaveable { mutableStateOf(prefs.getBoolean("folded", false)) }
+    val width = if (folded) 48.dp else 90.dp
+    val height = if (folded) 48.dp else 160.dp
+    val configuration = LocalConfiguration.current
+    val density = LocalDensity.current
+    // Leave room for the app's 56dp header, navigation and system safe insets.
+    val travelX = with(density) {
+        (configuration.screenWidthDp.dp - width - 24.dp).coerceAtLeast(0.dp).toPx()
+    }
+    val travelY = with(density) {
+        (configuration.screenHeightDp.dp - height - 176.dp).coerceAtLeast(0.dp).toPx()
+    }
     Box(
         modifier = modifier
-            .size(width = 90.dp, height = 160.dp)
-            .clip(RoundedCornerShape(11.dp))
+            .offset {
+                IntOffset(
+                    MiniPlayerLayoutPolicy.offsetPx(travelX, xFraction).roundToInt(),
+                    MiniPlayerLayoutPolicy.offsetPx(travelY, yFraction).roundToInt(),
+                )
+            }
+            .size(width, height)
+            .clip(RoundedCornerShape(if (folded) 24.dp else 11.dp))
             .background(Color.Black)
             .testTag("in_app_mini_player"),
         contentAlignment = Alignment.Center,
     ) {
-        // Reattach the existing service-owned Media3 player. No new player,
-        // media item, seek or reload is created when expanding the window.
+        // Keep AndroidView composed in folded mode: the service player and its
+        // media item must not be recreated on a purely visual state change.
         AndroidView(
             factory = {
                 PlayerView(it).apply {
@@ -109,12 +113,57 @@ internal fun InAppMiniPlayer(
                 modifier = Modifier.fillMaxSize(),
             )
         }
-        // PlayerView is an AndroidView that may consume pointer events;
-        // a transparent Compose hit layer guarantees tap-to-expand.
-        Box(
-            Modifier.fillMaxSize()
-                .clickable(onClick = onExpand)
-                .testTag("mini_expand_player"),
-        )
+        if (folded) {
+            Box(
+                Modifier.fillMaxSize().background(Color.Black.copy(alpha = 0.62f))
+                    .clickable {
+                        folded = false
+                        prefs.edit().putBoolean("folded", false).apply()
+                    }
+                    .testTag("mini_unfold"),
+                contentAlignment = Alignment.Center,
+            ) {
+                Icon(Icons.Outlined.OpenInFull, contentDescription = "展开小窗",
+                    tint = Color.White, modifier = Modifier.size(24.dp))
+            }
+        } else {
+            // A transparent input layer wins touch over PlayerView. A drag
+            // moves the window, a normal tap opens the full player.
+            Box(
+                Modifier.fillMaxSize()
+                    .pointerInput(travelX, travelY) {
+                        detectDragGestures(
+                            onDragEnd = {
+                                xFraction = MiniPlayerLayoutPolicy.snapX(xFraction)
+                                prefs.edit().putFloat("x", xFraction)
+                                    .putFloat("y", yFraction).apply()
+                            },
+                            onDrag = { change, amount ->
+                                xFraction = MiniPlayerLayoutPolicy.move(
+                                    xFraction, amount.x, travelX)
+                                yFraction = MiniPlayerLayoutPolicy.move(
+                                    yFraction, amount.y, travelY)
+                                change.consume()
+                            },
+                        )
+                    }
+                    .clickable(onClick = onExpand)
+                    .testTag("mini_expand_player"),
+            )
+            Box(
+                Modifier.align(Alignment.TopEnd).size(40.dp)
+                    .clickable {
+                        folded = true
+                        prefs.edit().putBoolean("folded", true)
+                            .putFloat("x", xFraction).putFloat("y", yFraction).apply()
+                    }
+                    .testTag("mini_fold"),
+                contentAlignment = Alignment.Center,
+            ) {
+                Icon(Icons.Outlined.CloseFullscreen,
+                    contentDescription = "折叠小窗",
+                    tint = Color.White, modifier = Modifier.size(20.dp))
+            }
+        }
     }
 }

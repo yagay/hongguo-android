@@ -20,6 +20,7 @@ EXPECTED = {
     "theme_surface_material3_light",
     "poster_material3_dark",
     "poster_shared_element",
+    "seek_accessibility",
 }
 PAIRS = (
     ("theme_classic_light", "theme_classic_dark"),

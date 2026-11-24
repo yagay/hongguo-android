@@ -30,6 +30,8 @@ import androidx.compose.ui.test.onNodeWithTag
 import androidx.compose.ui.test.onNodeWithText
 import androidx.compose.ui.test.onRoot
 import androidx.compose.ui.test.performClick
+import androidx.compose.ui.test.performSemanticsAction
+import androidx.compose.ui.semantics.SemanticsActions
 import androidx.compose.ui.test.junit4.createComposeRule
 import androidx.test.ext.junit.runners.AndroidJUnit4
 import org.junit.Rule
@@ -117,6 +119,28 @@ class HongguoThemeSmokeTest {
         composeRule.onNodeWithText("可见的设置选项").assertDoesNotExist()
         composeRule.onNodeWithTag("settings_section_toggle_测试分组").performClick()
         composeRule.onNodeWithText("可见的设置选项").assertExists()
+    }
+
+    @Test fun playerSeekTrackSupportsAccessibilitySetProgress() {
+        var requestedPosition = -1L
+        composeRule.setContent {
+            HongguoAppTheme(previewTheme("material3", "dark")) {
+                HongguoPlayerSeekTrack(
+                    durationMs = 100_000L,
+                    playedFraction = .25f,
+                    onSeek = { requestedPosition = it },
+                    onPreview = {},
+                    modifier = Modifier.testTag("accessible_seek"),
+                )
+            }
+        }
+        composeRule.onNodeWithTag("accessible_seek")
+            .performSemanticsAction(SemanticsActions.SetProgress) { it(.5f) }
+        composeRule.runOnIdle {
+            org.junit.Assert.assertEquals(50_000L, requestedPosition)
+        }
+        saveScreenshot("seek_accessibility", composeRule.onRoot()
+            .captureToImage().asAndroidBitmap())
     }
 
     @Test fun posterPlaceholderRendersInMaterialDarkTheme() {

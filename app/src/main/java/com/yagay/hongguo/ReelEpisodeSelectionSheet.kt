@@ -26,6 +26,10 @@ import androidx.compose.material3.CircularProgressIndicator
 import androidx.compose.material3.Icon
 import androidx.compose.material3.Text
 import androidx.compose.runtime.Composable
+import androidx.compose.runtime.getValue
+import androidx.compose.runtime.mutableStateOf
+import androidx.compose.runtime.saveable.rememberSaveable
+import androidx.compose.runtime.setValue
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.draw.clip
@@ -39,11 +43,8 @@ import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
 
 /**
- * One scrollable grid for every episode AND related works.
- *
- * The previous nested verticalScroll + LazyVerticalGrid clipped the last row
- * and made the related section scroll separately from the episode grid.
- * The title/current episode stay visible while the one grid scrolls.
+ * Independent tabs for episodes and related works. Each page keeps its own
+ * lazy grid scroll position and never nests independently scrolling grids.
  */
 @Composable
 internal fun ReelEpisodeSelectionSheet(
@@ -58,6 +59,7 @@ internal fun ReelEpisodeSelectionSheet(
 ) {
     val screenHeight = LocalConfiguration.current.screenHeightDp
     val maxGridHeight = (screenHeight * 0.64f).dp
+    var relatedTab by rememberSaveable(detail.drama.id) { mutableStateOf(false) }
     val currentIndex = state.episodeIndex.coerceIn(0, detail.episodes.lastIndex)
     val currentEpisode = detail.episodes[currentIndex].index
     val episodeColumns = if (HongguoColors.isMaterial3)
@@ -67,7 +69,8 @@ internal fun ReelEpisodeSelectionSheet(
         else 5
     val initialItem = if (currentIndex > episodeColumns * 5)
         ((currentIndex / episodeColumns) - 1) * episodeColumns else 0
-    val gridState = rememberLazyGridState(initialFirstVisibleItemIndex = initialItem)
+    val episodeGridState = rememberLazyGridState(initialFirstVisibleItemIndex = initialItem)
+    val relatedGridState = rememberLazyGridState()
 
     HongguoPlayerSheet(
         onDismissRequest = onDismiss,
@@ -107,12 +110,33 @@ internal fun ReelEpisodeSelectionSheet(
                     )
                 }
                 Spacer(Modifier.weight(1f))
-                Text("点击集数切换", color = HongguoColors.muted, fontSize = 11.sp)
+                Text(if (relatedTab) "相关作品" else "点击集数切换",
+                    color = HongguoColors.muted, fontSize = 11.sp)
+            }
+            Row(Modifier.fillMaxWidth().testTag("episode_section_tabs"),
+                horizontalArrangement = Arrangement.spacedBy(8.dp)) {
+                HongguoChoiceChip(
+                    label = "选集",
+                    selected = !relatedTab,
+                    onClick = { relatedTab = false },
+                    modifier = Modifier.testTag("episode_tab_episodes"),
+                )
+                HongguoChoiceChip(
+                    label = "相关推荐",
+                    selected = relatedTab,
+                    onClick = {
+                        relatedTab = true
+                        if (state.relatedSeries != detail.drama.id && !state.relatedLoading) {
+                            model.loadRelated(detail.drama.id)
+                        }
+                    },
+                    modifier = Modifier.testTag("episode_tab_related"),
+                )
             }
 
             LazyVerticalGrid(
                 columns = GridCells.Fixed(episodeColumns),
-                state = gridState,
+                state = if (relatedTab) relatedGridState else episodeGridState,
                 modifier = Modifier.fillMaxWidth()
                     .heightIn(max = maxGridHeight)
                     .testTag("episode_and_related_grid"),
@@ -120,7 +144,7 @@ internal fun ReelEpisodeSelectionSheet(
                 verticalArrangement = Arrangement.spacedBy(6.dp),
                 contentPadding = PaddingValues(bottom = 16.dp),
             ) {
-                itemsIndexed(
+                if (!relatedTab) itemsIndexed(
                     detail.episodes,
                     key = { index, _ -> "episode_${index}" },
                 ) { index, episode ->
@@ -133,7 +157,8 @@ internal fun ReelEpisodeSelectionSheet(
                     )
                 }
 
-                item(key = "related_heading", span = { GridItemSpan(episodeColumns) }) {
+                if (relatedTab) item(
+                    key = "related_heading", span = { GridItemSpan(episodeColumns) }) {
                     Column(Modifier.fillMaxWidth().padding(top = 8.dp)) {
                         HongguoMenuSeparator()
                         HongguoSheetHeader(title = "其他季 / 相关作品") {
@@ -159,7 +184,8 @@ internal fun ReelEpisodeSelectionSheet(
                     }
                 }
 
-                item(key = "related_grid", span = { GridItemSpan(episodeColumns) }) {
+                if (relatedTab) item(
+                    key = "related_grid", span = { GridItemSpan(episodeColumns) }) {
                     val currentRelated = state.relatedSeries == detail.drama.id
                     val related = if (currentRelated) state.relatedWorks.take(15)
                         else emptyList()

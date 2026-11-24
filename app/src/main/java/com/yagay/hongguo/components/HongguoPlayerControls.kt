@@ -5,6 +5,10 @@ import androidx.compose.foundation.Canvas
 import androidx.compose.foundation.gestures.detectDragGestures
 import androidx.compose.foundation.gestures.detectTapGestures
 import androidx.compose.ui.input.pointer.pointerInput
+import androidx.compose.ui.semantics.ProgressBarRangeInfo
+import androidx.compose.ui.semantics.progressBarRangeInfo
+import androidx.compose.ui.semantics.semantics
+import androidx.compose.ui.semantics.setProgress
 import androidx.compose.runtime.getValue
 import androidx.compose.runtime.mutableStateOf
 import androidx.compose.runtime.remember
@@ -98,6 +102,18 @@ internal fun HongguoPlayerSeekTrack(
     Canvas(
         modifier.fillMaxWidth()
             .height(HongguoUi.playbackSeekTouchHeight)
+            .semantics {
+                progressBarRangeInfo = ProgressBarRangeInfo(
+                    playedFraction.coerceIn(0f, 1f), 0f..1f,
+                )
+                setProgress { value ->
+                    if (durationMs <= 0L) false
+                    else {
+                        currentSeek(PlaybackSeekGeometry.positionAt(durationMs, value))
+                        true
+                    }
+                }
+            }
             .pointerInput(durationMs) {
                 detectTapGestures { point ->
                     if (durationMs > 0L && size.width > 0) {
