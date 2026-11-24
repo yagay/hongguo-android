@@ -22,6 +22,7 @@ import androidx.compose.foundation.lazy.items
 import androidx.compose.foundation.rememberScrollState
 import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.material.icons.Icons
+import androidx.compose.material.icons.outlined.Category
 import androidx.compose.material.icons.automirrored.outlined.ArrowBack
 import androidx.compose.material3.CircularProgressIndicator
 import androidx.compose.material3.FilterChip
@@ -277,6 +278,7 @@ internal fun OpenHongguoExploreScreen(
                         tabs.drop(6).forEach { (id, name) ->
                             HongguoMenuAction(
                                 label = name,
+                                icon = Icons.Outlined.Category,
                                 onClick = {
                                     advancedTabsOpen = false
                                     switchTab(id)
