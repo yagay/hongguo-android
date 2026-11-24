@@ -18,6 +18,7 @@ import androidx.compose.material3.SheetState
 import androidx.compose.material3.SheetValue
 import androidx.compose.material3.rememberModalBottomSheetState
 import androidx.compose.ui.graphics.Color
+import androidx.compose.ui.geometry.Offset
 import androidx.compose.runtime.CompositionLocalProvider
 import androidx.compose.foundation.layout.Box
 import androidx.compose.foundation.layout.size
@@ -72,11 +73,11 @@ class HongguoThemeSmokeTest {
         composeRule.setContent {
             HongguoAppTheme(previewTheme("material3", "light")) {
                 state = rememberModalBottomSheetState(skipPartiallyExpanded = false)
-                if (open) HongguoPlayerSheet(
+                if (open) HongguoEpisodePlayerSheetWithState(
                     onDismissRequest = { open = false },
                     sheetState = state,
                     modifier = Modifier.testTag("episode_sheet_smoke"),
-                ) {
+                ) { gestures ->
                     Button(onClick = { open = false },
                         modifier = Modifier.testTag("episode_sheet_smoke_close")) {
                         Text("关闭选集")
@@ -85,7 +86,7 @@ class HongguoThemeSmokeTest {
                         columns = GridCells.Fixed(5),
                         modifier = Modifier.fillMaxWidth()
                             .height((LocalConfiguration.current.screenHeightDp * .64f).dp)
-                            .hongguoEpisodeScrollBoundary()
+                            .then(gestures.grid)
                             .testTag("episode_grid_smoke"),
                         overscrollEffect = null,
                     ) {
@@ -150,6 +151,71 @@ class HongguoThemeSmokeTest {
             composeRule.onNodeWithTag("episode_sheet_smoke_close").performClick()
         }
         sheet.assertDoesNotExist()
+    }
+
+    @OptIn(ExperimentalMaterial3Api::class)
+    @Test fun shortEpisodeGridAndHeaderStayStillDuringUpwardDrag() {
+        var open by mutableStateOf(true)
+        lateinit var state: SheetState
+        composeRule.setContent {
+            HongguoAppTheme(previewTheme("material3", "dark")) {
+                state = rememberModalBottomSheetState(skipPartiallyExpanded = true)
+                if (open) HongguoEpisodePlayerSheetWithState(
+                    onDismissRequest = { open = false },
+                    sheetState = state,
+                    modifier = Modifier.testTag("short_sheet"),
+                ) { gestures ->
+                    HongguoPlayerPanel("选集", modifier = gestures.header) {
+                        LazyVerticalGrid(
+                            columns = GridCells.Fixed(5),
+                            modifier = Modifier.fillMaxWidth().height(240.dp)
+                                .then(gestures.grid).testTag("short_grid"),
+                            overscrollEffect = null,
+                        ) {
+                            items(10) { index ->
+                                HongguoEpisodeCell(label = "${index + 1}",
+                                    selected = false, onClick = {})
+                            }
+                        }
+                    }
+                }
+            }
+        }
+        composeRule.waitForIdle()
+        val offset = composeRule.runOnIdle {
+            org.junit.Assert.assertEquals(SheetValue.Expanded, state.currentValue)
+            state.requireOffset()
+        }
+        val grid = composeRule.onNodeWithTag("short_grid")
+        val handle = composeRule.onNodeWithTag("hongguo_sheet_drag_handle", useUnmergedTree = true)
+        repeat(3) {
+            // Assert before lifting the finger, not just after animations settle.
+            grid.performTouchInput {
+                down(center)
+                moveBy(Offset(0f, -height * .35f))
+            }
+            composeRule.runOnIdle {
+                org.junit.Assert.assertEquals("Grid must not shift under finger",
+                    offset, state.requireOffset(), 1f)
+            }
+            grid.performTouchInput { up() }
+            handle.performTouchInput {
+                down(center)
+                moveBy(Offset(0f, -120f))
+            }
+            composeRule.runOnIdle {
+                org.junit.Assert.assertEquals("Handle must not overshoot expanded anchor",
+                    offset, state.requireOffset(), 1f)
+            }
+            handle.performTouchInput { up() }
+            composeRule.runOnIdle {
+                org.junit.Assert.assertEquals(offset, state.requireOffset(), 1f)
+            }
+        }
+        handle.performTouchInput {
+            swipeDown(startY = center.y, endY = center.y + 300f, durationMillis = 300)
+        }
+        composeRule.onNodeWithTag("short_sheet").assertDoesNotExist()
     }
 
     @Test fun themeBackgroundChangesBetweenClassicAndMaterial() {

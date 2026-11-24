@@ -185,13 +185,14 @@ internal fun HongguoModalSheetWithState(
     modifier: Modifier = Modifier,
     fixedPosition: Boolean = false,
     sheetState: SheetState,
+    managedDragModifier: Modifier? = null,
     content: @Composable ColumnScope.() -> Unit,
 ) {
     // Fixed surfaces opt out explicitly; ordinary player sheets keep Material gestures.
     ModalBottomSheet(
         onDismissRequest = onDismissRequest,
         sheetState = sheetState,
-        sheetGesturesEnabled = !fixedPosition,
+        sheetGesturesEnabled = !fixedPosition && managedDragModifier == null,
         containerColor = if (HongguoColors.isMaterial3)
             MaterialTheme.colorScheme.surfaceContainerLow else HongguoColors.surface,
         contentColor = if (HongguoColors.isMaterial3)
@@ -202,7 +203,8 @@ internal fun HongguoModalSheetWithState(
         ),
         dragHandle = if (fixedPosition) null else ({
             BottomSheetDefaults.DragHandle(
-                modifier = Modifier.testTag("hongguo_sheet_drag_handle"),
+                modifier = Modifier.testTag("hongguo_sheet_drag_handle")
+                    .then(managedDragModifier ?: Modifier),
                 color = if (HongguoColors.isMaterial3)
                     MaterialTheme.colorScheme.onSurfaceVariant else HongguoColors.muted,
             )

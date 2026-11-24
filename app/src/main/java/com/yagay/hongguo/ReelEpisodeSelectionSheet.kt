@@ -2,6 +2,10 @@ package com.yagay.hongguo
 
 import androidx.compose.foundation.background
 import androidx.compose.foundation.clickable
+import androidx.compose.foundation.gestures.Orientation
+import androidx.compose.foundation.gestures.draggable
+import androidx.compose.foundation.gestures.rememberDraggableState
+import androidx.compose.foundation.layout.ColumnScope
 import androidx.compose.foundation.layout.Arrangement
 import androidx.compose.foundation.layout.Box
 import androidx.compose.foundation.layout.Column
@@ -24,11 +28,17 @@ import androidx.compose.material.icons.Icons
 import androidx.compose.material.icons.outlined.Refresh
 import androidx.compose.material.icons.outlined.Close
 import androidx.compose.material3.CircularProgressIndicator
+import androidx.compose.material3.ExperimentalMaterial3Api
+import androidx.compose.material3.SheetState
+import androidx.compose.material3.SheetValue
+import androidx.compose.material3.rememberModalBottomSheetState
 import androidx.compose.material3.Icon
 import androidx.compose.material3.Text
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.getValue
 import androidx.compose.runtime.mutableStateOf
+import androidx.compose.runtime.remember
+import androidx.compose.runtime.rememberUpdatedState
 import androidx.compose.runtime.saveable.rememberSaveable
 import androidx.compose.runtime.setValue
 import androidx.compose.ui.Alignment
@@ -49,25 +59,133 @@ import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
 
 /**
- * Keep unconsumed upward grid movement and fling inside the grid.
- * The sheet's parent pre-scroll still receives upward drags first, so a
- * partially expanded sheet can expand normally. Downward movement is not
- * intercepted: the grid scrolls back first, then the sheet may collapse.
+ * The Material modal still owns anchors, scrim, back and transition animations.
+ * Only its unrestricted drag/settle is disabled: the episode surface has a
+ * single directional gesture controller instead. In particular an upward drag
+ * at Expanded never dispatches raw delta or velocity to the sheet.
  */
-internal fun Modifier.hongguoEpisodeScrollBoundary(): Modifier =
-    nestedScroll(EpisodeScrollBoundary)
+internal data class EpisodeSheetGestureModifiers(
+    val header: Modifier,
+    val grid: Modifier,
+)
 
-private object EpisodeScrollBoundary : NestedScrollConnection {
+@Composable
+@OptIn(ExperimentalMaterial3Api::class)
+internal fun HongguoEpisodePlayerSheet(
+    onDismissRequest: () -> Unit,
+    modifier: Modifier = Modifier,
+    content: @Composable ColumnScope.(EpisodeSheetGestureModifiers) -> Unit,
+) = HongguoEpisodePlayerSheetWithState(
+    onDismissRequest = onDismissRequest,
+    modifier = modifier,
+    sheetState = rememberModalBottomSheetState(skipPartiallyExpanded = false),
+    content = content,
+)
+
+@Composable
+@OptIn(ExperimentalMaterial3Api::class)
+internal fun HongguoEpisodePlayerSheetWithState(
+    onDismissRequest: () -> Unit,
+    modifier: Modifier = Modifier,
+    sheetState: SheetState,
+    content: @Composable ColumnScope.(EpisodeSheetGestureModifiers) -> Unit,
+) {
+    val latestDismiss = rememberUpdatedState(onDismissRequest)
+    val threshold = with(LocalDensity.current) { 36.dp.toPx() }
+    val controller = remember(sheetState, threshold) {
+        EpisodeSheetGestureController(sheetState, threshold) { latestDismiss.value() }
+    }
+    val dragState = rememberDraggableState { controller.directDelta += it }
+    val header = Modifier.draggable(
+        state = dragState,
+        orientation = Orientation.Vertical,
+        onDragStarted = { controller.directDelta = 0f },
+        onDragStopped = {
+            val delta = controller.directDelta
+            controller.directDelta = 0f
+            controller.finish(delta)
+        },
+    )
+    HongguoModalSheetWithState(
+        onDismissRequest = onDismissRequest,
+        modifier = modifier,
+        sheetState = sheetState,
+        managedDragModifier = header,
+    ) {
+        content(EpisodeSheetGestureModifiers(header, Modifier.nestedScroll(controller)))
+    }
+}
+
+@OptIn(ExperimentalMaterial3Api::class)
+private class EpisodeSheetGestureController(
+    private val sheet: SheetState,
+    private val threshold: Float,
+    private val dismiss: () -> Unit,
+) : NestedScrollConnection {
+    var directDelta = 0f
+    private var edgeDelta = 0f
+    private var transitioning = false
+
+    suspend fun finish(delta: Float): Boolean {
+        if (transitioning || kotlin.math.abs(delta) < threshold ||
+            sheet.currentValue != sheet.targetValue) return false
+        val current = sheet.currentValue
+        if (current == SheetValue.Hidden ||
+            (current == SheetValue.Expanded && delta < 0f)) return false
+        transitioning = true
+        try {
+            when {
+                delta < 0f -> sheet.expand()
+                current == SheetValue.Expanded && sheet.hasPartiallyExpandedState ->
+                    sheet.partialExpand()
+                else -> {
+                    sheet.hide()
+                    if (sheet.currentValue == SheetValue.Hidden) dismiss()
+                }
+            }
+        } finally {
+            transitioning = false
+        }
+        return true
+    }
+
+    override fun onPreScroll(available: Offset, source: NestedScrollSource): Offset {
+        if (source != NestedScrollSource.UserInput) return Offset.Zero
+        if (available.y < 0f) {
+            if (edgeDelta > 0f) edgeDelta = 0f
+            if (sheet.currentValue == SheetValue.PartiallyExpanded) {
+                edgeDelta += available.y
+                return Offset(0f, available.y)
+            }
+        } else if (available.y > 0f && edgeDelta < 0f) {
+            edgeDelta = 0f
+        }
+        return Offset.Zero
+    }
+
     override fun onPostScroll(
         consumed: Offset,
         available: Offset,
         source: NestedScrollSource,
-    ): Offset = Offset(0f, available.y.coerceAtMost(0f))
+    ): Offset {
+        // Only deliberate downward finger movement remaining after the grid
+        // reaches its first item may collapse. A fling at the edge never does.
+        if (source == NestedScrollSource.UserInput && available.y > 0f) {
+            edgeDelta += available.y
+        }
+        return Offset(0f, available.y)
+    }
 
-    override suspend fun onPostFling(
-        consumed: Velocity,
-        available: Velocity,
-    ): Velocity = Velocity(0f, available.y.coerceAtMost(0f))
+    override suspend fun onPreFling(available: Velocity): Velocity {
+        val delta = edgeDelta
+        edgeDelta = 0f
+        return if (finish(delta)) Velocity(0f, available.y) else Velocity.Zero
+    }
+
+    override suspend fun onPostFling(consumed: Velocity, available: Velocity): Velocity {
+        edgeDelta = 0f
+        return Velocity(0f, available.y)
+    }
 }
 
 /**
@@ -101,12 +219,13 @@ internal fun ReelEpisodeSelectionSheet(
     val episodeGridState = rememberLazyGridState(initialFirstVisibleItemIndex = initialItem)
     val relatedGridState = rememberLazyGridState()
 
-    HongguoPlayerSheet(
+    HongguoEpisodePlayerSheet(
         onDismissRequest = onDismiss,
         modifier = Modifier.testTag("reel_episodes_sheet"),
-    ) {
+    ) { gestures ->
         HongguoPlayerPanel(
             title = "选集",
+            modifier = gestures.header,
             actions = {
                 Text(
                     "共${detail.episodes.size}集",
@@ -175,7 +294,7 @@ internal fun ReelEpisodeSelectionSheet(
                 state = if (relatedTab) relatedGridState else episodeGridState,
                 modifier = Modifier.fillMaxWidth()
                     .heightIn(max = maxGridHeight)
-                    .hongguoEpisodeScrollBoundary()
+                    .then(gestures.grid)
                     .testTag("episode_and_related_grid"),
                 horizontalArrangement = Arrangement.spacedBy(6.dp),
                 verticalArrangement = Arrangement.spacedBy(6.dp),
