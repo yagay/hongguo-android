@@ -4,6 +4,9 @@ import androidx.compose.foundation.background
 import androidx.compose.foundation.layout.fillMaxSize
 import androidx.compose.animation.SharedTransitionLayout
 import androidx.compose.foundation.layout.Column
+import androidx.compose.foundation.layout.FlowRow
+import androidx.compose.foundation.layout.width
+import androidx.compose.foundation.layout.Arrangement
 import androidx.compose.foundation.layout.Row
 import androidx.compose.material3.Button
 import androidx.compose.ui.graphics.Color
@@ -25,6 +28,8 @@ import android.graphics.Bitmap
 import java.io.File
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.platform.testTag
+import androidx.compose.ui.platform.LocalDensity
+import androidx.compose.ui.unit.Density
 import androidx.compose.ui.test.captureToImage
 import androidx.compose.ui.test.onNodeWithTag
 import androidx.compose.ui.test.onNodeWithText
@@ -119,6 +124,34 @@ class HongguoThemeSmokeTest {
         composeRule.onNodeWithText("可见的设置选项").assertDoesNotExist()
         composeRule.onNodeWithTag("settings_section_toggle_测试分组").performClick()
         composeRule.onNodeWithText("可见的设置选项").assertExists()
+    }
+
+    @Test fun largeFontLoginChoicesWrapWithoutLosingActions() {
+        composeRule.setContent {
+            val originalDensity = LocalDensity.current
+            CompositionLocalProvider(LocalDensity provides Density(
+                density = originalDensity.density, fontScale = 1.5f,
+            )) {
+                HongguoAppTheme(previewTheme("material3", "light")) {
+                    FlowRow(
+                        modifier = Modifier.width(320.dp),
+                        horizontalArrangement = Arrangement.spacedBy(8.dp),
+                        verticalArrangement = Arrangement.spacedBy(6.dp),
+                    ) {
+                        listOf("手机验证码", "官网登录", "扫码登录").forEach { label ->
+                            HongguoChoiceChip(label = label, selected = label == "扫码登录",
+                                onClick = {},
+                                modifier = Modifier.testTag("large_login_$label"))
+                        }
+                    }
+                }
+            }
+        }
+        composeRule.onNodeWithTag("large_login_手机验证码").assertExists()
+        composeRule.onNodeWithTag("large_login_官网登录").assertExists()
+        composeRule.onNodeWithTag("large_login_扫码登录").assertExists()
+        saveScreenshot("large_font_login", composeRule.onRoot()
+            .captureToImage().asAndroidBitmap())
     }
 
     @Test fun playerSeekTrackSupportsAccessibilitySetProgress() {

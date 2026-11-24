@@ -5,6 +5,7 @@ import androidx.compose.foundation.background
 import androidx.compose.foundation.clickable
 import androidx.compose.foundation.horizontalScroll
 import androidx.compose.foundation.layout.Arrangement
+import androidx.compose.foundation.layout.aspectRatio
 import androidx.compose.foundation.layout.FlowRow
 import androidx.compose.foundation.layout.heightIn
 import androidx.compose.foundation.layout.Box
@@ -44,6 +45,8 @@ import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.draw.clip
 import androidx.compose.ui.layout.ContentScale
+import androidx.compose.ui.platform.LocalConfiguration
+import androidx.compose.ui.platform.LocalDensity
 import androidx.compose.ui.platform.testTag
 import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.text.style.TextOverflow
@@ -416,8 +419,52 @@ internal fun OpenHongguoExploreScreen(
         val actionableWorks = works.filter {
             it.seriesId.matches(Regex("[1-9][0-9]{0,29}"))
         }
+        val usePosterGrid = HongguoColors.isMaterial3 && actorId.isBlank() &&
+            tab in setOf("new", "human", "comic", "ai", "filter", "filterComic", "filterAI") &&
+            actionableRows.all {
+                it.playable && it.searchQuery.isBlank() && it.actorUserId.isBlank()
+            }
+        val posterColumns = HongguoThemePolicy.galleryColumns(
+            LocalConfiguration.current.screenWidthDp, LocalDensity.current.fontScale,
+        )
         LazyColumn(Modifier.fillMaxSize(), verticalArrangement = Arrangement.spacedBy(10.dp)) {
             if (actorId.isBlank()) {
+                if (usePosterGrid) {
+                    items(actionableRows.chunked(posterColumns)) { line ->
+                        Row(Modifier.fillMaxWidth().padding(horizontal = HongguoUi.pagePadding),
+                            horizontalArrangement = Arrangement.spacedBy(10.dp)) {
+                            line.forEach { row ->
+                                Column(
+                                    Modifier.weight(1f)
+                                        .clip(RoundedCornerShape(16.dp))
+                                        .background(MaterialTheme.colorScheme.surfaceContainerLow)
+                                        .clickable {
+                                            onClose()
+                                            onOpenDrama(Drama(row.id, row.title, row.cover, row.episodes))
+                                        }
+                                        .padding(7.dp)
+                                        .testTag("explore_poster_" + row.id),
+                                    verticalArrangement = Arrangement.spacedBy(5.dp),
+                                ) {
+                                    HongguoPosterCover(
+                                        cover = model.cover(row.cover),
+                                        title = row.title,
+                                        modifier = Modifier.fillMaxWidth().aspectRatio(2f / 3f),
+                                    )
+                                    Text(row.title, color = HongguoColors.ink,
+                                        fontSize = 13.sp, lineHeight = 18.sp,
+                                        maxLines = 2, minLines = 2,
+                                        overflow = TextOverflow.Ellipsis)
+                                    Text(row.subtitle.ifBlank {
+                                        if (row.episodes > 0) "全 ${row.episodes} 集" else ""
+                                    }, color = HongguoColors.muted, fontSize = 11.sp,
+                                        maxLines = 1, overflow = TextOverflow.Ellipsis)
+                                }
+                            }
+                            repeat(posterColumns - line.size) { Spacer(Modifier.weight(1f)) }
+                        }
+                    }
+                } else {
                 items(actionableRows, key = { "browse_${tab}_${it.id}_${it.title}" }) { row ->
                     BrowseEntry(
                         title = row.title, cover = model.cover(row.cover),
@@ -450,6 +497,7 @@ internal fun OpenHongguoExploreScreen(
                             }
                         },
                     )
+                }
                 }
             } else {
                 items(actionableWorks, key = { "work_${it.seriesId}" }) { work ->
