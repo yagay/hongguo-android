@@ -168,7 +168,23 @@ internal fun HongguoModalSheet(
     onDismissRequest: () -> Unit,
     modifier: Modifier = Modifier,
     fixedPosition: Boolean = false,
-    sheetState: SheetState = rememberModalBottomSheetState(skipPartiallyExpanded = fixedPosition),
+    content: @Composable ColumnScope.() -> Unit,
+) = HongguoModalSheetWithState(
+    onDismissRequest = onDismissRequest,
+    modifier = modifier,
+    fixedPosition = fixedPosition,
+    sheetState = rememberModalBottomSheetState(skipPartiallyExpanded = fixedPosition),
+    content = content,
+)
+
+/** Stateful implementation; keep experimental Material types off the ordinary API. */
+@OptIn(ExperimentalMaterial3Api::class)
+@Composable
+internal fun HongguoModalSheetWithState(
+    onDismissRequest: () -> Unit,
+    modifier: Modifier = Modifier,
+    fixedPosition: Boolean = false,
+    sheetState: SheetState,
     content: @Composable ColumnScope.() -> Unit,
 ) {
     // Fixed surfaces opt out explicitly; ordinary player sheets keep Material gestures.
@@ -203,9 +219,20 @@ internal fun HongguoPlayerSheet(
     onDismissRequest: () -> Unit,
     modifier: Modifier = Modifier,
     fixedPosition: Boolean = false,
-    sheetState: SheetState = rememberModalBottomSheetState(skipPartiallyExpanded = fixedPosition),
     content: @Composable ColumnScope.() -> Unit,
 ) = HongguoModalSheet(onDismissRequest, modifier,
+    fixedPosition = fixedPosition, content = content)
+
+/** Explicit state injection for callers that need to inspect Material anchors. */
+@OptIn(ExperimentalMaterial3Api::class)
+@Composable
+internal fun HongguoPlayerSheet(
+    onDismissRequest: () -> Unit,
+    modifier: Modifier = Modifier,
+    fixedPosition: Boolean = false,
+    sheetState: SheetState,
+    content: @Composable ColumnScope.() -> Unit,
+) = HongguoModalSheetWithState(onDismissRequest, modifier,
     fixedPosition = fixedPosition, sheetState = sheetState, content = content)
 
 /** Same quiet action style as regular menus and Settings. */
