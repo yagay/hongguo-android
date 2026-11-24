@@ -34,6 +34,11 @@ import androidx.compose.runtime.setValue
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.draw.clip
+import androidx.compose.ui.geometry.Offset
+import androidx.compose.ui.input.nestedscroll.NestedScrollConnection
+import androidx.compose.ui.input.nestedscroll.NestedScrollSource
+import androidx.compose.ui.input.nestedscroll.nestedScroll
+import androidx.compose.ui.unit.Velocity
 import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.platform.LocalConfiguration
 import androidx.compose.ui.platform.LocalDensity
@@ -42,6 +47,28 @@ import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.text.style.TextOverflow
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
+
+/**
+ * Keep unconsumed upward grid movement and fling inside the grid.
+ * The sheet's parent pre-scroll still receives upward drags first, so a
+ * partially expanded sheet can expand normally. Downward movement is not
+ * intercepted: the grid scrolls back first, then the sheet may collapse.
+ */
+internal fun Modifier.hongguoEpisodeScrollBoundary(): Modifier =
+    nestedScroll(EpisodeScrollBoundary)
+
+private object EpisodeScrollBoundary : NestedScrollConnection {
+    override fun onPostScroll(
+        consumed: Offset,
+        available: Offset,
+        source: NestedScrollSource,
+    ): Offset = Offset(0f, available.y.coerceAtMost(0f))
+
+    override suspend fun onPostFling(
+        consumed: Velocity,
+        available: Velocity,
+    ): Velocity = Velocity(0f, available.y.coerceAtMost(0f))
+}
 
 /**
  * Independent tabs for episodes and related works. Each page keeps its own
@@ -77,7 +104,6 @@ internal fun ReelEpisodeSelectionSheet(
     HongguoPlayerSheet(
         onDismissRequest = onDismiss,
         modifier = Modifier.testTag("reel_episodes_sheet"),
-        fixedPosition = true,
     ) {
         HongguoPlayerPanel(
             title = "选集",
@@ -149,6 +175,7 @@ internal fun ReelEpisodeSelectionSheet(
                 state = if (relatedTab) relatedGridState else episodeGridState,
                 modifier = Modifier.fillMaxWidth()
                     .heightIn(max = maxGridHeight)
+                    .hongguoEpisodeScrollBoundary()
                     .testTag("episode_and_related_grid"),
                 horizontalArrangement = Arrangement.spacedBy(6.dp),
                 verticalArrangement = Arrangement.spacedBy(6.dp),

@@ -33,6 +33,7 @@ import java.io.File
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.platform.testTag
 import androidx.compose.ui.platform.LocalDensity
+import androidx.compose.ui.platform.LocalConfiguration
 import androidx.compose.ui.unit.Density
 import androidx.compose.ui.test.captureToImage
 import androidx.compose.ui.test.onNodeWithTag
@@ -60,50 +61,67 @@ class HongguoThemeSmokeTest {
     @Test fun material3LightControlsRespond() = render("material3", "light")
     @Test fun material3DarkControlsRespond() = render("material3", "dark")
 
-    @Test fun fixedEpisodeSheetStaysPutAtBothScrollEdges() {
+    @Test fun episodeSheetKeepsGesturesWithoutUpwardEdgeBounce() {
         var open by mutableStateOf(true)
         composeRule.setContent {
             HongguoAppTheme(previewTheme("material3", "light")) {
                 if (open) HongguoPlayerSheet(
                     onDismissRequest = { open = false },
-                    fixedPosition = true,
-                    modifier = Modifier.testTag("fixed_episode_sheet_smoke"),
+                    modifier = Modifier.testTag("episode_sheet_smoke"),
                 ) {
                     Button(onClick = { open = false },
-                        modifier = Modifier.testTag("fixed_episode_sheet_close")) {
+                        modifier = Modifier.testTag("episode_sheet_smoke_close")) {
                         Text("关闭选集")
                     }
                     LazyVerticalGrid(
                         columns = GridCells.Fixed(5),
-                        modifier = Modifier.fillMaxWidth().height(220.dp)
-                            .testTag("fixed_episode_grid_smoke"),
+                        modifier = Modifier.fillMaxWidth()
+                            .height((LocalConfiguration.current.screenHeightDp * .64f).dp)
+                            .hongguoEpisodeScrollBoundary()
+                            .testTag("episode_grid_smoke"),
+                        overscrollEffect = null,
                     ) {
-                        items(60) { index ->
+                        items(100) { index ->
                             HongguoEpisodeCell(label = "${index + 1}",
                                 selected = false, onClick = {},
-                                modifier = Modifier.testTag("fixed_episode_$index"))
+                                modifier = Modifier.testTag("smoke_episode_$index"))
                         }
                     }
                 }
             }
         }
-        val sheet = composeRule.onNodeWithTag("fixed_episode_sheet_smoke")
-        val grid = composeRule.onNodeWithTag("fixed_episode_grid_smoke")
+        val sheet = composeRule.onNodeWithTag("episode_sheet_smoke")
+        val grid = composeRule.onNodeWithTag("episode_grid_smoke")
         composeRule.waitForIdle()
-        val originalTop = sheet.fetchSemanticsNode().boundsInRoot.top
-        grid.performScrollToIndex(59)
-        repeat(3) { grid.performTouchInput { swipeUp() } }
+        val partialTop = sheet.fetchSemanticsNode().boundsInRoot.top
+        grid.performTouchInput { swipeUp() }
         composeRule.waitForIdle()
-        composeRule.onNodeWithTag("fixed_episode_59").assertExists()
-        org.junit.Assert.assertEquals(originalTop,
+        val expandedTop = sheet.fetchSemanticsNode().boundsInRoot.top
+        org.junit.Assert.assertTrue(expandedTop < partialTop)
+
+        grid.performScrollToIndex(99)
+        repeat(3) {
+            grid.performTouchInput { swipeUp() }
+            composeRule.waitForIdle()
+            org.junit.Assert.assertEquals(expandedTop,
+                sheet.fetchSemanticsNode().boundsInRoot.top, 1f)
+        }
+        composeRule.onNodeWithTag("smoke_episode_99").assertExists()
+
+        // Scrolling back through the grid must not collapse the sheet.
+        grid.performTouchInput { swipeDown(durationMillis = 400) }
+        composeRule.waitForIdle()
+        org.junit.Assert.assertEquals(expandedTop,
             sheet.fetchSemanticsNode().boundsInRoot.top, 1f)
-        grid.performScrollToIndex(0)
-        repeat(3) { grid.performTouchInput { swipeDown() } }
+
+        // A downward drag from the sheet handle must still move/dismiss it.
+        sheet.performTouchInput { swipeDown(startY = 10f, endY = height * .65f) }
         composeRule.waitForIdle()
-        composeRule.onNodeWithTag("fixed_episode_0").assertExists()
-        org.junit.Assert.assertEquals(originalTop,
-            sheet.fetchSemanticsNode().boundsInRoot.top, 1f)
-        composeRule.onNodeWithTag("fixed_episode_sheet_close").performClick()
+        if (open) {
+            org.junit.Assert.assertTrue(
+                sheet.fetchSemanticsNode().boundsInRoot.top > expandedTop)
+            composeRule.onNodeWithTag("episode_sheet_smoke_close").performClick()
+        }
         sheet.assertDoesNotExist()
     }
 
