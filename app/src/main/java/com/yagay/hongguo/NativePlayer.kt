@@ -792,6 +792,15 @@ internal fun NativePlayer(
                             Text("本集暂时不能播放", color = Color.White,
                                 fontWeight = FontWeight.Bold)
                             Text(error, color = Color(0xFFD9D4D1), fontSize = 13.sp)
+                            state.playbackRecoveryMessage?.let { status ->
+                                Text(status, color = Color(0xFFFFCF9E),
+                                    fontSize = 13.sp,
+                                    modifier = Modifier.testTag("periodic_playback_retry_status"))
+                                TextButton(
+                                    onClick = model::stopPeriodicPlaybackRetry,
+                                    modifier = Modifier.testTag("periodic_playback_retry_stop"),
+                                ) { Text("停止自动重试", color = Color.White) }
+                            }
                             OutlinedButton(
                                 onClick = {
                                     if (state.feedMode) model.refreshFailedReels()

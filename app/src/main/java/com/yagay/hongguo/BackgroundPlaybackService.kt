@@ -663,7 +663,15 @@ class BackgroundPlaybackService : MediaSessionService() {
                     networkRecoveryAttemptFailed(currentVid, retryable = false)
                 }
                 diagnostics.record("BACKGROUND", "MEDIA_ERROR")
-                onError?.invoke(code)
+                // Preserve the temporary CDN classification after the bounded
+                // Media3 retries finish, so the slow periodic recovery may
+                // re-fetch a fresh signed URL instead of treating 5xx as fatal.
+                onError?.invoke(
+                    if (httpStatus != null &&
+                        NetworkPlaybackRecoveryPolicy.isTransientHttpStatus(httpStatus))
+                        "MEDIA_IO_ERROR · TEMPORARY_CDN_HTTP"
+                    else code
+                )
             }
         })
         // Migration cleanup for the old duplicate progress notification.

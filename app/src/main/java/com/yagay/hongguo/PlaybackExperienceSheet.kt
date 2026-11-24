@@ -309,6 +309,12 @@ internal fun PlaybackExperienceSheet(
                         model::setAutoPlayNext, "player_auto_next")
                     HongguoToggleRow("播放失败自动重试", state.retryPlaybackAutomatically,
                         model::setAutomaticPlaybackRetry, "player_auto_retry")
+                    Text(
+                        "临时网络/播放源错误会先快速恢复；仍失败时按 15 秒、30 秒、1 分钟、2 分钟、最长每 5 分钟自动重试。播放成功或切换剧集即停止；认证、限流及不支持的格式不会循环请求。",
+                        color = HongguoColors.muted, fontSize = 12.sp,
+                        modifier = Modifier.fillMaxWidth()
+                            .testTag("player_periodic_retry_explanation"),
+                    )
 
                     HongguoPlayerSectionTitle("跳过片头")
                     HongguoChoiceGroup(

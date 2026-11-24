@@ -359,6 +359,10 @@ class DramaViewModel(application: Application) : AndroidViewModel(application) {
         prefs.edit().putBoolean("playback_auto_retry", enabled).apply()
         mutable.update { it.copy(retryPlaybackAutomatically = enabled) }
         BackgroundPlaybackService.active?.setPlaybackAutoRetry(enabled)
+        if (!enabled) {
+            cancelPeriodicPlaybackRetry()
+            mutable.update { it.copy(playbackRecoveryMessage = null) }
+        }
     }
 
     private val diagnostics = DiagnosticLog(File(application.filesDir, "diagnostics"),
@@ -1213,6 +1217,7 @@ class DramaViewModel(application: Application) : AndroidViewModel(application) {
      * This is deliberately user-initiated (button or next swipe after error),
      * not an infinite automatic retry loop. */
     fun refreshFailedReels() {
+        cancelPeriodicPlaybackRetry()
         val snapshot = state.value
         if (!snapshot.feedMode) {
             retryPlayback()
@@ -2705,6 +2710,7 @@ class DramaViewModel(application: Application) : AndroidViewModel(application) {
         showDetails: Boolean = false,
         origin: PlaybackOrigin = if (feed) PlaybackOrigin.SWIPE_FEED
             else PlaybackOrigin.CATALOG) {
+        cancelPeriodicPlaybackRetry()
         cancelNextSeasonLookup()
         val keepNextDramaPreparing = autoNextTargetDramaId == drama.id
         autoNextTargetDramaId = null
@@ -2944,6 +2950,88 @@ class DramaViewModel(application: Application) : AndroidViewModel(application) {
 
     private var serviceRecoveryRequested = false
 
+    // Session-scoped recovery after the service's bounded Media3/CDN attempts
+    // and the two SDK model attempts have already failed. Never spawn an
+    // additional player, use a short busy-loop, or retry permanent denials.
+    private var periodicPlaybackRetryJob: Job? = null
+    private var periodicPlaybackRetryCount = 0
+
+    private fun cancelPeriodicPlaybackRetry() {
+        periodicPlaybackRetryJob?.cancel()
+        periodicPlaybackRetryJob = null
+        periodicPlaybackRetryCount = 0
+    }
+
+    fun stopPeriodicPlaybackRetry() {
+        cancelPeriodicPlaybackRetry()
+        mutable.update { it.copy(playbackRecoveryMessage = null) }
+        diagnostics.record("PLAYBACK", "PERIODIC_RETRY_STOPPED_BY_USER")
+    }
+
+    private fun isPlaybackRetryCurrent(
+        expectedDramaId: String, expectedVid: String, generation: Long, quality: Int,
+    ): Boolean {
+        val snapshot = state.value
+        return generation == detailId && snapshot.retryPlaybackAutomatically &&
+            snapshot.offlinePlaybackUri == null && snapshot.detail?.drama?.id == expectedDramaId &&
+            snapshot.qualityLimit == quality &&
+            snapshot.detail?.episodes?.getOrNull(snapshot.episodeIndex)?.vid == expectedVid
+    }
+
+    private fun periodicNetworkAvailable(): Boolean = runCatching {
+        val connectivity = getApplication<Application>()
+            .getSystemService(ConnectivityManager::class.java) ?: return@runCatching false
+        val network = connectivity.activeNetwork ?: return@runCatching false
+        val caps = connectivity.getNetworkCapabilities(network) ?: return@runCatching false
+        caps.hasCapability(NetworkCapabilities.NET_CAPABILITY_INTERNET)
+    }.getOrDefault(false)
+
+    private fun schedulePeriodicPlaybackRetry(expectedVid: String): Boolean {
+        val snapshot = state.value
+        val dramaId = snapshot.detail?.drama?.id ?: return false
+        if (!snapshot.retryPlaybackAutomatically ||
+            snapshot.offlinePlaybackUri != null ||
+            snapshot.detail?.episodes?.getOrNull(snapshot.episodeIndex)?.vid != expectedVid
+        ) return false
+        if (periodicPlaybackRetryJob?.isActive == true) return true
+
+        val nextAttempt = (periodicPlaybackRetryCount + 1).coerceAtMost(1_000_000)
+        periodicPlaybackRetryCount = nextAttempt
+        val waitMs = PeriodicPlaybackRetryPolicy.delayMs(nextAttempt)
+        val expectedVersion = detailId
+        val expectedQuality = snapshot.qualityLimit
+        val expectedIndex = snapshot.episodeIndex
+        diagnostics.record("PLAYBACK", "PERIODIC_RETRY_QUEUED_$nextAttempt")
+
+        periodicPlaybackRetryJob = viewModelScope.launch {
+            var remainingSeconds = (waitMs / 1000L).toInt()
+            while (remainingSeconds > 0) {
+                if (!isPlaybackRetryCurrent(dramaId, expectedVid,
+                        expectedVersion, expectedQuality)) return@launch
+                val message = PeriodicPlaybackRetryPolicy.status(nextAttempt, remainingSeconds)
+                mutable.update { it.copy(playbackRecoveryMessage = message) }
+                delay(1_000L)
+                remainingSeconds--
+            }
+            // Do not consume the next attempt while airplane mode/offline.
+            while (isPlaybackRetryCurrent(dramaId, expectedVid,
+                    expectedVersion, expectedQuality) && !periodicNetworkAvailable()) {
+                mutable.update {
+                    it.copy(playbackRecoveryMessage = "网络不可用，连接恢复后继续自动重试")
+                }
+                delay(15_000L)
+            }
+            if (!isPlaybackRetryCurrent(dramaId, expectedVid,
+                    expectedVersion, expectedQuality)) return@launch
+            diagnostics.record("PLAYBACK", "PERIODIC_RETRY_START_$nextAttempt")
+            periodicPlaybackRetryJob = null
+            // Fresh signed URL / CENC model; the original service-owned
+            // Media3 session resumes at its persisted episode checkpoint.
+            playAt(expectedIndex, null, forceFreshModel = true, periodicRetry = true)
+        }
+        return true
+    }
+
     /**
      * Foreground-only repair for a service that the OS has already destroyed.
      * Never restart playback when the user intentionally paused or closed it.
@@ -3001,9 +3089,15 @@ class DramaViewModel(application: Application) : AndroidViewModel(application) {
         playAt(snapshot.episodeIndex, positionMs.coerceAtLeast(0L))
     }
 
-    private fun playAt(index: Int, networkResumeMs: Long?, forceFreshModel: Boolean = false) {
+    private fun playAt(
+        index: Int,
+        networkResumeMs: Long?,
+        forceFreshModel: Boolean = false,
+        periodicRetry: Boolean = false,
+    ) {
         val detail = state.value.detail ?: return
         if (index !in detail.episodes.indices) return
+        if (!periodicRetry) cancelPeriodicPlaybackRetry()
         if (networkResumeMs == null) cancelNextSeasonLookup()
         if (finaleRecommendationRequestFor != null &&
             index != detail.episodes.lastIndex)
@@ -3047,7 +3141,7 @@ class DramaViewModel(application: Application) : AndroidViewModel(application) {
             }
             return
         }
-        clearEngagement()
+        if (!periodicRetry) clearEngagement()
         val api = if (state.value.navigation.origin == PlaybackOrigin.SWIPE_FEED)
             null else source
         val version = ++detailId
@@ -3064,9 +3158,8 @@ class DramaViewModel(application: Application) : AndroidViewModel(application) {
             resumePositionMs = checkpoint,
             playing = false, playbackError = null,
             playbackRecoveryMessage = null) }
-        // Independent IO request: comment totals are available before tapping
-        // the comment action, without delaying playback address preparation.
-        loadComments(reset = true)
+        // Avoid reloading comments on every delayed model retry.
+        if (!periodicRetry) loadComments(reset = true)
         diagnostics.record("PLAYBACK", "START")
         diagnostics.record("PLAYBACK",
             if (account.state.value.profile != null)
@@ -3223,10 +3316,19 @@ class DramaViewModel(application: Application) : AndroidViewModel(application) {
                         BackgroundPlaybackService.active
                             ?.networkRecoveryAttemptFailed(vid, retryable) == true
                     } else false
+                    val delayed = !pending &&
+                        PeriodicPlaybackRetryPolicy.recoverableSource(actualError) &&
+                        schedulePeriodicPlaybackRetry(vid)
                     mutable.update {
                         if (pending) it.copy(playbackRecoveryMessage =
                             "播放源暂时不可用，正在重新获取", playbackError = null, playing = false)
-                        else it.copy(playbackRecoveryMessage = null,
+                        else it.copy(
+                            playbackRecoveryMessage = if (delayed)
+                                PeriodicPlaybackRetryPolicy.status(
+                                    periodicPlaybackRetryCount,
+                                    (PeriodicPlaybackRetryPolicy.delayMs(
+                                        periodicPlaybackRetryCount) / 1000L).toInt(),
+                                ) else null,
                             playbackError = description, playing = false)
                     }
                 }
@@ -3285,8 +3387,17 @@ class DramaViewModel(application: Application) : AndroidViewModel(application) {
 
     fun mediaError(expectedVid: String, message: String) {
         if (state.value.detail?.episodes?.getOrNull(state.value.episodeIndex)?.vid != expectedVid) return
-        mutable.update { it.copy(playbackError = message,
-            playbackRecoveryMessage = null, playing = false) }
+        val delayed = PeriodicPlaybackRetryPolicy.recoverableCode(message) &&
+            schedulePeriodicPlaybackRetry(expectedVid)
+        mutable.update { it.copy(
+            playbackError = message, playing = false,
+            playbackRecoveryMessage = if (delayed)
+                PeriodicPlaybackRetryPolicy.status(
+                    periodicPlaybackRetryCount,
+                    (PeriodicPlaybackRetryPolicy.delayMs(
+                        periodicPlaybackRetryCount) / 1000L).toInt(),
+                ) else null,
+        ) }
         diagnostics.record("MEDIA", "FAIL_" + message.substringBefore(" · "))
     }
 
@@ -3295,6 +3406,7 @@ class DramaViewModel(application: Application) : AndroidViewModel(application) {
         val s = state.value
         val ep = s.detail?.episodes?.getOrNull(s.episodeIndex) ?: return
         if (ep.vid != expectedVid) return
+        cancelPeriodicPlaybackRetry()
         // The background progress fallback can mark firstFrameFor without
         // a visible surface. Still reveal the frame only on this callback.
         if (s.renderedVideoVid != expectedVid || s.playbackRecoveryMessage != null)
@@ -3341,7 +3453,14 @@ class DramaViewModel(application: Application) : AndroidViewModel(application) {
     fun confirmedBackgroundPlayback(expectedVid: String) {
         val s = state.value
         val ep = s.detail?.episodes?.getOrNull(s.episodeIndex) ?: return
-        if (ep.vid != expectedVid || firstFrameFor == ep.vid) return
+        if (ep.vid != expectedVid) return
+        // Three seconds of real progress is also successful playback when
+        // the app is backgrounded and no surface emits onRenderedFirstFrame.
+        cancelPeriodicPlaybackRetry()
+        if (s.playbackError != null || s.playbackRecoveryMessage != null) {
+            mutable.update { it.copy(playbackError = null, playbackRecoveryMessage = null) }
+        }
+        if (firstFrameFor == ep.vid) return
         firstFrameFor = ep.vid
         if (s.nextDramaTransition != NextDramaTransition.NONE) {
             mutable.update { it.copy(nextDramaTransition = NextDramaTransition.NONE) }
@@ -3792,6 +3911,7 @@ class DramaViewModel(application: Application) : AndroidViewModel(application) {
     }
 
     fun closePlayer() {
+        cancelPeriodicPlaybackRetry()
         cancelNextSeasonLookup()
         stopVideoWarmup()
         KxgPlaybackStreams.clearPrefetched()
