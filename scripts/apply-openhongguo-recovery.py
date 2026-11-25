@@ -19,11 +19,37 @@ def change(path: Path, old: str, new: str) -> None:
 def main(root: Path) -> None:
     # The upstream baseline already includes the 2026-11-23 v04.10.03
     # signing fixes (real-device-shaped x-medusa and matching gorgon/helios).
-    # Never patch internal/protocol/sign here: preserve upstream signer intact.
+    # Preserve the primary V5 signer. The separately scoped legacy compatibility
+    # change below follows upstream PR #25; it does not change device identity.
     sign = root / "internal/protocol/sign/medusa_v5.go"
     content = sign.read_text(encoding="utf-8")
     if "medusaDeviceStatus   = 369" not in content or "medusaEmulatorStatus = 377" not in content:
         raise SystemExit("Pinned source does not contain expected 2026-11-23 signer repair")
+    # PR #25: keep the already-generated required header on the existing legacy
+    # POST route. Do not introduce a new fallback or alter the V5 signer.
+    # If upstream merges the PR, require the updated regression assertion.
+    legacy_sign = root / "internal/protocol/sign/playback.go"
+    legacy_test = root / "internal/protocol/sign/playback_test.go"
+    old_delete = '\tdelete(headers, "x-medusa")\n'
+    old_assert = '\tif _, ok := headers["x-medusa"]; ok {\n\t\tt.Fatal("playback request must not carry x-medusa")\n\t}'
+    new_assert = '\tif headers["x-medusa"] == "" {\n\t\tt.Fatal("playback request must carry x-medusa")\n\t}'
+    legacy_src = legacy_sign.read_text(encoding="utf-8")
+    test_src = legacy_test.read_text(encoding="utf-8")
+    if old_delete in legacy_src:
+        if test_src.count(old_assert) != 1:
+            raise SystemExit("Legacy signer test changed; review PR #25 compatibility")
+        change(legacy_sign, old_delete, "")
+        change(legacy_test, old_assert, new_assert)
+        change(legacy_sign,
+               "// SignPlaybackPOST signs the video_model request. It is SignPOST plus real\n"
+               "// x-argus and x-ladon headers, and it drops x-medusa: when the account-style\n"
+               "// Medusa header rides along with a valid 551 envelope the live service answers\n"
+               "// playback with an empty 200 body, while removing it returns the full model\n"
+               "// (observed 2026-11-10). Account and non-playback requests keep their Medusa.",
+               "// SignPlaybackPOST signs the legacy video_model request, retaining the\n"
+               "// generated headers as in upstream PR #25. V5 signing is unchanged.")
+    elif new_assert not in test_src:
+        raise SystemExit("Legacy signer changed without expected regression assertion")
     protocol = root / "internal/protocol/playback_v5.go"
     # The official 7.4.2.32 runtime actually sends /player/v1. Preserve the
     # version-pinned primary path and register the distinct signed GET fallback.
@@ -58,7 +84,10 @@ def main(root: Path) -> None:
 \t\t\t\tif errors.Is(recoveryErr, ErrRateLimited) ||
 \t\t\t\t\terrors.Is(recoveryErr, ErrAuthenticationRequired) ||
 \t\t\t\t\terrors.Is(recoveryErr, ErrChallengeRequired) ||
-\t\t\t\t\terrors.Is(recoveryErr, ErrDeviceRejected) {
+\t\t\t\t\terrors.Is(recoveryErr, ErrDeviceRejected) ||
+\t\t\t\t\terrors.Is(recoveryErr, ErrSignatureRejected) ||
+\t\t\t\t\terrors.Is(recoveryErr, ErrContentUnavailable) ||
+\t\t\t\t\terrors.Is(recoveryErr, ErrDRMProtected) {
 \t\t\t\t\treturn nil, recoveryErr
 \t\t\t\t}
 \t\t\t\t// Invalid/empty/unsupported recovery response: retain the

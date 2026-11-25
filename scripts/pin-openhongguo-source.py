@@ -26,7 +26,7 @@ def pin_source(upstream_sha: str, path: Path = TARGET) -> bool:
     new_values = {
         "SOURCE_SHA": upstream_sha,
         "SOURCE_TAG": "main@" + upstream_sha[:8],
-        "PATCH_ID": "v7-upstream-auto-" + upstream_sha[:12] + "-player-empty-strictid",
+        "PATCH_ID": "v8-upstream-auto-" + upstream_sha[:12] + "-player-empty-strictid",
     }
     updated = source
     for key, old_pattern in expected.items():

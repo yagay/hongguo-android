@@ -52,11 +52,18 @@ jobs:
           current="$(sed -n 's/^SOURCE_SHA="\([a-f0-9]*\)"$/\1/p' scripts/build-openhongguo-16kb.sh)"
           [[ "${#current}" == 40 ]] || exit 1
           suffix="-${upstream:0:12}"
-          previous="$(gh release list --repo "$GITHUB_REPOSITORY" --limit 100 --json tagName |
-            jq -r --arg suffix "$suffix" '[.[] | select(.tagName | endswith($suffix))] | length')"
+          digest="$(sha256sum scripts/build-openhongguo-16kb.sh scripts/apply-openhongguo-recovery.py scripts/openhongguo-recovery.test.go | sha256sum | cut -d ' ' -f1)"
+          previous="$(gh api --paginate "repos/$GITHUB_REPOSITORY/releases?per_page=100" |
+            jq -s -r --arg suffix "$suffix" --arg digest "$digest" '[.[][] | select((.tag_name | endswith($suffix)) and ((.body // "") | contains("SDK integration SHA256: " + $digest)))] | length')"
+          # Report open upstream playback fixes for review, never build PR code automatically.
+          {
+            echo '### Open upstream pull requests (manual review only)'
+            gh api 'repos/beilunyang/openhongguo/pulls?state=open&per_page=100' |
+              jq -r '.[] | select(.title | test("playback|sign|播放|签名|取址"; "i")) | "- #" + (.number|tostring) + " " + .html_url' || true
+          } >> "$GITHUB_STEP_SUMMARY"
           echo "Pinned=$current upstream=$upstream existingSignedReleases=$previous"
           if [[ "$FORCE" != "true" && "$upstream" == "$current" && "$previous" -gt 0 ]]; then
-            echo "No source change and signed Release already published."
+            echo "No source or integration change and signed Release already published."
             echo 'build=false' >> "$GITHUB_OUTPUT"
             exit 0
           fi
@@ -79,7 +86,7 @@ jobs:
           set -euo pipefail
           python3 scripts/pin-openhongguo-source.py "${{ steps.discover.outputs.upstream_sha }}"
           sha256sum scripts/build-openhongguo-16kb.sh
-          echo "pin_digest=$(sha256sum scripts/build-openhongguo-16kb.sh | cut -d ' ' -f1)" >> "$GITHUB_OUTPUT"
+          echo "pin_digest=$(sha256sum scripts/build-openhongguo-16kb.sh scripts/apply-openhongguo-recovery.py scripts/openhongguo-recovery.test.go | sha256sum | cut -d ' ' -f1)" >> "$GITHUB_OUTPUT"
 
       - uses: actions/setup-java@v4
         if: steps.discover.outputs.build == 'true'
@@ -189,7 +196,7 @@ jobs:
         run: |
           set -euo pipefail
           python3 scripts/pin-openhongguo-source.py "$UPSTREAM_SHA"
-          actual="$(sha256sum scripts/build-openhongguo-16kb.sh | cut -d ' ' -f1)"
+          actual="$(sha256sum scripts/build-openhongguo-16kb.sh scripts/apply-openhongguo-recovery.py scripts/openhongguo-recovery.test.go | sha256sum | cut -d ' ' -f1)"
           [[ "$actual" == "$EXPECTED_DIGEST" ]] || {
             echo "Candidate pin differs from reviewed build" >&2; exit 1;
           }
@@ -271,7 +278,9 @@ jobs:
             echo "Go SDK signing tests, Android Debug tests, release build and 16KB checks passed."
             echo "Installed package: com.yagay.hongguo"
             echo "Version code: $VERSION_CODE"
+            echo "SDK integration SHA256: ${{ needs.candidate.outputs.pin_digest }}"
             echo "APK SHA256: $sha"
+            echo "Live playback is not verified by CI; an authorized device test is required."
             echo "Installation always requires user confirmation. This is a prerelease."
           } > "$RUNNER_TEMP/notes.md"
           gh release create "$UPDATE_TAG" \

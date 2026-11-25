@@ -60,6 +60,22 @@ class PlaybackSourceRecoveryPolicyTest {
         assertFalse(PlaybackSourceRecoveryPolicy.nativeFallback(IOException("HTTP 429")))
     }
 
+    @Test fun explicitSdkErrorsHaveDistinctNonRetryableDiagnosticCodes() {
+        val cases = mapOf(
+            ErrorCode.SIGNATURE_REJECTED to "UPSTREAM_SIGNATURE_REJECTED",
+            ErrorCode.CHALLENGE_REQUIRED to "UPSTREAM_VERIFICATION_REQUIRED",
+            ErrorCode.DRM_PROTECTED to "CONTENT_PROTECTED",
+            ErrorCode.SIGNER_UNAVAILABLE to "SDK_SIGNER_UNAVAILABLE",
+        )
+        for ((code, expected) in cases) {
+            val error = OpenhongguoException(code, "private server response", retryable = true)
+            assertEquals(expected, PlaybackProblem.describe("准备播放", error).substringBefore(" · "))
+            assertFalse(PlaybackSourceRecoveryPolicy.nativeFallback(error))
+            assertFalse(PlaybackSourceRecoveryPolicy.retrySdk(error, 1))
+            assertFalse(PeriodicPlaybackRetryPolicy.recoverableSource(error))
+        }
+    }
+
     @Test fun preserveThePreciseSdkFailureWhenLegacyPlaybackReturnsEmpty() {
         val primary = OpenhongguoException(ErrorCode.ANONYMOUS_LIMITED,
             "anonymous video model returned empty")
