@@ -44,6 +44,9 @@ object PlaybackProblem {
         val messages = chain.mapNotNull { it.message }
         val sdkCode = chain.filterIsInstance<OpenhongguoException>().firstOrNull()?.code
         val code = when {
+            chain.any { it is PublicEpisodePlaybackSource.Unavailable } -> "PUBLIC_WEBSITE_UNAVAILABLE"
+            chain.any { it is PublicEpisodePlaybackSource.Limited } -> "UPSTREAM_RATE_LIMIT"
+            chain.any { it is PublicEpisodePlaybackSource.Invalid } -> "PUBLIC_WEBSITE_INVALID"
             sdkCode == ErrorCode.RESPONSE_EMPTY -> "PLAYBACK_MODEL_EMPTY"
             sdkCode == ErrorCode.ANONYMOUS_LIMITED -> "PLAYBACK_ANONYMOUS_LIMITED"
             sdkCode == ErrorCode.DEVICE_REJECTED -> "PLAYBACK_DEVICE_REJECTED"
@@ -92,6 +95,8 @@ object PlaybackProblem {
         val hint = when (code) {
             "DEVICE_REGISTER_DNS" -> "设备注册阶段无法解析服务器域名"
             "DEVICE_REGISTER_TIMEOUT" -> "设备注册阶段请求超时"
+            "PUBLIC_WEBSITE_UNAVAILABLE" -> "官网未明确允许访客完整观看本集"
+            "PUBLIC_WEBSITE_INVALID" -> "官网未返回有效的公开媒体信息"
             "PLAYBACK_MODEL_EMPTY" -> "播放接口返回空模型，不能据此判定匿名限制"
             "PLAYBACK_EMPTY_RESPONSE" -> "播放模型接口返回空响应，上游暂不可用"
             "PLAYBACK_ANONYMOUS_LIMITED" -> "匿名播放模型未返回内容"

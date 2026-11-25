@@ -368,6 +368,7 @@ class DramaViewModel(application: Application) : AndroidViewModel(application) {
     private val diagnostics = DiagnosticLog(File(application.filesDir, "diagnostics"),
         prefs.getBoolean("diagnostic_enabled", true))
     private val publicWebsite = NativeWebsiteSource(diagnostics = diagnostics)
+    private val publicEpisodeSource = PublicEpisodePlaybackSource(diagnostics)
     private val nativeSource = NativeHongguoSource(diagnostics = diagnostics)
     /** Kaixinguo SDK is now the catalog and MP4 playback-model source. */
     private val openHongguo = OpenHongguoSource(application, diagnostics)
@@ -2863,6 +2864,7 @@ class DramaViewModel(application: Application) : AndroidViewModel(application) {
         remote: RemoteVideo?,
         resumeMs: Long,
         expectedGeneration: Long,
+        publicWebsiteMedia: Boolean = false,
     ) {
         val serviceWaitStarted = System.nanoTime()
         if (BackgroundPlaybackService.active == null) {
@@ -2911,6 +2913,7 @@ class DramaViewModel(application: Application) : AndroidViewModel(application) {
             networkRecovered = { position ->
                 recoverNetworkPlayback(current.vid, position)
             },
+            publicWebsiteMedia = publicWebsiteMedia,
         )
         updateNotificationNavigation()
     }
@@ -3327,8 +3330,48 @@ class DramaViewModel(application: Application) : AndroidViewModel(application) {
                 throw e
             } catch (e: Exception) {
                 if (version == detailId) {
-                    val actualError = PlaybackSourceRecoveryPolicy
+                    var actualError = PlaybackSourceRecoveryPolicy
                         .preservePrimaryOnLegacyEmpty(primaryModelFailure, e)
+                    // Only an ambiguous empty model (never a refusal or rate
+                    // limit) permits a separately authorized public web attempt.
+                    if (api == null && state.value.retryPlaybackAutomatically &&
+                        PlaybackSourceRecoveryPolicy.publicWebsiteFallback(
+                            primaryModelFailure, e)) {
+                        val quality = state.value.qualityLimit
+                        fun current(): Boolean = version == detailId &&
+                            state.value.detail?.drama?.id == detail.drama.id &&
+                            state.value.detail?.episodes?.getOrNull(state.value.episodeIndex)?.vid == vid &&
+                            state.value.qualityLimit == quality &&
+                            (networkResumeMs == null ||
+                                BackgroundPlaybackService.active?.isNetworkRecoveryCurrent(vid) == true)
+                        try {
+                            diagnostics.record("PLAYBACK", "PUBLIC_WEBSITE_SOURCE_START")
+                            mutable.update { it.copy(playbackRecoveryMessage = "正在检查官网公开片源") }
+                            val url = publicEpisodeSource.resolve(detail.drama.id, vid)
+                            currentCoroutineContext().ensureActive()
+                            if (!current()) return@launch
+                            if (!serviceStarted) throw IOException("播放服务未就绪")
+                            launchBackgroundMedia(detail, index, url, null, checkpoint, version,
+                                publicWebsiteMedia = true)
+                            if (version != detailId ||
+                                state.value.detail?.episodes?.getOrNull(state.value.episodeIndex)?.vid != vid)
+                                return@launch
+                            mutable.update { it.copy(playbackUrl = url, playing = true,
+                                playbackRecoveryMessage = null, playbackError = null) }
+                            diagnostics.record("PLAYBACK", "PUBLIC_WEBSITE_SOURCE_READY")
+                            diagnostics.record("PLAYBACK", "SOURCE_READY", elapsed(started))
+                            return@launch
+                        } catch (cancelled: CancellationException) {
+                            throw cancelled
+                        } catch (webFailure: Exception) {
+                            if (version != detailId) return@launch
+                            diagnostics.record("PLAYBACK", "PUBLIC_WEBSITE_SOURCE_FAIL_" +
+                                PlaybackProblem.describe("官网片源", webFailure).substringBefore(" · "))
+                            // A definite public access refusal is authoritative.
+                            // Never discard it and restart an empty-model loop.
+                            actualError = webFailure
+                        }
+                    }
                     diagnostics.record("PLAYBACK",
                         "FINAL_SOURCE_FAIL_" +
                             PlaybackProblem.describe("准备播放", actualError)

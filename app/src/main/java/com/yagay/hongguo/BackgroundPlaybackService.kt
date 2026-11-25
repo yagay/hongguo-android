@@ -22,6 +22,7 @@ import androidx.media3.common.Player
 import androidx.media3.common.util.UnstableApi
 import androidx.media3.datasource.DataSource
 import androidx.media3.datasource.HttpDataSource
+import androidx.media3.datasource.okhttp.OkHttpDataSource
 import androidx.media3.exoplayer.ExoPlayer
 import androidx.media3.exoplayer.DefaultRenderersFactory
 import androidx.media3.exoplayer.DefaultLoadControl
@@ -782,6 +783,7 @@ class BackgroundPlaybackService : MediaSessionService() {
         checkpoint: (Long, Long) -> Unit,
         timerExpired: () -> Boolean,
         networkRecovered: (Long) -> Unit,
+        publicWebsiteMedia: Boolean = false,
     ) {
         onFirstFrame = firstFrame
         onBackgroundProgress = backgroundProgress
@@ -860,6 +862,13 @@ class BackgroundPlaybackService : MediaSessionService() {
             engine.setMediaSource(ProgressiveMediaSource.Factory(
                 KxgPlaybackStreams.factory(this)).createMediaSource(item))
             diagnostics.record("PLAYBACK", "KXG_DIRECT_CENC_SOURCE")
+        } else if (publicWebsiteMedia) {
+            // Plain, explicitly public media only; isolated HTTP client with
+            // no cookies, authentication or redirects.
+            engine.setMediaSource(ProgressiveMediaSource.Factory(
+                OkHttpDataSource.Factory(PublicEpisodePlaybackSource.mediaClient)
+            ).createMediaSource(item))
+            diagnostics.record("PLAYBACK", "PUBLIC_WEBSITE_DIRECT_SOURCE")
         } else {
             engine.setMediaItem(item)
         }

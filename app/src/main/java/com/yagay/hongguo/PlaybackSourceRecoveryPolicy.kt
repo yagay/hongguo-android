@@ -51,6 +51,16 @@ internal object PlaybackSourceRecoveryPolicy {
         }
     }
 
+    /** A second source is eligible only for typed, ambiguous empty models.
+     * Explicit rejections, protection, limits and unrelated errors never qualify. */
+    fun publicWebsiteFallback(primary: Throwable?, last: Throwable): Boolean {
+        fun empty(t: Throwable): Boolean {
+            val code = PlaybackProblem.describe("播放", t).substringBefore(" · ")
+            return code == "PLAYBACK_MODEL_EMPTY" || code == "PLAYBACK_EMPTY_RESPONSE"
+        }
+        return empty(last) && (primary == null || empty(primary))
+    }
+
     /**
      * The legacy native model endpoint can return HTTP 200 with an empty body
      * after the primary V5 SDK has already given a precise typed failure.

@@ -21,3 +21,5 @@ No write/comment-post or account-mutation APIs are included in the comment reade
 - [kadaliao/openhongguo](https://github.com/kadaliao/openhongguo)
   Android AAR `0.2.1-kx.1`, used by Kaixinguo for its Android signing fix;
   original openhongguo SDK is Apache-2.0 licensed.
+
+- OOIUa/hongguo-android (GPL-3.0-only), [1808382](https://github.com/OOIUa/hongguo-android/commit/1808382f24e03ff253e9330f81db9c3031003392): public visitor playback access checks and independent public source design, adapted in PublicEpisodePlaybackSource.kt.
