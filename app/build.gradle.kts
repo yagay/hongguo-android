@@ -15,6 +15,28 @@ val releaseSigningConfigured = releaseSigningKeys.all {
     !releaseSigningValues[it].isNullOrBlank()
 }
 
+// Identify the checked-out app source and the actual SDK build stamp separately.
+// The daily updater may pin a new SDK without changing the checkout commit.
+val appCheckoutSha = runCatching {
+    providers.exec {
+        workingDir(rootProject.projectDir)
+        commandLine("git", "rev-parse", "HEAD")
+        isIgnoreExitValue = true
+    }.standardOutput.asText.get().trim()
+}.getOrNull()?.takeIf { it.matches(Regex("[a-f0-9]{40}")) } ?: "unknown"
+val sdkBuildScript = rootProject.file("scripts/build-openhongguo-16kb.sh").readText()
+val expectedSdkStamp = Regex("""(?m)^PATCH_ID="([a-zA-Z0-9_-]+)"$""")
+    .find(sdkBuildScript)?.groupValues?.get(1) ?: "unknown"
+val expectedSdkSha = Regex("""(?m)^SOURCE_SHA="([a-f0-9]{40})"$""")
+    .find(sdkBuildScript)?.groupValues?.get(1) ?: "unknown"
+val sdkStampFile = file("libs/openhongguo-16kb-recovery.aar.buildstamp")
+val actualSdkStamp = providers.fileContents(layout.projectDirectory.file(
+    "libs/openhongguo-16kb-recovery.aar.buildstamp")).asText.orNull
+    ?.trim()?.takeIf { it.matches(Regex("[a-zA-Z0-9_-]{1,120}")) } ?: "unknown"
+val sdkBuildVerified = file("libs/openhongguo-16kb-recovery.aar").isFile &&
+    sdkStampFile.isFile && expectedSdkStamp != "unknown" &&
+    expectedSdkSha != "unknown" && actualSdkStamp == expectedSdkStamp
+
 android {
     namespace = "com.yagay.hongguo"
     compileSdk = 36
@@ -28,6 +50,10 @@ android {
             ?.toIntOrNull()?.takeIf { it in 2..2100000000 } ?: 1
         versionName = providers.gradleProperty("appVersionName").orNull
             ?.takeIf { it.length in 1..80 } ?: "0.1.0-web-rewrite"
+        buildConfigField("String", "APP_CHECKOUT_SHA", "\"$appCheckoutSha\"")
+        buildConfigField("String", "SDK_EXPECTED_SHA", "\"$expectedSdkSha\"")
+        buildConfigField("String", "SDK_BUILD_STAMP", "\"$actualSdkStamp\"")
+        buildConfigField("boolean", "SDK_STAMP_MATCHES", sdkBuildVerified.toString())
         testInstrumentationRunner = "androidx.test.runner.AndroidJUnitRunner"
         // Smoke-only APK is installable on hosted x86_64 emulators.
         // Regular ARM64 Debug and Release packaging is unchanged.

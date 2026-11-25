@@ -98,8 +98,7 @@ internal object KxgPlaybackStreams {
     // The upstream may reject anonymous video models independently of its
     // catalog. Do not keep spending identities on speculative video models.
     // Foreground playback always remains eligible to probe again.
-    @Volatile private var speculativeLimitedUntilMs = 0L
-    private const val SPECULATIVE_LIMIT_COOLDOWN_MS = 5 * 60_000L
+    private val speculativeHealth = SpeculativeModelHealth()
 
     /** Called by the service. Logs only safe transport timings and byte counts. */
     fun attachDiagnostics(log: DiagnosticLog) {
@@ -229,7 +228,7 @@ internal object KxgPlaybackStreams {
                     streamRegistry?.get(it.uri) != null
             }
         }
-        if (existing == null && now < speculativeLimitedUntilMs) {
+        if (existing == null && speculativeHealth.isCoolingDown()) {
             diagnostics?.record("PRELOAD", "MODEL_LIMIT_COOLDOWN")
             return false
         }
@@ -300,37 +299,36 @@ internal object KxgPlaybackStreams {
         qualityLimit: Int,
         speculative: Boolean,
     ): Prepared? = withContext(Dispatchers.IO) {
-        val resolved = try {
-            if (speculative) {
-                val result = PlaybackModelRequestGate.speculative {
-                    diagnostics?.record("PRELOAD", "OFFICIAL_OPENHONGGUO_MODEL_REQUEST")
-                    sdk.resolvePlayback(episodeId)
+        // Update health inside the serialized model gate: a queued request
+        // must see the preceding failure before starting speculative work.
+        suspend fun requestModel(): dev.openhongguo.PlaybackResult {
+            return try {
+                sdk.resolvePlayback(episodeId).also { speculativeHealth.onSuccess() }
+            } catch (error: OpenhongguoException) {
+                val code = PlaybackProblem.describe("获取播放模型", error)
+                    .substringBefore(" · ")
+                diagnostics?.record("PLAYBACK", "SDK_MODEL_" + code)
+                val cooldown = speculativeHealth.onFailure(error.code, error.retryAfterMs)
+                if (cooldown > 0L) {
+                    diagnostics?.record("PRELOAD", "MODEL_COOLDOWN_" + error.code.name)
+                    diagnostics?.record("PRELOAD", "MODEL_COOLDOWN_MINUTES_" +
+                        ((cooldown + 59_999L) / 60_000L))
                 }
-                if (result == null) return@withContext null
-                result
-            } else {
-                PlaybackModelRequestGate.foreground {
-                    diagnostics?.record("PLAYBACK", "OFFICIAL_OPENHONGGUO_V5_REQUEST")
-                    sdk.resolvePlayback(episodeId)
-                }
+                throw error
             }
-        } catch (error: OpenhongguoException) {
-            val code = PlaybackProblem.describe("获取播放模型", error)
-                .substringBefore(" · ")
-            diagnostics?.record("PLAYBACK", "SDK_MODEL_" + code)
-            if (error.code == ErrorCode.ANONYMOUS_LIMITED ||
-                error.code == ErrorCode.DEVICE_REJECTED ||
-                error.code == ErrorCode.RATE_LIMITED ||
-                error.code == ErrorCode.RESPONSE_EMPTY) {
-                speculativeLimitedUntilMs =
-                    System.currentTimeMillis() + SPECULATIVE_LIMIT_COOLDOWN_MS
-                diagnostics?.record("PRELOAD",
-                    if (error.code == ErrorCode.RESPONSE_EMPTY)
-                        "EMPTY_MODEL_SPECULATIVE_COOLDOWN" else "MODEL_DENIAL_SPECULATIVE_COOLDOWN")
-            }
-            throw error
         }
-        speculativeLimitedUntilMs = 0L
+        val resolved = if (speculative) {
+            PlaybackModelRequestGate.speculative {
+                if (speculativeHealth.isCoolingDown()) return@speculative null
+                diagnostics?.record("PRELOAD", "OFFICIAL_OPENHONGGUO_MODEL_REQUEST")
+                requestModel()
+            } ?: return@withContext null
+        } else {
+            PlaybackModelRequestGate.foreground {
+                diagnostics?.record("PLAYBACK", "OFFICIAL_OPENHONGGUO_V5_REQUEST")
+                requestModel()
+            }
+        }
         diagnostics?.record("PLAYBACK", "OFFICIAL_OPENHONGGUO_MODEL_RECEIVED")
         val playback = resolved.playback
         val usable = playback.streams.filter {

@@ -26,7 +26,7 @@ import dev.openhongguo.Page
 import dev.openhongguo.SeriesSummary
 
 /**
- * Official beilunyang/openhongguo 0.4.0 directly provides the catalog
+ * Official pinned beilunyang/openhongguo provides the catalog
  * and V5 anonymous playback model. No Kaixinguo fork or application API is
  * used for media URL lookup. Account-specific features remain separate.
  *
@@ -54,6 +54,10 @@ internal class OpenHongguoSource(
         val responseBytes = message.substringAfterLast(" bytes=", "")
             .trim().toIntOrNull()?.takeIf { it >= 0 }
         diagnostics?.record("PLAYBACK_WIRE", path, httpStatus = status, bytes = responseBytes)
+        if (status == 200 && responseBytes == 0) {
+            diagnostics?.record("PLAYBACK_WIRE", "${path}_EMPTY_HTTP_200",
+                httpStatus = status, bytes = 0)
+        }
     }
 
     private val client: OpenhongguoClient by lazy(LazyThreadSafetyMode.SYNCHRONIZED) {

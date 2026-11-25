@@ -20,6 +20,15 @@ class DiagnosticLogTest {
         assertFalse(result.contains("Cookie="))
     }
 
+    @Test fun exportedLogIdentifiesInstalledBuildWithoutSecrets() {
+        val result = DiagnosticLog(temporary.newFolder()).snapshot()
+        assertTrue(result.contains("App checkout SHA: " + BuildConfig.APP_CHECKOUT_SHA))
+        assertTrue(result.contains("Expected upstream SHA: " + BuildConfig.SDK_EXPECTED_SHA))
+        assertTrue(result.contains("SDK artifact build stamp: " + BuildConfig.SDK_BUILD_STAMP))
+        assertTrue(result.contains("SDK stamp matches expected: " + BuildConfig.SDK_STAMP_MATCHES))
+        assertTrue(result.contains("journal events may include earlier installed builds"))
+    }
+
     @Test fun disabledDoesNotWriteEntries() {
         val folder = temporary.newFolder()
         val journal = DiagnosticLog(folder, enabled = false)

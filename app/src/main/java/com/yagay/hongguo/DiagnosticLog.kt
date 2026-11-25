@@ -46,6 +46,12 @@ class DiagnosticLog(private val directory: File, enabled: Boolean = true) {
         val body = if (file.exists()) file.readText(Charsets.UTF_8) else ""
         "Hongguo Native Rewrite - Diagnostic log\n" +
             "Generated UTC: ${Instant.now()}\n" +
+            "App version: ${BuildConfig.VERSION_NAME} (${BuildConfig.VERSION_CODE}) ${BuildConfig.BUILD_TYPE}\n" +
+            "App checkout SHA: ${BuildConfig.APP_CHECKOUT_SHA}\n" +
+            "Expected upstream SHA: ${BuildConfig.SDK_EXPECTED_SHA}\n" +
+            "SDK artifact build stamp: ${BuildConfig.SDK_BUILD_STAMP}\n" +
+            "SDK stamp matches expected: ${BuildConfig.SDK_STAMP_MATCHES}\n" +
+            "Note: journal events may include earlier installed builds.\n" +
             "Format: UTC timestamp, stage, event code, elapsed ms, HTTP status, response bytes\n" +
             "Sensitive values (URLs, tokens, search queries, drama titles, cookies) are not collected.\n" +
             ("Last uncaught crash (sanitized, if any):\n" +
