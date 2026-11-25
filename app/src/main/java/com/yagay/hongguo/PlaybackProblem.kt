@@ -81,6 +81,8 @@ object PlaybackProblem {
             messages.any { it.contains("当前播放模型没有可用的内容密钥") ||
                 it.contains("内容密钥格式不受支持") } -> "CONTENT_PROTECTED"
             messages.any { it.contains("DEVICE_REGISTER", true) } -> "DEVICE_REGISTER_FAILED"
+            messages.any { it.contains("PLAYBACK_CONTAINER_UNSUPPORTED") } -> "SOURCE_NOT_SUPPORTED"
+            messages.any { it.contains("PLAYBACK_NO_USABLE_STREAM") } -> "PLAYBACK_NO_USABLE_STREAM"
             messages.any { it.contains("CODEC_NOT_SUPPORTED", true) ||
                 it.contains("bytevc2", true) || it.contains("VVC", true) } -> "CODEC_NOT_SUPPORTED"
             chain.any { it is UnsupportedOperationException } -> "SOURCE_NOT_SUPPORTED"
@@ -113,7 +115,8 @@ object PlaybackProblem {
             "UPSTREAM_HTTP_ERROR" -> "接口请求失败"
             "DEVICE_REGISTER_FAILED" -> "匿名设备注册失败"
             "CODEC_NOT_SUPPORTED" -> "本机不支持该视频编码"
-            "SOURCE_NOT_SUPPORTED" -> "当前数据源尚不支持此操作"
+            "SOURCE_NOT_SUPPORTED" -> "当前数据源尚不支持此媒体格式"
+            "PLAYBACK_NO_USABLE_STREAM" -> "已取得播放模型，但没有有效的媒体地址"
             "NETWORK_IO" -> "网络数据读取失败"
             else -> "处理失败"
         }

@@ -5,7 +5,6 @@ import androidx.media3.datasource.DataSource
 import androidx.media3.datasource.DefaultHttpDataSource
 import com.yagay.hongguo.OpenHongguoSource
 import com.yagay.hongguo.DiagnosticLog
-import dev.openhongguo.Stream
 import dev.openhongguo.OpenhongguoException
 import dev.openhongguo.ErrorCode
 import com.yagay.hongguo.PlaybackProblem
@@ -331,20 +330,23 @@ internal object KxgPlaybackStreams {
         }
         diagnostics?.record("PLAYBACK", "OFFICIAL_OPENHONGGUO_MODEL_RECEIVED")
         val playback = resolved.playback
-        val usable = playback.streams.filter {
-            it.url.startsWith("https://") && !it.hls && !it.dash
+        val selection = CompatibleStreamSelector.select(
+            playback.streams, playback.audioUrl.isNotEmpty(), qualityLimit)
+        val chosen = when (selection) {
+            is CompatibleStreamSelector.Result.Ready -> {
+                if (selection.excludedCodecCount > 0) {
+                    diagnostics?.record("PLAYBACK", "UNSUPPORTED_CODEC_FILTERED")
+                }
+                diagnostics?.record("PLAYBACK", "COMPATIBLE_STREAM_SELECTED")
+                selection.stream
+            }
+            CompatibleStreamSelector.Result.UnsupportedCodec ->
+                throw IOException("CODEC_NOT_SUPPORTED")
+            CompatibleStreamSelector.Result.UnsupportedContainer ->
+                throw IOException("PLAYBACK_CONTAINER_UNSUPPORTED")
+            CompatibleStreamSelector.Result.Empty ->
+                throw IOException("PLAYBACK_NO_USABLE_STREAM")
         }
-        if (usable.isEmpty() || playback.audioUrl.isNotEmpty()) {
-            throw IOException("该集没有开心果支持的单文件 MP4 视频")
-        }
-        // Keep the highest supported stream within the selected quality cap,
-        // above the selected cap, or the lowest available if none fits.
-        val capped = if (qualityLimit > 0)
-            usable.filter { lines(it) <= qualityLimit } else usable
-        val order = compareBy<Stream>({ lines(it) }, { it.bitrate })
-        val chosen = (if (capped.isEmpty()) usable.minWithOrNull(order)
-            else capped.maxWithOrNull(order))
-            ?: throw IOException("没有可播放的视频清晰度")
         val key: ByteArray? = if (playback.protected || chosen.protected) {
             val secret = resolved.contentKey
                 ?: throw IOException("当前播放模型没有可用的内容密钥")
@@ -366,12 +368,5 @@ internal object KxgPlaybackStreams {
         val validUntil = KxgWarmupPolicy.cacheValidUntilMs(
             playback.expiresAt, System.currentTimeMillis())
         Prepared(uri, episodeId, qualityLimit, validUntil)
-    }
-
-    private fun lines(stream: Stream): Int {
-        val label = stream.definition.takeWhile { it in '0'..'9' }.toIntOrNull()
-        if (label != null && label > 0) return label
-        val shorter = minOf(stream.width, stream.height)
-        return if (shorter > 0) shorter else maxOf(stream.width, stream.height)
     }
 }
