@@ -78,6 +78,8 @@ object PlaybackProblem {
             messages.any { it.contains("WEBSITE_HTTP_403") || it.contains("HTTP 403") } -> "UPSTREAM_FORBIDDEN"
             messages.any { it.contains("WEBSITE_HTTP_401") || it.contains("HTTP 401") } -> "UPSTREAM_UNAUTHORIZED"
             messages.any { it.contains("WEBSITE_HTTP_") || it.contains("HTTP ") } -> "UPSTREAM_HTTP_ERROR"
+            messages.any { it.contains("当前播放模型没有可用的内容密钥") ||
+                it.contains("内容密钥格式不受支持") } -> "CONTENT_PROTECTED"
             messages.any { it.contains("DEVICE_REGISTER", true) } -> "DEVICE_REGISTER_FAILED"
             messages.any { it.contains("CODEC_NOT_SUPPORTED", true) ||
                 it.contains("bytevc2", true) || it.contains("VVC", true) } -> "CODEC_NOT_SUPPORTED"

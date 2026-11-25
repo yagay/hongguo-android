@@ -47,8 +47,7 @@ internal object PlaybackSourceRecoveryPolicy {
         val messages = causes(error).mapNotNull { it.message }
         return messages.any {
             it.contains("没有开心果支持的单文件 MP4") ||
-                it.contains("没有可播放的视频清晰度") ||
-                it.contains("当前播放模型没有可用的内容密钥")
+                it.contains("没有可播放的视频清晰度")
         }
     }
 

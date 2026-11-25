@@ -37,6 +37,14 @@ jobs:
           ref: rewrite
           persist-credentials: false
 
+      - name: Review playback changes across upstream projects
+        shell: bash
+        env:
+          GH_TOKEN: ${{ github.token }}
+        run: |
+          set -euo pipefail
+          bash scripts/report-playback-upstreams.sh >> "$GITHUB_STEP_SUMMARY"
+
       - name: Check official upstream HEAD and existing signed Releases
         id: discover
         shell: bash

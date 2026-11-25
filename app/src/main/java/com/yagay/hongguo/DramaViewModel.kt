@@ -2968,6 +2968,26 @@ class DramaViewModel(application: Application) : AndroidViewModel(application) {
         diagnostics.record("PLAYBACK", "PERIODIC_RETRY_STOPPED_BY_USER")
     }
 
+    /** Explicit handoff to the provider's public page; no URL extraction,
+     * credential transfer, or claim that this episode is available on the web. */
+    fun openOfficialPlaybackWebsite(seriesId: String) {
+        val url = OfficialPlaybackWebsite.seriesUrl(seriesId) ?: return
+        val app = getApplication<Application>()
+        val opened = runCatching {
+            app.startActivity(Intent(Intent.ACTION_VIEW, Uri.parse(url))
+                .addCategory(Intent.CATEGORY_BROWSABLE)
+                .addFlags(Intent.FLAG_ACTIVITY_NEW_TASK))
+        }.isSuccess
+        if (opened) {
+            stopPeriodicPlaybackRetry()
+            diagnostics.record("PLAYBACK", "OFFICIAL_WEBSITE_HANDOFF")
+        } else {
+            diagnostics.record("PLAYBACK", "OFFICIAL_WEBSITE_UNAVAILABLE")
+            android.widget.Toast.makeText(app, "无法打开官网，请检查浏览器是否可用",
+                android.widget.Toast.LENGTH_SHORT).show()
+        }
+    }
+
     private fun isPlaybackRetryCurrent(
         expectedDramaId: String, expectedVid: String, generation: Long, quality: Int,
     ): Boolean {

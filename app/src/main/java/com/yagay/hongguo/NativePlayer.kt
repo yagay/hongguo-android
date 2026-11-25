@@ -788,7 +788,11 @@ internal fun NativePlayer(
                             recoveryStatus = state.playbackRecoveryMessage, feedMode = state.feedMode,
                             onRetry = {
                                 if (state.feedMode) model.refreshFailedReels() else model.retryPlayback()
-                            }, onStopRetry = model::stopPeriodicPlaybackRetry)
+                            }, onStopRetry = model::stopPeriodicPlaybackRetry,
+                            onOpenOfficialWebsite = if (state.offlinePlaybackUri == null &&
+                                OfficialPlaybackWebsite.seriesUrl(detail.drama.id) != null)
+                                { { model.openOfficialPlaybackWebsite(detail.drama.id) } }
+                                else null)
                     }
                 } else if (!pagerRecenterPending) {
                     val preview = if (state.feedMode) {

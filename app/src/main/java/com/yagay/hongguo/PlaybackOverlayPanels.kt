@@ -20,6 +20,7 @@ internal fun PlaybackErrorOverlay(
     feedMode: Boolean,
     onRetry: () -> Unit,
     onStopRetry: () -> Unit,
+    onOpenOfficialWebsite: (() -> Unit)? = null,
 ) {
     Column(
         Modifier.fillMaxWidth().padding(horizontal = 40.dp),
@@ -42,6 +43,9 @@ internal fun PlaybackErrorOverlay(
             statusTag = "periodic_playback_retry_status",
             stopTag = "periodic_playback_retry_stop",
         )
+        if (onOpenOfficialWebsite != null) {
+            OfficialPlaybackWebsiteButton(onOpenOfficialWebsite)
+        }
         Text(if (feedMode)
                 "继续上滑也会请求新的推荐，不再循环播放失效列表"
              else "可重新尝试或切换其他剧集",

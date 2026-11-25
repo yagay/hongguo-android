@@ -218,6 +218,10 @@ internal fun ReelLoadingScreen(
                         statusTag = "loading_periodic_retry_status",
                         stopTag = "loading_periodic_retry_stop",
                     )
+                    drama?.id?.takeIf { OfficialPlaybackWebsite.seriesUrl(it) != null }
+                        ?.let { id ->
+                            OfficialPlaybackWebsiteButton { model.openOfficialPlaybackWebsite(id) }
+                        }
                 }
                 if (!failed && loading && elapsedSeconds >= 10) {
                     Text("网络响应较慢，可以重新获取",

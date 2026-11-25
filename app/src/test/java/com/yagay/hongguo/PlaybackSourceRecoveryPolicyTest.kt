@@ -89,6 +89,17 @@ class PlaybackSourceRecoveryPolicyTest {
             .preservePrimaryOnLegacyEmpty(primary, transport))
     }
 
+    @Test fun missingContentAuthorizationDoesNotRetryOrSwitchSources() {
+        for (message in listOf("当前播放模型没有可用的内容密钥", "内容密钥格式不受支持")) {
+            val failure = IOException(message)
+            assertFalse(PlaybackSourceRecoveryPolicy.nativeFallback(failure))
+            assertFalse(PlaybackSourceRecoveryPolicy.retrySdk(failure, 1))
+            assertFalse(PeriodicPlaybackRetryPolicy.recoverableSource(failure))
+            assertEquals("CONTENT_PROTECTED", PlaybackProblem.describe("播放", failure)
+                .substringBefore(" · "))
+        }
+    }
+
     @Test fun incompatiblePrimaryMp4ContainerCanTryNativeWithoutLooping() {
         assertTrue(PlaybackSourceRecoveryPolicy.nativeFallback(
             IOException("该集没有开心果支持的单文件 MP4 视频")))
