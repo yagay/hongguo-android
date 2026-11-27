@@ -170,27 +170,45 @@ internal class KxgContentSource(private val sdk: OpenHongguoSource) {
 
     suspend fun detail(id: String): DramaDetail {
         val series = sdk.series(id)
+        if (series.id != id) throw java.io.IOException("EPISODES_INVALID")
+        // Retry only a structurally incomplete directory, not an upstream
+        // authentication, transport or rate-limit failure.
+        val episodes = readEpisodeDirectory(id) ?: readEpisodeDirectory(id)
+            ?: throw java.io.IOException("EPISODES_INVALID")
+        return DramaDetail(Drama(series.id, series.title, series.coverUrl,
+            series.episodeCount, series.description,
+            recommendationLabel = RecommendationDisplayMetric.fromSourceRows(
+                series.rows.map { it.text })), episodes)
+    }
+
+    private suspend fun readEpisodeDirectory(id: String): List<Episode>? {
         val episodes = mutableListOf<Episode>()
         val seen = HashSet<String>()
+        val seenCursors = HashSet<String>()
         var cursor: String? = null
+        var complete = false
         for (pageIndex in 0 until 40) {
             val page = sdk.episodes(id, EpisodeOptions(cursor = cursor, pageSize = 100))
             for (row in page.items) {
-                if (row.id.isNotBlank() && seen.add(row.id)) {
+                if (!EpisodeDirectoryPolicy.validId(row.id)) return null
+                if (seen.add(row.id)) {
                     episodes += Episode(
                         index = row.number.takeIf { it > 0 } ?: episodes.size + 1,
                         vid = row.id, title = row.title,
                     )
-                }
+                } else if (row.number > 0 &&
+                    episodes.firstOrNull { it.vid == row.id }?.index != row.number) return null
             }
-            if (!page.hasMore || page.cursor.isBlank() || page.cursor == cursor)
+            if (!page.hasMore) {
+                complete = true
                 break
+            }
+            if (page.cursor.isBlank() || !seenCursors.add(page.cursor)) return null
             cursor = page.cursor
         }
-        return DramaDetail(Drama(series.id, series.title, series.coverUrl,
-            series.episodeCount, series.description,
-            recommendationLabel = RecommendationDisplayMetric.fromSourceRows(
-                series.rows.map { it.text })), episodes.sortedBy(Episode::index))
+        val ordered = episodes.sortedBy(Episode::index)
+        return ordered.takeIf { complete && EpisodeDirectoryPolicy.contiguous(
+            it.map(Episode::index)) }
     }
 
     private val reelCursors = mutableMapOf<String, String>()

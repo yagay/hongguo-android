@@ -28,6 +28,13 @@ class KxgWarmupPolicyTest {
         assertEquals(now + 120_000L, KxgWarmupPolicy.cacheValidUntilMs(0L, now))
     }
 
+    @Test fun hardExpiryIsIndependentOfConservativeReuseWindow() {
+        val now = 1_700_000_000_000L
+        assertTrue(KxgWarmupPolicy.hardExpired(now / 1000L, now))
+        assertFalse(KxgWarmupPolicy.hardExpired(0L, now))
+        assertFalse(KxgWarmupPolicy.hardExpired(now / 1000L + 1L, now))
+    }
+
     @Test fun currentVideoBufferHasPriority() {
         assertFalse(KxgWarmupPolicy.bufferedEnough(false, true, 30_000))
         assertFalse(KxgWarmupPolicy.bufferedEnough(true, false, 30_000))

@@ -3199,6 +3199,8 @@ class DramaViewModel(application: Application) : AndroidViewModel(application) {
         detailJob = viewModelScope.launch {
             val started = System.nanoTime()
             var primaryModelFailure: Exception? = null
+            var nativeModelFailure: Exception? = null
+            var publicModelFailure: Exception? = null
             try {
                 if (api != null) {
                     val url = api.playableUrl(vid)
@@ -3291,9 +3293,18 @@ class DramaViewModel(application: Application) : AndroidViewModel(application) {
                         // No account cookie, player swap or persistent video
                         // cache. The native path has its own deadline, routes,
                         // rendition validation and CENC reader.
-                        val remote = withTimeoutOrNull(35_000L) {
-                            nativeSource.openVideo(vid, qualityLimit = quality)
-                        } ?: throw java.net.SocketTimeoutException("备用播放线路请求超时")
+                        val remote = try {
+                            withTimeoutOrNull(35_000L) {
+                                nativeSource.openVideo(vid, qualityLimit = quality)
+                            } ?: throw java.net.SocketTimeoutException("备用播放线路请求超时")
+                        } catch (cancelled: CancellationException) {
+                            throw cancelled
+                        } catch (error: Exception) {
+                            nativeModelFailure = error
+                            diagnostics.record("PLAYBACK", "NATIVE_MODEL_FAIL_" +
+                                PlaybackProblem.describe("备用播放", error).substringBefore(" · "))
+                            throw error
+                        }
                         val uri = "native-stream://$vid"
                         if (version != detailId ||
                             state.value.detail?.episodes
@@ -3369,14 +3380,24 @@ class DramaViewModel(application: Application) : AndroidViewModel(application) {
                                 PlaybackProblem.describe("官网片源", webFailure).substringBefore(" · "))
                             // A definite public access refusal is authoritative.
                             // Never discard it and restart an empty-model loop.
-                            actualError = webFailure
+                            publicModelFailure = webFailure
+                            actualError = PlaybackSourceRecoveryPolicy.afterPublicFailure(
+                                actualError, webFailure)
                         }
                     }
                     diagnostics.record("PLAYBACK",
                         "FINAL_SOURCE_FAIL_" +
                             PlaybackProblem.describe("准备播放", actualError)
                                 .substringBefore(" · "))
-                    val description = errorText("准备播放", actualError)
+                    // The last source must not erase the earlier model failure
+                    // from the UI or diagnostics. Keep access denials terminal.
+                    val sourceErrors = listOfNotNull(
+                        primaryModelFailure?.let { "SDK: " + PlaybackProblem.describe("播放", it) },
+                        nativeModelFailure?.let { "备用: " + PlaybackProblem.describe("播放", it) },
+                        publicModelFailure?.let { "官网: " + PlaybackProblem.describe("播放", it) }
+                    ).distinct()
+                    val description = errorText("准备播放", actualError) +
+                        if (sourceErrors.isEmpty()) "" else "\n" + sourceErrors.joinToString("\n")
                     val pending = if (networkResumeMs != null) {
                         val retryable = PlaybackSourceRecoveryPolicy.nativeFallback(actualError) ||
                             PlaybackProblem.isTransientTransport(actualError)
@@ -3482,13 +3503,13 @@ class DramaViewModel(application: Application) : AndroidViewModel(application) {
         if (s.renderedVideoVid != expectedVid || s.playbackRecoveryMessage != null)
             mutable.update { it.copy(renderedVideoVid = expectedVid,
                 playbackRecoveryMessage = null, playbackError = null) }
+        if (s.renderedVideoVid != expectedVid) diagnostics.record("MEDIA", "FIRST_FRAME")
         if (firstFrameFor == ep.vid) return
         firstFrameFor = ep.vid
         if (s.nextDramaTransition != NextDramaTransition.NONE) {
             mutable.update { it.copy(nextDramaTransition = NextDramaTransition.NONE) }
             diagnostics.record("REELS", "NEXT_DRAMA_FIRST_FRAME")
         }
-        diagnostics.record("MEDIA", "FIRST_FRAME")
         if (playbackStartAtMs > 0L) diagnostics.record("PLAYBACK",
             "SWITCH_TO_FIRST_FRAME", android.os.SystemClock.elapsedRealtime() - playbackStartAtMs)
         library.record(s.detail.drama, ep.index)

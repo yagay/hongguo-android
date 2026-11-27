@@ -15,18 +15,24 @@ internal object CompatibleStreamSelector {
         data object Empty : Result
     }
 
-    fun select(streams: List<Stream>, separateAudio: Boolean, cap: Int): Result {
+    fun select(streams: List<Stream>, separateAudio: Boolean, cap: Int,
+               capability: (Stream) -> Int = { 1 }): Result {
         val withUrl = streams.filter { it.url.trim().startsWith("https://") }
         if (withUrl.isEmpty()) return Result.Empty
         if (separateAudio) return Result.UnsupportedContainer
         val singleFile = withUrl.filter { !it.hls && !it.dash }
         if (singleFile.isEmpty()) return Result.UnsupportedContainer
-        val supported = singleFile.filterNot { unsupportedCodec(it.codec) }
+        val ranks = singleFile.filterNot { unsupportedCodec(it.codec) }
+            .associateWith(capability)
+        val supported = ranks.filterValues { it > 0 }.keys.toList()
         if (supported.isEmpty()) return Result.UnsupportedCodec
         val capped = if (cap > 0) supported.filter { lines(it) <= cap } else supported
-        val order = compareBy<Stream>({ lines(it) }, { it.bitrate })
-        val chosen = if (capped.isEmpty()) supported.minWithOrNull(order)
-            else capped.maxWithOrNull(order)
+        val order = compareBy<Stream>({ lines(it) }, { ranks[it] ?: 0 }, { it.bitrate })
+        val candidates = if (capped.isEmpty()) {
+            val lowest = supported.minOf { lines(it) }
+            supported.filter { lines(it) == lowest }
+        } else capped
+        val chosen = candidates.maxWithOrNull(order)
         return Result.Ready(checkNotNull(chosen), singleFile.size - supported.size)
     }
 

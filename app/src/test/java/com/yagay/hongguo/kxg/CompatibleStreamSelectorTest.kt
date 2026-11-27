@@ -26,6 +26,16 @@ class CompatibleStreamSelectorTest {
         assertEquals("720p", low.stream.definition)
     }
 
+    @Test fun actualDecoderCapabilityFiltersAndPrefersHardwareAtSameQuality() {
+        val rows = listOf(stream("av1", 2160), stream("hevc", 1080, 900),
+            stream("avc", 1080, 2000))
+        val result = CompatibleStreamSelector.select(rows, false, 0) {
+            when (it.codec) { "av1" -> 0; "hevc" -> 2; else -> 1 }
+        } as CompatibleStreamSelector.Result.Ready
+        assertEquals("hevc", result.stream.codec)
+        assertEquals(1, result.excludedCodecCount)
+    }
+
     @Test fun distinctFailureTypesAndUnknownCodecRemainSupported() {
         assertEquals(CompatibleStreamSelector.Result.UnsupportedCodec,
             CompatibleStreamSelector.select(listOf(stream("VVC1.1", 1080)), false, 0))

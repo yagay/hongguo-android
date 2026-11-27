@@ -16,10 +16,9 @@ internal object PlaybackSourceRecoveryPolicy {
     fun retrySdk(error: Throwable, attempt: Int): Boolean {
         if (attempt !in 1 until MAX_OUTER_SDK_ATTEMPTS) return false
         val sdk = causes(error).filterIsInstance<OpenhongguoException>().firstOrNull()
-        if (sdk != null) {
-            if (sdk.code == ErrorCode.RATE_LIMITED) return false
-            return sdk.retryable && sdk.code == ErrorCode.TRANSPORT
-        }
+        // The SDK owns its typed transport retry budget. Do not multiply it
+        // with an Android retry. Only an outer transport/timeout can retry.
+        if (sdk != null) return false
         return PlaybackProblem.isTransientTransport(error) ||
             httpStatus(error) in setOf(500, 502, 503, 504)
     }
@@ -69,6 +68,13 @@ internal object PlaybackSourceRecoveryPolicy {
      */
     fun preservePrimaryOnLegacyEmpty(primary: Exception?, fallback: Exception): Exception =
         if (primary != null && PlaybackProblem.isEmptyPlaybackModel(fallback)) primary else fallback
+
+    /** Retain main-source evidence separately from the public-source result.
+     * Explicit public denial or throttling still terminates this session.
+     * A malformed public response is not proof of denial of the main source.
+     */
+    fun afterPublicFailure(main: Exception, website: Exception): Exception =
+        if (website is PublicEpisodePlaybackSource.Invalid) main else website
 
     private fun causes(t: Throwable): List<Throwable> =
         generateSequence(t) { it.cause }.take(8).toList()

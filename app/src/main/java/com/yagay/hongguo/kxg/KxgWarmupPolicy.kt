@@ -39,6 +39,9 @@ internal object KxgWarmupPolicy {
         return minOf(expiresAtSeconds * 1000L - 60_000L, capped)
     }
 
+    fun hardExpired(expiresAtSeconds: Long, nowMs: Long): Boolean =
+        expiresAtSeconds > 0L && expiresAtSeconds <= nowMs / 1000L
+
     fun reusable(validUntilMs: Long, nowMs: Long): Boolean =
         validUntilMs > nowMs + 5_000L
 

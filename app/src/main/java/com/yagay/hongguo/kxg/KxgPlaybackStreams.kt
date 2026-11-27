@@ -54,7 +54,10 @@ internal object KxgPlaybackStreams {
             found.validUntilMs, System.currentTimeMillis()) &&
             streamRegistry?.get(found.uri) != null
         if (!current) {
-            synchronized(preloadLock) { recentPlayed.remove(key) }
+            synchronized(preloadLock) {
+                if (recentPlayed[key] == found) recentPlayed.remove(key)
+            }
+            diagnostics?.record("CACHE", "RECENT_MODEL_EXPIRED")
             return null
         }
         synchronized(preloadLock) {
@@ -192,7 +195,17 @@ internal object KxgPlaybackStreams {
                 active(it.uri)
                 return it
             }
-        } else diagnostics?.record("CACHE", "NETWORK_FORCE_FRESH_MODEL")
+        } else {
+            // Evict metadata, not the active player's registry entry/cached bytes.
+            // A prefetched entry may have become active while its warmup ran.
+            synchronized(preloadLock) {
+                val key = cacheKey(episodeId, qualityLimit)
+                prefetched.remove(key)
+                recentPlayed.remove(key)
+                preloadGeneration++
+            }
+            diagnostics?.record("CACHE", "NETWORK_FORCE_FRESH_MODEL")
+        }
         return checkNotNull(resolveFresh(context, sdk, episodeId, qualityLimit,
             speculative = false)) {
             "Foreground playback-model lookup unexpectedly skipped"
@@ -330,14 +343,22 @@ internal object KxgPlaybackStreams {
         }
         diagnostics?.record("PLAYBACK", "OFFICIAL_OPENHONGGUO_MODEL_RECEIVED")
         val playback = resolved.playback
+        val nowMs = System.currentTimeMillis()
+        if (KxgWarmupPolicy.hardExpired(playback.expiresAt, nowMs)) {
+            diagnostics?.record("CACHE", "FRESH_MODEL_ALREADY_EXPIRED")
+            throw IOException("PLAYBACK_MODEL_EXPIRED")
+        }
         val selection = CompatibleStreamSelector.select(
-            playback.streams, playback.audioUrl.isNotEmpty(), qualityLimit)
+            playback.streams, playback.audioUrl.isNotEmpty(), qualityLimit,
+            AndroidDecoderCapability::rank)
         val chosen = when (selection) {
             is CompatibleStreamSelector.Result.Ready -> {
                 if (selection.excludedCodecCount > 0) {
                     diagnostics?.record("PLAYBACK", "UNSUPPORTED_CODEC_FILTERED")
                 }
                 diagnostics?.record("PLAYBACK", "COMPATIBLE_STREAM_SELECTED")
+                diagnostics?.record("PLAYBACK", if (AndroidDecoderCapability.rank(selection.stream) == 2)
+                    "HARDWARE_DECODER_SELECTED" else "SOFTWARE_OR_UNKNOWN_DECODER_SELECTED")
                 selection.stream
             }
             CompatibleStreamSelector.Result.UnsupportedCodec ->

@@ -34,11 +34,12 @@ class PlaybackSourceRecoveryPolicyTest {
             OpenhongguoException(ErrorCode.ANONYMOUS_LIMITED, "explicit guest access denied")))
     }
 
-    @Test fun onlyOneAdditionalOuterSdkAttemptAfterInternalRetries() {
+    @Test fun SDKOwnsTypedRetryBudget() {
         val error = OpenhongguoException(ErrorCode.TRANSPORT,
             "network temporarily failed", retryable = true)
-        assertTrue(PlaybackSourceRecoveryPolicy.retrySdk(error, 1))
+        assertFalse(PlaybackSourceRecoveryPolicy.retrySdk(error, 1))
         assertFalse(PlaybackSourceRecoveryPolicy.retrySdk(error, 2))
+        assertTrue(PlaybackSourceRecoveryPolicy.retrySdk(SocketTimeoutException(), 1))
         assertEquals(1500L, PlaybackSourceRecoveryPolicy.retryDelayMs(error))
         assertTrue(PlaybackSourceRecoveryPolicy.nativeFallback(error))
         assertTrue(PlaybackSourceRecoveryPolicy.nativeFallback(
@@ -87,6 +88,18 @@ class PlaybackSourceRecoveryPolicyTest {
         val transport = IOException("backup CDN unavailable")
         assertSame(transport, PlaybackSourceRecoveryPolicy
             .preservePrimaryOnLegacyEmpty(primary, transport))
+    }
+
+    @Test fun publicFailurePreservesMainEvidenceWithoutBypassingDenial() {
+        val main = OpenhongguoException(ErrorCode.RESPONSE_EMPTY, "empty")
+        assertSame(main, PlaybackSourceRecoveryPolicy.afterPublicFailure(
+            main, PublicEpisodePlaybackSource.Invalid()))
+        val denied = PublicEpisodePlaybackSource.Unavailable()
+        assertSame(denied, PlaybackSourceRecoveryPolicy.afterPublicFailure(main, denied))
+        assertFalse(PeriodicPlaybackRetryPolicy.recoverableSource(denied))
+        val limit = PublicEpisodePlaybackSource.Limited()
+        assertSame(limit, PlaybackSourceRecoveryPolicy.afterPublicFailure(main, limit))
+        assertFalse(PeriodicPlaybackRetryPolicy.recoverableSource(limit))
     }
 
     @Test fun missingContentAuthorizationDoesNotRetryOrSwitchSources() {

@@ -85,6 +85,7 @@ object PlaybackProblem {
                 it.contains("内容密钥格式不受支持") } -> "CONTENT_PROTECTED"
             messages.any { it.contains("DEVICE_REGISTER", true) } -> "DEVICE_REGISTER_FAILED"
             messages.any { it.contains("PLAYBACK_CONTAINER_UNSUPPORTED") } -> "SOURCE_NOT_SUPPORTED"
+            messages.any { it.contains("PLAYBACK_MODEL_EXPIRED") } -> "PLAYBACK_MODEL_EXPIRED"
             messages.any { it.contains("PLAYBACK_NO_USABLE_STREAM") } -> "PLAYBACK_NO_USABLE_STREAM"
             messages.any { it.contains("CODEC_NOT_SUPPORTED", true) ||
                 it.contains("bytevc2", true) || it.contains("VVC", true) } -> "CODEC_NOT_SUPPORTED"
@@ -121,6 +122,7 @@ object PlaybackProblem {
             "DEVICE_REGISTER_FAILED" -> "匿名设备注册失败"
             "CODEC_NOT_SUPPORTED" -> "本机不支持该视频编码"
             "SOURCE_NOT_SUPPORTED" -> "当前数据源尚不支持此媒体格式"
+            "PLAYBACK_MODEL_EXPIRED" -> "上游返回的播放地址已过期"
             "PLAYBACK_NO_USABLE_STREAM" -> "已取得播放模型，但没有有效的媒体地址"
             "NETWORK_IO" -> "网络数据读取失败"
             else -> "处理失败"

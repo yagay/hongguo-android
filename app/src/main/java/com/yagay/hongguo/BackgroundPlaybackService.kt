@@ -530,7 +530,19 @@ class BackgroundPlaybackService : MediaSessionService() {
                 }
             }
 
-            override fun onRenderedFirstFrame() { onFirstFrame?.invoke() }
+            override fun onRenderedFirstFrame() {
+                diagnostics.record("MEDIA", "MEDIA_RENDERED_FIRST_FRAME")
+                onFirstFrame?.invoke()
+            }
+
+            override fun onPositionDiscontinuity(
+                oldPosition: Player.PositionInfo,
+                newPosition: Player.PositionInfo,
+                reason: Int,
+            ) {
+                // A manual seek or timeline replacement is not playback progress.
+                backgroundProgressBase = -1L
+            }
 
             // Log declared video transfer characteristics to distinguish a
             // dark SDR master from possible device HDR-to-SDR tone mapping.
@@ -562,6 +574,8 @@ class BackgroundPlaybackService : MediaSessionService() {
                         else -> "STATE_OTHER"
                     })
                     previousPlaybackState = state
+                    if (state == Player.STATE_READY)
+                        diagnostics.record("MEDIA", "MEDIA_PREPARED")
                 }
                 if (state == Player.STATE_BUFFERING) {
                     if (bufferingSinceMs == 0L)
@@ -730,6 +744,7 @@ class BackgroundPlaybackService : MediaSessionService() {
                         // Verify three seconds of actual forward progress, not
                         // merely a resume checkpoint already beyond 00:03.
                         backgroundConfirmed = true
+                        diagnostics.record("MEDIA", "PLAYBACK_CONFIRMED")
                         onBackgroundProgress?.invoke()
                     }
                 }
